@@ -1,0 +1,135 @@
+<% content_for :title, "Dispatch Record" %>
+<% form_record = @dispatch_record %>
+<% form_url = form_record.persisted? ? dispatch_record_path(form_record) : dispatch_records_path %>
+<% form_method = form_record.persisted? ? :patch : :post %>
+
+<main class="vrp-list-page">
+  <section class="vrp-list-shell">
+    <div class="vrp-list-header">
+      <div>
+        <p class="vrp-eyebrow">Farmer Farm Information</p>
+        <h1>Dispatch Record</h1>
+      </div>
+    </div>
+
+    <div class="vrp-list-card">
+      <div class="list-controls">
+        <%= form_with url: import_dispatch_records_path, multipart: true, local: true, class: "list-search" do |form| %>
+          <span>▤</span>
+          <%= form.file_field :file, accept: ".xlsx,.csv", class: "form-control", required: true %>
+          <%= form.submit "Upload", class: "list-btn upload" %>
+        <% end %>
+        <div class="list-control-actions">
+          <%= link_to "Export Excel", export_dispatch_records_path, class: "list-btn export" %>
+        </div>
+      </div>
+    </div>
+
+    <section class="module-card">
+      <%= form_with model: form_record, url: form_url, method: form_method, local: true, html: { class: "module-entry-form" } do |f| %>
+        <div class="module-form-grid user-registration-grid">
+          <%= render "shared/farmer_farm_information_select", form: f, record: form_record %>
+          <label>
+            <span>Name of the produce</span>
+            <%= f.text_field :produce_name, placeholder: "Enter Produce Name" %>
+          </label>
+          <label>
+            <span>Organic status</span>
+            <%= f.text_field :organic_status, placeholder: "Enter Organic Status" %>
+          </label>
+          <label>
+            <span>Quantity sold to ICS(Kg)</span>
+            <%= f.number_field :quantity_sold_to_ics_kg, step: "0.0001", min: 0, placeholder: "Enter Quantity Sold" %>
+          </label>
+          <label>
+            <span>Details of transport - Date</span>
+            <%= f.date_field :transport_date %>
+          </label>
+          <label>
+            <span>Details of transport - Quantity</span>
+            <%= f.number_field :transport_quantity, step: "0.0001", min: 0, placeholder: "Enter Transport Quantity" %>
+          </label>
+          <label>
+            <span>Details of transport - Mode</span>
+            <%= f.text_field :transport_mode, placeholder: "Enter Transport Mode" %>
+          </label>
+          <label>
+            <span>Remarks</span>
+            <%= f.text_area :remarks, rows: 3, placeholder: "Enter Remarks" %>
+          </label>
+          <label>
+            <span>Status</span>
+            <%= f.select :status, options_for_select(["Active", "Inactive"], form_record.status.presence || "Active") %>
+          </label>
+        </div>
+
+        <div class="module-form-actions">
+          <% if form_record.persisted? %>
+            <%= link_to "Cancel Edit", dispatch_records_path, class: "btn btn-secondary" %>
+          <% else %>
+            <%= link_to "Clear", dispatch_records_path, class: "btn btn-secondary" %>
+          <% end %>
+          <%= f.submit form_record.persisted? ? "Update" : "Save", class: "btn btn-primary" %>
+        </div>
+      <% end %>
+    </section>
+
+    <section class="module-card">
+      <div class="vrp-list-toolbar compact">
+        <button type="button" class="list-btn active" data-module-status-selected="Active">Active</button>
+        <button type="button" class="list-btn deactive" data-module-status-selected="Inactive">Deactive</button>
+        <button type="button" class="list-btn edit" data-module-edit-selected>Edit</button>
+        <button type="button" class="list-btn delete" data-module-delete-selected>Delete</button>
+      </div>
+
+      <div class="list-controls">
+        <div class="list-search">
+          <span>⌕</span>
+          <input type="search" placeholder="Search dispatch records" data-table-search="dispatch_records_list">
+        </div>
+      </div>
+
+      <div class="table-shell">
+        <table class="module-table vrp-list-table" id="dispatch_records_list" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th><input type="checkbox" data-module-select-all></th>
+              <%= render "shared/farmer_farm_information_table_headers" %>
+              <th>Name of the produce</th>
+              <th>Organic status</th>
+              <th>Quantity sold to ICS(Kg)</th>
+              <th>Transport Date</th>
+              <th>Transport Quantity</th>
+              <th>Transport Mode</th>
+              <th>Remarks</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if @dispatch_records.any? %>
+              <% @dispatch_records.each do |record| %>
+                <tr>
+                  <td><input type="checkbox" value="<%= edit_dispatch_record_path(record) %>" data-module-row-select></td>
+                  <%= render "shared/farmer_farm_information_table_cells", record: record %>
+                  <td><%= record.produce_name.presence || "-" %></td>
+                  <td><%= record.organic_status.presence || "-" %></td>
+                  <td><%= record.quantity_sold_to_ics_kg.presence || "-" %></td>
+                  <td><%= record.transport_date&.strftime("%d-%m-%Y") || "-" %></td>
+                  <td><%= record.transport_quantity.presence || "-" %></td>
+                  <td><%= record.transport_mode.presence || "-" %></td>
+                  <td><%= record.remarks.presence || "-" %></td>
+                  <td><span class="status-pill <%= record.status == "Inactive" ? "inactive" : "active" %>"><%= record.status.presence || "Active" %></span></td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="12">No dispatch records saved yet.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="dispatch_records_list"></div>
+    </section>
+  </section>
+</main>

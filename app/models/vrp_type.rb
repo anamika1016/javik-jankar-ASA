@@ -1,0 +1,2 @@
+class VrpType < ApplicationRecord
+end

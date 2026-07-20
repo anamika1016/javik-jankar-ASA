@@ -1,0 +1,302 @@
+<% content_for :title, @vrp_target_view ? "Jeevika Jankar Targets" : "Target Mapping Master" %>
+
+<main class="vrp-list-page">
+  <section class="vrp-list-shell">
+    <div class="vrp-list-header">
+      <div>
+        <p class="vrp-eyebrow"><%= @vrp_target_view ? "Jeevika Jankar Targets" : "Target Mapping Master" %></p>
+        <h1><%= @vrp_target_view ? "Recent Target Mappings" : "Target Mapping" %></h1>
+      </div>
+    </div>
+
+    <% unless @vrp_target_view %>
+      <section class="module-card target-mapping-card"
+        data-target-mapping
+        data-edit-target="<%= html_escape(@edit_payload.to_json) %>"
+        data-target-sub-activity-map="<%= html_escape(@target_sub_activity_map.to_json) %>"
+        data-main-activity-type-map="<%= html_escape(@main_activity_type_map.to_json) %>"
+        data-mappings-url="<%= vrp_mappings_target_mappings_path %>">
+        <%= form_with url: target_mappings_path, method: :post, local: true, html: { class: "module-entry-form" } do %>
+          <% if @edit_target %>
+            <input type="hidden" name="target_mapping[id]" value="<%= @edit_target.id %>">
+          <% end %>
+          <div class="module-form-grid user-registration-grid">
+            <label>
+              <span>Jeevika Jankar <em>*</em></span>
+              <select name="target_mapping[vrp_id]" data-target-vrp required>
+                <option value="">Select Jeevika Jankar</option>
+                <% @vrps.each do |vrp| %>
+                  <option value="<%= vrp.id %>" <%= "selected" if @edit_target&.vrp_id == vrp.id %>><%= [vrp.name, vrp.mobile_no.presence].compact.join(" - ") %></option>
+                <% end %>
+              </select>
+            </label>
+
+            <label>
+              <span>FCO Name <em>*</em></span>
+              <select name="target_mapping[fco_id]" data-target-fco data-selected-value="<%= [@edit_target&.fco_id, @edit_target&.fco_name].compact_blank.join("||") %>" required>
+                <option value="">Select FCO Name</option>
+              </select>
+            </label>
+
+            <label>
+              <span>ICS <em>*</em></span>
+              <select name="target_mapping[ics_id]" data-target-ics data-selected-value="<%= [@edit_target&.ics_id, @edit_target&.ics_name].compact_blank.join("||") %>" required disabled>
+                <option value="">Select ICS</option>
+              </select>
+            </label>
+
+            <div class="target-village-field">
+              <span class="location-multi-label">
+                <span>Village <em>*</em></span>
+                <span class="location-select-all"><input type="checkbox" data-chip-select-all-for="target-village"> Select all</span>
+              </span>
+              <input type="hidden" name="target_mapping[village_id]" value="" data-target-village-hidden>
+              <select data-target-village data-selected-values="<%= html_escape(Array(@edit_payload[:village_ids]).to_json) %>" multiple required disabled data-chip-multiselect data-chip-select-all-key="target-village" data-placeholder="Select Village">
+                <option value="">Select Village</option>
+              </select>
+            </div>
+
+            <label>
+              <span>Month <em>*</em></span>
+              <select name="target_mapping[month_name]" required>
+                <option value="">Select Month</option>
+                <% @month_options.each do |option| %>
+                  <option value="<%= option %>" <%= "selected" if @edit_target&.month_name.to_s == option.to_s %>><%= option %></option>
+                <% end %>
+              </select>
+            </label>
+
+            <label>
+              <span>Completion Date <em>*</em></span>
+              <input type="date" name="target_mapping[completion_date]" value="<%= @edit_target&.completion_date&.strftime("%Y-%m-%d") %>" required>
+            </label>
+
+            <div class="target-village-field">
+              <span class="location-multi-label">
+                <span>Main Activity <em>*</em></span>
+                <span class="location-select-all"><input type="checkbox" data-chip-select-all-for="target-main-activity"> Select all</span>
+              </span>
+              <select name="target_mapping[main_activity_names][]" data-target-main-activity data-selected-values="<%= html_escape(Array(@edit_payload[:main_activity_names]).to_json) %>" multiple required data-chip-multiselect data-chip-select-all-key="target-main-activity" data-placeholder="Select Main Activity">
+                <option value="">Select Main Activity</option>
+                <% @main_activity_options.each do |option| %>
+                  <option value="<%= option %>" <%= "selected" if Array(@edit_payload[:main_activity_names]).map(&:to_s).include?(option.to_s) %>><%= option %></option>
+                <% end %>
+              </select>
+            </div>
+
+            <div class="target-village-field" data-target-sub-activity-field>
+              <span class="location-multi-label">
+                <span>Sub Activity <em>*</em></span>
+                <span class="location-select-all"><input type="checkbox" data-chip-select-all-for="target-sub-activity"> Select all</span>
+              </span>
+              <select name="target_mapping[activity_names][]" data-target-sub-activity data-selected-values="<%= html_escape(Array(@edit_payload[:activity_names]).to_json) %>" multiple required data-chip-multiselect data-chip-select-all-key="target-sub-activity" data-placeholder="Select Sub Activity">
+                <option value="">Select Sub Activity</option>
+                <% @sub_activity_options.each do |option| %>
+                  <option value="<%= option %>" <%= "selected" if Array(@edit_payload[:activity_names]).map(&:to_s).include?(option.to_s) %>><%= option %></option>
+                <% end %>
+              </select>
+            </div>
+
+            <label data-target-standard-quantity-fields>
+              <span>Registered Farmers</span>
+              <input type="text" value="0" data-target-registered-count readonly>
+            </label>
+
+            <label data-target-standard-quantity-fields>
+              <span>Target <em>*</em></span>
+              <input type="number" name="target_mapping[target_quantity]" min="1" step="1" placeholder="Selected farmer count" value="<%= @edit_target&.target_quantity %>" data-target-quantity-input readonly required>
+            </label>
+
+            <label data-target-standard-quantity-fields>
+              <span>New Farmer Target</span>
+              <input type="number" name="target_mapping[new_farmer_target_quantity]" min="1" step="1" placeholder="Enter target without farmer selection" value="<%= @edit_payload[:new_farmer_target_quantity] %>" data-new-farmer-target-input>
+            </label>
+          </div>
+
+          <div class="target-training-fields" data-target-training-fields hidden>
+            <div class="target-mapping-toolbar">
+              <strong>Training Monthly Target</strong>
+            </div>
+            <div class="module-form-grid user-registration-grid">
+              <% [
+                ["OPG Training", "opg_training"],
+                ["General Training/Meeting", "week_wise_opg"],
+                ["Input Demo INM", "input_demo_inm"],
+                ["Input Demo PM", "input_demo_pm"],
+                ["FFS", "ffs"]
+              ].each do |label, key| %>
+                <label>
+                  <span><%= label %></span>
+                  <input type="number"
+                         name="target_mapping[training_targets][<%= key %>]"
+                         min="1"
+                         step="1"
+                         placeholder="Enter target"
+                         value="<%= @edit_payload.dig(:training_targets, key.to_sym) || @edit_payload.dig(:training_targets, key) %>"
+                         data-training-target-input
+                         data-training-activity-name="<%= label %>">
+                </label>
+              <% end %>
+            </div>
+          </div>
+
+        <%# Farmer List panel is kept hidden as the data source for the Activity Wise Plan dialog. %>
+        <div class="target-farmer-panel" data-target-farmer-panel hidden>
+            <div class="target-mapping-toolbar">
+              <strong>Farmer List</strong>
+              <div class="list-search compact target-farmer-search">
+                <span>⌕</span>
+                <input type="search" placeholder="Search farmers" data-target-farmer-search>
+              </div>
+              <label class="vrp-ics-select-all">
+                <input type="checkbox" data-target-farmer-select-all>
+                <span>Select all</span>
+              </label>
+              <span data-target-farmer-count>0 farmer selected</span>
+            </div>
+            <div class="training-empty-state" data-target-farmer-search-empty hidden>No farmers matched your search.</div>
+            <div class="vrp-ics-farmer-list target-farmer-list" data-target-farmer-list>
+              Select FCO Name, ICS and Village to load farmers.
+            </div>
+        </div>
+
+        <section class="target-weekly-summary" data-target-weekly-summary hidden>
+          <div class="target-mapping-toolbar">
+            <strong>Activity Wise Plan</strong>
+            <span data-target-weekly-selected-total>0 farmer selected</span>
+          </div>
+          <div class="table-shell target-weekly-table-shell">
+            <table class="module-table vrp-list-table target-weekly-table">
+              <thead>
+                <tr>
+                  <th>Activity</th>
+                  <th>Monthly</th>
+                  <th>Week 1</th>
+                  <th>Week 2</th>
+                  <th>Week 3</th>
+                  <th>Week 4</th>
+                  <th>Total</th>
+                  <th>View</th>
+                </tr>
+              </thead>
+              <tbody data-target-weekly-rows>
+                <tr>
+                  <td colspan="8">Select Main Activity to view weekly plan.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <div class="module-form-actions">
+          <% if @edit_target %>
+            <%= link_to "Cancel Edit", target_mappings_path, class: "btn btn-secondary" %>
+          <% end %>
+          <button type="submit" class="list-btn upload"><%= @edit_target ? "Update Target" : "Submit Target" %></button>
+        </div>
+
+        <dialog class="target-farmer-dialog" data-target-farmer-dialog>
+          <div class="target-farmer-dialog-inner">
+            <div class="target-farmer-dialog-header">
+              <div>
+                <strong data-target-farmer-dialog-title>Farmer List</strong>
+                <span data-target-farmer-dialog-total>0 farmer selected</span>
+              </div>
+              <button type="button" data-target-farmer-dialog-close aria-label="Close">×</button>
+            </div>
+            <div class="target-farmer-dialog-tools">
+              <div class="list-search compact target-farmer-search">
+                <span>⌕</span>
+                <input type="search" placeholder="Search farmers" data-target-dialog-farmer-search>
+              </div>
+              <button type="button" class="table-action" data-target-dialog-select-all>Select all</button>
+              <button type="button" class="table-action" data-target-dialog-clear>Manual select</button>
+            </div>
+            <div class="training-empty-state" data-target-dialog-farmer-empty hidden>No farmers matched your search.</div>
+            <div class="vrp-ics-farmer-list target-dialog-farmer-list" data-target-dialog-farmer-list>
+              Select FCO Name, ICS and Village to load farmers.
+            </div>
+          </div>
+        </dialog>
+        <% end %>
+      </section>
+    <% end %>
+
+	    <div class="vrp-list-card">
+	      <% show_mapping_actions = @admin_mapping_actions || @remove_mapping_actions %>
+	      <div class="list-controls">
+        <strong>Recent Target Mappings</strong>
+        <div class="list-control-actions">
+          <div class="list-search compact">
+            <span>⌕</span>
+            <input type="search" placeholder="Search targets" data-table-search="target_mapping_list">
+          </div>
+        </div>
+      </div>
+      <div class="table-shell">
+        <table class="module-table vrp-list-table" id="target_mapping_list" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th>Jeevika Jankar</th>
+              <th>FCO</th>
+              <th>ICS</th>
+              <th>Village</th>
+              <th>Farmers</th>
+              <th>Month</th>
+              <th>Completion Date</th>
+              <th class="target-activity-column">Main Activity</th>
+              <th class="target-activity-column">Sub Activity</th>
+              <th class="target-training-column">OPG Training</th>
+              <th class="target-training-column">General Training/<wbr>Meeting</th>
+              <th class="target-training-column">Input Demo INM</th>
+              <th class="target-training-column">Input Demo PM</th>
+              <th>Target</th>
+	              <% if show_mapping_actions %>
+	                <th>Action</th>
+	              <% end %>
+            </tr>
+          </thead>
+          <tbody>
+            <% if @target_mappings.any? %>
+              <% @target_mappings.each do |target| %>
+                <tr>
+                  <td><%= target.vrp&.name %></td>
+                  <td><%= target.fco_name.presence || target.fco_id %></td>
+                  <td><%= target.ics_name.presence || target.ics_id %></td>
+                  <td><%= target.village_name.presence || target.village_id %></td>
+                  <td><%= Array(target.afl_ids).blank? && target.target_quantity.to_f.positive? ? "New Farmer Target" : target.farmer_count %></td>
+                  <td><%= target.month_name %></td>
+                  <td><%= target.completion_date&.strftime("%d-%m-%Y") || "-" %></td>
+                  <td class="target-activity-text"><%= target.main_activity_name %></td>
+                  <td class="target-activity-text"><%= target.activity_name %></td>
+                  <td><%= target.opg_training_target %></td>
+                  <td><%= target.week_wise_opg_target %></td>
+                  <td><%= target.input_demo_inm_target %></td>
+                  <td><%= target.input_demo_pm_target %></td>
+                  <td><%= target.target_quantity %></td>
+	                  <% if show_mapping_actions %>
+	                    <td>
+	                      <div class="table-actions">
+	                        <% if @admin_mapping_actions %>
+	                          <%= link_to "Edit", target_mappings_path(edit_id: target.id), class: "table-action" %>
+	                          <%= button_to "Delete", target_mapping_path(target), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this target mapping?" } } %>
+	                        <% elsif @remove_mapping_actions %>
+	                          <%= button_to "Remove", target_mapping_path(target), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Remove this target mapping?" } } %>
+	                        <% end %>
+	                      </div>
+	                    </td>
+	                  <% end %>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+	                <td colspan="<%= show_mapping_actions ? 15 : 14 %>">No target mapping saved yet.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="target_mapping_list"></div>
+    </div>
+  </section>
+</main>

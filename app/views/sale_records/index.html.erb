@@ -1,0 +1,141 @@
+<% content_for :title, "Sale Record" %>
+<% form_record = @sale_record %>
+<% form_url = form_record.persisted? ? sale_record_path(form_record) : sale_records_path %>
+<% form_method = form_record.persisted? ? :patch : :post %>
+
+<main class="vrp-list-page">
+  <section class="vrp-list-shell">
+    <div class="vrp-list-header">
+      <div>
+        <p class="vrp-eyebrow">Farmer Farm Information</p>
+        <h1>Sale Record</h1>
+      </div>
+    </div>
+
+    <div class="vrp-list-card">
+      <div class="list-controls">
+        <%= form_with url: import_sale_records_path, multipart: true, local: true, class: "list-search" do |form| %>
+          <span>▤</span>
+          <%= form.file_field :file, accept: ".xlsx,.csv", class: "form-control", required: true %>
+          <%= form.submit "Upload", class: "list-btn upload" %>
+        <% end %>
+        <div class="list-control-actions">
+          <%= link_to "Export Excel", export_sale_records_path, class: "list-btn export" %>
+        </div>
+      </div>
+    </div>
+
+    <section class="module-card">
+      <%= form_with model: form_record, url: form_url, method: form_method, local: true, html: { class: "module-entry-form" } do |f| %>
+        <div class="module-form-grid user-registration-grid">
+          <%= render "shared/farmer_farm_information_select", form: f, record: form_record %>
+          <label>
+            <span>Name of the produce</span>
+            <%= f.text_field :produce_name, placeholder: "Enter Produce Name" %>
+          </label>
+          <label>
+            <span>Organic status</span>
+            <%= f.select :organic_status, options_for_select(@organic_status_options, form_record.organic_status), { include_blank: "Select Organic Status" } %>
+          </label>
+          <label>
+            <span>Total output for sale (Kg)</span>
+            <%= f.number_field :total_output_for_sale_kg, step: "0.0001", min: 0, placeholder: "Enter Total Output" %>
+          </label>
+          <label>
+            <span>Quantity sold to ICS</span>
+            <%= f.number_field :quantity_sold_to_ics_kg, step: "0.0001", min: 0, placeholder: "Enter Quantity Sold" %>
+          </label>
+          <label>
+            <span>Purchase Receipt no. issued by ICS</span>
+            <%= f.text_field :purchase_receipt_no, placeholder: "Enter Receipt No." %>
+          </label>
+          <label>
+            <span>Balance Qty</span>
+            <%= f.number_field :balance_qty, step: "0.0001", min: 0, placeholder: "Enter Balance Qty" %>
+          </label>
+          <label>
+            <span>Usage Consumption Other issues</span>
+            <%= f.text_area :usage_consumption_other_issues, rows: 3, placeholder: "Enter Usage / Consumption / Other Issues" %>
+          </label>
+          <label>
+            <span>Remarks</span>
+            <%= f.text_area :remarks, rows: 3, placeholder: "Enter Remarks" %>
+          </label>
+          <label>
+            <span>Status</span>
+            <%= f.select :status, options_for_select(["Active", "Inactive"], form_record.status.presence || "Active") %>
+          </label>
+        </div>
+
+        <div class="module-form-actions">
+          <% if form_record.persisted? %>
+            <%= link_to "Cancel Edit", sale_records_path, class: "btn btn-secondary" %>
+          <% else %>
+            <%= link_to "Clear", sale_records_path, class: "btn btn-secondary" %>
+          <% end %>
+          <%= f.submit form_record.persisted? ? "Update" : "Save", class: "btn btn-primary" %>
+        </div>
+      <% end %>
+    </section>
+
+    <section class="module-card">
+      <div class="vrp-list-toolbar compact">
+        <button type="button" class="list-btn active" data-module-status-selected="Active">Active</button>
+        <button type="button" class="list-btn deactive" data-module-status-selected="Inactive">Deactive</button>
+        <button type="button" class="list-btn edit" data-module-edit-selected>Edit</button>
+        <button type="button" class="list-btn delete" data-module-delete-selected>Delete</button>
+      </div>
+
+      <div class="list-controls">
+        <div class="list-search">
+          <span>⌕</span>
+          <input type="search" placeholder="Search sale records" data-table-search="sale_records_list">
+        </div>
+      </div>
+
+      <div class="table-shell">
+        <table class="module-table vrp-list-table" id="sale_records_list" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th><input type="checkbox" data-module-select-all></th>
+              <%= render "shared/farmer_farm_information_table_headers" %>
+              <th>Name of the produce</th>
+              <th>Organic status</th>
+              <th>Total output for sale (Kg)</th>
+              <th>Quantity sold to ICS</th>
+              <th>Receipt no.</th>
+              <th>Balance Qty</th>
+              <th>Usage / Consumption</th>
+              <th>Remarks</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if @sale_records.any? %>
+              <% @sale_records.each do |record| %>
+                <tr>
+                  <td><input type="checkbox" value="<%= edit_sale_record_path(record) %>" data-module-row-select></td>
+                  <%= render "shared/farmer_farm_information_table_cells", record: record %>
+                  <td><%= record.produce_name.presence || "-" %></td>
+                  <td><%= record.organic_status.presence || "-" %></td>
+                  <td><%= record.total_output_for_sale_kg.presence || "-" %></td>
+                  <td><%= record.quantity_sold_to_ics_kg.presence || "-" %></td>
+                  <td><%= record.purchase_receipt_no.presence || "-" %></td>
+                  <td><%= record.balance_qty.presence || "-" %></td>
+                  <td><%= record.usage_consumption_other_issues.presence || "-" %></td>
+                  <td><%= record.remarks.presence || "-" %></td>
+                  <td><span class="status-pill <%= record.status == "Inactive" ? "inactive" : "active" %>"><%= record.status.presence || "Active" %></span></td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="13">No sale records saved yet.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="sale_records_list"></div>
+    </section>
+  </section>
+</main>

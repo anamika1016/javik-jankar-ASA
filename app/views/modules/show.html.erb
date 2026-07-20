@@ -1,0 +1,2226 @@
+<% content_for :title, @module[:title] %>
+
+<section class="module-page">
+  <% hide_module_hero = @slug == "jeevika-jankar-bill-list" && @bill_print_mode %>
+  <% unless hide_module_hero %>
+    <div class="module-hero">
+      <div>
+        <p class="vrp-eyebrow"><%= @module[:group] %></p>
+        <h1><%= @slug == "new-user" ? "Registration" : @module[:title] %></h1>
+        <p><%= @module[:purpose] %></p>
+      </div>
+    </div>
+  <% end %>
+
+  <% list_only_slugs = ["activity-group-list", "vrp-activity-list", "task-completion-indicator-list", "approval-list", "access-control-list", "vrp-bill-list", "jeevika-jankar-bill-list", "jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail", "jeevika-jankar-completed-payment-list", "training-form-list", "seed-distribution-target-list", "papl360-target-list"] %>
+  <% entry_only_slugs = ["add-activity-group", "add-vrp-activity", "task-completion-indicator", "approval-master", "access-control", "vrp-bill-add", "jeevika-jankar-bill-process", "training-form"] %>
+
+  <% if @slug == "jeevika-jankar-bill-list" && (@bill_print_mode || @bill_detail_record.present?) %>
+    <% detail_record = @record || @bill_detail_record %>
+    <% detail_items = jeevika_bill_detail_rows(detail_record) %>
+    <% detail_summary = jeevika_bill_summary(detail_record) %>
+    <% stakeholder_profile = current_stakeholder_profile %>
+    <% vrp_photo = jeevika_bill_attachment_rows(detail_record).first&.last %>
+    <% money = ->(value) { number_to_currency(value.to_f, unit: "₹", delimiter: ",", precision: 2) } %>
+    <% if @bill_print_mode %>
+      <% bill_vrp = jeevika_bill_vrp(detail_record) %>
+      <% prepared_by = jeevika_bill_prepared_by(detail_record) %>
+      <% approved_rows = jeevika_bill_approved_by_rows(detail_record) %>
+      <section class="bill-print-sheet">
+        <div class="bill-print-header">
+          <div>
+            <%= image_tag app_logo_path, alt: app_display_name, class: "bill-print-logo" %>
+          </div>
+          <div class="bill-print-stakeholder">
+            <strong><%= app_display_name %></strong>
+            <span><%= stakeholder_profile&.data&.[]("full_address").presence || "-" %></span>
+            <span>Phone: <%= stakeholder_profile&.data&.[]("phone_number").presence || "-" %></span>
+            <span>Email: <%= stakeholder_profile&.data&.[]("email").presence || "-" %></span>
+          </div>
+        </div>
+
+        <div class="bill-print-profile-row">
+          <div class="bill-print-vrp-block">
+            <% if vrp_photo&.attached? %>
+              <%= image_tag rails_blob_path(vrp_photo, only_path: true), alt: "VRP Photo", class: "bill-print-vrp-photo" %>
+            <% end %>
+            <p>
+              <strong><%= jeevika_jankar_display_name(detail_record.data["select_vrp_name"].presence || jeevika_jankar_vrp_label(detail_record.data["select_vrp"])).presence || "-" %></strong>(VRP)<br>
+              Block: <%= (bill_vrp&.vrp_profile&.block_id).presence || "-" %><br>
+              Mobile No.: <%= bill_vrp&.mobile_no.presence || "-" %>
+            </p>
+          </div>
+          <div class="bill-print-meta">
+            <p>VRP Bill ID: #<%= detail_record.id %></p>
+            <p>Invoice Date: <%= bill_display_date(detail_record.data["invoice_date"].presence || detail_record.created_at) %></p>
+            <p>Invoice Month: <%= detail_record.data["bill_month"].presence || "-" %></p>
+            <p><%= detail_summary[:fco].presence || "-" %> - FCO, <%= detail_summary[:to].presence || "-" %> - TO</p>
+            <p>Project: <%= detail_summary[:projects].presence || "-" %></p>
+          </div>
+        </div>
+
+        <h3 class="bill-print-section-title">Time Slot</h3>
+        <table class="bill-print-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Working Date</th>
+              <th>Village Name</th>
+              <th>Activity</th>
+              <th>TCI Name</th>
+              <th>Number</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% jeevika_bill_time_slot_rows(detail_record).each_with_index do |row, index| %>
+              <tr>
+                <td><%= index + 1 %></td>
+                <td><%= row[:working_date] %></td>
+                <td><%= row[:village] %></td>
+                <td><%= row[:activity] %></td>
+                <td><%= row[:tci] %></td>
+                <td><%= row[:number] %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+
+        <table class="bill-print-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Description</th>
+              <th>Rate</th>
+              <th>Number</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% jeevika_bill_description_rows(detail_record).each do |row| %>
+              <tr>
+                <td><%= row[:index] %></td>
+                <td><%= row[:description] %></td>
+                <td>Rs.<%= row[:rate] %></td>
+                <td><%= row[:number] %></td>
+                <td><%= money.call(row[:total]) %></td>
+              </tr>
+            <% end %>
+            <tr>
+              <td colspan="4" class="bill-print-total-label">Total Payment</td>
+              <td class="bill-print-total-value"><%= money.call(detail_summary[:total_amount]) %></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <table class="bill-print-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Bank Name</th>
+              <th>Account Number</th>
+              <th>IFSC Code</th>
+              <th>Address</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% jeevika_bill_bank_rows(detail_record).each_with_index do |row, index| %>
+              <tr>
+                <td><%= index + 1 %></td>
+                <td><%= row[:bank_name] %></td>
+                <td><%= row[:account_number] %></td>
+                <td><%= row[:ifsc_code] %></td>
+                <td><%= row[:address] %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+
+        <div class="bill-print-footer">
+          <div class="bill-print-prepared">
+            <% if jeevika_bill_status_label(detail_record).to_s.downcase.include?("final approved") %>
+              <span class="bill-final-approved">Final Approved</span>
+            <% end %>
+            <strong>Prepared by</strong>
+            <span><%= prepared_by[:name] %>(at: <%= prepared_by[:at] %>)</span>
+          </div>
+          <div class="bill-print-approved">
+            <strong>Verified & Approved By</strong>
+            <% if approved_rows.any? %>
+              <% approved_rows.each do |level, approver, at, action_by| %>
+                <span><%= level %> ==> <%= action_by.presence || approver %> (<%= approver %>) <%= at %></span>
+              <% end %>
+            <% else %>
+              <span>-</span>
+            <% end %>
+          </div>
+        </div>
+      </section>
+    <% else %>
+    <section class="module-card jeevika-bill-detail-card <%= "print-bill-card" if @bill_print_mode %>">
+      <% if @bill_print_mode %>
+        <div class="bill-print-header">
+          <div>
+            <%= image_tag app_logo_path, alt: app_display_name, class: "bill-print-logo" %>
+          </div>
+          <div class="bill-print-stakeholder">
+            <strong><%= app_display_name %></strong>
+            <span><%= stakeholder_profile&.data&.[]("full_address").presence || "-" %></span>
+            <span>Phone: <%= stakeholder_profile&.data&.[]("phone_number").presence || "-" %></span>
+            <span>Email: <%= stakeholder_profile&.data&.[]("email").presence || "-" %></span>
+          </div>
+        </div>
+        <% if vrp_photo&.attached? %>
+          <%= image_tag rails_blob_path(vrp_photo, only_path: true), alt: "VRP Photo", class: "bill-print-vrp-photo" %>
+        <% end %>
+      <% end %>
+      <div class="module-card-header list-title-header">
+        <h2>Jeevika Jankar Bill Details</h2>
+        <div class="list-control-actions no-print">
+          <%= link_to "Back", module_path("jeevika-jankar-bill-list"), class: "list-btn" %>
+          <button type="button" class="list-btn export" onclick="window.print()">Print</button>
+        </div>
+      </div>
+
+      <div class="bill-detail-summary">
+        <div>
+          <strong>TO</strong>
+          <span><%= detail_summary[:to].presence || "-" %></span>
+        </div>
+        <div>
+          <strong>FCO</strong>
+          <span><%= detail_summary[:fco].presence || "-" %></span>
+        </div>
+        <div>
+          <strong>Bill ID</strong>
+          <span><%= detail_record.id %></span>
+        </div>
+        <div>
+          <strong>VRP</strong>
+          <span><%= jeevika_jankar_display_name(detail_record.data["select_vrp_name"].presence || jeevika_jankar_vrp_label(detail_record.data["select_vrp"])).presence || "-" %></span>
+        </div>
+        <div>
+          <strong>Financial Year</strong>
+          <span><%= detail_record.data["financial_year"].presence || "-" %></span>
+        </div>
+        <div>
+          <strong>Bill Month</strong>
+          <span><%= detail_record.data["bill_month"].presence || "-" %></span>
+        </div>
+        <div>
+          <strong>Projects</strong>
+          <span><%= detail_summary[:projects].presence || "-" %></span>
+        </div>
+        <div>
+          <strong>Activity Groups</strong>
+          <span><%= detail_summary[:activity_groups].presence || "-" %></span>
+        </div>
+        <div>
+          <strong>Total Amount</strong>
+          <span><%= money.call(detail_summary[:total_amount]) %></span>
+        </div>
+        <div>
+          <strong>Remarks</strong>
+          <span><%= detail_record.data["remarks"].presence || "-" %></span>
+        </div>
+        <div>
+          <strong>Deduction Amount</strong>
+          <span><%= detail_summary[:deduction_amount].present? ? money.call(detail_summary[:deduction_amount]) : "-" %></span>
+        </div>
+        <div>
+          <strong>Total Payable</strong>
+          <span><%= money.call(detail_summary[:total_payable]) %></span>
+        </div>
+      </div>
+
+      <div class="table-shell">
+        <table class="module-table detail-table">
+          <thead>
+            <tr>
+              <th>Sl No.</th>
+              <th>ICS</th>
+              <th>Village</th>
+              <th>Main Activity</th>
+              <th>Sub Activity</th>
+              <th>Target</th>
+              <th>Achievement</th>
+              <th>Pending</th>
+              <th>Rate</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% detail_items.each_with_index do |item, index| %>
+              <tr>
+                <td><%= index + 1 %></td>
+                <td><%= item["ics"].presence || "-" %></td>
+                <td><%= item["village"].presence || "-" %></td>
+                <td><%= item["main_activity"].presence || "-" %></td>
+                <td><%= item["activity"].presence || "-" %></td>
+                <td><%= item["target_quantity"].presence || "0" %></td>
+                <td><%= item["achievement_count"].presence || "0" %></td>
+                <td><%= item["pending_count"].presence || "0" %></td>
+                <td><%= item["rate"].presence || "0.00" %></td>
+                <td><%= item["amount"].presence || "0.00" %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-shell">
+        <table class="module-table detail-table">
+          <thead>
+            <tr>
+              <th>Farmer</th>
+              <th>Mobile</th>
+              <th>Village</th>
+              <th>Main Activity</th>
+              <th>Sub Activity</th>
+              <th>Training Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% farmer_rows = detail_items.flat_map { |item| Array(item["farmer_details"]).map { |farmer| farmer.merge("village" => item["village"], "main_activity" => item["main_activity"], "activity" => item["activity"]) } } %>
+            <% if farmer_rows.any? %>
+              <% farmer_rows.each do |farmer| %>
+                <tr>
+                  <td><%= farmer["name"].presence || "-" %></td>
+                  <td><%= farmer["mobile_no"].presence || "-" %></td>
+                  <td><%= farmer["village"].presence || "-" %></td>
+                  <td><%= farmer["training_topic"].presence || farmer["main_activity"].presence || "-" %></td>
+                  <td><%= farmer["training_subject"].presence || farmer["activity"].presence || "-" %></td>
+                  <td><%= farmer["training_date"].presence || "-" %></td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr><td colspan="6">No farmer details saved for this bill.</td></tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-shell no-print">
+        <table class="module-table attachment-table">
+          <thead>
+            <tr>
+              <th>Document</th>
+              <th>Preview</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% jeevika_bill_attachment_rows(detail_record).each do |label, attachment| %>
+              <tr>
+                <td><%= label %></td>
+                <td>
+                  <% if attachment&.attached? %>
+                    <%= image_tag rails_blob_path(attachment, only_path: true), alt: label, class: "attachment-thumb" %>
+                  <% else %>
+                    -
+                  <% end %>
+                </td>
+                <td>
+                  <% if attachment&.attached? %>
+                    <%= link_to "View", rails_blob_path(attachment, disposition: "inline"), target: "_blank", class: "list-btn active attachment-view" %>
+                  <% else %>
+                    -
+                  <% end %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+
+      <% approval_status_text = jeevika_bill_status_label(detail_record).to_s.downcase %>
+      <% show_approval_progress = !approval_status_text.include?("submitted") || jeevika_bill_approval_history(detail_record).any? %>
+      <% if show_approval_progress %>
+      <div class="approval-progress-section no-print">
+        <h2>Jeevika Jankar Bill Approval Progress</h2>
+        <div class="approval-progress-grid">
+          <% jeevika_bill_approval_steps(detail_record).each do |step| %>
+            <% step_history = jeevika_bill_approval_history(detail_record).find { |history| approval_sequence_from_level(history.data["approval_level"]) == approval_sequence_from_level(step.data["approval_level"]) && ["Approved", "Rejected", "Returned"].include?(history.data["action"]) } %>
+            <% closing_action = step_history&.data&.[]("action") %>
+            <% state = ["Rejected", "Returned"].include?(closing_action) ? "rejected" : (step_history ? "approved" : (jeevika_bill_current_approval_step(detail_record)&.id == step.id ? "current" : "pending")) %>
+            <div class="approval-progress-card <%= state %>">
+              <div class="approval-progress-icon"><%= state == "approved" ? "✓" : (closing_action == "Returned" ? "↩" : (state == "rejected" ? "×" : "•")) %></div>
+              <h3><%= step.data["approval_level"] %></h3>
+              <p><%= step.data["approver_approved_by"].presence || "-" %></p>
+              <% if step_history %>
+                <small><%= step_history.data["action"] %> at <%= step_history.data["action_at"] %></small>
+                <% if step_history.data["remarks"].present? %>
+                  <p><strong>Remarks:</strong> <%= step_history.data["remarks"] %></p>
+                <% end %>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+
+        <% if jeevika_bill_current_approver?(detail_record) && jeevika_bill_status_label(detail_record).include?("Pending") %>
+          <div class="module-form-actions">
+            <button type="button" class="list-btn active" data-open-approval-modal data-approval-action="approve" data-approval-url="<%= approve_bill_module_record_path("jeevika-jankar-bill-list", detail_record) %>">Approve</button>
+            <button type="button" class="list-btn deactive" data-open-approval-modal data-approval-action="reject" data-approval-url="<%= reject_bill_module_record_path("jeevika-jankar-bill-list", detail_record) %>">Reject</button>
+          </div>
+        <% end %>
+      </div>
+      <% end %>
+
+      <% if jeevika_bill_current_approver?(detail_record) && jeevika_bill_status_label(detail_record).include?("Pending") %>
+        <dialog class="approval-remarks-modal" data-approval-modal>
+          <%= form_with url: approve_bill_module_record_path("jeevika-jankar-bill-list", detail_record), method: :patch, class: "approval-modal-form", data: { approval_modal_form: true } do %>
+            <div class="approval-modal-header">
+              <h2 data-approval-modal-title>Approval Remarks</h2>
+              <button type="button" data-close-approval-modal aria-label="Close">×</button>
+            </div>
+            <label for="bill_approval_modal_remarks">Remarks</label>
+            <textarea id="bill_approval_modal_remarks" name="remarks" rows="4" placeholder="Enter remarks" required></textarea>
+            <div class="approval-modal-actions">
+              <button type="button" class="table-action" data-close-approval-modal>Cancel</button>
+              <button type="submit" class="list-btn active" data-approval-modal-submit>Submit</button>
+            </div>
+          <% end %>
+        </dialog>
+      <% end %>
+    </section>
+    <% end %>
+
+  <% elsif @slug == "approval-master" %>
+    <% module_options = static_field_options("Module Name") %>
+    <% stakeholder_options = module_field_options("Stakeholder Name") %>
+    <% approver_options = module_field_options("Approver (Approved By)") %>
+    <% selected_module_name = @record&.data&.[]("module_name").to_s %>
+    <% selected_stakeholder_name = @record&.data&.[]("stakeholder_name").to_s %>
+    <% selected_user_name = @record&.data&.[]("user_name").to_s %>
+    <% selected_status = @record&.data&.[]("status").presence || "Active" %>
+    <%
+      approval_channel_records = Array(@approval_channel_records.presence || (@record.present? ? [@record] : []))
+      approval_rows = approval_channel_records
+        .sort_by { |record| [approval_sequence_from_level(record.data["approval_level"]), record.created_at&.to_i || 0, record.id || 0] }
+        .map.with_index do |record, index|
+          sequence = approval_sequence_from_level(record.data["approval_level"])
+          {
+            level: approval_level_label_for_sequence(sequence),
+            sequence: sequence,
+            approver: record.data["approver_approved_by"].to_s,
+            record_id: record.id,
+            row_key: "record_#{record.id || index}"
+          }
+        end
+      approval_rows = (1..3).map { |number| { level: approval_level_label_for_sequence(number), sequence: number, approver: "", record_id: nil, row_key: "new_#{number}" } } if approval_rows.blank?
+      next_approval_level = approval_rows.map { |row| row[:sequence].to_i }.max.to_i + 1
+    %>
+    <% form_url = @record.present? ? module_record_path(@slug, @record) : records_module_path(@slug) %>
+    <% form_method = @record.present? ? :patch : :post %>
+    <section class="module-card approval-channel-card">
+      <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form", data: { user_role_form: true } } do %>
+        <div class="module-form-grid user-registration-grid">
+          <label>
+            <span>Module Name <em>*</em></span>
+            <select name="module_record[module_name]" required>
+              <option value="">Select Module</option>
+              <% module_options.each do |option| %>
+                <option value="<%= option %>" <%= "selected" if option == selected_module_name %>><%= option %></option>
+              <% end %>
+            </select>
+          </label>
+
+          <label>
+            <span>Stakeholder Category <em>*</em></span>
+            <select name="module_record[stakeholder_name]" required data-role-stakeholder-select>
+              <option value="">Select Stakeholder Category</option>
+              <% stakeholder_options.each do |option| %>
+                <option value="<%= option %>" <%= "selected" if option == selected_stakeholder_name %>><%= option %></option>
+              <% end %>
+            </select>
+          </label>
+
+          <label>
+            <span>User Name <em>*</em></span>
+            <select name="module_record[user_name]" required data-office-user-select>
+              <option value="">Select User Name</option>
+              <% approver_options.each do |option| %>
+                <option value="<%= option %>" <%= "selected" if option == selected_user_name %>><%= option %></option>
+              <% end %>
+            </select>
+          </label>
+        </div>
+
+        <div class="approval-levels" data-approval-levels data-next-approval-level="<%= next_approval_level %>">
+          <div class="approval-level-toolbar">
+            <h2>Approval Levels</h2>
+            <button type="button" class="add-level-btn" data-add-approval-level>Add More</button>
+          </div>
+          <div class="approval-level-table" data-approval-level-table>
+            <div class="approval-level-head">Level</div>
+            <div class="approval-level-head">Approval User</div>
+            <div class="approval-level-head">Action</div>
+
+            <% approval_rows.each do |row| %>
+              <div class="approval-level-cell" data-approval-row="<%= row[:row_key] %>">
+                <strong><%= row[:level] %></strong>
+                <small>Approval step <%= row[:sequence] %></small>
+              </div>
+              <div class="approval-level-cell" data-approval-row="<%= row[:row_key] %>">
+                <input type="hidden" name="module_record[approval_steps][<%= row[:row_key] %>][record_id]" value="<%= row[:record_id] %>">
+                <input type="hidden" name="module_record[approval_steps][<%= row[:row_key] %>][approval_level]" value="<%= row[:level] %>">
+                <select name="module_record[approval_steps][<%= row[:row_key] %>][approver_approved_by]">
+                  <option value="">Select approval user</option>
+                  <% approver_options.each do |option| %>
+                    <option value="<%= option %>" <%= "selected" if option == row[:approver] %>><%= option %></option>
+                  <% end %>
+                </select>
+                <small>Select the user responsible at this approval stage.</small>
+              </div>
+              <div class="approval-level-cell" data-approval-row="<%= row[:row_key] %>">
+                <button type="button" class="remove-level-btn" data-remove-approval-level>Remove</button>
+              </div>
+            <% end %>
+          </div>
+        </div>
+
+        <input type="hidden" name="module_record[status]" value="<%= selected_status %>">
+
+        <div class="module-form-actions">
+          <%= link_to "Clear", module_path(@slug), class: "btn btn-secondary" %>
+          <button type="submit" class="btn btn-primary"><%= @record.present? ? "Update" : "Save" %></button>
+        </div>
+      <% end %>
+    </section>
+  <% elsif @slug == "user-hierarchy-mapping" %>
+    <% form_url = @record.present? ? module_record_path(@slug, @record) : records_module_path(@slug) %>
+    <% form_method = @record.present? ? :patch : :post %>
+    <% stakeholder_options = module_field_options("Stakeholder Category") %>
+    <% user_options = module_field_options("Level 1 User") %>
+    <%
+      collapse_hierarchy_users = lambda do |*values|
+        values.flatten.flat_map do |value|
+          value.to_s.split(";").flat_map do |segment|
+            user_segment = segment.include?("->") ? segment.split("->", 2).last : segment
+            user_segment.to_s.split(",")
+          end
+        end.map(&:strip).compact_blank.uniq
+      end
+    %>
+    <% selected_stakeholder = @record&.data&.[]("stakeholder_category").to_s %>
+    <% selected_level_1 = @record&.data&.[]("level_1_user").to_s %>
+    <% raw_level_2_mappings = @record&.data&.[]("level_2_mappings") %>
+    <% raw_level_2_mappings = raw_level_2_mappings.values if raw_level_2_mappings.is_a?(Hash) %>
+    <% selected_level_2_users = Array(raw_level_2_mappings).flat_map do |mapping| %>
+      <% next unless mapping.respond_to?(:[]) %>
+      <% collapse_hierarchy_users.call(mapping["level_2_user"], mapping["level_3_users"]) %>
+    <% end %>
+    <% selected_level_2_users = selected_level_2_users.compact_blank.uniq %>
+    <% if selected_level_2_users.blank? %>
+      <% selected_level_2_users = collapse_hierarchy_users.call(@record&.data&.[]("level_2_users").presence || @record&.data&.[]("level_2_user"), @record&.data&.[]("level_3_users").presence || @record&.data&.[]("level_3_user")) %>
+    <% end %>
+    <% selected_level_2_users = [""] if selected_level_2_users.blank? %>
+    <div class="module-grid">
+      <section class="module-card approval-channel-card">
+        <div class="module-card-header">
+          <h2><%= @record.present? ? "Edit Mapping" : "Fields" %></h2>
+        </div>
+        <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form" } do %>
+          <div class="module-form-grid user-registration-grid">
+            <label>
+              <span>Stakeholder Category</span>
+              <select name="module_record[stakeholder_category]">
+                <option value=""><%= stakeholder_options.any? ? "Select Stakeholder Category" : "No Stakeholder Category saved yet" %></option>
+                <% stakeholder_options.each do |option| %>
+                  <option value="<%= option %>" <%= "selected" if option == selected_stakeholder %>><%= option %></option>
+                <% end %>
+              </select>
+            </label>
+
+            <label>
+              <span>Head</span>
+              <select name="module_record[level_1_user]">
+                <option value=""><%= user_options.any? ? "Select Head" : "No user saved yet" %></option>
+                <% user_options.each do |option| %>
+                  <option value="<%= option %>" <%= "selected" if option == selected_level_1 %>><%= option %></option>
+                <% end %>
+              </select>
+            </label>
+
+            <label>
+              <span>Status</span>
+              <% status_value = @record&.data&.[]("status").presence || "Active" %>
+              <select name="module_record[status]">
+                <option <%= "selected" if status_value == "Active" %>>Active</option>
+                <option <%= "selected" if status_value == "Inactive" %>>Inactive</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="approval-levels user-hierarchy-levels" data-user-hierarchy-levels data-next-user-row="<%= selected_level_2_users.size + 1 %>">
+            <div class="approval-level-toolbar">
+              <h2>Subordinates</h2>
+              <button type="button" class="add-level-btn" data-add-user-row>Add Subordinates</button>
+            </div>
+            <div class="approval-level-table user-hierarchy-table" data-user-hierarchy-table>
+              <div class="approval-level-head">Level</div>
+              <div class="approval-level-head">Subordinates</div>
+              <div class="approval-level-head">Action</div>
+
+              <% selected_level_2_users.each_with_index do |selected_level_2_user, index| %>
+                <% row_number = index + 1 %>
+                <div class="approval-level-cell" data-user-row="<%= row_number %>">
+                  <strong>Level 2</strong>
+                  <small>User <%= row_number %></small>
+                </div>
+                <div class="approval-level-cell" data-user-row="<%= row_number %>">
+                  <select name="module_record[level_2_mappings][<%= row_number %>][level_2_user]">
+                    <option value=""><%= user_options.any? ? "Select Subordinates" : "No user saved yet" %></option>
+                    <% user_options.each do |option| %>
+                      <option value="<%= option %>" <%= "selected" if option == selected_level_2_user %>><%= option %></option>
+                    <% end %>
+                  </select>
+                </div>
+                <div class="approval-level-cell" data-user-row="<%= row_number %>">
+                  <button type="button" class="remove-level-btn" data-remove-user-row>Remove</button>
+                </div>
+              <% end %>
+            </div>
+          </div>
+
+          <div class="module-form-actions">
+            <%= link_to "Clear", module_path(@slug), class: "btn btn-secondary" %>
+            <button type="submit" class="btn btn-primary"><%= @record.present? ? "Update" : "Save" %></button>
+          </div>
+        <% end %>
+      </section>
+
+      <section class="module-card">
+        <div class="module-card-header">
+          <h2>Saved Records</h2>
+          <span class="record-count"><%= @records.size %> records</span>
+        </div>
+        <div class="table-shell">
+          <table class="module-table" id="module_saved_records" data-paginated-table data-page-size="15">
+            <thead>
+              <tr>
+                <th>Stakeholder Category</th>
+                <th>Head</th>
+                <th>Subordinates</th>
+                <th>Saved At</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% if @records.any? %>
+                <% @records.each do |record| %>
+                  <% record_level_2_mappings = record.data["level_2_mappings"] %>
+                  <% record_level_2_mappings = record_level_2_mappings.values if record_level_2_mappings.is_a?(Hash) %>
+                  <% mapped_level_2_users = Array(record_level_2_mappings).flat_map { |mapping| mapping.respond_to?(:[]) ? collapse_hierarchy_users.call(mapping["level_2_user"], mapping["level_3_users"]) : [] }.compact_blank.uniq %>
+                  <% fallback_level_2_users = collapse_hierarchy_users.call(record.data["level_2_users"].presence || record.data["level_2_user"], record.data["level_3_users"].presence || record.data["level_3_user"]) %>
+                  <tr>
+                    <td><%= record.data["stakeholder_category"].presence || "-" %></td>
+                    <td><%= record.data["level_1_user"].presence || "-" %></td>
+                    <td><%= mapped_level_2_users.join(", ").presence || fallback_level_2_users.join(", ").presence || "-" %></td>
+                    <td><%= record.created_at&.strftime("%d-%m-%Y %I:%M %p") %></td>
+                    <td><span class="status-pill <%= record.data["status"] == "Inactive" ? "inactive" : "active" %>"><%= record.data["status"].presence || "Active" %></span></td>
+                    <td>
+                      <div class="table-actions">
+                        <%= link_to "Edit", edit_module_record_path(@slug, record), class: "table-action" %>
+                        <%= button_to(record.data["status"] == "Inactive" ? "Activate" : "Deactivate", toggle_module_record_path(@slug, record), method: :patch, class: "table-action") %>
+                        <%= button_to "Delete", module_record_path(@slug, record), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this record?" } } %>
+                      </div>
+                    </td>
+                  </tr>
+                <% end %>
+              <% else %>
+                <tr>
+                  <td colspan="7">No records saved yet.</td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-pagination" data-pagination-for="module_saved_records"></div>
+      </section>
+    </div>
+  <% elsif @slug == "lg-directory-list" %>
+    <section class="module-card lg-directory-card">
+      <div class="module-card-header">
+        <h2>All List</h2>
+        <%= form_with url: import_module_path(@slug), method: :post, multipart: true, local: true, class: "lg-directory-upload" do |form| %>
+          <label class="import-btn">
+            Choose Excel
+            <%= form.file_field :file, accept: ".xlsx,.csv", required: true, data: { import_file: true }, hidden: true %>
+          </label>
+          <%= form.submit "Upload", class: "list-btn upload" %>
+        <% end %>
+      </div>
+
+      <%= form_with url: module_path(@slug), method: :get, local: true, class: "lg-directory-filter" do %>
+        <label>
+          <span>Select Table:</span>
+          <select name="table">
+            <% ["State Name", "State Code", "District Name", "District Code", "Block Name", "Block Code", "Gram Name", "Gram Code", "Village Name", "Village Code"].each do |field| %>
+              <option value="<%= field %>" <%= "selected" if @lg_directory_filter == field %>><%= field %></option>
+            <% end %>
+          </select>
+        </label>
+        <label>
+          <span>Enter Name:</span>
+          <input type="search" name="q" value="<%= @lg_directory_query %>">
+        </label>
+        <button type="submit" class="list-btn upload">Search</button>
+      <% end %>
+
+      <%= form_with url: bulk_update_module_path(@slug), method: :patch, local: true, data: { turbo: false } do %>
+        <div class="vrp-list-toolbar compact lg-directory-actions">
+          <button type="submit" name="bulk_action" value="active" class="list-btn active">Active</button>
+          <button type="submit" name="bulk_action" value="inactive" class="list-btn deactive">Inactive</button>
+          <button type="submit" name="bulk_action" value="edit" class="list-btn edit">Edit</button>
+          <button type="submit" name="bulk_action" value="delete" class="list-btn delete" data-turbo-confirm="Delete selected LG Directory row(s)?">Delete</button>
+          <%= link_to "Export Excel", export_module_path(@slug, table: @lg_directory_filter, q: @lg_directory_query, format: :xlsx), class: "list-btn export" %>
+        </div>
+
+        <div class="table-shell lg-directory-table-shell">
+          <table class="module-table user-list-table" id="lg_directory_all_list" data-paginated-table data-page-size="25">
+            <thead>
+              <tr>
+                <th><input type="checkbox" data-module-select-all></th>
+                <th>State Name</th>
+                <th>State Code</th>
+                <th>District Name</th>
+                <th>District Code</th>
+                <th>Block Name</th>
+                <th>Block Code</th>
+                <th>Gram Name</th>
+                <th>Gram Code</th>
+                <th>Village Name</th>
+                <th>Village Code</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% if @lg_directory_rows.any? %>
+                <% @lg_directory_rows.each do |row| %>
+                  <tr>
+                    <td><input type="checkbox" name="row_tokens[]" value="<%= "#{row[:source_slug]}:#{row[:record_id]}" %>" data-module-row-select></td>
+                    <td><%= row[:state].presence || "-" %></td>
+                    <td><%= row[:state_code].presence || "-" %></td>
+                    <td><%= row[:district].presence || "-" %></td>
+                    <td><%= row[:district_code].presence || "-" %></td>
+                    <td><%= row[:block].presence || "-" %></td>
+                    <td><%= row[:block_code].presence || "-" %></td>
+                    <td><%= row[:gram_panchayat].presence || "-" %></td>
+                    <td><%= row[:gp_code].presence || "-" %></td>
+                    <td><%= row[:village].presence || "-" %></td>
+                    <td><%= row[:village_code].presence || "-" %></td>
+                    <td><span class="status-pill <%= row[:status].to_s == "Inactive" ? "inactive" : "active" %>"><%= row[:status].presence || "Active" %></span></td>
+                  </tr>
+                <% end %>
+              <% else %>
+                <tr>
+                  <td colspan="12">No LG Directory records saved yet.</td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-pagination" data-pagination-for="lg_directory_all_list"></div>
+      <% end %>
+    </section>
+  <% elsif @slug == "access-control" %>
+    <% form_url = @record.present? ? module_record_path(@slug, @record) : records_module_path(@slug) %>
+    <% form_method = @record.present? ? :patch : :post %>
+    <% selected_modules = Array(@record&.data&.[]("module_names")) %>
+    <% selected_submodules = Array(@record&.data&.[]("sub_module_names").presence || @record&.data&.[]("sub_module_name")) %>
+    <section class="module-card access-control-card">
+      <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form", data: { user_role_form: true, role_map: json_escape(access_control_role_mappings.to_json) } } do %>
+        <div class="access-top-grid">
+          <% ["Stakeholder", "Stakeholder Role", "Role Name", "Jeevika Jankar Type"].each do |field| %>
+            <% field_key = field.parameterize(separator: "_") %>
+            <% field_value = @record&.data&.[](field_key).to_s %>
+            <% field_value = @record&.data&.[]("stakeholder_name").to_s if field == "Stakeholder" && field_value.blank? %>
+            <% field_value = @record&.data&.[]("role").to_s if field == "Role Name" && field_value.blank? %>
+            <% field_value = @record&.data&.[]("vrp_type").presence || @record&.data&.[]("select_vrp_type").to_s if field == "Jeevika Jankar Type" && field_value.blank? %>
+            <% options = access_control_field_options(field, field_value) %>
+            <% role_dependency_attr =
+              case field
+              when "Stakeholder"
+                "data-role-stakeholder-select"
+              when "Stakeholder Role"
+                "data-stakeholder-role-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+              when "Role Name"
+                "data-role-select data-role-prompt=\"Select Role Name\" data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+              end %>
+            <label>
+              <span><%= resource_person_label(field) %><% if field == "Stakeholder" %> <em>*</em><% end %></span>
+              <% if options.any? %>
+                <select name="module_record[<%= field_key %>]" <%= "required" if field == "Stakeholder" %> <%= role_dependency_attr&.html_safe %>>
+                  <option value="">Select <%= resource_person_label(field) %></option>
+                  <% options.each do |option| %>
+                    <option value="<%= option %>" <%= "selected" if option == field_value %>><%= option %></option>
+                  <% end %>
+                </select>
+              <% else %>
+                <input name="module_record[<%= field_key %>]" type="text" value="<%= field_value %>" placeholder="Enter <%= resource_person_label(field) %>" <%= "required" if field == "Stakeholder" %>>
+              <% end %>
+            </label>
+          <% end %>
+        </div>
+
+        <input type="hidden" name="module_record[can_view]" value="Yes">
+        <input type="hidden" name="module_record[status]" value="Active">
+
+        <div class="access-table-shell">
+          <table class="module-table access-table">
+            <thead>
+              <tr>
+                <th>Menu</th>
+                <th>Sub Menu</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% ApplicationHelper::SIDEBAR_SECTIONS.each do |section| %>
+                <tr data-access-control-row>
+                  <td>
+                    <label class="access-menu-check">
+                      <input type="checkbox" name="module_record[module_names][]" value="<%= section[:title] %>" data-access-menu-checkbox <%= "checked" if selected_modules.include?(section[:title]) %>>
+                      <strong><%= section[:title] %></strong>
+                    </label>
+                  </td>
+                  <td>
+                    <div class="access-check-list">
+                      <% section[:links].each do |link| %>
+                        <% label = link.first %>
+                        <label class="access-check">
+                          <input type="checkbox" name="module_record[sub_module_names][]" value="<%= label %>" data-access-submenu-checkbox <%= "checked" if selected_submodules.include?(label) %>>
+                          <%= label %>
+                        </label>
+                      <% end %>
+                    </div>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="module-form-actions access-actions">
+          <%= link_to "Clear", module_path(@slug), class: "btn btn-secondary" %>
+          <button type="submit" class="btn btn-primary"><%= @record.present? ? "Update Access" : "Save Access" %></button>
+        </div>
+      <% end %>
+    </section>
+
+  <% elsif @slug == "jeevika-jankar-bill-process" %>
+    <% form_url = @record.present? ? module_record_path(@slug, @record) : records_module_path(@slug) %>
+    <% form_method = @record.present? ? :patch : :post %>
+    <section class="module-card jeevika-bill-card"
+      data-jeevika-jankar-bill
+      data-bill-rows="<%= json_escape(@jeevika_jankar_bill_rows.to_json) %>"
+      data-achievement-summary="<%= json_escape(@jeevika_jankar_achievement_summary.to_json) %>"
+      data-saved-items="<%= json_escape(@jeevika_jankar_saved_items.to_json) %>"
+      data-existing-bills="<%= json_escape(@jeevika_jankar_existing_bills.to_json) %>">
+      <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form" } do %>
+        <div class="module-form-grid user-registration-grid">
+          <label>
+            <span>Bill Month <em>*</em></span>
+            <select name="module_record[bill_month]" data-jeevika-month-select required>
+              <option value="">Select Month</option>
+              <% @jeevika_jankar_month_options.each do |option| %>
+                <option value="<%= option %>" <%= "selected" if @record&.data&.[]("bill_month").to_s == option.to_s %>><%= option %></option>
+              <% end %>
+            </select>
+          </label>
+
+          <label>
+            <span>Jeevika Jankar Name <em>*</em></span>
+            <select name="module_record[select_vrp]" data-jeevika-vrp-select required>
+              <option value="">Select Bill Month first</option>
+              <% @jeevika_jankar_vrp_options.each do |label, value| %>
+                <option value="<%= value %>" <%= "selected" if @record&.data&.[]("select_vrp").to_s == value.to_s %>><%= label %></option>
+              <% end %>
+            </select>
+          </label>
+
+          <label>
+            <span>Financial Year</span>
+            <select name="module_record[financial_year]">
+              <option value="">Select Financial Year</option>
+              <% @jeevika_jankar_financial_year_options.each do |option| %>
+                <option value="<%= option %>" <%= "selected" if @record&.data&.[]("financial_year").to_s == option.to_s %>><%= option %></option>
+              <% end %>
+            </select>
+          </label>
+        </div>
+
+        <div class="jeevika-bill-summary">
+          <label>
+            <span>Total Target</span>
+            <input name="module_record[total_target]" value="<%= @record&.data&.[]("total_target").presence || 0 %>" data-jeevika-total-target readonly>
+          </label>
+          <label>
+            <span>Total Achievement</span>
+            <input name="module_record[total_achievement]" value="<%= @record&.data&.[]("total_achievement").presence || 0 %>" data-jeevika-total-achievement readonly>
+          </label>
+        </div>
+
+        <div class="bill-activity-shell">
+          <table class="module-table jeevika-bill-table">
+            <thead>
+              <tr>
+                <th>ICS</th>
+                <th>Village</th>
+                <th>Main Activity</th>
+                <th>Sub Activity</th>
+                <th>Target</th>
+                <th>Achievement</th>
+                <th>Pending</th>
+                <th>Rate</th>
+                <th>Amount</th>
+              </tr>
+            </thead>
+            <tbody data-jeevika-bill-rows>
+              <tr data-empty-bill-row>
+                <td colspan="9">Select Jeevika Jankar Name to load all mapped target achievement list.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="jeevika-bill-payment-total">
+          <label>
+            <span>Total Payment</span>
+            <input name="module_record[grand_total]" value="<%= format("%.2f", ModulesController::JEEVIKA_JANKAR_BILL_FIXED_TOTAL) %>" readonly>
+          </label>
+        </div>
+
+        <div class="module-form-actions bill-save-actions">
+          <%= link_to "Clear", module_path(@slug), class: "btn btn-secondary" %>
+          <button type="submit" class="btn btn-primary">Save Jeevika Jankar Bill</button>
+        </div>
+      <% end %>
+    </section>
+
+  <% elsif @slug == "vrp-bill-add" %>
+    <% form_url = @record.present? ? module_record_path(@slug, @record) : records_module_path(@slug) %>
+    <% form_method = @record.present? ? :patch : :post %>
+    <% raw_bill_items = @record&.data&.[]("bill_items") %>
+    <% bill_items = raw_bill_items.is_a?(Hash) ? raw_bill_items.values : Array(raw_bill_items) %>
+    <% selected_activity_groups = Array(@record&.data&.[]("select_activity_group")) %>
+    <% selected_ics = Array(@record&.data&.[]("select_ics").presence || @record&.data&.[]("select_project")) %>
+    <section class="module-card vrp-bill-card"
+      data-vrp-bill-form
+      data-activity-map="<%= json_escape(@bill_activity_map.to_json) %>"
+      data-tci-map="<%= json_escape(@bill_tci_map.to_json) %>"
+      data-village-options="<%= json_escape(@bill_village_options.to_json) %>">
+      <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form", multipart: true } do %>
+        <div class="module-form-grid user-registration-grid">
+          <label>
+            <span>Select VRP <em>*</em></span>
+            <select name="module_record[select_vrp]" required>
+              <option value="">Select VRP</option>
+              <% @approved_vrp_options.each do |label, value| %>
+                <option value="<%= value %>" <%= "selected" if @record&.data&.[]("select_vrp").to_s == value.to_s %>><%= label %></option>
+              <% end %>
+            </select>
+          </label>
+
+          <label>
+            <span>Select Financial Year <em>*</em></span>
+            <select name="module_record[select_financial_year]" required>
+              <option value="">Select Financial Year</option>
+              <% @bill_financial_year_options.each do |option| %>
+                <option value="<%= option %>" <%= "selected" if @record&.data&.[]("select_financial_year").to_s == option.to_s %>><%= option %></option>
+              <% end %>
+            </select>
+          </label>
+
+          <label>
+            <span>Select Bill Month <em>*</em></span>
+            <select name="module_record[select_bill_month]" required>
+              <option value="">Select Month</option>
+              <% @bill_month_options.each do |option| %>
+                <option value="<%= option %>" <%= "selected" if @record&.data&.[]("select_bill_month").to_s == option.to_s %>><%= option %></option>
+              <% end %>
+            </select>
+          </label>
+
+          <label>
+            <span>Select ICS <em>*</em></span>
+            <select name="module_record[select_ics][]" data-bill-ics-select required>
+              <option value="">Select ICS</option>
+              <% @bill_project_options.each do |option| %>
+                <option value="<%= option %>" <%= "selected" if selected_ics.include?(option) %>><%= option %></option>
+              <% end %>
+            </select>
+          </label>
+
+          <label>
+            <span>Select Main Activity <em>*</em></span>
+            <select name="module_record[select_activity_group][]" data-bill-activity-group required>
+              <option value="">Select Main Activity</option>
+              <% @bill_activity_group_options.each do |option| %>
+                <option value="<%= option %>" <%= "selected" if selected_activity_groups.include?(option) %>><%= option %></option>
+              <% end %>
+            </select>
+          </label>
+        </div>
+
+        <div class="bill-activity-shell" data-bill-activity-shell <%= "hidden" if bill_items.blank? && selected_activity_groups.blank? %>>
+          <table class="module-table bill-activity-table">
+            <thead>
+              <tr>
+                <th>Activity</th>
+                <th>Task Completion Indicator</th>
+                <th>No of Unit</th>
+                <th>Rate</th>
+                <th>Total Amount</th>
+                <th>Remarks</th>
+              </tr>
+            </thead>
+            <tbody data-bill-activity-rows>
+              <% if bill_items.any? %>
+                <% bill_items.each_with_index do |item, index| %>
+                  <tr>
+                    <td>
+                      <%= item["activity"] %>
+                      <input type="hidden" name="module_record[bill_items][<%= index %>][activity]" value="<%= item["activity"] %>">
+                    </td>
+                    <td>
+                      <button type="button" class="tci-open-btn" data-open-tci-modal data-activity="<%= item["activity"] %>" data-row-index="<%= index %>">TCI</button>
+                      <input type="hidden" name="module_record[bill_items][<%= index %>][tci_details]" value="<%= json_escape((item["tci_details"].presence || []).to_json) %>" data-tci-details-input>
+                    </td>
+                    <td><input type="number" min="0" step="1" name="module_record[bill_items][<%= index %>][no_of_unit]" value="<%= item["no_of_unit"].presence || 0 %>" data-bill-units></td>
+                    <td><input type="number" min="0" step="0.01" name="module_record[bill_items][<%= index %>][rate]" value="<%= item["rate"].presence || 0 %>" data-bill-rate></td>
+                    <td><input type="number" min="0" step="0.01" name="module_record[bill_items][<%= index %>][total_amount]" value="<%= item["total_amount"].presence || 0 %>" data-bill-total readonly></td>
+                    <td><input type="text" name="module_record[bill_items][<%= index %>][remarks]" value="<%= item["remarks"] %>"></td>
+                  </tr>
+                <% end %>
+              <% else %>
+                <tr data-empty-bill-row>
+                  <td colspan="6">Select Main Activity to load sub activities.</td>
+                </tr>
+              <% end %>
+            </tbody>
+            <tfoot>
+              <tr>
+                <th colspan="2">Grand Total</th>
+                <td><input type="number" name="module_record[grand_units]" value="<%= @record&.data&.[]("grand_units").presence || 0 %>" data-grand-units readonly></td>
+                <td></td>
+                <td><input type="number" name="module_record[grand_total]" value="<%= @record&.data&.[]("grand_total").presence || 0 %>" data-grand-total readonly></td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <input type="hidden" name="module_record[status]" value="<%= @record&.data&.[]("status").presence || "Pending" %>">
+
+        <div class="module-form-actions bill-save-actions">
+          <%= link_to "Clear", module_path(@slug), class: "btn btn-secondary" %>
+          <button type="submit" class="btn btn-primary">Save VRP Bill</button>
+        </div>
+      <% end %>
+
+      <dialog class="tci-modal" data-tci-modal>
+        <div class="tci-modal-inner">
+          <div class="tci-modal-header">
+            <h2>Task Completion Indicators</h2>
+            <button type="button" data-close-tci-modal aria-label="Close">×</button>
+          </div>
+          <div class="table-shell">
+            <table class="module-table tci-entry-table">
+              <thead>
+                <tr>
+                  <th>Indicator</th>
+                  <th>Mandatory</th>
+                  <th>Village</th>
+                  <th>Working Date</th>
+                  <th>Number</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody data-tci-modal-rows></tbody>
+            </table>
+          </div>
+          <div class="module-form-actions">
+            <button type="button" class="list-btn active" data-add-tci-row>Add More</button>
+            <button type="button" class="btn btn-secondary" data-close-tci-modal>Cancel</button>
+            <button type="button" class="list-btn active" data-apply-tci-modal>Apply</button>
+          </div>
+        </div>
+      </dialog>
+    </section>
+
+  <% elsif @slug == "all-user" && @record.blank? %>
+    <div class="vrp-list-toolbar">
+      <button type="button" class="list-btn active" data-module-status-selected="Active">Active</button>
+      <button type="button" class="list-btn deactive" data-module-status-selected="Inactive">Deactive</button>
+      <button type="button" class="list-btn edit" data-module-edit-selected>Edit</button>
+      <button type="button" class="list-btn delete" data-module-delete-selected>Delete</button>
+    </div>
+
+    <section class="module-card">
+      <div class="list-controls">
+        <div class="list-search">
+          <span>⌕</span>
+          <input type="search" placeholder="Search users" data-table-search="all_user_list">
+        </div>
+        <div class="list-control-actions">
+          <label class="import-btn">
+            Choose Excel
+            <input type="file" accept=".csv,.xlsx,.xls" data-import-file hidden>
+          </label>
+          <button type="button" class="list-btn upload" data-upload-selected>Upload</button>
+          <button type="button" class="list-btn export" data-export-table="all_user_list">Export</button>
+        </div>
+      </div>
+      <div class="table-shell">
+        <table class="module-table user-list-table" id="all_user_list" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th><input type="checkbox" data-module-select-all></th>
+              <th>Full Name</th>
+              <th>User Name</th>
+              <th>Email</th>
+              <th>Mobile No</th>
+              <th>Stakeholder</th>
+              <th>Role</th>
+              <th>Person Type</th>
+              <th>State</th>
+              <th>District</th>
+              <th>Block</th>
+              <th>Gram Panchayat</th>
+              <th>Village</th>
+              <th>Parent Office Name</th>
+              <th>Office Name</th>
+              <th>User Type</th>
+              <th>Enrollment Date</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if @records.any? %>
+              <% @records.each do |record| %>
+                <tr>
+                  <td><input type="checkbox" value="<%= edit_module_record_path(@slug, record) %>" data-module-row-select></td>
+                  <td><%= [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ").presence || "-" %></td>
+                  <td><%= record.data["user_name"].presence || "-" %></td>
+                  <td><%= record.data["email"].presence || "-" %></td>
+                  <td><%= record.data["mobile_no"].presence || "-" %></td>
+                  <td><%= record.data["stakeholder"].presence || "-" %></td>
+                  <td><%= record.data["role"].presence || "-" %></td>
+                  <td><%= record.data["person_type"].presence || "-" %></td>
+                  <td><%= record.data["state"].presence || "-" %></td>
+                  <td><%= record.data["district"].presence || "-" %></td>
+                  <td><%= record.data["block"].presence || "-" %></td>
+                  <td><%= record.data["gram_panchayat"].presence || "-" %></td>
+                  <td><%= record.data["village"].presence || "-" %></td>
+                  <td><%= record.data["parent_office"].presence || "-" %></td>
+                  <td><%= record.data["office_name"].presence || record.data["office"].presence || "-" %></td>
+                  <td><%= record.data["user_type"].presence || "-" %></td>
+                  <td><%= record.created_at&.strftime("%d-%m-%Y %I:%M %p") %></td>
+                  <td><span class="status-pill <%= record.data["status"] == "Inactive" ? "inactive" : "active" %>"><%= record.data["status"].presence || "Active" %></span></td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="18">No users registered yet.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="all_user_list"></div>
+    </section>
+  <% elsif @slug == "user-hierarchy-list" && @record.blank? %>
+    <% table_id = "user_hierarchy_list_table" %>
+    <% cluster_table_id = "jeevika_jankar_cluster_list" %>
+    <% hierarchy_rows = user_hierarchy_list_rows(@records) %>
+    <% hierarchy_groups = hierarchy_rows.group_by { |row| row[:id] } %>
+    <% cluster_rows = jeevika_jankar_cluster_rows %>
+    <section class="module-card list-only-card">
+      <div class="module-card-header list-title-header">
+        <h2>Mapped Cluster Incharges</h2>
+      </div>
+
+      <div class="vrp-list-toolbar compact">
+        <button type="button" class="list-btn edit" data-module-edit-selected>Edit</button>
+        <% unless @slug == "jeevika-jankar-bill-list" %>
+          <button type="button" class="list-btn active" data-module-status-selected="Active">Active</button>
+          <button type="button" class="list-btn deactive" data-module-status-selected="Inactive">Deactive</button>
+        <% end %>
+        <button type="button" class="list-btn delete" data-module-delete-selected>Delete</button>
+      </div>
+
+      <div class="list-controls">
+        <div class="list-search">
+          <span>⌕</span>
+          <input type="search" placeholder="Search hierarchy" data-table-search="<%= table_id %>">
+        </div>
+        <div class="list-control-actions">
+          <button type="button" class="list-btn export" data-export-table="<%= table_id %>">Export</button>
+        </div>
+      </div>
+
+      <div class="table-shell">
+        <table class="module-table user-list-table" id="<%= table_id %>" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th><input type="checkbox" data-module-select-all></th>
+              <th>Stakeholder Category</th>
+              <th>Head</th>
+              <th>Subordinates</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if hierarchy_groups.any? %>
+              <% hierarchy_groups.each_value do |rows| %>
+                <% row = rows.first %>
+                <tr>
+                  <td>
+                    <input type="checkbox" value="<%= row[:edit_path] %>" data-module-row-select>
+                  </td>
+                  <td><%= row[:stakeholder] %></td>
+                  <td><%= row[:level_1_user] %></td>
+                  <td>
+                    <div class="approval-level-stack">
+                      <% rows.each_with_index do |mapped_row, mapped_index| %>
+                        <div class="approval-level-item">
+                          <strong>Subordinate <%= mapped_index + 1 %></strong>
+                          <small><%= mapped_row[:level_2_user] %></small>
+                        </div>
+                      <% end %>
+                    </div>
+                  </td>
+                  <td><span class="status-pill <%= row[:status] == "Inactive" ? "inactive" : "active" %>"><%= row[:status] %></span></td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="5">No user hierarchy mapping saved yet.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="<%= table_id %>"></div>
+    </section>
+
+    <section class="module-card list-only-card">
+      <div class="module-card-header list-title-header">
+        <h2>Mapped Jeevika Jankar By Cluster</h2>
+      </div>
+      <div class="list-controls">
+        <div class="list-search">
+          <span>⌕</span>
+          <input type="search" placeholder="Search Jeevika Jankar" data-table-search="<%= cluster_table_id %>">
+        </div>
+        <div class="list-control-actions">
+          <button type="button" class="list-btn export" data-export-table="<%= cluster_table_id %>">Export</button>
+        </div>
+      </div>
+      <div class="table-shell">
+        <table class="module-table user-list-table" id="<%= cluster_table_id %>" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th>Cluster Incharge</th>
+              <th>Office Name</th>
+              <th>Jeevika Jankar Name</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if cluster_rows.any? %>
+              <% cluster_rows.each do |row| %>
+                <tr>
+                  <td><%= row[:cluster_incharge] %></td>
+                  <td><%= row[:office_name] %></td>
+                  <td><%= row[:name] %></td>
+                  <td><span class="status-pill <%= row[:status] == "Inactive" ? "inactive" : "active" %>"><%= row[:status] %></span></td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="4">No Jeevika Jankar registration saved yet.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="<%= cluster_table_id %>"></div>
+    </section>
+  <% elsif @slug == "approval-list" && @record.blank? %>
+    <% table_id = "approval_list_table" %>
+    <%
+      approval_groups = Array(@records).group_by do |record|
+        [
+          record.data["module_name"].to_s.strip.downcase,
+          record.data["stakeholder_name"].to_s.strip.downcase,
+          record.data["user_name"].to_s.strip.downcase,
+          record.data["status"].presence || "Active"
+        ]
+      end
+    %>
+    <section class="module-card list-only-card">
+      <div class="module-card-header list-title-header">
+        <h2>All Approvals</h2>
+      </div>
+
+      <div class="vrp-list-toolbar compact">
+        <button type="button" class="list-btn edit" data-module-edit-selected>Edit</button>
+        <button type="button" class="list-btn active" data-module-status-selected="Active">Active</button>
+        <button type="button" class="list-btn deactive" data-module-status-selected="Inactive">Deactive</button>
+        <button type="button" class="list-btn delete" data-module-delete-selected>Delete</button>
+      </div>
+
+      <div class="list-controls">
+        <div class="list-search">
+          <span>⌕</span>
+          <input type="search" placeholder="Search records" data-table-search="<%= table_id %>">
+        </div>
+        <div class="list-control-actions">
+          <label class="import-btn">
+            Choose Excel
+            <input type="file" accept=".csv,.xlsx,.xls" data-import-file hidden>
+          </label>
+          <button type="button" class="list-btn upload" data-upload-selected>Upload</button>
+          <button type="button" class="list-btn export" data-export-table="<%= table_id %>">Export</button>
+        </div>
+      </div>
+
+      <div class="table-shell">
+        <table class="module-table user-list-table" id="<%= table_id %>" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th><input type="checkbox" data-module-select-all></th>
+              <th>Module Name</th>
+              <th>Stakeholder Category</th>
+              <th>User Name</th>
+              <th>Approval Levels</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if approval_groups.any? %>
+              <% approval_groups.each_value do |approval_records| %>
+                <% sorted_records = approval_records.sort_by { |record| approval_sequence_from_level(record.data["approval_level"]) } %>
+                <% display_records = sorted_records.uniq { |record| [approval_sequence_from_level(record.data["approval_level"]), (module_record_field_value(record, "Approver (Approved By)").presence || record.data["approver_approved_by"]).to_s.strip.downcase] } %>
+                <% group_paths = sorted_records.map { |record| edit_module_record_path("approval-master", record) } %>
+                <% primary_record = sorted_records.first %>
+                <% module_name = primary_record.data["module_name"].presence || "-" %>
+                <% stakeholder_name = primary_record.data["stakeholder_name"].presence || "-" %>
+                <% user_name = primary_record.data["user_name"].presence || "-" %>
+                <% status_value = primary_record.data["status"].presence || "Active" %>
+                <tr>
+                  <td>
+                    <input type="checkbox" value="<%= group_paths.first %>" data-module-row-select data-module-row-paths="<%= json_escape(group_paths.to_json) %>">
+                  </td>
+                  <td><%= module_name %></td>
+                  <td><%= stakeholder_name %></td>
+              <td><%= user_name %></td>
+              <td>
+                    <div class="approval-level-stack">
+                      <% display_records.each do |record| %>
+                        <% approval_level = approval_level_label_for_sequence(approval_sequence_from_level(record.data["approval_level"])) %>
+                        <% approver_name = module_record_field_value(record, "Approver (Approved By)").presence || record.data["approver_approved_by"].presence || "-" %>
+                        <div class="approval-level-item">
+                          <strong><%= approval_level %></strong>
+                          <small><%= approver_name %></small>
+                        </div>
+                      <% end %>
+                    </div>
+                  </td>
+                  <td><span class="status-pill <%= status_value == "Inactive" ? "inactive" : "active" %>"><%= status_value %></span></td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="6">No records saved yet.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="<%= table_id %>"></div>
+    </section>
+  <% elsif @slug == "jeevika-jankar-payment-list-detail" && @record.blank? %>
+    <% payment_bill_date_options = jeevika_payment_bill_date_options(@records) %>
+    <% selectable_payment_rows = jeevika_payment_selectable_rows(@records) %>
+    <section class="module-card list-only-card">
+      <div class="module-card-header list-title-header">
+        <h2>Jeevika Jankar Payment List Detail</h2>
+      </div>
+
+      <section class="jeevika-payment-detail-card" data-jeevika-payment-detail data-payment-rate="<%= ModulesController::JEEVIKA_JANKAR_BILL_FIXED_TOTAL.to_i %>">
+        <div class="module-card-header list-title-header">
+          <h3>Payment Detail</h3>
+        </div>
+
+        <%= form_with url: payment_details_module_path("jeevika-jankar-payment-list-detail"), method: :post, html: { class: "module-entry-form", multipart: true } do %>
+          <div class="module-form-grid user-registration-grid">
+            <label>
+              <span>Approval Date <em>*</em></span>
+              <select name="module_record[approval_date]" data-payment-date-select required>
+                <% if payment_bill_date_options.blank? %>
+                  <option value="">No unpaid final approved date</option>
+                <% else %>
+                  <option value="">Date Select Karein</option>
+                  <% payment_bill_date_options.each do |date| %>
+                    <option value="<%= date %>"><%= bill_display_date(date) %></option>
+                  <% end %>
+                <% end %>
+              </select>
+            </label>
+          </div>
+
+          <div class="jeevika-payment-selector">
+            <div class="vrp-list-toolbar compact">
+              <button type="button" class="list-btn active" data-payment-select-all>Select All</button>
+              <button type="button" class="list-btn" data-payment-clear-selection>Clear Selection</button>
+            </div>
+
+            <div class="table-shell">
+              <table class="module-table user-list-table jeevika-payment-select-table">
+                <thead>
+                  <tr>
+                    <th>
+                      <label class="payment-select-all-head">
+                        <input type="checkbox" data-payment-select-all-checkbox>
+                        <span>Select</span>
+                      </label>
+                    </th>
+                    <th>Jeevika Jankar ID</th>
+                    <th>Name</th>
+                    <th>Mobile</th>
+                    <th>Financial Year</th>
+                    <th>Bill Month</th>
+                    <th>Approval Date</th>
+                    <th>Amount</th>
+                  </tr>
+                </thead>
+                <tbody data-payment-user-rows>
+                  <% if selectable_payment_rows.any? %>
+                    <% selectable_payment_rows.each do |row| %>
+                      <tr data-payment-user-row data-payment-bill-date="<%= row[:approval_date] %>">
+                        <td><input type="checkbox" name="module_record[selected_bill_ids][]" value="<%= row[:id] %>" data-payment-user-checkbox disabled></td>
+                        <td><%= row[:vrp_id] %></td>
+                        <td><%= row[:name] %></td>
+                        <td><%= row[:mobile_no] %></td>
+                        <td><%= row[:financial_year] %></td>
+                        <td><%= row[:bill_month] %></td>
+                        <td><%= row[:approval_date_label] %></td>
+                        <td><%= row[:amount] %></td>
+                      </tr>
+                    <% end %>
+                  <% else %>
+                    <tr data-payment-empty-row>
+                      <td colspan="8">No unpaid final approved Jeevika Jankar bills found.</td>
+                    </tr>
+                  <% end %>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="jeevika-payment-summary-grid">
+            <label>
+              <span>Selected Jeevika Jankar</span>
+              <input name="module_record[selected_count]" value="0" data-payment-selected-count readonly>
+            </label>
+            <label>
+              <span>Jeevika Jankar Bhugtan Rashi</span>
+              <input name="module_record[jeevika_jankar_payment_amount]" value="0.00" data-payment-total-amount readonly>
+            </label>
+            <label>
+              <span>Transaction ID <em>*</em></span>
+              <input name="module_record[transaction_id]" type="text" required>
+            </label>
+            <label>
+              <span>Transaction Type <em>*</em></span>
+              <select name="module_record[transaction_type]" required>
+                <option value="">Choose</option>
+                <% jeevika_payment_transaction_types.each do |type| %>
+                  <option value="<%= type %>"><%= type %></option>
+                <% end %>
+              </select>
+            </label>
+            <label>
+              <span>Transaction Date <em>*</em></span>
+              <input name="module_record[transaction_date]" type="date" required>
+            </label>
+            <label>
+              <span>Transaction File</span>
+              <input name="module_record[transaction_file]" type="file" accept=".pdf,.jpg,.jpeg,.png">
+            </label>
+            <label>
+              <span>Excel File</span>
+              <input name="module_record[excel_file]" type="file" accept=".csv,.xlsx,.xls">
+            </label>
+          </div>
+
+          <div class="module-form-actions bill-save-actions">
+            <button type="submit" class="btn btn-primary" <%= "disabled" if selectable_payment_rows.blank? %>>Surakshit Karein</button>
+          </div>
+        <% end %>
+      </section>
+    </section>
+
+  <% elsif @slug == "jeevika-jankar-completed-payment-list" && @record.blank? %>
+    <% table_id = "jeevika_jankar_completed_payment_table" %>
+    <% all_completed_payment_rows = jeevika_completed_payment_rows %>
+    <% month_options = jeevika_completed_payment_month_options(all_completed_payment_rows) %>
+    <% selected_month = params[:payment_month].presence || month_options.first %>
+    <% date_options = jeevika_completed_payment_date_options(all_completed_payment_rows, selected_month) %>
+    <% selected_date = params[:payment_date].presence %>
+    <% selected_date = nil if selected_date.present? && date_options.exclude?(selected_date) %>
+    <% completed_payment_rows = all_completed_payment_rows %>
+    <% if selected_month.present? %>
+      <% completed_payment_rows = completed_payment_rows.select { |row| row[:bill_month].to_s.strip.casecmp(selected_month.to_s.strip).zero? } %>
+    <% end %>
+    <% if selected_date.present? %>
+      <% completed_payment_rows = completed_payment_rows.select { |row| row[:approval_date].to_s.strip == selected_date.to_s.strip } %>
+    <% end %>
+    <section class="module-card list-only-card">
+      <div class="module-card-header list-title-header">
+        <h2>Completed Payment List</h2>
+      </div>
+
+      <%= form_with url: module_path("jeevika-jankar-completed-payment-list"), method: :get, html: { class: "module-entry-form compact-filter-form compact-filter-form-multi" } do %>
+        <label>
+          <span>Bill Month</span>
+          <select name="payment_month" onchange="this.form.requestSubmit()">
+            <% if month_options.blank? %>
+              <option value="">No bill month saved yet</option>
+            <% else %>
+              <% month_options.each do |month| %>
+                <option value="<%= month %>" <%= "selected" if month == selected_month %>><%= month %></option>
+              <% end %>
+            <% end %>
+          </select>
+        </label>
+        <label>
+          <span>Approval Date</span>
+          <select name="payment_date" onchange="this.form.requestSubmit()">
+            <option value="">All Dates</option>
+            <% date_options.each do |date| %>
+              <option value="<%= date %>" <%= "selected" if date == selected_date %>><%= bill_display_date(date) %></option>
+            <% end %>
+          </select>
+        </label>
+      <% end %>
+
+      <div class="vrp-list-toolbar compact">
+        <button type="button" class="list-btn export" data-export-table="<%= table_id %>">Export Excel</button>
+      </div>
+
+      <div class="list-controls">
+        <div class="list-search">
+          <span>⌕</span>
+          <input type="search" placeholder="Search completed payment records" data-table-search="<%= table_id %>">
+        </div>
+      </div>
+
+      <div class="table-shell">
+        <table class="module-table user-list-table" id="<%= table_id %>" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th>Jeevika Jankar ID</th>
+              <th>Name</th>
+              <th>Mobile</th>
+              <th>Financial Year</th>
+              <th>Bill Month</th>
+              <th>Approval Date</th>
+              <th>Jeevika Jankar Bhugtan Rashi</th>
+              <th>Transaction ID</th>
+              <th>Transaction Type</th>
+              <th>Transaction Date</th>
+              <th>Transaction File</th>
+              <th>Excel File</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if completed_payment_rows.any? %>
+              <% completed_payment_rows.each do |row| %>
+                <tr>
+                  <td><%= row[:jeevika_jankar_id] %></td>
+                  <td><%= row[:name] %></td>
+                  <td><%= row[:mobile_no] %></td>
+                  <td><%= row[:financial_year] %></td>
+                  <td><%= row[:bill_month] %></td>
+                  <td><%= bill_display_date(row[:approval_date]) %></td>
+                  <td><%= row[:amount] %></td>
+                  <td><%= row[:transaction_id] %></td>
+                  <td><%= row[:transaction_type] %></td>
+                  <td><%= bill_display_date(row[:transaction_date]) %></td>
+                  <td><%= row[:transaction_file] ? link_to("View", row[:transaction_file], target: "_blank", rel: "noopener", class: "table-action") : "-" %></td>
+                  <td><%= row[:excel_file] ? link_to("View", row[:excel_file], target: "_blank", rel: "noopener", class: "table-action") : "-" %></td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="12">No completed payment records found<%= selected_month.present? ? " for this month#{selected_date.present? ? ' and date' : ''}." : "." %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="<%= table_id %>"></div>
+    </section>
+
+  <% elsif @slug == "jeevika-jankar-payment-list" && @record.blank? %>
+    <% table_id = "jeevika_jankar_payment_table" %>
+    <% month_options = jeevika_bill_payment_month_options(@records) %>
+    <% selected_month = params[:payment_month].presence || month_options.first %>
+    <% payment_rows = jeevika_bill_payment_rows(@records, selected_month) %>
+    <section class="module-card list-only-card">
+      <div class="module-card-header list-title-header">
+        <h2>Jeevika Jankar Payment List</h2>
+      </div>
+
+      <%= form_with url: module_path("jeevika-jankar-payment-list"), method: :get, html: { class: "module-entry-form compact-filter-form" } do %>
+        <label>
+          <span>Bill Month</span>
+          <select name="payment_month" onchange="this.form.requestSubmit()">
+            <% if month_options.blank? %>
+              <option value="">No bill month saved yet</option>
+            <% else %>
+              <% month_options.each do |month| %>
+                <option value="<%= month %>" <%= "selected" if month == selected_month %>><%= month %></option>
+              <% end %>
+            <% end %>
+          </select>
+        </label>
+      <% end %>
+
+      <div class="vrp-list-toolbar compact">
+        <button type="button" class="list-btn export" data-export-table="<%= table_id %>">Export Excel</button>
+      </div>
+
+      <div class="list-controls">
+        <div class="list-search">
+          <span>⌕</span>
+          <input type="search" placeholder="Search payment records" data-table-search="<%= table_id %>">
+        </div>
+      </div>
+
+      <div class="table-shell">
+        <table class="module-table user-list-table" id="<%= table_id %>" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th>Jeevika Jankar ID</th>
+              <th>Status</th>
+              <th>Name</th>
+              <th>Financial Year</th>
+              <th>Bill Month</th>
+              <th>Activity Group</th>
+              <th>Total Payment</th>
+              <th>Activity Name</th>
+              <th>Total Target</th>
+              <th>Total Achievement</th>
+              <th>Bank Name</th>
+              <th>IFSC Code</th>
+              <th>Account Number</th>
+              <th>Jeevika Jankar Bank Passbook Photo</th>
+              <th>Download Bill</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if payment_rows.any? %>
+              <% payment_rows.each do |row| %>
+                <tr>
+                  <td><%= row[:vrp_id].presence || "-" %></td>
+                  <td><span class="grid-status <%= row[:status_class] %>"><%= row[:status] %></span></td>
+                  <td><%= row[:name].presence || "-" %></td>
+                  <td><%= row[:financial_year] %></td>
+                  <td><%= row[:bill_month] %></td>
+                  <td><%= row[:activity_groups] %></td>
+                  <td><%= row[:amount] %></td>
+                  <td><%= row[:activity_names] %></td>
+                  <td><%= row[:target] %></td>
+                  <td><%= row[:achievement] %></td>
+                  <td><%= row[:bank_name] %></td>
+                  <td><%= row[:ifsc_code] %></td>
+                  <td><%= row[:account_number] %></td>
+                  <td>
+                    <% if row[:passbook_attachment]&.attached? %>
+                      <%= link_to "View/Download", rails_blob_path(row[:passbook_attachment], disposition: "attachment"), target: "_blank", rel: "noopener", class: "table-action" %>
+                    <% else %>
+                      -
+                    <% end %>
+                  </td>
+                  <td>
+                    <%= link_to row[:download_path], class: "table-action icon-action", title: "Download", target: "_blank", rel: "noopener", aria: { label: "Download" } do %>
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>
+                    <% end %>
+                  </td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="15">No final approved payment records found for this month.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="<%= table_id %>"></div>
+    </section>
+  <% elsif @slug == "jeevika-jankar-bill-list" && @record.blank? %>
+    <% table_id = "jeevika_jankar_bill_table" %>
+    <% bill_rows = jeevika_bill_rows(@records) %>
+    <section class="module-card list-only-card">
+      <div class="module-card-header list-title-header">
+        <h2>Jeevika Jankar Bill List</h2>
+      </div>
+
+      <div class="vrp-list-toolbar compact">
+        <button type="button" class="list-btn send" data-bill-send-selected>Send for Approval</button>
+        <button type="button" class="list-btn export" data-export-table="<%= table_id %>">Export Excel</button>
+        <button type="button" class="list-btn edit" data-module-edit-selected>Edit</button>
+        <button type="button" class="list-btn active" data-bill-state-selected="Active">Active</button>
+        <button type="button" class="list-btn deactive" data-bill-state-selected="Inactive">Inactive</button>
+        <button type="button" class="list-btn delete" data-bill-delete-selected>Delete</button>
+      </div>
+
+      <div class="list-controls">
+        <div class="list-search">
+          <span>⌕</span>
+          <input type="search" placeholder="Search bills" data-table-search="<%= table_id %>">
+        </div>
+      </div>
+
+      <div class="table-shell">
+        <table class="module-table user-list-table" id="<%= table_id %>" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th><input type="checkbox" data-module-select-all></th>
+              <th>View</th>
+              <th>Download Bill</th>
+              <th>Jeevika Jankar ID</th>
+              <th>Status</th>
+              <th>Name</th>
+              <th>Financial Year</th>
+              <th>Bill Month</th>
+              <th>Activity Group</th>
+              <th>Total Payment</th>
+              <th>Activity Name</th>
+              <th>Total Target</th>
+              <th>Total Achievement</th>
+              <th>Approval Action</th>
+              <th>Remarks</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if bill_rows.any? %>
+              <% bill_rows.each do |row| %>
+                <tr>
+                  <td>
+                    <input type="checkbox"
+                      value="<%= row[:edit_path] %>"
+                      data-module-row-select
+                      data-bill-send-path="<%= row[:send_path] %>"
+                      data-bill-active-path="<%= row[:active_path] %>"
+                      data-bill-inactive-path="<%= row[:inactive_path] %>"
+                      data-bill-delete-path="<%= row[:delete_path] %>">
+                  </td>
+                  <td>
+                    <%= link_to row[:view_path], class: "table-action icon-action", title: "View", aria: { label: "View" } do %>
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    <% end %>
+                  </td>
+                  <td>
+                    <%= link_to row[:download_path], class: "table-action icon-action", title: "Download", target: "_blank", rel: "noopener", aria: { label: "Download" } do %>
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>
+                    <% end %>
+                  </td>
+                  <td><%= row[:vrp_id].presence || "-" %></td>
+                  <td><span class="grid-status <%= row[:status_class] %>"><%= row[:status] %></span></td>
+                  <td><%= row[:name].presence || "-" %></td>
+                  <td><%= row[:financial_year] %></td>
+                  <td><%= row[:bill_month] %></td>
+                  <td><%= row[:activity_groups] %></td>
+                  <td><%= row[:amount] %></td>
+                  <td><%= row[:activity_names] %></td>
+                  <td><%= row[:target] %></td>
+                  <td><%= row[:achievement] %></td>
+                  <td>
+                    <% if row[:current_approver] && row[:status].to_s.include?("Pending") %>
+                      <div class="table-actions">
+                        <button type="button" class="list-btn active" data-open-approval-modal data-approval-action="approve" data-approval-url="<%= row[:approve_path] %>">Approve</button>
+                        <button type="button" class="list-btn deactive" data-open-approval-modal data-approval-action="reject" data-approval-url="<%= row[:reject_path] %>">Reject</button>
+                      </div>
+                    <% else %>
+                      -
+                    <% end %>
+                  </td>
+                  <td><%= row[:approval_remarks] %></td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="15">No Jeevika Jankar bill saved yet.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="<%= table_id %>"></div>
+      <dialog class="approval-remarks-modal" data-approval-modal>
+        <%= form_with url: "#", method: :patch, class: "approval-modal-form", data: { approval_modal_form: true } do %>
+          <div class="approval-modal-header">
+            <h2 data-approval-modal-title>Approval Remarks</h2>
+            <button type="button" data-close-approval-modal aria-label="Close">×</button>
+          </div>
+          <label for="bill_list_approval_modal_remarks">Remarks</label>
+          <textarea id="bill_list_approval_modal_remarks" name="remarks" rows="4" placeholder="Enter remarks" required></textarea>
+          <div class="approval-modal-actions">
+            <button type="button" class="table-action" data-close-approval-modal>Cancel</button>
+            <button type="submit" class="list-btn active" data-approval-modal-submit>Submit</button>
+          </div>
+        <% end %>
+      </dialog>
+    </section>
+
+  <% elsif list_only_slugs.include?(@slug) && @record.blank? %>
+    <% table_id = "#{@slug.tr("-", "_")}_table" %>
+    <section class="module-card list-only-card">
+      <div class="module-card-header list-title-header">
+        <h2><%= { "activity-group-list" => "All Main Activities", "vrp-activity-list" => "All Sub Activities", "task-completion-indicator-list" => "All Task Completion Indicators", "approval-list" => "All Approvals", "access-control-list" => "All Access Control", "vrp-bill-list" => "All VRP Bills", "jeevika-jankar-bill-list" => "All Jeevika Jankar Bills", "training-form-list" => "All Farmer Target Records", "seed-distribution-target-list" => "All Seed Distribution Target Records", "papl360-target-list" => "All PAPL360 Target Records" }[@slug] %></h2>
+      </div>
+
+      <div class="vrp-list-toolbar compact">
+        <button type="button" class="list-btn edit" data-module-edit-selected>Edit</button>
+        <button type="button" class="list-btn active" data-module-status-selected="Active">Active</button>
+        <button type="button" class="list-btn deactive" data-module-status-selected="Inactive">Deactive</button>
+        <button type="button" class="list-btn delete" data-module-delete-selected>Delete</button>
+      </div>
+
+      <div class="list-controls">
+        <div class="list-search">
+          <span>⌕</span>
+          <input type="search" placeholder="Search records" data-table-search="<%= table_id %>">
+        </div>
+        <div class="list-control-actions">
+          <label class="import-btn">
+            Choose Excel
+            <input type="file" accept=".csv,.xlsx,.xls" data-import-file hidden>
+          </label>
+          <button type="button" class="list-btn upload" data-upload-selected>Upload</button>
+          <button type="button" class="list-btn export" data-export-table="<%= table_id %>">Export</button>
+        </div>
+      </div>
+
+      <div class="table-shell">
+        <table class="module-table user-list-table" id="<%= table_id %>" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th><input type="checkbox" data-module-select-all></th>
+              <% @module[:fields].each do |field| %>
+                <th><%= resource_person_label(field) %></th>
+              <% end %>
+            </tr>
+          </thead>
+          <tbody>
+            <% if @records.any? %>
+              <% @records.each do |record| %>
+                <tr>
+                  <% edit_slug = { "approval-list" => "approval-master", "access-control-list" => "access-control", "vrp-bill-list" => "vrp-bill-add", "jeevika-jankar-bill-list" => "jeevika-jankar-bill-process", "training-form-list" => "training-form", "seed-distribution-target-list" => "seed-distribution-target", "papl360-target-list" => "papl360-target" }.fetch(@slug, @slug) %>
+                  <td>
+                    <input type="checkbox"
+                      value="<%= edit_module_record_path(edit_slug, record) %>"
+                      data-module-row-select>
+                  </td>
+                  <% @module[:fields].each do |field| %>
+                    <% field_key = field.parameterize(separator: "_") %>
+                    <% value = module_record_field_value(record, field).presence || record.data[field_key].presence %>
+                    <% value ||= record.data["activity_group_name"].presence if field == "Main Activity Name" %>
+                    <% value ||= record.data["activity_group"].presence if field == "Main Activity" %>
+                    <% value ||= record.data["activity_name"].presence || record.data["vrp_activity_name"].presence if field == "Sub Activity Name" %>
+                    <% value ||= record.data["category_name"].presence || record.data["office"].presence if field == "Office Name" %>
+                    <% value = record.data["select_vrp_name"].presence || value if @slug == "jeevika-jankar-bill-list" && field == "Jeevika Jankar Name" %>
+                    <% value ||= Array(record.data["selected_farmer_names"]).join(", ").presence if field == "Selected Farmers" %>
+                    <% if @slug == "access-control-list" && field == "Module Name" %>
+                      <% value = Array(record.data["module_names"].presence || value).compact_blank %>
+                    <% elsif @slug == "access-control-list" && field == "Sub Module Name" %>
+                      <% value = Array(record.data["sub_module_names"].presence || record.data["sub_module_name"].presence || value).compact_blank %>
+                    <% else %>
+                      <% value ||= Array(record.data["module_names"]).join(", ").presence if field == "Module Name" %>
+                      <% value ||= Array(record.data["sub_module_names"].presence || record.data["sub_module_name"]).join(", ").presence if field == "Sub Module Name" %>
+                    <% end %>
+                    <% value = value.join(", ") if value.is_a?(Array) %>
+                    <% value ||= "-" %>
+                    <% if field == "Status" %>
+                      <td><span class="status-pill <%= value == "Inactive" ? "inactive" : "active" %>"><%= value == "-" ? "Active" : value %></span></td>
+                    <% elsif field == "Selected Farmers" %>
+                      <% selected_farmer_count = Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq.size %>
+                      <td>
+                        <% if selected_farmer_count.positive? %>
+                          <div class="table-actions">
+                            <%= link_to "View", selected_farmers_module_record_path(@slug, record), class: "table-action" %>
+                            <span><%= selected_farmer_count %></span>
+                          </div>
+                        <% else %>
+                          -
+                        <% end %>
+                      </td>
+                    <% elsif @slug == "access-control-list" && ["Module Name", "Sub Module Name"].include?(field) %>
+                      <% list_values = Array(value).flat_map { |item| item.to_s.split(",") }.map(&:strip).compact_blank %>
+                      <td>
+                        <div class="stacked-list-cell">
+                          <% if list_values.any? %>
+                            <% list_values.each do |item| %>
+                              <span><%= item %></span>
+                            <% end %>
+                          <% else %>
+                            <span>-</span>
+                          <% end %>
+                        </div>
+                      </td>
+                    <% elsif field == "Training Register Upload" || field == "Training Photo Upload with Geo Tag" || field.downcase.include?("upload") || field.downcase.include?("file") %>
+                      <% file_url = module_upload_public_url(value) %>
+                      <td data-export-value="<%= file_url %>">
+                        <% if file_url.present? %>
+                          <a href="<%= file_url %>" class="grid-view-link eye-link" target="_blank" rel="noopener" title="View upload" aria-label="View upload">
+                            <span aria-hidden="true">◉</span>
+                          </a>
+                        <% else %>
+                          -
+                        <% end %>
+                      </td>
+                    <% else %>
+                      <td><%= value %></td>
+                    <% end %>
+                  <% end %>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="<%= @module[:fields].size + 1 %>">No records saved yet.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="<%= table_id %>"></div>
+    </section>
+  <% else %>
+  <div class="module-grid">
+    <% location_fields = ["State", "District", "Block", "Gram Panchayat", "Village"] %>
+    <% has_location_fields = (@module[:fields] & location_fields).any? %>
+    <% other_target_form = ["seed-distribution-target", "papl360-target"].include?(@slug) %>
+    <% add_farmer_form = @slug == "add-farmer-form" %>
+    <% seed_target_form = @slug == "seed-distribution-target" %>
+    <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if @slug == "parent-office-add" %>data-parent-office-form data-parent-office-map="<%= json_escape(parent_office_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_setup_mappings.to_json) %>" data-training-month-options="<%= json_escape(training_target_month_options.to_json) %>"<% end %> <% if other_target_form %>data-seed-target-form data-seed-target-map="<%= json_escape(seed_distribution_target_mappings.to_json) %>" data-seed-month-options="<%= json_escape(seed_distribution_target_month_options.to_json) %>" data-seed-current-vrp-option="<%= json_escape(current_seed_target_vrp_option.to_json) %>"<% end %> <% if add_farmer_form %>data-add-farmer-form data-add-farmer-map="<%= json_escape(add_farmer_form_mappings.to_json) %>"<% end %>>
+      <div class="module-card-header">
+        <h2><%= @slug == "new-user" ? "Registration" : (@record.present? ? "Edit Record" : "Fields") %></h2>
+      </div>
+      <% form_url = @record.present? ? module_record_path(@slug, @record) : records_module_path(@slug) %>
+      <% form_method = @record.present? ? :patch : :post %>
+      <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form", multipart: true } do %>
+        <% if @slug == "training-form" %>
+          <input type="hidden" name="module_record[main_activity_type]" value="Training" data-training-main-activity-type>
+        <% end %>
+        <% if other_target_form %>
+          <input type="hidden" name="module_record[main_activity_type]" value="Other">
+          <input type="hidden" name="module_record[target_mapping_id]" value="<%= @record&.data&.[]("target_mapping_id") %>" data-seed-target-id>
+          <input type="hidden" name="module_record[jeevika_jankar_id]" value="<%= @record&.data&.[]("jeevika_jankar_id") %>" data-seed-vrp-id>
+        <% end %>
+        <% if add_farmer_form %>
+          <input type="hidden" name="module_record[mapped_village]" value="<%= @record&.data&.[]("mapped_village") %>" data-add-farmer-village-label>
+        <% end %>
+        <% selected_training_farmer_ids = Array(@record&.data&.[]("selected_farmer_ids")).map(&:to_s) if @slug == "training-form" %>
+        <% selected_seed_target_farmer_ids = Array(@record&.data&.[]("selected_farmer_ids")).map(&:to_s) if other_target_form %>
+        <div class="module-form-grid <%= "user-registration-grid" if @slug == "new-user" || (@slug == "all-user" && @record.present?) %>">
+          <% @module[:fields].each do |field| %>
+            <% field_key = field.parameterize(separator: "_") %>
+            <% field_value = @record&.data&.[](field_key).to_s %>
+            <% field_value = module_record_field_value(@record, field).to_s if @record.present? && field_value.blank? %>
+            <% field_value = @record&.data&.[]("role_name").to_s if field == "Role" && field_value.blank? %>
+            <% field_value = (@record&.data&.[]("category_name").presence || @record&.data&.[]("office")).to_s if field == "Office Name" && field_value.blank? %>
+            <% field_value = "Training" if @slug == "add-activity-group" && field == "Main Activity Type" && field_value.blank? %>
+            <% field_value = "Training" if @slug == "training-form" && field == "Main Activity Type" && field_value.blank? %>
+            <% field_value = "Auto Fill" if @slug == "add-activity-group" && field == "Achievement Fill" && field_value.blank? %>
+            <% if @slug == "parent-office-add" && field == "Parent Office Type" && field_value.blank? %>
+              <% field_value = @record&.data&.[]("parent_office").present? ? "Sub Parent Office" : "Parent Office" if @record.present? %>
+            <% end %>
+            <% if @slug == "training-form" && field_value.blank? %>
+              <% field_value = training_trainee_department_default if field == "Trainee Department" %>
+              <% field_value = current_app_user&.dig("name").to_s if field == "Trainer Name" %>
+              <% field_value = current_app_user&.dig("mobile_no").to_s if field == "Trainer Contact" %>
+              <% field_value = (selected_training_farmer_ids || []).size.to_s if field == "Farmer Count" %>
+              <% field_value = ((@record&.data&.[]("male_count").to_s.to_i + @record&.data&.[]("female_count").to_s.to_i).to_s) if field == "Total Farmer Count" && @record.present? %>
+            <% end %>
+            <% if other_target_form && field == "Contact Number" && field_value.blank? %>
+              <% field_value = @record&.data&.[]("jeevika_jankar_contact").to_s %>
+            <% end %>
+            <% if other_target_form && field == "Department" && field_value.blank? %>
+              <% field_value = @record&.data&.[]("fcoc_name").to_s %>
+            <% end %>
+            <% if other_target_form && field == "Jeevika Jankar Name" && field_value.blank? %>
+              <% field_value = current_seed_target_vrp_option&.dig(:label).to_s %>
+            <% end %>
+            <% if other_target_form && field == "Farmer Count" && field_value.blank? %>
+              <% field_value = selected_seed_target_farmer_ids.size.to_s if selected_seed_target_farmer_ids.present? %>
+            <% end %>
+            <% if other_target_form && @record.blank? && field == "Completion Date" && field_value.blank? %>
+              <% field_value = Date.current.to_s %>
+            <% end %>
+            <% form_required = @slug == "training-form" || other_target_form || add_farmer_form %>
+            <% required_attr = form_required ? "required" : nil %>
+            <label>
+              <span>
+                <%= resource_person_label(field) %>
+                <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
+                  <small class="field-hint inline-upload-hint">Max 5 MB</small>
+                <% end %>
+              </span>
+              <% if add_farmer_form && field == "Mapped Village" %>
+                <select name="module_record[target_mapping_id]" data-add-farmer-village data-selected-value="<%= ERB::Util.html_escape(@record&.data&.[]("target_mapping_id").to_s) %>" required>
+                  <option value="">Select Mapped Village</option>
+                  <% add_farmer_form_mappings.each do |mapping| %>
+                    <option value="<%= mapping[:id] %>" <%= "selected" if @record&.data&.[]("target_mapping_id").to_s == mapping[:id].to_s %>><%= mapping[:label] %></option>
+                  <% end %>
+                </select>
+              <% elsif add_farmer_form && field == "New Farmer Target" %>
+                <input name="module_record[<%= field_key %>]" type="number" min="1" step="1" placeholder="New Farmer Target" value="<%= field_value %>" data-add-farmer-target readonly required>
+              <% elsif add_farmer_form && field == "No. Farmer" %>
+                <input name="module_record[<%= field_key %>]" type="number" min="1" step="1" placeholder="Enter No. Farmer" value="<%= field_value %>" data-add-farmer-no-farmer required>
+              <% elsif field.downcase.include?("status") %>
+                <select name="module_record[<%= field_key %>]">
+                  <option <%= "selected" if field_value == "Active" %>>Active</option>
+                  <option <%= "selected" if field_value == "Inactive" %>>Inactive</option>
+                </select>
+              <% elsif field.downcase.include?("upload") || field.downcase.include?("file") %>
+                <% upload_accept = field == "Excel Upload" ? "accept=\".csv,.xlsx,.xls\"" : nil %>
+                <% upload_accept = "accept=\"image/*\" data-max-size-mb=\"5\"" if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
+                <input name="module_record[<%= field_key %>]" type="file" <%= upload_accept&.html_safe %> <%= "required" if form_required && field_value.blank? && !other_target_form %>>
+                <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
+                  <input type="hidden" name="module_record[geo_latitude]" data-training-geo-latitude value="<%= @record&.data&.[]("geo_latitude") %>">
+                  <input type="hidden" name="module_record[geo_longitude]" data-training-geo-longitude value="<%= @record&.data&.[]("geo_longitude") %>">
+                <% end %>
+                <% if field_value.present? %>
+                  <small class="field-hint">Current: <%= field_value %></small>
+                <% end %>
+              <% elsif @slug == "training-topic-mapping" && field == "Department" %>
+                <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>">
+              <% elsif module_select_field?(field) %>
+                <% options = (module_field_options(field) + static_field_options(field)).compact_blank.uniq %>
+                <% options << field_value if field_value.present? && !options.include?(field_value) %>
+                <% role_dependency_attr =
+                  case field
+                  when "Stakeholder Category"
+                    "data-role-stakeholder-select"
+                  when "Stakeholder Role"
+                    "data-stakeholder-role-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "Role"
+                    "data-role-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "User Management Role"
+                    "data-user-management-role-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  end if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>
+                <% location_dependency_attr = "data-location-level=\"#{field.parameterize}\" data-selected-value=\"#{ERB::Util.html_escape(field_value)}\"" if location_fields.include?(field) %>
+                <% training_target_attr =
+                  case field
+                  when "Month"
+                    "data-training-target-month data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "ICS / Block"
+                    "data-training-target-ics data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "Gram Name"
+                    "data-training-target-village data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "Main Activity Type"
+                    "data-training-main-activity-type data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "Main Activity"
+                    "data-training-main-activity data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "Sub Activity"
+                    "data-training-sub-activity data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  end if @slug == "training-form" %>
+                <% seed_target_attr =
+                  case field
+                  when "Month"
+                    "data-seed-target-month data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "ICS"
+                    "data-seed-target-ics data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "Village"
+                    "data-seed-target-village data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "Jeevika Jankar Name"
+                    "data-seed-target-vrp data-selected-value=\"#{ERB::Util.html_escape(@record&.data&.[]('jeevika_jankar_id').presence || current_seed_target_vrp_option&.dig(:value).presence || field_value)}\""
+                  when "Main Activity"
+                    "data-seed-target-topic data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "Sub Activity"
+                    "data-seed-target-subject data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  end if other_target_form %>
+                <% parent_office_dependency_attr =
+                  case field
+                  when "Stakeholder Category"
+                    "data-parent-office-stakeholder-select"
+                  when "Parent Office Type"
+                    "data-parent-office-type-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "Parent Office"
+                    "data-parent-office-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  end if @slug == "parent-office-add" %>
+                <select name="module_record[<%= field_key %>]" <%= role_dependency_attr&.html_safe %> <%= location_dependency_attr&.html_safe %> <%= training_target_attr&.html_safe %> <%= seed_target_attr&.html_safe %> <%= parent_office_dependency_attr&.html_safe %> <%= required_attr %>>
+                  <option value=""><%= options.any? ? "Select #{resource_person_label(field)}" : "No #{resource_person_label(field)} saved yet" %></option>
+                  <% options.each do |option| %>
+                    <option value="<%= option %>" <%= "selected" if option == field_value %>><%= option %></option>
+                  <% end %>
+                </select>
+              <% elsif field.downcase.include?("remarks") || field.downcase.include?("address") %>
+                <textarea name="module_record[<%= field_key %>]" rows="3" placeholder="Enter <%= field %>" <%= required_attr %>><%= field_value %></textarea>
+              <% elsif field.downcase.include?("password") %>
+                <input name="module_record[<%= field_key %>]" type="password" placeholder="Enter <%= field %>" value="<%= field_value %>" <%= required_attr %>>
+              <% elsif field.downcase.include?("date") %>
+                <input name="module_record[<%= field_key %>]" type="date" value="<%= field_value %>" <%= required_attr %>>
+              <% elsif @slug == "training-form" && ["Farmer Count", "Male Count", "Female Count", "Total Farmer Count"].include?(field) %>
+                <% training_count_attr =
+                  case field
+                  when "Farmer Count"
+                    "data-training-farmer-count-input readonly"
+                  when "Total Farmer Count"
+                    "data-training-total-farmer-count-input readonly"
+                  end %>
+                <input name="module_record[<%= field_key %>]" type="number" min="0" step="1" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>" <%= required_attr %> <%= training_count_attr&.html_safe %>>
+              <% elsif other_target_form && field == "Farmer Count" %>
+                <input name="module_record[<%= field_key %>]" type="number" min="0" step="1" placeholder="Selected Farmer Count" value="<%= field_value %>" data-seed-farmer-count-input readonly required>
+              <% elsif other_target_form && field == "Contact Number" %>
+                <input name="module_record[<%= field_key %>]" type="tel" pattern="[0-9]{10}" maxlength="10" placeholder="Auto-filled Contact Number" value="<%= field_value %>" data-seed-vrp-contact readonly required>
+              <% elsif other_target_form && field == "Department" %>
+                <input name="module_record[<%= field_key %>]" type="text" placeholder="Auto-filled Department" value="<%= field_value %>" data-seed-vrp-department readonly>
+              <% elsif other_target_form && field == "Target" %>
+                <input name="module_record[<%= field_key %>]" type="number" min="0" step="any" placeholder="Mapped target" value="<%= field_value %>" data-seed-target-quantity readonly required>
+              <% elsif other_target_form && field == "Achievement" %>
+                <input name="module_record[<%= field_key %>]" type="number" min="0" step="any" placeholder="Enter Achievement" value="<%= field_value %>" data-seed-achievement required>
+              <% else %>
+                <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>" <%= "readonly" if @slug == "training-form" && ["Trainee Department", "Trainer Name", "Trainer Contact"].include?(field) && current_app_user&.dig("record_type").to_s == "Vrp" %> <%= "data-user-management-role-input" if @slug == "role-management" && field == "User Management Role" %> <%= required_attr %>>
+              <% end %>
+            </label>
+            <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
+              <div class="training-farmer-panel" data-training-farmer-panel data-selected-farmer-ids="<%= json_escape((selected_training_farmer_ids || []).to_json) %>">
+                <div class="target-mapping-toolbar">
+                  <strong>Target Farmers</strong>
+                  <label class="training-select-all">
+                    <input type="checkbox" data-training-farmer-select-all>
+                    <span>Select all</span>
+                  </label>
+                  <button type="button" class="list-btn active training-select-all-button" data-training-farmer-select-all-button>Select all</button>
+                  <span data-training-farmer-count>0 farmer selected</span>
+                </div>
+                <div class="vrp-ics-farmer-list" data-training-farmer-list>
+                  Select Village Name to load target farmers.
+                </div>
+              </div>
+            <% end %>
+          <% end %>
+        </div>
+
+        <% if other_target_form %>
+          <div class="training-farmer-panel" data-seed-farmer-panel data-selected-farmer-ids="<%= json_escape((selected_seed_target_farmer_ids || []).to_json) %>">
+            <div class="target-mapping-toolbar">
+              <strong>Mapped Farmers</strong>
+              <label class="training-select-all">
+                <input type="checkbox" data-seed-farmer-select-all>
+                <span>Select all</span>
+              </label>
+              <button type="button" class="list-btn active training-select-all-button" data-seed-farmer-select-all-button>Select all</button>
+              <span data-seed-farmer-count>0 farmer selected</span>
+            </div>
+            <div class="list-search compact seed-farmer-search">
+              <span>⌕</span>
+              <input type="search" placeholder="Search mapped farmers" data-seed-farmer-search>
+            </div>
+            <div class="training-empty-state" data-seed-farmer-search-empty hidden>No mapped farmers matched your search.</div>
+            <div class="vrp-ics-farmer-list" data-seed-farmer-list>
+              Select Village and Activity to load mapped farmers.
+            </div>
+          </div>
+        <% end %>
+
+        <div class="module-form-actions">
+          <%= link_to "Clear", module_path(@slug), class: "btn btn-secondary" %>
+          <button type="submit" class="btn btn-primary"><%= @record.present? ? "Update" : "Save" %></button>
+        </div>
+      <% end %>
+    </section>
+
+    <% unless @slug == "new-user" || entry_only_slugs.include?(@slug) || other_target_form %>
+      <% saved_record_fields = @module[:fields].reject { |field| field == "Status" } %>
+      <% full_saved_record_slugs = ["state-master", "district-master", "block-master", "gram-panchayat-master", "village-master", "person-type"] %>
+      <% saved_record_fields = saved_record_fields.first(4) unless full_saved_record_slugs.include?(@slug) %>
+      <section class="module-card">
+        <div class="module-card-header">
+          <h2>Saved Records</h2>
+          <span class="record-count"><%= @records.size %> records</span>
+        </div>
+        <div class="list-controls">
+          <div class="list-search">
+            <span>⌕</span>
+            <input type="search" placeholder="Search records" data-table-search="module_saved_records">
+          </div>
+          <%= form_with url: import_module_path(@slug), method: :post, multipart: true, local: true, class: "list-control-actions" do |form| %>
+            <label class="import-btn">
+              Choose Excel
+              <%= form.file_field :file, accept: ".csv,.xlsx", data: { import_file: true }, hidden: true %>
+            </label>
+            <%= form.submit "Upload", class: "list-btn upload" %>
+            <%= link_to "Export Excel", export_module_path(@slug, format: :xlsx), class: "list-btn export" %>
+          <% end %>
+        </div>
+        <div class="table-shell">
+          <table class="module-table" id="module_saved_records" data-paginated-table data-page-size="15">
+            <thead>
+              <tr>
+                <% saved_record_fields.each do |field| %>
+                  <th><%= resource_person_label(field) %></th>
+                <% end %>
+                <th>Saved At</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% if @records.any? %>
+                <% @records.each do |record| %>
+                  <tr>
+                    <% saved_record_fields.each do |field| %>
+                      <td><%= module_record_field_value(record, field).presence || "-" %></td>
+                    <% end %>
+                    <td><%= record.created_at&.strftime("%d-%m-%Y %I:%M %p") %></td>
+                    <td><span class="status-pill <%= record.data["status"] == "Inactive" ? "inactive" : "active" %>"><%= record.data["status"].presence || "Active" %></span></td>
+                    <td>
+                      <div class="table-actions">
+                        <%= link_to "Edit", edit_module_record_path(@slug, record), class: "table-action" %>
+                        <%= button_to(record.data["status"] == "Inactive" ? "Activate" : "Deactivate", toggle_module_record_path(@slug, record), method: :patch, class: "table-action") %>
+                        <%= button_to "Delete", module_record_path(@slug, record), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this record?" } } %>
+                      </div>
+                    </td>
+                  </tr>
+                <% end %>
+              <% else %>
+                <tr>
+                  <td colspan="<%= saved_record_fields.size + 3 %>">No records saved yet.</td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-pagination" data-pagination-for="module_saved_records"></div>
+      </section>
+    <% end %>
+  </div>
+  <% end %>
+
+  <% if @module[:features].present? %>
+    <div class="module-grid">
+      <% if @module[:features].present? %>
+        <section class="module-card">
+          <div class="module-card-header">
+            <h2>Features</h2>
+          </div>
+          <div class="chip-list">
+            <% @module[:features].each do |feature| %>
+              <span><%= feature %></span>
+            <% end %>
+          </div>
+        </section>
+      <% end %>
+
+    </div>
+  <% end %>
+</section>

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title><%= content_for(:title) || "Vrp" %></title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Vrp">
+    <meta name="mobile-web-app-capable" content="yes">
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+
+    <%= yield :head %>
+
+    <link rel="icon" href="/icon.png" type="image/png">
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/icon.png">
+
+    <%= stylesheet_link_tag :application, "data-turbo-track": "reload" %>
+    <%= javascript_importmap_tags %>
+  </head>
+
+  <body>
+    <% if controller_name == "sessions" %>
+      <%= yield %>
+    <% else %>
+      <div class="app-frame">
+        <div class="mobile-menu-bar">
+          <button type="button" class="mobile-menu-toggle" data-mobile-menu-toggle aria-controls="app-sidebar" aria-expanded="false">
+            <span>☰</span>
+            <strong>Menu</strong>
+          </button>
+          <span class="mobile-menu-title"><%= content_for(:title) || "VRP" %></span>
+        </div>
+        <button type="button" class="mobile-sidebar-backdrop" data-mobile-sidebar-backdrop aria-label="Close menu"></button>
+        <%= render "layouts/sidebar" %>
+
+        <div class="app-main">
+          <div class="app-language-bar">
+            <div class="language-switcher" data-language-switcher>
+              <span>Language</span>
+              <button type="button" data-language-option="en">English</button>
+              <button type="button" data-language-option="hi">हिन्दी</button>
+              <button type="button" data-language-option="mr">मराठी</button>
+              <button type="button" data-language-option="or">ଓଡ଼ିଆ</button>
+              <button type="button" data-language-option="gu">ગુજરાતી</button>
+            </div>
+            <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle dark mode">
+              <span data-theme-toggle-icon>☾</span>
+              <strong data-theme-toggle-label>Dark</strong>
+            </button>
+            <div id="google_translate_element" class="google-translate-holder" aria-hidden="true"></div>
+          </div>
+
+          <% if notice.present? %>
+            <div class="app-notice"><%= notice %></div>
+          <% end %>
+          <% if alert.present? %>
+            <div class="app-alert"><%= alert %></div>
+          <% end %>
+
+          <%= yield %>
+        </div>
+      </div>
+    <% end %>
+  </body>
+</html>

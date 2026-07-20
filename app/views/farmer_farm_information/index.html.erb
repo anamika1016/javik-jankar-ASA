@@ -1,0 +1,201 @@
+<% content_for :title, "Farmer Farm Information" %>
+<% form_record = @farmer_farm_information %>
+<% form_url = form_record.persisted? ? farmer_farm_information_record_path(form_record) : farmer_farm_information_path %>
+<% form_method = form_record.persisted? ? :patch : :post %>
+
+<main class="vrp-list-page">
+  <section class="vrp-list-shell">
+    <div class="vrp-list-header">
+      <div>
+        <p class="vrp-eyebrow">Farmer Target</p>
+        <h1>Farmer Farm Information</h1>
+      </div>
+    </div>
+
+    <div class="vrp-list-card">
+      <div class="list-controls">
+        <%= form_with url: import_farmer_farm_information_path, multipart: true, local: true, class: "list-search" do |form| %>
+          <span>▤</span>
+          <%= form.file_field :file, accept: ".xlsx,.csv", class: "form-control", required: true %>
+          <%= form.submit "Upload", class: "list-btn upload" %>
+        <% end %>
+
+        <div class="list-control-actions">
+          <%= link_to "All Basic Detail List", list_farmer_farm_information_path, class: "list-btn active" %>
+          <%= link_to "Export Excel", export_farmer_farm_information_path, class: "list-btn export" %>
+        </div>
+      </div>
+    </div>
+
+    <section class="module-card">
+      <%= form_with model: form_record, url: form_url, method: form_method, local: true, html: { class: "module-entry-form" } do |f| %>
+        <div class="module-form-grid user-registration-grid">
+          <label>
+            <span>Farm ID <em>*</em></span>
+            <%= f.text_field :farm_id, required: true, placeholder: "Enter Farm ID" %>
+          </label>
+          <label>
+            <span>ICS Name</span>
+            <%= f.text_field :ics_name, placeholder: "Enter ICS Name" %>
+          </label>
+          <label>
+            <span>Current Crop Year</span>
+            <%= f.text_field :current_crop_year, placeholder: "Enter Current Crop Year" %>
+          </label>
+          <label>
+            <span>Season</span>
+            <%= f.text_field :season, placeholder: "Enter Season" %>
+          </label>
+          <label>
+            <span>Farmer Name <em>*</em></span>
+            <%= f.text_field :farmer_name, required: true, placeholder: "Enter Farmer Name" %>
+          </label>
+          <label>
+            <span>Tracenet No</span>
+            <%= f.text_field :tracenet_no, placeholder: "Enter Tracenet No" %>
+          </label>
+          <label>
+            <span>Father/Mother Name</span>
+            <%= f.text_field :father_mother_name, placeholder: "Enter Father/Mother Name" %>
+          </label>
+          <label>
+            <span>Aadhar Number</span>
+            <%= f.text_field :aadhar_number, placeholder: "Enter Aadhar Number" %>
+          </label>
+
+          <label>
+            <span>Farmer Address</span>
+            <%= f.text_area :farmer_address, rows: 3, placeholder: "Enter Farmer Address" %>
+          </label>
+          <label>
+            <span>Farmer Pincode</span>
+            <%= f.text_field :farmer_pincode, placeholder: "Enter Farmer Pincode" %>
+          </label>
+          <label>
+            <span>Farmer Contact No</span>
+            <%= f.text_field :farmer_contact_no, placeholder: "Enter Farmer Contact No" %>
+          </label>
+          <label>
+            <span>Farmer State</span>
+            <%= f.text_field :farmer_state, placeholder: "Enter Farmer State" %>
+          </label>
+          <label>
+            <span>Farmer District</span>
+            <%= f.text_field :farmer_district, placeholder: "Enter Farmer District" %>
+          </label>
+          <label>
+            <span>Farmer Block</span>
+            <%= f.text_field :farmer_block, placeholder: "Enter Farmer Block" %>
+          </label>
+          <label>
+            <span>Farmer Gram</span>
+            <%= f.text_field :farmer_gram, placeholder: "Enter Farmer Gram" %>
+          </label>
+          <label>
+            <span>Farmer Village</span>
+            <%= f.text_field :farmer_village, placeholder: "Enter Farmer Village" %>
+          </label>
+
+          <label>
+            <span>Farm Name</span>
+            <%= f.text_field :farm_name, placeholder: "Enter Farm Name" %>
+          </label>
+          <label>
+            <span>Farm Address</span>
+            <%= f.text_area :farm_address, rows: 3, placeholder: "Enter Farm Address" %>
+          </label>
+          <label>
+            <span>Farm State</span>
+            <%= f.text_field :farm_state, placeholder: "Enter Farm State" %>
+          </label>
+          <label>
+            <span>Farm District</span>
+            <%= f.text_field :farm_district, placeholder: "Enter Farm District" %>
+          </label>
+          <label>
+            <span>Farm Block</span>
+            <%= f.text_field :farm_block, placeholder: "Enter Farm Block" %>
+          </label>
+          <label>
+            <span>Farm Gram</span>
+            <%= f.text_field :farm_gram, placeholder: "Enter Farm Gram" %>
+          </label>
+          <label>
+            <span>Farm Village</span>
+            <%= f.text_field :farm_village, placeholder: "Enter Farm Village" %>
+          </label>
+          <label>
+            <span>Latitude</span>
+            <%= f.number_field :latitude, step: "0.00000001", placeholder: "Enter Latitude" %>
+          </label>
+          <label>
+            <span>Longitude</span>
+            <%= f.number_field :longitude, step: "0.00000001", placeholder: "Enter Longitude" %>
+          </label>
+          <label>
+            <span>Khasra No</span>
+            <%= f.text_field :khasra_no, placeholder: "Enter Khasra No" %>
+          </label>
+
+          <label>
+            <span>Land Details</span>
+            <%= f.text_area :land_details, rows: 3, placeholder: "Enter Land Details" %>
+          </label>
+          <label>
+            <span>Total Land (Acre)</span>
+            <%= f.number_field :total_land, step: "0.0001", min: 0, placeholder: "Enter Total Land" %>
+          </label>
+          <label>
+            <span>No. of Farms/Plots</span>
+            <%= f.number_field :no_of_farms_plots, step: 1, min: 0, placeholder: "Enter Farms/Plots" %>
+          </label>
+          <label>
+            <span>Total Land Offered for Organic Certification (Acre)</span>
+            <%= f.number_field :total_land_offered_for_organic_certification, step: "0.0001", min: 0, placeholder: "Enter Offered Land" %>
+          </label>
+          <label>
+            <span>Year Organic Production Started</span>
+            <%= f.text_field :organic_production_started_year, placeholder: "Enter Year" %>
+          </label>
+          <label>
+            <span>Date of Joining of Farmer in the ICS</span>
+            <%= f.date_field :date_of_joining_ics %>
+          </label>
+          <label>
+            <span>Present Production Technique</span>
+            <%= f.select :present_production_technique, options_for_select(@production_technique_options, form_record.present_production_technique), { include_blank: "Select Technique" } %>
+          </label>
+          <label>
+            <span>Crops under Organic Production and their Area</span>
+            <%= f.text_area :crops_under_organic_production_area, rows: 3, placeholder: "Enter crop and area details" %>
+          </label>
+          <label>
+            <span>Other crops (name and area)</span>
+            <%= f.text_area :other_crops_name_area, rows: 3, placeholder: "Enter other crop and area details" %>
+          </label>
+          <label>
+            <span>Certification Status</span>
+            <%= f.select :certification_status, options_for_select(@certification_status_options, form_record.certification_status), { include_blank: "Select Certification Status" } %>
+          </label>
+          <label>
+            <span>Name of the accredited Certification Body</span>
+            <%= f.text_field :name_of_accredited_certification_body, placeholder: "Enter Certification Body Name" %>
+          </label>
+          <label>
+            <span>Status</span>
+            <%= f.select :status, options_for_select(["Active", "Inactive"], form_record.status.presence || "Active") %>
+          </label>
+        </div>
+
+        <div class="module-form-actions">
+          <% if form_record.persisted? %>
+            <%= link_to "Cancel Edit", farmer_farm_information_path, class: "btn btn-secondary" %>
+          <% else %>
+            <%= link_to "Clear", farmer_farm_information_path, class: "btn btn-secondary" %>
+          <% end %>
+          <%= f.submit form_record.persisted? ? "Update" : "Save", class: "btn btn-primary" %>
+        </div>
+      <% end %>
+    </section>
+  </section>
+</main>

@@ -1,0 +1,34 @@
+<% content_for :title, "Edit Jeevika Jankar" %>
+
+<main class="vrp-page">
+  <section class="vrp-shell">
+    <div class="vrp-header">
+      <div>
+        <p class="vrp-eyebrow">Jeevika Jankar Registration</p>
+        <h1>Edit Jeevika Jankar</h1>
+      </div>
+
+      <%= link_to "Back to List", vrps_path, class: "btn btn-secondary" %>
+    </div>
+
+    <% if @vrp.errors.any? %>
+      <div class="vrp-alert">
+        <strong>Please review the highlighted details.</strong>
+        <ul>
+          <% @vrp.errors.full_messages.each do |msg| %>
+            <li><%= msg %></li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+
+    <div class="vrp-card">
+      <%= form_with model: @vrp, url: vrp_path(@vrp), method: :patch, html: { class: "vrp-form" } do |f| %>
+        <%= render partial: "vrp_main", locals: { f: f, type: "edit" } %>
+        <div class="vrp-actions">
+          <%= f.submit "Update Jeevika Jankar", class: "btn btn-primary" %>
+        </div>
+      <% end %>
+    </div>
+  </section>
+</main>

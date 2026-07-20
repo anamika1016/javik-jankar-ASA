@@ -1,0 +1,68 @@
+<% content_for :title, "Selected Farmers" %>
+<% edit_slug = { "training-form-list" => "training-form", "seed-distribution-target-list" => "seed-distribution-target", "papl360-target-list" => "papl360-target" }.fetch(@slug, @slug) %>
+
+<main class="module-page">
+  <section class="module-card">
+    <div class="module-card-header list-title-header">
+      <div>
+        <h2>Selected Farmers</h2>
+        <p class="field-hint"><%= @record.data["jeevika_jankar_name"].presence || @record.data["trainer_name"].presence || @record.data["month"].presence || "Saved record" %></p>
+      </div>
+      <div class="list-control-actions">
+        <%= link_to "Back", module_path(@slug), class: "list-btn" %>
+        <%= link_to "Edit Record", edit_module_record_path(edit_slug, @record), class: "list-btn edit" %>
+        <%= link_to "Export Excel", export_selected_farmers_module_record_path(@slug, @record, format: :xlsx), class: "list-btn export" %>
+      </div>
+    </div>
+
+    <div class="list-controls">
+      <div class="list-search compact">
+        <span>⌕</span>
+        <input type="search" placeholder="Search farmers" data-table-search="selected_farmers_table">
+      </div>
+      <strong><%= @selected_farmer_rows.size %> farmer selected</strong>
+    </div>
+
+    <div class="table-shell">
+      <table class="module-table user-list-table" id="selected_farmers_table" data-paginated-table data-page-size="20">
+        <thead>
+          <tr>
+            <th>Farmer ID</th>
+            <th>Farmer Name</th>
+            <th>Father Name</th>
+            <th>Tracenet No</th>
+            <th>Mobile No</th>
+            <th>Khasara No</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if @selected_farmer_rows.any? %>
+            <% @selected_farmer_rows.each do |farmer| %>
+              <tr>
+                <td><%= farmer[:id] %></td>
+                <td><%= farmer[:farmer_name] %></td>
+                <td><%= farmer[:father_name] %></td>
+                <td><%= farmer[:tracenet_no] %></td>
+                <td><%= farmer[:mobile_no] %></td>
+                <td><%= farmer[:khasara_no] %></td>
+                <td>
+                  <%= button_to "Remove",
+                    selected_farmer_module_record_path(@slug, @record, farmer_id: farmer[:id]),
+                    method: :delete,
+                    class: "table-action danger",
+                    form: { data: { turbo_confirm: "Remove this farmer from selected list?" } } %>
+                </td>
+              </tr>
+            <% end %>
+          <% else %>
+            <tr>
+              <td colspan="7">No selected farmers saved yet.</td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-pagination" data-pagination-for="selected_farmers_table"></div>
+  </section>
+</main>

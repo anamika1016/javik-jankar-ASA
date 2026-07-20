@@ -1,0 +1,65 @@
+<% detail = @vrp_dashboard_detail || { title: "Dashboard List", caption: "", total: 0, headers: [], rows: [], key: "dashboard_list" } %>
+<% content_for :title, "#{detail[:title]} List" %>
+
+<section class="dashboard-page">
+  <div class="dashboard-topbar">
+    <div>
+      <p class="vrp-eyebrow">Jeevika Jankar Dashboard</p>
+      <h1><%= detail[:title] %> List</h1>
+      <p><%= detail[:caption] %></p>
+    </div>
+
+    <div class="dashboard-actions">
+      <%= link_to "Back to Dashboard", dashboard_path, class: "list-btn active" %>
+      <%= link_to "Export Excel", url_for(request.path_parameters.merge(request.query_parameters).merge(format: :xlsx)), class: "list-btn export" %>
+    </div>
+  </div>
+
+  <section class="module-card">
+    <div class="module-card-header">
+      <div>
+        <h2><%= detail[:title] %></h2>
+        <p class="module-subtitle">Total: <%= detail[:total] %> | Rows: <%= detail[:rows].size %></p>
+      </div>
+      <button type="button" class="list-btn export" data-export-table="vrp_dashboard_detail_table" data-export-include-all="true">Export</button>
+    </div>
+
+    <div class="table-shell">
+      <table class="module-table compact-table" id="vrp_dashboard_detail_table" data-paginated-table data-page-size="20">
+        <thead>
+          <tr>
+            <% detail[:headers].each do |header| %>
+              <th><%= header %></th>
+            <% end %>
+          </tr>
+        </thead>
+        <tbody>
+          <% if detail[:rows].any? %>
+            <% detail[:rows].each do |row| %>
+              <tr>
+                <% row.each do |value| %>
+                  <td>
+                    <% if value.is_a?(Hash) && value[:path].present? %>
+                      <% if value[:button] %>
+                        <%= button_to value[:label].presence || "Action", value[:path], method: value[:method].presence || :post, class: value[:class].presence || "table-action", form: { data: { turbo_confirm: value[:confirm] } } %>
+                      <% else %>
+                        <%= link_to value[:label].presence || "View List", value[:path], class: "table-action" %>
+                      <% end %>
+                    <% else %>
+                      <%= value.presence || "-" %>
+                    <% end %>
+                  </td>
+                <% end %>
+              </tr>
+            <% end %>
+          <% else %>
+            <tr data-empty-row>
+              <td colspan="<%= [detail[:headers].size, 1].max %>">No records found for this list.</td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-pagination" data-pagination-for="vrp_dashboard_detail_table"></div>
+  </section>
+</section>

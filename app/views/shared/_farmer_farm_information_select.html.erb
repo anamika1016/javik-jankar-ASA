@@ -1,0 +1,7 @@
+<label>
+  <span>Linked Farmer / Farm <em>*</em></span>
+  <%= form.select :farmer_farm_information_id,
+        options_for_select(farmer_farm_information_select_options, record.farmer_farm_information_id),
+        { include_blank: "Select Farmer / Farm" },
+        required: true %>
+</label>

@@ -1,0 +1,77 @@
+<% content_for :title, "Soil Conditioners & Fertility Input Records" %>
+<% form_record = @soil_record %>
+<% form_url = form_record.persisted? ? soil_conditioner_fertility_input_record_path(form_record) : soil_conditioner_fertility_input_records_path %>
+<% form_method = form_record.persisted? ? :patch : :post %>
+
+<main class="vrp-list-page">
+  <section class="vrp-list-shell">
+    <div class="vrp-list-header"><div><p class="vrp-eyebrow">Farmer Farm Information</p><h1>Soil Conditioners & Fertility Input Records</h1></div></div>
+    <div class="vrp-list-card">
+      <div class="list-controls">
+        <%= form_with url: import_soil_conditioner_fertility_input_records_path, multipart: true, local: true, class: "list-search" do |form| %>
+          <span>▤</span>
+          <%= form.file_field :file, accept: ".xlsx,.csv", class: "form-control", required: true %>
+          <%= form.submit "Upload", class: "list-btn upload" %>
+        <% end %>
+        <div class="list-control-actions">
+          <%= link_to "Export Excel", export_soil_conditioner_fertility_input_records_path, class: "list-btn export" %>
+        </div>
+      </div>
+    </div>
+    <section class="module-card">
+      <%= form_with model: form_record, url: form_url, method: form_method, local: true, html: { class: "module-entry-form" } do |f| %>
+        <div class="module-form-grid user-registration-grid">
+          <%= render "shared/farmer_farm_information_select", form: f, record: form_record %>
+          <label><span>S No.</span><%= f.text_field :serial_no, placeholder: "Enter S No." %></label>
+          <label><span>Name of farm /plot no</span><%= f.text_field :farm_plot_no, placeholder: "Enter Farm / Plot No" %></label>
+          <label><span>Name of the crop</span><%= f.text_field :crop_name, placeholder: "Enter Crop Name" %></label>
+          <label><span>Name of the inputs</span><%= f.text_field :input_name, placeholder: "Enter Input Name" %></label>
+          <label><span>Source of input /brand</span><%= f.text_field :input_source_brand, placeholder: "Enter Source / Brand" %></label>
+          <label><span>Application Time</span><%= f.text_field :application_time, placeholder: "Enter Time" %></label>
+          <label><span>Application Rate</span><%= f.text_field :application_rate, placeholder: "Enter Rate" %></label>
+          <label><span>Status</span><%= f.select :status, options_for_select(["Active", "Inactive"], form_record.status.presence || "Active") %></label>
+        </div>
+        <div class="module-form-actions">
+          <%= link_to form_record.persisted? ? "Cancel Edit" : "Clear", soil_conditioner_fertility_input_records_path, class: "btn btn-secondary" %>
+          <%= f.submit form_record.persisted? ? "Update" : "Save", class: "btn btn-primary" %>
+        </div>
+      <% end %>
+    </section>
+
+    <section class="module-card">
+      <div class="vrp-list-toolbar compact">
+        <button type="button" class="list-btn active" data-module-status-selected="Active">Active</button>
+        <button type="button" class="list-btn deactive" data-module-status-selected="Inactive">Deactive</button>
+        <button type="button" class="list-btn edit" data-module-edit-selected>Edit</button>
+        <button type="button" class="list-btn delete" data-module-delete-selected>Delete</button>
+      </div>
+      <div class="list-controls"><div class="list-search"><span>⌕</span><input type="search" placeholder="Search soil records" data-table-search="soil_conditioner_records_list"></div></div>
+      <div class="table-shell">
+        <table class="module-table vrp-list-table" id="soil_conditioner_records_list" data-paginated-table data-page-size="15">
+          <thead><tr><th><input type="checkbox" data-module-select-all></th><%= render "shared/farmer_farm_information_table_headers" %><th>S No.</th><th>Farm / Plot No</th><th>Crop</th><th>Input</th><th>Source / Brand</th><th>Time</th><th>Rate</th><th>Status</th></tr></thead>
+          <tbody>
+            <% if @soil_records.any? %>
+              <% @soil_records.each do |record| %>
+                <tr>
+                  <td><input type="checkbox" value="<%= edit_soil_conditioner_fertility_input_record_path(record) %>" data-module-row-select></td>
+                  <%= render "shared/farmer_farm_information_table_cells", record: record %>
+                  <td><%= record.serial_no.presence || "-" %></td>
+                  <td><%= record.farm_plot_no.presence || "-" %></td>
+                  <td><%= record.crop_name.presence || "-" %></td>
+                  <td><%= record.input_name.presence || "-" %></td>
+                  <td><%= record.input_source_brand.presence || "-" %></td>
+                  <td><%= record.application_time.presence || "-" %></td>
+                  <td><%= record.application_rate.presence || "-" %></td>
+                  <td><span class="status-pill <%= record.status == "Inactive" ? "inactive" : "active" %>"><%= record.status.presence || "Active" %></span></td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr><td colspan="12">No soil conditioner record saved yet.</td></tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="soil_conditioner_records_list"></div>
+    </section>
+  </section>
+</main>

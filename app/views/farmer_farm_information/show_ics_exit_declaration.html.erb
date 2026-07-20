@@ -1,0 +1,70 @@
+<% content_for :title, "ICS Exit Declaration - #{@ics_exit_declaration.farmer_name}" %>
+
+<main class="vrp-list-page">
+  <section class="vrp-list-shell">
+    <div class="vrp-list-header no-print">
+      <div>
+        <p class="vrp-eyebrow">Farmer Farm Information</p>
+        <h1>ICS Exit Declaration</h1>
+      </div>
+    </div>
+
+    <section class="module-card ics-exit-declaration-card">
+      <div class="module-card-header no-print">
+        <div>
+          <h2><%= @ics_exit_declaration.farmer_name %></h2>
+          <p class="module-subtitle">Farm ID: <%= @ics_exit_declaration.farm_id.presence || "-" %></p>
+        </div>
+        <div class="module-form-actions inline-actions">
+          <%= link_to "Back to List", ics_exit_declaration_farmer_farm_information_path, class: "btn btn-secondary" %>
+          <%= link_to "Edit", edit_ics_exit_declaration_record_path(@ics_exit_declaration), class: "btn btn-secondary" %>
+          <button type="button" class="btn btn-primary" onclick="window.print()">Print</button>
+        </div>
+      </div>
+
+      <article class="ics-exit-declaration-sheet">
+        <h2>APPLICATION FORMAT FOR EXIT OF FARMER FROM ICS</h2>
+
+        <div class="declaration-block">
+          <p><strong>From</strong> (Member of Farmer Group under Certification)</p>
+          <p>Name: <span class="declaration-line"><%= @ics_exit_declaration.farmer_name %></span></p>
+          <p>ID Number: <span class="declaration-line"><%= @ics_exit_declaration.id_number.presence || @ics_exit_declaration.farm_id %></span></p>
+          <p>Address: <span class="declaration-line"><%= @ics_exit_declaration.farmer_address %></span></p>
+        </div>
+
+        <div class="declaration-block">
+          <p><strong>To</strong></p>
+          <p>(The ICS In-charge)</p>
+        </div>
+
+        <p><strong>Subject:</strong> Request Letter for Exit from ICS</p>
+
+        <div class="declaration-letter">
+          <p>Dear Sir,</p>
+          <p>
+            I am not interested to continue with the
+            <span class="declaration-line grower-group-line"><%= @ics_exit_declaration.grower_group_name %></span>
+            (Name of the Grower Group) under organic certification for the following reasons:
+          </p>
+          <div class="declaration-filled-reason"><%= simple_format(@ics_exit_declaration.exit_reason.presence || " ") %></div>
+
+          <p>Hence kindly allow me to exit from the grower group during the renewal of certification of this group.</p>
+          <p><strong>(Strike out the below paragraph if not applicable)</strong></p>
+          <p>
+            Also kindly forward the details of my certification status as on the date of my exit, to
+            <span class="declaration-line certification-body-line"><%= @ics_exit_declaration.new_certification_body %></span>
+            who are the new certification body under which I intended to be certified.
+          </p>
+        </div>
+
+        <div class="declaration-signature-grid">
+          <p>Date: <span class="declaration-line short-line"><%= @ics_exit_declaration.declaration_date&.strftime("%d-%m-%Y") %></span></p>
+          <div>
+            <p>Yours Faithfully</p>
+            <p>Signature of the Farmer: <span class="declaration-line signature-line"><%= @ics_exit_declaration.signature_of_farmer %></span></p>
+          </div>
+        </div>
+      </article>
+    </section>
+  </section>
+</main>

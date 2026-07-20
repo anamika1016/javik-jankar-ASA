@@ -1,0 +1,78 @@
+<% content_for :title, "All User" %>
+
+<section class="module-page">
+  <div class="module-hero">
+    <div>
+      <p class="vrp-eyebrow">User Register</p>
+      <h1>User List</h1>
+      <p>Registered users dekhne ke liye.</p>
+    </div>
+  </div>
+
+  <section class="module-card">
+    <div class="vrp-list-toolbar compact">
+      <button type="button" class="list-btn active" data-user-status-selected="Active">Active</button>
+      <button type="button" class="list-btn deactive" data-user-status-selected="Inactive">Deactive</button>
+      <button type="button" class="list-btn edit" data-module-edit-selected>Edit</button>
+      <button type="button" class="list-btn export" data-export-table="all_user_list">Export</button>
+      <button type="button" class="list-btn delete" data-module-delete-selected>Delete</button>
+    </div>
+
+    <div class="list-controls">
+      <div class="list-search">
+        <span>⌕</span>
+        <input type="search" placeholder="Search users" data-table-search="all_user_list">
+      </div>
+    </div>
+
+    <div class="table-shell">
+      <table class="module-table user-list-table" id="all_user_list" data-paginated-table data-page-size="15">
+        <thead>
+          <tr>
+            <th><input type="checkbox" data-module-select-all></th>
+            <th>Full Name</th>
+            <th>User Name</th>
+            <th>Email</th>
+            <th>Stakeholder Person Type</th>
+            <th>Role</th>
+            <th>State</th>
+            <th>District</th>
+            <th>User Type</th>
+            <th>Mobile No</th>
+            <th>Stakeholder Category</th>
+            <th>Office Name</th>
+            <th>Sub Office Name</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if @users.any? %>
+            <% @users.each do |user| %>
+              <tr>
+                <td><input type="checkbox" value="<%= edit_user_path(user) %>" data-module-row-select></td>
+                <td><%= user.full_name.presence || "-" %></td>
+                <td><%= user.user_name.presence || "-" %></td>
+                <td><%= user.email.presence || "-" %></td>
+                <td><%= user.stakeholder_role.presence || "-" %></td>
+                <td><%= user.role.presence || "-" %></td>
+                <td><%= user.state.presence || "-" %></td>
+                <td><%= user.district.presence || "-" %></td>
+                <td><%= user.user_type.presence || "-" %></td>
+                <td><%= user.mobile_no.presence || "-" %></td>
+                <td><%= user.stakeholder.presence || "-" %></td>
+                <td><%= (user.respond_to?(:office_name) ? user.office_name : nil).presence || user.office.presence || "-" %></td>
+                <td><%= (user.respond_to?(:sub_office_name) ? user.sub_office_name : nil).presence || user.office.presence || "-" %></td>
+                <td><span class="status-pill <%= user.status == "Inactive" ? "inactive" : "active" %>"><%= user.status.presence || "Active" %></span></td>
+              </tr>
+            <% end %>
+          <% else %>
+            <tr>
+              <td colspan="14">No users registered yet.</td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-pagination" data-pagination-for="all_user_list"></div>
+  </section>
+</section>

@@ -1,0 +1,30 @@
+<main class="vrp-page">
+  <section class="vrp-shell">
+    <div class="vrp-header">
+      <div>
+        <p class="vrp-eyebrow">Field Operations</p>
+        <h1>Jeevika Jankar Registration</h1>
+      </div>
+    </div>
+
+    <% if @vrp.errors.any? %>
+      <div class="vrp-alert">
+        <strong>Please review the highlighted details.</strong>
+        <ul>
+          <% @vrp.errors.full_messages.each do |msg| %>
+            <li><%= msg %></li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+
+    <div class="vrp-card">
+      <%= form_with model: @vrp, url: vrps_path, method: :post, html: { class: 'vrp-form' } do |f| %>
+        <%= render partial: 'vrp_main', locals: { f: f, type: "new" } %>
+        <div class="vrp-actions">
+          <%= f.submit "Submit Registration", class: "btn btn-primary" %>
+        </div>
+      <% end %>
+    </div>
+  </section>
+</main>

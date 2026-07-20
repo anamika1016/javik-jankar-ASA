@@ -1,0 +1,98 @@
+<% content_for :title, "#{@training_target_status_title} Target Status" %>
+<% filter_params = {
+  training_month: @training_selected_month.presence,
+  training_sub_activity: @training_selected_sub_activity.presence
+}.compact_blank %>
+<% status_counts = @training_target_status_totals || { green: 0, yellow: 0, red: 0, total: 0 } %>
+<% quantity = ->(value) { value.to_f == value.to_i ? value.to_i : format("%.2f", value.to_f) } %>
+
+<section class="dashboard-page">
+  <div class="dashboard-topbar">
+    <div>
+      <p class="vrp-eyebrow">Target Dashboard Status</p>
+      <h1><%= @training_target_status_title %> Targets</h1>
+      <p><%= @training_target_status_caption %></p>
+    </div>
+
+    <div class="dashboard-actions">
+      <%= link_to "Back to Dashboard", dashboard_path(filter_params), class: "list-btn active" %>
+      <%= link_to "Export Excel", farmer_training_target_status_path(filter_params.merge(status: @training_target_status, format: :xlsx)), class: "list-btn export" %>
+    </div>
+  </div>
+
+  <section class="module-card training-participation-status-card">
+    <div class="training-participation-boxes compact">
+      <% %w[green yellow red].each do |status| %>
+        <%= link_to farmer_training_target_status_path(filter_params.merge(status: status)), class: "training-participation-box #{status} #{'is-active' if @training_target_status == status}" do %>
+          <span><%= training_target_status_label(status) %></span>
+          <strong><%= status_counts[status.to_sym].to_i %></strong>
+          <small><%= training_target_status_caption(status) %></small>
+        <% end %>
+      <% end %>
+    </div>
+  </section>
+
+  <section class="module-card">
+    <div class="module-card-header">
+      <div>
+        <h2><%= @training_target_status_title %> Target List</h2>
+        <p class="module-subtitle">
+          Total: <%= @training_target_status_rows.size %>
+          <% if @training_selected_month.present? %>
+            | Month: <%= @training_selected_month %>
+          <% end %>
+          <% if @training_selected_sub_activity.present? %>
+            | Sub Activity: <%= @training_selected_sub_activity %>
+          <% end %>
+        </p>
+      </div>
+      <button type="button" class="list-btn export" data-export-table="training_target_status_list">Export</button>
+    </div>
+
+    <div class="table-shell">
+      <table class="module-table compact-table training-target-status-table" id="training_target_status_list" data-paginated-table data-page-size="20">
+        <thead>
+          <tr>
+            <th>VRP</th>
+            <th>Month</th>
+            <th>Completion Date</th>
+            <th>ICS</th>
+            <th>Village</th>
+            <th>Main Activity</th>
+            <th>Sub Activity</th>
+            <th>Target</th>
+            <th>Completed</th>
+            <th>Pending</th>
+            <th>Progress</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if @training_target_status_rows.any? %>
+            <% @training_target_status_rows.each do |row| %>
+              <tr>
+                <td><%= row[:vrp].presence || "-" %></td>
+                <td><%= row[:month].presence || "-" %></td>
+                <td><%= row[:completion_date].presence || "-" %></td>
+                <td><%= row[:ics].presence || "-" %></td>
+                <td><%= row[:village].presence || "-" %></td>
+                <td><%= row[:main_activity].presence || "-" %></td>
+                <td><%= row[:sub_activity].presence || "-" %></td>
+                <td><%= quantity.call(row[:target_quantity]) %></td>
+                <td><%= quantity.call(row[:completed_quantity]) %></td>
+                <td><%= quantity.call(row[:pending_quantity]) %></td>
+                <td><%= row[:progress_percent].to_i %>%</td>
+                <td><span class="training-status-pill <%= row[:status_class] %>"><%= row[:status_label] %></span></td>
+              </tr>
+            <% end %>
+          <% else %>
+            <tr>
+              <td colspan="12">No targets found for this status.</td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-pagination" data-pagination-for="training_target_status_list"></div>
+  </section>
+</section>

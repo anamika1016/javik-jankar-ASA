@@ -1,0 +1,101 @@
+<% content_for :title, @map_title %>
+<% form_url = @farm_map_upload.persisted? ? farmer_farm_map_upload_path(@farm_map_upload) : farmer_farm_map_uploads_path %>
+<% form_method = @farm_map_upload.persisted? ? :patch : :post %>
+<% map_page_path = @map_type == "farm_map" ? farm_map_farmer_farm_information_path : crop_map_session_wise_farmer_farm_information_path %>
+
+<main class="vrp-list-page">
+  <section class="vrp-list-shell">
+    <div class="vrp-list-header">
+      <div>
+        <p class="vrp-eyebrow">Farmer Farm Information</p>
+        <h1><%= @map_title %></h1>
+      </div>
+    </div>
+
+    <section class="module-card">
+      <%= form_with model: @farm_map_upload, url: form_url, method: form_method, multipart: true, local: true, html: { class: "module-entry-form", data: { gps_photo_form: true } } do |f| %>
+        <%= f.hidden_field :map_type %>
+        <%= f.hidden_field :latitude, data: { gps_latitude: true } %>
+        <%= f.hidden_field :longitude, data: { gps_longitude: true } %>
+        <%= f.hidden_field :gps_accuracy, data: { gps_accuracy: true } %>
+
+        <div class="module-form-grid">
+          <%= render "shared/farmer_farm_information_select", form: f, record: @farm_map_upload %>
+          <label>
+            <span>Photo Upload <em>*</em></span>
+            <%= f.file_field :photo, accept: ".jpeg,.jpg,.png,image/jpeg,image/png", required: !@farm_map_upload.persisted?, class: "form-control" %>
+          </label>
+        </div>
+
+        <div class="module-form-actions">
+          <% if @farm_map_upload.persisted? %>
+            <%= link_to "Cancel Edit", map_page_path, class: "btn btn-secondary" %>
+          <% else %>
+            <%= link_to "Back", farmer_farm_information_path, class: "btn btn-secondary" %>
+          <% end %>
+          <%= f.submit @farm_map_upload.persisted? ? "Update" : "Upload", class: "btn btn-primary" %>
+        </div>
+      <% end %>
+    </section>
+
+    <section class="module-card">
+      <div class="vrp-list-toolbar compact">
+        <button type="button" class="list-btn active" data-module-status-selected="Active">Active</button>
+        <button type="button" class="list-btn deactive" data-module-status-selected="Inactive">Deactive</button>
+        <button type="button" class="list-btn edit" data-module-edit-selected>Edit</button>
+        <button type="button" class="list-btn delete" data-module-delete-selected>Delete</button>
+      </div>
+
+      <div class="list-controls">
+        <div class="list-search">
+          <span>⌕</span>
+          <input type="search" placeholder="Search saved records" data-table-search="farm_map_uploads_list">
+        </div>
+      </div>
+
+      <div class="table-shell">
+        <table class="module-table vrp-list-table" id="farm_map_uploads_list" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th><input type="checkbox" data-module-select-all></th>
+              <%= render "shared/farmer_farm_information_table_headers" %>
+              <th>Photo</th>
+              <th>Latitude</th>
+              <th>Longitude</th>
+              <th>GPS Accuracy</th>
+              <th>Created At</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if @map_uploads.any? %>
+              <% @map_uploads.each do |upload| %>
+                <tr>
+                  <td><input type="checkbox" value="<%= edit_farmer_farm_map_upload_path(upload) %>" data-module-row-select></td>
+                  <%= render "shared/farmer_farm_information_table_cells", record: upload %>
+                  <td>
+                    <% if upload.photo.attached? %>
+                      <%= link_to "View Photo", rails_blob_path(upload.photo, disposition: "inline"), target: "_blank", class: "table-action" %>
+                    <% else %>
+                      -
+                    <% end %>
+                  </td>
+                  <td><%= upload.latitude.presence || "-" %></td>
+                  <td><%= upload.longitude.presence || "-" %></td>
+                  <td><%= upload.gps_accuracy.presence || "-" %></td>
+                  <td><%= upload.created_at.strftime("%d-%m-%Y %I:%M %p") %></td>
+                  <td><span class="status-pill <%= upload.status == "Inactive" ? "inactive" : "active" %>"><%= upload.status.presence || "Active" %></span></td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="10">No saved records yet.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="farm_map_uploads_list"></div>
+    </section>
+  </section>
+</main>

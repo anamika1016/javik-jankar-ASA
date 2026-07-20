@@ -1,0 +1,197 @@
+<% content_for :title, "Jeevika Jankar Details" %>
+
+<main class="vrp-detail-page compact-detail">
+  <section class="module-card">
+    <div class="module-card-header">
+      <h2>Jeevika Jankar Details</h2>
+      <%= link_to "Back to List", vrps_path, class: "table-action" %>
+    </div>
+
+    <div class="table-shell">
+      <table class="module-table detail-table">
+        <tbody>
+          <tr>
+            <th>Name</th>
+            <td><%= blank_display(@vrp&.name) %></td>
+            <th>Father / Husband Name</th>
+            <td><%= blank_display(@vrp&.father_husband_name) %></td>
+            <th>Person Type</th>
+            <td><%= blank_display(@vrp&.person_type) %></td>
+            <th>Gender</th>
+            <td><%= blank_display(@vrp&.gender&.humanize) %></td>
+            <th>Date of Birth</th>
+            <td><%= blank_display(@vrp&.date_of_birth&.strftime("%d-%m-%Y")) %></td>
+          </tr>
+          <tr>
+            <th>Date of Joining</th>
+            <td><%= blank_display(@vrp&.date_of_joining&.strftime("%d-%m-%Y")) %></td>
+            <th>Aadhaar No</th>
+            <td><%= @vrp&.aadhar_no.present? ? "#{'X' * 8}#{@vrp.aadhar_no.last(4)}" : "" %></td>
+            <th>Account No</th>
+            <td><%= blank_display(@vrp&.account_no) %></td>
+            <th>IFSC Code</th>
+            <td><%= blank_display(@vrp&.ifsc_code) %></td>
+            <th>Bank</th>
+            <td><%= blank_display(@vrp&.bank_name.presence || @vrp&.vrp_bank_master&.name) %></td>
+            <th>Experience (Years)</th>
+            <td><%= blank_display(@vrp&.experience_in_years) %></td>
+          </tr>
+          <tr>
+            <th>Mobile No</th>
+            <td><%= blank_display(@vrp&.mobile_no) %></td>
+            <th>Email</th>
+            <td colspan="3"><%= blank_display(@vrp&.email) %></td>
+            <th>Address</th>
+            <td colspan="3"><%= blank_display(@vrp&.address) %></td>
+          </tr>
+          <tr>
+            <th>Jeevika Jankar Types</th>
+            <td colspan="3"><%= vrp_type_labels(@vrp&.vrp_type_ids) %></td>
+            <th>Projects</th>
+            <td colspan="5"><%= module_record_labels("project-master", @vrp&.project_master_ids, "project_name") %></td>
+          </tr>
+          <tr>
+            <th>FCOC-C</th>
+            <td colspan="3"><%= blank_display(@vrp&.fcoc) %></td>
+            <th>TO</th>
+            <td><%= blank_display(@vrp&.to_name) %></td>
+            <th>Cluster Incharge</th>
+            <td colspan="3"><%= blank_display(@vrp&.cluster_incharge) %></td>
+          </tr>
+          <tr>
+            <th>Gram Panchayats</th>
+            <td colspan="9"><%= module_record_labels("gram-panchayat-master", @vrp&.gram_panchayat_ids, "gram_panchayat_name") %></td>
+          </tr>
+          <tr>
+            <th>Villages</th>
+            <td colspan="9"><%= module_record_labels("village-master", @vrp&.village_ids, "village_name") %></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="table-shell mt-4">
+      <table class="module-table detail-table">
+        <thead>
+          <tr>
+            <th>State</th>
+            <th>District</th>
+            <th>Block</th>
+            <th>Gram Panchayat</th>
+            <th>Village</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><%= module_record_label("state-master", @vrp&.vrp_profile&.state_id, "state_name") %></td>
+            <td><%= module_record_label("district-master", @vrp&.vrp_profile&.district_id, "district_name") %></td>
+            <td><%= module_record_label("block-master", @vrp&.vrp_profile&.block_id, "block_name") %></td>
+            <td><%= module_record_label("gram-panchayat-master", @vrp&.vrp_profile&.gram_panchayat_id, "gram_panchayat_name") %></td>
+            <td><%= module_record_label("village-master", @vrp&.vrp_profile&.village_id, "village_name") %></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="module-card">
+    <div class="module-card-header">
+      <h2>Attachments</h2>
+    </div>
+
+    <div class="table-shell">
+      <table class="module-table attachment-table">
+        <thead>
+          <tr>
+            <th>Document</th>
+            <th>Preview</th>
+            <th>Download</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% [["Jeevika Jankar Photo", @vrp&.photo], ["Jeevika Jankar Aadhaar Card", @vrp&.aadhar_upload], ["Jeevika Jankar Bank Passbook", @vrp&.bank_passbook_upload]].each do |label, attachment| %>
+            <tr>
+              <td><%= label %></td>
+              <td>
+                <% if attachment&.attached? %>
+                  <%= image_tag rails_blob_path(attachment, only_path: true), alt: label, class: "attachment-thumb" %>
+                <% else %>
+                  -
+                <% end %>
+              </td>
+              <td>
+                <% if attachment&.attached? %>
+                  <%= link_to "View", rails_blob_path(attachment, disposition: "inline"), target: "_blank", class: "list-btn active attachment-view" %>
+                <% else %>
+                  -
+                <% end %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <% if @approval_steps.present? %>
+    <section class="approval-progress-section">
+      <h2>Jeevika Jankar Approval Progress</h2>
+
+      <div class="approval-progress-grid">
+        <% @approval_steps.each do |step| %>
+          <% level = step.data["approval_level"].presence || "Approval" %>
+          <% step_history = @approval_history.select { |history| history.data["approval_level"].to_s == level.to_s } %>
+          <% approved_history = step_history.find { |history| history.data["action"] == "Approved" } %>
+          <% rejected_history = step_history.find { |history| history.data["action"] == "Rejected" } %>
+          <% closing_history = approved_history || rejected_history || closing_approval_history(@vrp, step) %>
+          <% is_current = @current_approval_step&.id == step.id %>
+          <% state = closing_history&.data&.[]("action") == "Rejected" ? "rejected" : (closing_history.present? ? "approved" : (is_current ? "current" : "pending")) %>
+          <% approver_name = step.data["approver_approved_by"].presence || "-" %>
+          <% action_by_name = closing_history&.data&.[]("approver").presence || approver_name %>
+          <% card_title = approver_name %>
+
+          <article class="approval-progress-card <%= state %>">
+            <h3><%= card_title %></h3>
+            <div class="approval-progress-icon"><%= state == "approved" ? "✓" : (state == "rejected" ? "×" : "•") %></div>
+            <% if state == "approved" %>
+              <p><strong>Approved by:</strong> <%= action_by_name %></p>
+            <% elsif state == "rejected" %>
+              <p><strong>Rejected by:</strong> <%= action_by_name %></p>
+            <% elsif is_current %>
+              <p><strong>Pending at:</strong> <%= approver_name %></p>
+            <% else %>
+              <p><strong>Waiting</strong></p>
+            <% end %>
+            <p><%= closing_history&.created_at&.strftime("%d-%m-%Y %I:%M %p") || (is_current ? "Current step" : "Waiting for previous approval") %></p>
+            <% if closing_history&.data&.[]("remarks").present? %>
+              <p><strong>Remarks:</strong> <%= closing_history.data["remarks"] %></p>
+            <% end %>
+            <% if @can_approve && is_current && state == "current" %>
+              <div class="approval-card-actions">
+                <button type="button" class="approval-mini-btn approve" data-open-approval-modal data-approval-action="approve" data-approval-url="<%= approve_vrp_path(@vrp) %>">Approve</button>
+                <button type="button" class="approval-mini-btn reject" data-open-approval-modal data-approval-action="reject" data-approval-url="<%= reject_vrp_path(@vrp) %>">Reject</button>
+              </div>
+            <% end %>
+          </article>
+        <% end %>
+      </div>
+    </section>
+  <% end %>
+
+  <% if @can_approve %>
+    <dialog class="approval-remarks-modal" data-approval-modal>
+      <%= form_with url: approve_vrp_path(@vrp), method: :patch, class: "approval-modal-form", data: { approval_modal_form: true } do %>
+        <div class="approval-modal-header">
+          <h2 data-approval-modal-title>Approval Remarks</h2>
+          <button type="button" data-close-approval-modal aria-label="Close">×</button>
+        </div>
+        <label for="approval_modal_remarks">Remarks</label>
+        <textarea id="approval_modal_remarks" name="remarks" rows="4" placeholder="Enter remarks" required></textarea>
+        <div class="approval-modal-actions">
+          <button type="button" class="table-action" data-close-approval-modal>Cancel</button>
+          <button type="submit" class="list-btn active" data-approval-modal-submit>Submit</button>
+        </div>
+      <% end %>
+    </dialog>
+  <% end %>
+</main>

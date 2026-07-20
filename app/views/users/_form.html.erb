@@ -1,0 +1,109 @@
+<% form_url = user.persisted? ? user_path(user) : users_path %>
+<% form_method = user.persisted? ? :patch : :post %>
+<% stakeholder_role_value = user.respond_to?(:stakeholder_role) ? user.stakeholder_role : nil %>
+
+<section class="module-card" data-user-role-form data-role-map="<%= json_escape(@role_management_mappings.to_json) %>" data-office-map="<%= json_escape((@office_category_mappings || []).to_json) %>" data-location-form data-location-map="<%= json_escape(@location_hierarchy_mappings.to_json) %>">
+  <%= form_with model: user, url: form_url, method: form_method, html: { class: "module-entry-form", multipart: true } do |f| %>
+    <div class="module-form-grid user-registration-grid">
+      <label>
+        <span>Stakeholder Category</span>
+        <%= f.select :stakeholder, options_for_select(@stakeholder_options, user.stakeholder), { include_blank: "Select Stakeholder Category" }, data: { role_stakeholder_select: true } %>
+      </label>
+      <label>
+        <span>Stakeholder Person Type</span>
+        <%= f.select :stakeholder_role, options_for_select(@stakeholder_role_options, stakeholder_role_value), { include_blank: "Select Stakeholder Person Type" }, data: { stakeholder_role_select: true, selected_value: stakeholder_role_value } %>
+      </label>
+      <label>
+        <span>Role</span>
+        <%= f.select :role, options_for_select(@role_options, user.role), { include_blank: "Select Role" }, data: { role_select: true, selected_value: user.role } %>
+      </label>
+
+      <% [
+        ["State", :state, @state_options],
+        ["District", :district, @district_options],
+        ["Block", :block, @block_options],
+        ["Gram Panchayat", :gram_panchayat, @gram_panchayat_options],
+        ["Village", :village, @village_options]
+      ].each do |label, field, options| %>
+        <label>
+          <span><%= label %></span>
+          <% if options.any? %>
+            <%= f.select field, options_for_select(options, user.public_send(field)), { include_blank: "Select #{label}" }, data: { location_level: field.to_s.dasherize } %>
+          <% else %>
+            <%= f.text_field field, placeholder: "Enter #{label}" %>
+          <% end %>
+        </label>
+      <% end %>
+
+      <label>
+        <span>Office Name</span>
+        <%= f.select :office_name, options_for_select(@office_name_options, user.office_name.presence || user.office), { include_blank: "Select Office Name" }, data: { office_name_select: true, selected_value: user.office_name.presence || user.office } %>
+      </label>
+      <label>
+        <span>Sub Office Name</span>
+        <% sub_office_value = user.respond_to?(:sub_office_name) ? user.sub_office_name : nil %>
+        <%= f.select :sub_office_name, options_for_select(@sub_office_name_options || [], sub_office_value.presence || user.office), { include_blank: "Select Sub Office Name" }, data: { sub_office_name_select: true, selected_value: sub_office_value.presence || user.office } %>
+      </label>
+
+      <label>
+        <span>Full Address</span>
+        <%= f.text_area :full_address, rows: 3, placeholder: "Enter Full Address" %>
+      </label>
+      <label>
+        <span>Pincode</span>
+        <%= f.text_field :pincode, placeholder: "Enter Pincode" %>
+      </label>
+      <label>
+        <span>First Name <em>*</em></span>
+        <%= f.text_field :first_name, required: true, placeholder: "Enter First Name" %>
+      </label>
+      <label>
+        <span>Last Name</span>
+        <%= f.text_field :last_name, placeholder: "Enter Last Name" %>
+      </label>
+      <label>
+        <span>Gender</span>
+        <%= f.select :gender, options_for_select(@gender_options, user.gender), { include_blank: "Select Gender" } %>
+      </label>
+      <label>
+        <span>Email</span>
+        <%= f.email_field :email, placeholder: "Enter Email" %>
+      </label>
+      <label>
+        <span>Password <em>*</em></span>
+        <div class="password-field">
+          <%= f.password_field :password, required: true, value: user.password, placeholder: "Enter Password", data: { password_toggle_input: true } %>
+          <button type="button" class="password-eye-btn" data-password-toggle aria-label="Show password" title="Show password">&#128065;</button>
+        </div>
+      </label>
+      <label>
+        <span>Confirmed Password <em>*</em></span>
+        <div class="password-field">
+          <input type="password" name="user[confirmed_password]" value="<%= user.password %>" required placeholder="Enter Confirmed Password" data-password-toggle-input>
+          <button type="button" class="password-eye-btn" data-password-toggle aria-label="Show password" title="Show password">&#128065;</button>
+        </div>
+      </label>
+      <label>
+        <span>User Name <em>*</em></span>
+        <%= f.text_field :user_name, required: true, placeholder: "Enter User Name", data: { capitalize_first: true } %>
+      </label>
+      <label>
+        <span>Mobile No</span>
+        <%= f.text_field :mobile_no, placeholder: "Enter Mobile No" %>
+      </label>
+      <label>
+        <span>User Type</span>
+        <%= f.select :user_type, options_for_select(@user_type_options, user.user_type), { include_blank: "Select User Type" } %>
+      </label>
+      <label>
+        <span>Status</span>
+        <%= f.select :status, options_for_select(@status_options, user.status.presence || "Active") %>
+      </label>
+    </div>
+
+    <div class="module-form-actions">
+      <%= link_to "Clear", new_user_path, class: "btn btn-secondary" %>
+      <%= f.submit user.persisted? ? "Update" : "Save", class: "btn btn-primary" %>
+    </div>
+  <% end %>
+</section>

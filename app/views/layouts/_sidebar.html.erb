@@ -1,0 +1,49 @@
+<aside class="app-sidebar" id="app-sidebar" data-mobile-sidebar>
+  <%= link_to root_path, class: "app-brand" do %>
+    <span class="brand-mark">
+      <%= image_tag app_logo_path, alt: app_display_name %>
+    </span>
+  <% end %>
+
+  <nav class="side-nav" aria-label="Primary">
+    <%= link_to dashboard_path, class: "side-link #{'active' if request.path == dashboard_path || request.path == root_path}" do %>
+      <span class="side-icon">▦</span>
+      Dashboard
+    <% end %>
+
+    <% sidebar_sections.each do |section| %>
+      <details class="side-module" <%= "open" if sidebar_section_active?(section) %>>
+        <summary>
+          <span class="side-icon"><%= section[:icon] %></span>
+          <span><%= section[:title] %></span>
+        </summary>
+
+        <div class="side-subnav">
+          <% section[:links].each do |link| %>
+            <%= link_to link.first, sidebar_link_path(link), class: "side-sub-link #{'active' if sidebar_link_active?(link)}" %>
+          <% end %>
+        </div>
+      </details>
+    <% end %>
+  </nav>
+
+  <div class="side-footer">
+    <% if current_app_user.present? %>
+      <div class="side-user">
+        <span class="side-user-avatar"><%= current_app_user["name"].presence&.first || current_app_user["username"].presence&.first || "U" %></span>
+        <span>
+          <strong><%= current_app_user["name"].presence || current_app_user["username"].presence || "User" %></strong>
+          <small><%= current_app_user["user_type"].presence || "User" %></small>
+        </span>
+      </div>
+      <% if (vrp_identity_url = current_vrp_identity_url).present? %>
+        <%= link_to vrp_identity_url, vrp_identity_url, class: "side-vrp-link", target: "_blank", rel: "noopener" %>
+      <% end %>
+    <% end %>
+
+    <%= link_to logout_path, class: "side-link logout-link", data: { turbo: false } do %>
+      <span class="side-icon">↪</span>
+      Sign Out
+    <% end %>
+  </div>
+</aside>

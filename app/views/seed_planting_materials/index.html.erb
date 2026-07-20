@@ -1,0 +1,86 @@
+<% content_for :title, "Seed & Planting Material" %>
+<% form_record = @seed_planting_material %>
+<% form_url = form_record.persisted? ? seed_planting_material_path(form_record) : seed_planting_materials_path %>
+<% form_method = form_record.persisted? ? :patch : :post %>
+
+<main class="vrp-list-page">
+  <section class="vrp-list-shell">
+    <div class="vrp-list-header">
+      <div>
+        <p class="vrp-eyebrow">Farmer Farm Information</p>
+        <h1>Seed & Planting Material</h1>
+      </div>
+    </div>
+
+    <div class="vrp-list-card">
+      <div class="list-controls">
+        <%= form_with url: import_seed_planting_materials_path, multipart: true, local: true, class: "list-search" do |form| %>
+          <span>▤</span>
+          <%= form.file_field :file, accept: ".xlsx,.csv", class: "form-control", required: true %>
+          <%= form.submit "Upload", class: "list-btn upload" %>
+        <% end %>
+        <div class="list-control-actions">
+          <%= link_to "Export Excel", export_seed_planting_materials_path, class: "list-btn export" %>
+        </div>
+      </div>
+    </div>
+
+    <section class="module-card">
+      <%= form_with model: form_record, url: form_url, method: form_method, local: true, html: { class: "module-entry-form" } do |f| %>
+        <div class="module-form-grid user-registration-grid">
+          <%= render "shared/farmer_farm_information_select", form: f, record: form_record %>
+          <label><span>S No.</span><%= f.text_field :serial_no, placeholder: "Enter S No." %></label>
+          <label><span>Name of the crop</span><%= f.text_field :crop_name, placeholder: "Enter Crop Name" %></label>
+          <label><span>Variety</span><%= f.text_field :variety, placeholder: "Enter Variety" %></label>
+          <label><span>Purchase date of seed</span><%= f.date_field :purchase_date %></label>
+          <label><span>Name of Supplier & Address</span><%= f.text_area :supplier_name_address, rows: 3, placeholder: "Enter Supplier & Address" %></label>
+          <label><span>Type of seed</span><%= f.text_field :seed_type, placeholder: "Organic / Untreated non-organic / Treated non-organic" %></label>
+          <label><span>Seed Treatment (give details)</span><%= f.text_area :seed_treatment_details, rows: 3, placeholder: "Enter Seed Treatment Details" %></label>
+          <label><span>Quantity of seed (Kg /Ha)</span><%= f.number_field :seed_quantity, step: "0.0001", min: 0, placeholder: "Enter Quantity" %></label>
+          <label><span>Status</span><%= f.select :status, options_for_select(["Active", "Inactive"], form_record.status.presence || "Active") %></label>
+        </div>
+
+        <div class="module-form-actions">
+          <%= link_to form_record.persisted? ? "Cancel Edit" : "Clear", seed_planting_materials_path, class: "btn btn-secondary" %>
+          <%= f.submit form_record.persisted? ? "Update" : "Save", class: "btn btn-primary" %>
+        </div>
+      <% end %>
+    </section>
+
+    <section class="module-card">
+      <div class="vrp-list-toolbar compact">
+        <button type="button" class="list-btn active" data-module-status-selected="Active">Active</button>
+        <button type="button" class="list-btn deactive" data-module-status-selected="Inactive">Deactive</button>
+        <button type="button" class="list-btn edit" data-module-edit-selected>Edit</button>
+        <button type="button" class="list-btn delete" data-module-delete-selected>Delete</button>
+      </div>
+      <div class="list-controls"><div class="list-search"><span>⌕</span><input type="search" placeholder="Search seed material" data-table-search="seed_planting_materials_list"></div></div>
+      <div class="table-shell">
+        <table class="module-table vrp-list-table" id="seed_planting_materials_list" data-paginated-table data-page-size="15">
+          <thead><tr><th><input type="checkbox" data-module-select-all></th><%= render "shared/farmer_farm_information_table_headers" %><th>S No.</th><th>Crop</th><th>Variety</th><th>Purchase Date</th><th>Supplier</th><th>Seed Type</th><th>Quantity</th><th>Status</th></tr></thead>
+          <tbody>
+            <% if @seed_planting_materials.any? %>
+              <% @seed_planting_materials.each do |record| %>
+                <tr>
+                  <td><input type="checkbox" value="<%= edit_seed_planting_material_path(record) %>" data-module-row-select></td>
+                  <%= render "shared/farmer_farm_information_table_cells", record: record %>
+                  <td><%= record.serial_no.presence || "-" %></td>
+                  <td><%= record.crop_name.presence || "-" %></td>
+                  <td><%= record.variety.presence || "-" %></td>
+                  <td><%= record.purchase_date&.strftime("%d-%m-%Y") || "-" %></td>
+                  <td><%= record.supplier_name_address.presence || "-" %></td>
+                  <td><%= record.seed_type.presence || "-" %></td>
+                  <td><%= record.seed_quantity.presence || "-" %></td>
+                  <td><span class="status-pill <%= record.status == "Inactive" ? "inactive" : "active" %>"><%= record.status.presence || "Active" %></span></td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr><td colspan="12">No seed planting material saved yet.</td></tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="seed_planting_materials_list"></div>
+    </section>
+  </section>
+</main>

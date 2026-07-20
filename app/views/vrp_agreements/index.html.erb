@@ -1,0 +1,57 @@
+<% content_for :title, "Accepted Agreement by Jeevika Jankar" %>
+
+<section class="module-page agreement-archive-page">
+  <div class="module-hero agreement-archive-toolbar">
+    <div>
+      <p class="vrp-eyebrow">Jeevika Jankar Registration</p>
+      <h1>Accepted Agreement by Jeevika Jankar</h1>
+      <p>Accepted and signed declarations are listed here. Open any row to view the signed page.</p>
+    </div>
+    <div class="dashboard-actions">
+      <%= link_to "Export Excel", export_vrp_agreements_path, class: "list-btn active" %>
+      <%= link_to "Back to Dashboard", dashboard_path, class: "list-btn" %>
+    </div>
+  </div>
+
+  <section class="module-card">
+    <div class="module-card-header">
+      <h2>Accepted Agreements</h2>
+      <span class="record-count"><%= @accepted_agreements.size %> records</span>
+    </div>
+
+    <div class="table-shell">
+      <table class="module-table compact-table agreement-archive-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Village</th>
+            <th>Mobile Number</th>
+            <th>Accepted At</th>
+            <th>Signature</th>
+            <th>View</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if @accepted_agreements.any? %>
+            <% @accepted_agreements.each do |agreement| %>
+              <tr>
+                <td><%= agreement[:name] %></td>
+                <td><%= agreement[:village] %></td>
+                <td><%= agreement[:mobile_no] %></td>
+                <td><%= agreement[:accepted_at].presence || "-" %></td>
+                <td><%= agreement[:signature_present] ? "Signed" : "Pending" %></td>
+                <td><%= link_to "Open", vrp_agreement_record_path(agreement[:id]), class: "table-action", target: "_blank", rel: "noopener" %></td>
+                <td><%= button_to "Delete", reset_vrp_agreement_path(agreement[:id]), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this agreement and require signature again?" } } %></td>
+              </tr>
+            <% end %>
+          <% else %>
+            <tr>
+              <td colspan="7">No signed agreements found yet.</td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

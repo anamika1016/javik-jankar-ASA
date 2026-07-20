@@ -1,0 +1,417 @@
+<% content_for :title, "Dashboard" %>
+
+<% if @vrp_dashboard %>
+  <% quantity = ->(value) { value.to_f == value.to_i ? value.to_i : format("%.2f", value.to_f) } %>
+  <section class="dashboard-page">
+    <div class="dashboard-topbar">
+      <div>
+        <p class="vrp-eyebrow">VRP Dashboard</p>
+        <h1><%= @vrp&.name.presence || current_app_user["name"].presence || "Dashboard" %></h1>
+        <p>Your mapped farmers, villages, assigned targets, and completed work summary.</p>
+      </div>
+
+      <div class="dashboard-actions">
+        <%= link_to "View Targets", target_mappings_path, class: "list-btn active" %>
+      </div>
+    </div>
+
+    <div class="dashboard-grid premium">
+      <% @dashboard_cards.each_with_index do |card, index| %>
+        <% title   = card.is_a?(Hash) ? card[:title]   : card[0] %>
+        <% value   = card.is_a?(Hash) ? card[:value]   : card[1] %>
+        <% caption = card.is_a?(Hash) ? card[:caption] : card[2] %>
+        <% path    = card.is_a?(Hash) && card[:path].present? ? card[:path] : target_mappings_path %>
+        <%= link_to path, class: "metric-card-link", data: { dashboard_card: true } do %>
+          <article class="metric-card <%= "featured" if index.zero? %>">
+            <div>
+              <span><%= title %></span>
+              <strong><%= value %></strong>
+              <small><%= caption %></small>
+            </div>
+            <b>↗</b>
+          </article>
+        <% end %>
+      <% end %>
+    </div>
+
+    <% participation = @training_participation || { totals: { green: 0, yellow: 0, red: 0, total: 0 }, ics_rows: [], village_rows: [] } %>
+    <% training_rows = @farmer_training_dashboard_rows || [] %>
+    <%= render "farmer_training_dashboard", training_rows: training_rows, participation: participation %>
+
+    <section class="module-card" id="vrp_target_progress">
+      <div class="module-card-header">
+        <h2>Assigned Target Progress</h2>
+        <button type="button" class="list-btn export" data-export-table="vrp_target_progress_table">Export</button>
+      </div>
+
+      <div class="table-shell">
+        <table class="module-table compact-table" id="vrp_target_progress_table" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th>Month</th>
+              <th>Completion Date</th>
+              <th>FCO</th>
+              <th>Village</th>
+              <th>Farmers</th>
+              <th>Main Activity</th>
+              <th>Sub Activity</th>
+              <th>Target</th>
+              <th>Completed</th>
+              <th>Pending</th>
+              <th>Progress</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if @vrp_target_rows.any? %>
+              <% @vrp_target_rows.each do |row| %>
+                <tr>
+                  <td><%= row[:month] %></td>
+                  <td><%= row[:completion_date].presence || "-" %></td>
+                  <td><%= row[:fco] %></td>
+                  <td><%= row[:village] %></td>
+                  <td><%= row[:farmers] %></td>
+                  <td><%= row[:main_activity] %></td>
+                  <td><%= row[:activity] %></td>
+                  <td><%= quantity.call(row[:target]) %></td>
+                  <td><%= quantity.call(row[:completed]) %></td>
+                  <td><%= quantity.call(row[:pending]) %></td>
+                  <td><span class="grid-status <%= row[:pending].to_f.zero? ? "approved" : "pending" %>"><%= row[:progress] %></span></td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="11">No target has been assigned to this VRP yet.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="vrp_target_progress_table"></div>
+    </section>
+
+    <section class="module-card" id="vrp_mapped_villages">
+      <div class="module-card-header">
+        <h2>Mapped Village Work Area</h2>
+      </div>
+
+      <div class="table-shell">
+        <table class="module-table compact-table">
+          <thead>
+            <tr>
+              <th>FCO</th>
+              <th>Gram Panchayat</th>
+              <th>Village</th>
+              <th>Mapped Farmers</th>
+              <th>Targets</th>
+              <th>Target Quantity</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if @vrp_village_rows.any? %>
+              <% @vrp_village_rows.each do |row| %>
+                <tr>
+                  <td><%= row[:fco] %></td>
+                  <td><%= row[:gram_panchayat].presence || "-" %></td>
+                  <td><%= row[:village] %></td>
+                  <td><%= row[:farmers] %></td>
+                  <td><%= row[:targets] %></td>
+                  <td><%= quantity.call(row[:target_quantity]) %></td>
+                  <td>
+                    <% if row[:mapping_id].present? %>
+                      <%= button_to "Delete", destroy_vrp_mapped_village_path(row[:mapping_id]), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this mapped village?" } } %>
+                    <% else %>
+                      -
+                    <% end %>
+                  </td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="7">No village or farmer mapping found for this VRP yet.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+<% else %>
+<%# =====================================================================
+    ADMIN / STAFF DASHBOARD
+    ===================================================================== %>
+<section class="dashboard-page">
+
+  <%# ── TOP BAR ─────────────────────────────────────────────────────── %>
+  <div class="dashboard-topbar">
+    <div>
+      <p class="vrp-eyebrow">Dashboard Module</p>
+      <h1><%= @dashboard_title.presence || "Dashboard" %></h1>
+      <p><%= @dashboard_caption.presence || "Live system summary." %></p>
+    </div>
+
+    <div class="dashboard-actions">
+      <div class="list-search">
+        <span>⌕</span>
+        <input type="search" placeholder="Search dashboard" data-dashboard-search>
+      </div>
+      <%= link_to "Export Excel",
+            dashboard_path(request.query_parameters.merge(format: :xlsx)),
+            class: "list-btn export",
+            title: "Current filters ke hisaab se dashboard data export" %>
+    </div>
+  </div>
+
+  <%# ── FILTER BAR ───────────────────────────────────────────────────── %>
+  <%= form_with url: dashboard_path, method: :get, local: true,
+        id: "dashboard-filter-form", class: "dashboard-filter-bar" do |f| %>
+    <% if params[:training_month].present? %>
+      <%= hidden_field_tag :training_month, params[:training_month] %>
+    <% end %>
+    <% if params[:training_sub_activity].present? %>
+      <%= hidden_field_tag :training_sub_activity, params[:training_sub_activity] %>
+    <% end %>
+    <div class="dashboard-filter-grid">
+
+
+      <%# Activity %>
+      <div class="dashboard-filter-field dashboard-filter-field--activity">
+        <label for="dash_activity">Activity</label>
+        <details class="dashboard-activity-picker" data-dashboard-activity-picker>
+          <summary class="dashboard-activity-picker-summary">
+            <span data-activity-label><%= params[:activity].presence || "All Activities" %></span>
+          </summary>
+          <div class="dashboard-activity-picker-menu" role="listbox">
+            <button type="button"
+                    class="dashboard-activity-option <%= "is-selected" if params[:activity].blank? %>"
+                    data-activity-value=""
+                    role="option">All Activities</button>
+            <% (@filter_activity_options || []).each do |activity_name| %>
+              <button type="button"
+                      class="dashboard-activity-option <%= "is-selected" if params[:activity].to_s == activity_name.to_s %>"
+                      data-activity-value="<%= activity_name %>"
+                      title="<%= activity_name %>"
+                      role="option"><%= activity_name %></button>
+            <% end %>
+          </div>
+        </details>
+        <input type="hidden" name="activity" id="dash_activity" value="<%= params[:activity] %>" data-activity-input>
+      </div>
+
+      <%# FCO %>
+      <div class="dashboard-filter-field">
+        <label for="dash_fcoc">FCO</label>
+        <%= f.select :fcoc,
+              options_for_select(
+                [["All FCO", ""]] + (@filter_fcoc_options || []).map { |v| [v, v] },
+                params[:fcoc]
+              ),
+              {},
+              id: "dash_fcoc", class: "form-select dashboard-filter-select",
+              data: { dashboard_filter_select: true } %>
+      </div>
+
+      <%# Cluster Incharge %>
+      <div class="dashboard-filter-field">
+        <label for="dash_ci">Cluster Incharge</label>
+        <%= f.select :cluster_incharge,
+              options_for_select(
+                [["All Incharge", ""]] + (@filter_cluster_incharge_options || []).map { |v| [v, v] },
+                params[:cluster_incharge]
+              ),
+              {},
+              id: "dash_ci", class: "form-select dashboard-filter-select",
+              data: { dashboard_filter_select: true } %>
+      </div>
+
+      <%# Month %>
+      <div class="dashboard-filter-field">
+        <label for="dash_month">Month</label>
+        <%= f.select :month,
+              options_for_select(
+                [["All Months", ""]] + (@filter_month_options || []).map { |v| [v, v] },
+                params[:month]
+              ),
+              {},
+              id: "dash_month", class: "form-select dashboard-filter-select",
+              data: { dashboard_filter_select: true } %>
+      </div>
+
+      <%# Post-wise Name (Role) %>
+      <div class="dashboard-filter-field">
+        <label for="dash_post">Post-wise Name</label>
+        <%= f.select :post,
+              options_for_select(
+                [["All Posts", ""]] + (@filter_post_options || []).map { |v| [v, v] },
+                params[:post]
+              ),
+              {},
+              id: "dash_post", class: "form-select dashboard-filter-select",
+              data: { dashboard_filter_select: true } %>
+      </div>
+
+      <%# VRP Name %>
+      <div class="dashboard-filter-field">
+        <label for="dash_vrp">VRP Name</label>
+        <%= f.select :vrp_id,
+              options_for_select(
+                [["All VRPs", ""]] + (@filter_vrp_options || []),
+                params[:vrp_id]
+              ),
+              {},
+              id: "dash_vrp", class: "form-select dashboard-filter-select",
+              data: { dashboard_filter_select: true } %>
+      </div>
+
+      <div class="dashboard-filter-actions">
+        <%= f.submit "Apply Filters", class: "list-btn active", id: "dash_apply_filters" %>
+        <%= link_to "Clear", dashboard_path, class: "table-action", id: "dash_clear_filters" %>
+      </div>
+    </div>
+  <% end %>
+
+  <%# Active filter chips (visible when any filter is set) %>
+  <% active_filters = [
+    params[:search].present?           ? "Search: #{params[:search]}"                 : nil,
+    params[:activity].present?         ? "Activity: #{params[:activity]}"             : nil,
+    params[:fcoc].present?             ? "FCO: #{params[:fcoc]}"                      : nil,
+    params[:cluster_incharge].present? ? "Cluster: #{params[:cluster_incharge]}"      : nil,
+    params[:month].present?            ? "Month: #{params[:month]}"                   : nil,
+    params[:post].present?             ? "Post: #{params[:post]}"                     : nil,
+    params[:vrp_id].present?           ? "VRP ##{params[:vrp_id]}"                   : nil
+  ].compact %>
+  <% if active_filters.any? %>
+    <div class="dashboard-filter-chips">
+      <span class="filter-chips-label">Active Filters:</span>
+      <% active_filters.each do |chip| %>
+        <span class="filter-chip"><%= chip %></span>
+      <% end %>
+      <%= link_to "✕ Clear All", dashboard_path, class: "filter-chip-clear" %>
+    </div>
+  <% end %>
+
+  <%# ── METRIC CARDS ─────────────────────────────────────────────────── %>
+  <div class="dashboard-grid premium">
+    <% @dashboard_cards.each_with_index do |card, index| %>
+      <% title   = card.is_a?(Hash) ? card[:title]   : card[0] %>
+      <% value   = card.is_a?(Hash) ? card[:value]   : card[1] %>
+      <% caption = card.is_a?(Hash) ? card[:caption] : card[2] %>
+      <% path    = card.is_a?(Hash) && card[:path].present? ? card[:path] : dashboard_path %>
+      <%= link_to path, class: "metric-card-link", data: { dashboard_card: true } do %>
+        <article class="metric-card <%= "featured" if index.zero? %>">
+          <div>
+            <span><%= title %></span>
+            <strong><%= value %></strong>
+            <small><%= caption %></small>
+          </div>
+          <b>↗</b>
+        </article>
+      <% end %>
+    <% end %>
+  </div>
+
+
+  <%# ── TRAINING DASHBOARD ───────────────────────────────────────────── %>
+  <% participation = @training_participation || { totals: { green: 0, yellow: 0, red: 0, total: 0 }, ics_rows: [], village_rows: [] } %>
+  <% training_rows = @farmer_training_dashboard_rows || [] %>
+  <%= render "farmer_training_dashboard", training_rows: training_rows, participation: participation %>
+
+  <%# ── WEEKLY TARGET STATUS BOXES ONLY (full data on report page) ── %>
+  <% weekly_cards = @dashboard_weekly_target_cards || [] %>
+  <section class="module-card training-participation-status-card" id="dashboard_weekly_target_boxes">
+    <div class="module-card-header training-participation-status-header">
+      <div>
+        <h2>Weekly Activity Target Status</h2>
+        <p>Dashboard pe sirf colour boxes. Full Activity / Sub Activity weekly report alag page pe dekho aur export karo.</p>
+      </div>
+      <div class="dashboard-actions">
+        <%= link_to "Open Weekly Report", weekly_activity_target_report_path(dashboard_weekly_report_filter_params), class: "list-btn active" %>
+      </div>
+    </div>
+
+    <div class="training-participation-boxes">
+      <% if weekly_cards.any? %>
+        <% weekly_cards.each do |card| %>
+          <%= link_to card[:path], class: "training-participation-box #{card[:status]}", data: { dashboard_card: true } do %>
+            <span><%= card[:title] %></span>
+            <strong><%= card[:value].to_i %></strong>
+            <small><%= card[:caption] %></small>
+            <b>View Report</b>
+          <% end %>
+        <% end %>
+      <% else %>
+        <div class="training-empty-state">No target data found for selected filters.</div>
+      <% end %>
+    </div>
+  </section>
+
+  <%# ── DASHBOARD REPORTS ────────────────────────────────────────────── %>
+  <section class="module-card">
+    <div class="module-card-header">
+      <h2>Dashboard Reports</h2>
+      <button type="button" class="list-btn export" data-export-table="dashboard_reports">Export</button>
+    </div>
+
+    <div class="dashboard-report-grid" id="dashboard_reports">
+      <% @dashboard_reports.each do |report| %>
+        <article class="report-card <%= "clock-report-card" if report[:clock] %>"
+                 <%= "id=\"#{report[:dom_id]}\"".html_safe if report[:dom_id].present? %>
+                 data-dashboard-card>
+
+          <% if report[:clock] %>
+            <h3><%= report[:title] %></h3>
+            <div class="dashboard-clock-face">
+              <div class="clock-content">
+                <div class="clock-info">
+                  <span class="clock-hud-label">Live</span>
+                  <strong data-dashboard-clock-time><%= @dashboard_generated_at.strftime("%I:%M:%S %p") %></strong>
+                  <small data-dashboard-clock-date><%= @dashboard_generated_at.strftime("%A, %d %B %Y") %></small>
+                </div>
+                <div class="clock-hud-panel">
+                  <div class="clock-dial"><i></i><span></span></div>
+                </div>
+              </div>
+              <div class="clock-card-footer">
+                <small>Refresh: <%= @dashboard_generated_at.strftime("%d-%m-%Y %I:%M %p") %></small>
+              </div>
+            </div>
+
+          <% elsif report[:collapsible] %>
+            <details class="dashboard-report-details" <%= "open" if report[:expanded] %>>
+              <summary class="dashboard-report-summary">
+                <h3><%= report[:title] %></h3>
+                <span>▾</span>
+              </summary>
+              <div class="dashboard-report-body">
+                <div class="table-shell compact-scroll">
+                  <table class="module-table compact-table">
+                    <thead><tr><% report[:headers].each do |h| %><th><%= h %></th><% end %></tr></thead>
+                    <tbody>
+                      <% report[:rows].each do |row| %>
+                        <tr><% row.each do |v| %><td><%= v %></td><% end %></tr>
+                      <% end %>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+
+          <% else %>
+            <h3><%= report[:title] %></h3>
+            <div class="table-shell compact-scroll">
+              <table class="module-table compact-table">
+                <thead><tr><% report[:headers].each do |h| %><th><%= h %></th><% end %></tr></thead>
+                <tbody>
+                  <% report[:rows].each do |row| %>
+                    <tr><% row.each do |v| %><td><%= v %></td><% end %></tr>
+                  <% end %>
+                </tbody>
+              </table>
+            </div>
+          <% end %>
+        </article>
+      <% end %>
+    </div>
+  </section>
+</section>
+<% end %>

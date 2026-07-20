@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title><%= content_for(:title) || "Bill" %></title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+    <%= stylesheet_link_tag :application, "data-turbo-track": "reload" %>
+  </head>
+  <body class="bill-print-body">
+    <div class="bill-print-toolbar no-print">
+      <strong>Bill Preview</strong>
+      <button type="button" onclick="window.print()">Print / Save PDF</button>
+    </div>
+    <main class="bill-print-page">
+      <%= yield %>
+    </main>
+  </body>
+</html>

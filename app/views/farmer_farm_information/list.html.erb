@@ -1,0 +1,91 @@
+<% content_for :title, "All Basic Detail List" %>
+
+<main class="vrp-list-page">
+  <section class="vrp-list-shell">
+    <div class="vrp-list-header">
+      <div>
+        <p class="vrp-eyebrow">Farmer Farm Information</p>
+        <h1>All Basic Detail List</h1>
+      </div>
+    </div>
+
+    <section class="module-card">
+      <div class="vrp-list-toolbar compact">
+        <button type="button" class="list-btn active" data-module-status-selected="Active">Active</button>
+        <button type="button" class="list-btn deactive" data-module-status-selected="Inactive">Deactive</button>
+        <button type="button" class="list-btn edit" data-module-edit-selected>Edit</button>
+        <%= link_to "Export Excel", export_farmer_farm_information_path(q: @query.presence), class: "list-btn export" %>
+        <button type="button" class="list-btn delete" data-module-delete-selected>Delete</button>
+      </div>
+
+      <div class="list-controls">
+        <%= form_with url: import_farmer_farm_information_path, multipart: true, local: true, class: "list-search" do |form| %>
+          <span>▤</span>
+          <%= form.file_field :file, accept: ".xlsx,.csv", class: "form-control", required: true %>
+          <%= form.submit "Upload", class: "list-btn upload" %>
+        <% end %>
+
+        <div class="list-search">
+          <span>⌕</span>
+          <input type="search" placeholder="Search land list" data-table-search="farmer_farm_information_list">
+        </div>
+      </div>
+
+      <div class="table-shell">
+        <table class="module-table vrp-list-table" id="farmer_farm_information_list" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th><input type="checkbox" data-module-select-all></th>
+              <th>Farm ID</th>
+              <th>ICS Name</th>
+              <th>Crop Year</th>
+              <th>Season</th>
+              <th>Farmer Name</th>
+              <th>Tracenet No</th>
+              <th>Contact No</th>
+              <th>Farmer Village</th>
+              <th>Farm Village</th>
+              <th>Total Land</th>
+              <th>No. of Farms/Plots</th>
+              <th>Organic Offered Land</th>
+              <th>Technique</th>
+              <th>Certification Status</th>
+              <th>Certification Body</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if @farmer_farm_information_records.any? %>
+              <% @farmer_farm_information_records.each do |record| %>
+                <tr>
+                  <td><input type="checkbox" value="<%= edit_farmer_farm_information_record_path(record) %>" data-module-row-select></td>
+                  <td><%= record.farm_id.presence || "-" %></td>
+                  <td><%= record.ics_name.presence || "-" %></td>
+                  <td><%= record.current_crop_year.presence || "-" %></td>
+                  <td><%= record.season.presence || "-" %></td>
+                  <td><%= record.farmer_name.presence || "-" %></td>
+                  <td><%= record.tracenet_no.presence || "-" %></td>
+                  <td><%= record.farmer_contact_no.presence || "-" %></td>
+                  <td><%= record.farmer_village.presence || "-" %></td>
+                  <td><%= record.farm_village.presence || "-" %></td>
+                  <td><%= record.total_land.presence || "-" %></td>
+                  <td><%= record.no_of_farms_plots.presence || "-" %></td>
+                  <td><%= record.total_land_offered_for_organic_certification.presence || "-" %></td>
+                  <td><%= record.present_production_technique.presence || "-" %></td>
+                  <td><%= record.certification_status.presence || "-" %></td>
+                  <td><%= record.name_of_accredited_certification_body.presence || "-" %></td>
+                  <td><span class="status-pill <%= record.status == "Inactive" ? "inactive" : "active" %>"><%= record.status.presence || "Active" %></span></td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="17">No farmer farm information saved yet.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="farmer_farm_information_list"></div>
+    </section>
+  </section>
+</main>

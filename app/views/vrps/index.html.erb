@@ -1,0 +1,105 @@
+<% content_for :title, "Jeevika Jankar List" %>
+
+<main class="vrp-list-page">
+  <section class="vrp-list-shell">
+    <div class="vrp-list-header">
+      <div>
+        <p class="vrp-eyebrow">Jeevika Jankar Registration</p>
+        <h1>Jeevika Jankar List</h1>
+      </div>
+    </div>
+
+    <div class="vrp-list-toolbar">
+      <button type="button" class="list-btn send" data-vrp-send-selected>Send for Approval</button>
+      <button type="button" class="list-btn active" data-vrp-active-selected="true">Active</button>
+      <button type="button" class="list-btn deactive" data-vrp-active-selected="false">Deactive</button>
+      <button type="button" class="list-btn edit" data-vrp-edit-selected>Edit</button>
+      <button type="button" class="list-btn delete" data-vrp-delete-selected>Delete</button>
+    </div>
+
+    <div class="vrp-list-card">
+      <div class="list-controls">
+        <div class="list-search">
+          <span>⌕</span>
+          <input type="search" placeholder="Search Jeevika Jankar" data-table-search="vrp_list">
+        </div>
+        <div class="list-control-actions">
+          <label class="import-btn">
+            Choose Excel
+            <input type="file" accept=".csv,.xlsx,.xls" data-import-file hidden>
+          </label>
+          <button type="button" class="list-btn upload" data-upload-selected>Upload</button>
+          <button type="button" class="list-btn export" data-export-table="vrp_list">Export</button>
+        </div>
+      </div>
+      <div class="table-shell">
+        <table class="module-table vrp-list-table" id="vrp_list" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th><input type="checkbox" data-vrp-select-all></th>
+              <th>Actions</th>
+              <th>Status</th>
+              <th>ID</th>
+              <th>User Name</th>
+              <th>Name</th>
+              <th>Father Husband Name</th>
+              <th>Gender</th>
+              <th>Date of Birth</th>
+              <th>Date of Joining</th>
+              <th>Aadhar No</th>
+              <th>Account No</th>
+              <th>IFSC Code</th>
+              <th>Bank Name</th>
+              <th>Address</th>
+              <th>Mobile No</th>
+              <th>Email</th>
+              <th>FCO Name</th>
+              <th>TO Name</th>
+              <th>Registered By</th>
+              <th>Mapped Cluster Name</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if @data.any? %>
+              <% @data.each do |vrp| %>
+                <tr>
+                  <td><input type="checkbox" value="<%= vrp[:id] %>" data-vrp-row-select></td>
+                  <td>
+                    <a href="<%= vrp_path(vrp[:id]) %>" class="grid-view-link eye-link" title="View Details" aria-label="View Details">
+                      <span aria-hidden="true">◉</span>
+                    </a>
+                  </td>
+                  <% status_class = vrp[:status_label].to_s.include?("Rejected") ? "rejected" : (vrp[:status_label].to_s.include?("Approved") ? "approved" : (vrp[:status_label].to_s.include?("Pending") ? "pending" : "submitted")) %>
+                  <td><span class="grid-status <%= status_class %>"><%= vrp[:status_label] %></span></td>
+                  <td><%= vrp[:id] %></td>
+                  <td><%= vrp[:user_name] %></td>
+                  <td><%= vrp[:name] %></td>
+                  <td><%= vrp[:father_husband_name] %></td>
+                  <td><%= vrp[:gender] %></td>
+                  <td><%= vrp[:date_of_birth] %></td>
+                  <td><%= vrp[:date_of_joining] %></td>
+                  <td><%= vrp[:aadhar_no] %></td>
+                  <td><%= vrp[:account_no] %></td>
+                  <td><%= vrp[:ifsc_code] %></td>
+                  <td><%= vrp[:bank_name] %></td>
+                  <td><%= vrp[:address] %></td>
+                  <td><%= vrp[:mobile_no] %></td>
+                  <td><%= vrp[:email] %></td>
+                  <td><%= vrp[:fcoc].presence || "-" %></td>
+                  <td><%= vrp[:to_name].presence || "-" %></td>
+                  <td><%= vrp[:registered_by] %></td>
+                  <td><%= vrp[:mapped_cluster_name] %></td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="21">No Jeevika Jankar records saved yet.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="vrp_list"></div>
+    </div>
+  </section>
+</main>

@@ -1,0 +1,81 @@
+<main class="login-page agreement-login-page">
+  <section class="agreement-panel" aria-label="Jeevika Jankar Declaration and Acceptance">
+    <div class="agreement-surface">
+      <% if alert.present? %>
+        <div class="login-notice alert"><%= alert %></div>
+      <% end %>
+
+      <div class="app-language-bar agreement-language-bar">
+        <div class="language-switcher" data-language-switcher>
+          <span>Language</span>
+          <button type="button" data-language-option="en">English</button>
+          <button type="button" data-language-option="hi">हिन्दी</button>
+          <button type="button" data-language-option="mr">मराठी</button>
+          <button type="button" data-language-option="gu">ગુજરાતી</button>
+        </div>
+      </div>
+
+      <div class="agreement-header">
+        <p class="vrp-eyebrow">Jeevika Jankar First Login</p>
+        <h1>कृषि जानकार (VRP) के रूप में संलग्नता हेतु घोषणा एवं स्वीकृति पत्र</h1>
+      </div>
+
+      <div id="google_translate_element" class="google-translate-holder" aria-hidden="true"></div>
+
+      <% agreement_details = @agreement_details || {} %>
+      <div class="agreement-document" tabindex="0" aria-label="Declaration document">
+        <p class="agreement-intro">I hereby confirm that I am voluntarily associated with Ploughman Agro Pvt. Ltd./ Ploughman Greensutra Pvt. Ltd. as a “Jeevika Jankar” for supporting farmer outreach and programme implementation activities in my village/ area. I understand and acknowledge that:</p>
+
+        <ul class="agreement-bullets">
+          <li>My engagement is project-based and activity-based.</li>
+          <li>I am not an employee, worker, or staff member of PAPL/PGPL.</li>
+          <li>No employer-employee relationship is created through this engagement.</li>
+          <li>I shall receive a facilitation fee/ honorarium based on approved activities carried out by me.</li>
+          <li>I shall not be entitled to salary, leave, PF, ESI, gratuity, bonus, or any other employee benefits.</li>
+          <li>PAPL/PGPL may discontinue my engagement at any time based on programme requirements or performance considerations.</li>
+          <li>I am free to pursue my own occupation, farming, business, or other activities.</li>
+        </ul>
+
+        <p>I have read and understood the above conditions and agree to participate as a Jeevika Jankar.</p>
+
+        <div class="agreement-signature-layout">
+          <div class="agreement-identity-stack" aria-label="Auto-filled declaration details">
+            <div>
+              <span>Name</span>
+              <strong><%= agreement_details[:name].presence || "-" %></strong>
+            </div>
+            <div>
+              <span>Village</span>
+              <strong><%= agreement_details[:village].presence || "-" %></strong>
+            </div>
+            <div>
+              <span>Mobile Number</span>
+              <strong><%= agreement_details[:mobile_no].presence || "-" %></strong>
+            </div>
+            <div>
+              <span>Date</span>
+              <strong><%= agreement_details[:date].presence || "-" %></strong>
+            </div>
+          </div>
+
+          <div class="agreement-signature-shell" data-agreement-signature-shell>
+            <div class="agreement-signature-header">
+              <strong>Digital Signature</strong>
+              <small>Draw your signature before accepting.</small>
+            </div>
+            <canvas class="agreement-signature-pad" data-agreement-signature-pad aria-label="Signature pad"></canvas>
+            <div class="agreement-signature-actions">
+              <button type="button" class="btn btn-secondary agreement-clear-signature" data-agreement-signature-clear>Clear Signature</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <%= form_with url: vrp_agreement_path, method: :post, local: true, html: { class: "agreement-actions", data: { agreement_form: true }, id: "agreement_form" } do %>
+        <input type="hidden" name="signature_data" data-agreement-signature-input>
+        <%= button_tag "Decline", type: "submit", name: "decision", value: "decline", class: "btn btn-secondary agreement-decline" %>
+        <%= button_tag "Agree", type: "submit", name: "decision", value: "agree", class: "btn btn-primary agreement-accept", disabled: true, data: { agreement_accept: true } %>
+      <% end %>
+    </div>
+  </section>
+</main>

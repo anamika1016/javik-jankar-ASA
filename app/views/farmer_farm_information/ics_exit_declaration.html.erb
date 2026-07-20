@@ -1,0 +1,219 @@
+<% content_for :title, "Application Format for Exit of Farmer from ICS" %>
+<% form_record = @ics_exit_declaration %>
+<% form_url = form_record.persisted? ? ics_exit_declaration_record_path(form_record) : ics_exit_declaration_farmer_farm_information_path %>
+<% form_method = form_record.persisted? ? :patch : :post %>
+
+<main class="vrp-list-page">
+  <section class="vrp-list-shell">
+    <div class="vrp-list-header">
+      <div>
+        <p class="vrp-eyebrow">Farmer Farm Information</p>
+        <h1>Application Format for Exit of Farmer from ICS</h1>
+      </div>
+    </div>
+
+    <section class="ics-exit-workspace">
+      <div class="module-card ics-exit-form-card">
+        <div class="module-card-header">
+          <div>
+            <h2><%= form_record.persisted? ? "Edit Declaration" : "Create Declaration" %></h2>
+            <p class="module-subtitle">Select Farmer ID to auto-fill saved farmer details. Every field remains editable.</p>
+          </div>
+        </div>
+
+        <%= form_with model: form_record, url: form_url, method: form_method, local: true, html: { class: "module-entry-form", data: { ics_exit_form: true, farmer_details: @farmer_detail_map.to_json } } do |f| %>
+          <div class="ics-exit-form-grid">
+            <label class="full-span">
+              <span>Farmer ID <em>*</em></span>
+              <%= f.select :farmer_farm_information_id,
+                options_for_select(@farmer_options.map { |farmer| ["#{farmer.farm_id} - #{farmer.farmer_name}", farmer.id] }, form_record.farmer_farm_information_id),
+                { include_blank: "Select Farmer ID" },
+                data: { ics_exit_farmer_select: true } %>
+            </label>
+
+            <label>
+              <span>Farm ID <em>*</em></span>
+              <%= f.text_field :farm_id, required: true, placeholder: "Farm ID", data: { ics_exit_field: "farm_id" } %>
+            </label>
+            <label>
+              <span>Farmer Name <em>*</em></span>
+              <%= f.text_field :farmer_name, required: true, placeholder: "Farmer Name", data: { ics_exit_field: "farmer_name" } %>
+            </label>
+            <label>
+              <span>ID Number</span>
+              <%= f.text_field :id_number, placeholder: "ID Number", data: { ics_exit_field: "id_number" } %>
+            </label>
+            <label>
+              <span>Declaration Date <em>*</em></span>
+              <%= f.date_field :declaration_date, required: true, data: { ics_exit_field: "declaration_date" } %>
+            </label>
+            <label>
+              <span>Mobile Number</span>
+              <%= f.text_field :farmer_contact_no, placeholder: "Mobile Number", data: { ics_exit_field: "farmer_contact_no" } %>
+            </label>
+            <label>
+              <span>Village</span>
+              <%= f.text_field :farmer_village, placeholder: "Village", data: { ics_exit_field: "farmer_village" } %>
+            </label>
+            <label>
+              <span>Tracenet No</span>
+              <%= f.text_field :tracenet_no, placeholder: "Tracenet No", data: { ics_exit_field: "tracenet_no" } %>
+            </label>
+            <label>
+              <span>ICS Name</span>
+              <%= f.text_field :ics_name, placeholder: "ICS Name", data: { ics_exit_field: "ics_name" } %>
+            </label>
+            <label class="full-span">
+              <span>Address</span>
+              <%= f.text_area :farmer_address, rows: 3, placeholder: "Farmer Address", data: { ics_exit_field: "farmer_address" } %>
+            </label>
+            <label class="full-span">
+              <span>Name of the Grower Group</span>
+              <%= f.text_field :grower_group_name, placeholder: "Name of the Grower Group", data: { ics_exit_field: "grower_group_name" } %>
+            </label>
+            <label class="full-span">
+              <span>Reason for Exit</span>
+              <%= f.text_area :exit_reason, rows: 4, placeholder: "Enter reason for exit", data: { ics_exit_field: "exit_reason" } %>
+            </label>
+            <label>
+              <span>Certification Status</span>
+              <%= f.text_field :certification_status, placeholder: "Certification Status", data: { ics_exit_field: "certification_status" } %>
+            </label>
+            <label>
+              <span>New Certification Body</span>
+              <%= f.text_field :new_certification_body, placeholder: "New Certification Body", data: { ics_exit_field: "new_certification_body" } %>
+            </label>
+            <label>
+              <span>Signature of the Farmer</span>
+              <%= f.text_field :signature_of_farmer, placeholder: "Signature / Farmer Name", data: { ics_exit_field: "signature_of_farmer" } %>
+            </label>
+            <label>
+              <span>Status</span>
+              <%= f.select :status, options_for_select(["Active", "Inactive"], form_record.status.presence || "Active") %>
+            </label>
+          </div>
+
+          <div class="module-form-actions">
+            <% if form_record.persisted? %>
+              <%= link_to "Cancel Edit", ics_exit_declaration_farmer_farm_information_path, class: "btn btn-secondary" %>
+            <% else %>
+              <%= link_to "Clear", ics_exit_declaration_farmer_farm_information_path, class: "btn btn-secondary" %>
+            <% end %>
+            <%= f.submit form_record.persisted? ? "Update Declaration" : "Save Declaration", class: "btn btn-primary" %>
+          </div>
+        <% end %>
+      </div>
+
+      <div class="module-card ics-exit-preview-card">
+        <div class="module-card-header">
+          <div>
+            <h2>Live Preview</h2>
+            <p class="module-subtitle">Save ke baad list se final view/print open hoga.</p>
+          </div>
+        </div>
+
+        <article class="ics-exit-declaration-sheet compact">
+          <h2>APPLICATION FORMAT FOR EXIT OF FARMER FROM ICS</h2>
+
+          <div class="declaration-block">
+            <p><strong>From</strong> (Member of Farmer Group under Certification)</p>
+            <p>Name: <span class="declaration-line" data-ics-exit-preview="farmer_name"><%= form_record.farmer_name %></span></p>
+            <p>ID Number: <span class="declaration-line" data-ics-exit-preview="id_number"><%= form_record.id_number %></span></p>
+            <p>Address: <span class="declaration-line" data-ics-exit-preview="farmer_address"><%= form_record.farmer_address %></span></p>
+          </div>
+
+          <div class="declaration-block">
+            <p><strong>To</strong></p>
+            <p>(The ICS In-charge)</p>
+          </div>
+
+          <p><strong>Subject:</strong> Request Letter for Exit from ICS</p>
+          <p>Dear Sir,</p>
+          <p>
+            I am not interested to continue with the
+            <span class="declaration-line grower-group-line" data-ics-exit-preview="grower_group_name"><%= form_record.grower_group_name %></span>
+            (Name of the Grower Group) under organic certification for the following reasons:
+          </p>
+          <div class="declaration-preview-reason" data-ics-exit-preview="exit_reason"><%= form_record.exit_reason %></div>
+          <p>Hence kindly allow me to exit from the grower group during the renewal of certification of this group.</p>
+          <p><strong>(Strike out the below paragraph if not applicable)</strong></p>
+          <p>
+            Also kindly forward the details of my certification status as on the date of my exit, to
+            <span class="declaration-line certification-body-line" data-ics-exit-preview="new_certification_body"><%= form_record.new_certification_body %></span>
+            who are the new certification body under which I intended to be certified.
+          </p>
+
+          <div class="declaration-signature-grid">
+            <p>Date: <span class="declaration-line short-line" data-ics-exit-preview="declaration_date"><%= form_record.declaration_date %></span></p>
+            <div>
+              <p>Yours Faithfully</p>
+              <p>Signature of the Farmer: <span class="declaration-line signature-line" data-ics-exit-preview="signature_of_farmer"><%= form_record.signature_of_farmer %></span></p>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="module-card">
+      <div class="module-card-header">
+        <div>
+          <h2>Saved ICS Exit Declaration List</h2>
+          <p class="module-subtitle">Saved records yahin dikhenge. View se final format open hoga.</p>
+        </div>
+      </div>
+
+      <div class="vrp-list-toolbar compact">
+        <button type="button" class="list-btn edit" data-module-edit-selected>Edit</button>
+        <button type="button" class="list-btn delete" data-module-delete-selected>Delete</button>
+      </div>
+
+      <div class="list-controls">
+        <%= form_with url: ics_exit_declaration_farmer_farm_information_path, method: :get, local: true, class: "list-search" do |form| %>
+          <span>⌕</span>
+          <%= form.search_field :q, value: @query, placeholder: "Search declaration list" %>
+          <%= form.submit "Search", class: "list-btn active" %>
+        <% end %>
+      </div>
+
+      <div class="table-shell">
+        <table class="module-table vrp-list-table" id="ics_exit_declaration_list" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th><input type="checkbox" data-module-select-all></th>
+              <th>Date</th>
+              <th>Farm ID</th>
+              <th>Farmer Name</th>
+              <th>ICS Name</th>
+              <th>Grower Group</th>
+              <th>Certification Body</th>
+              <th>Status</th>
+              <th>View</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if @ics_exit_declarations.any? %>
+              <% @ics_exit_declarations.each do |declaration| %>
+                <tr>
+                  <td><input type="checkbox" value="<%= edit_ics_exit_declaration_record_path(declaration) %>" data-module-row-select></td>
+                  <td><%= declaration.declaration_date&.strftime("%d-%m-%Y") || "-" %></td>
+                  <td><%= declaration.farm_id.presence || "-" %></td>
+                  <td><%= declaration.farmer_name.presence || "-" %></td>
+                  <td><%= declaration.ics_name.presence || "-" %></td>
+                  <td><%= declaration.grower_group_name.presence || "-" %></td>
+                  <td><%= declaration.new_certification_body.presence || "-" %></td>
+                  <td><span class="status-pill <%= declaration.status == "Inactive" ? "inactive" : "active" %>"><%= declaration.status.presence || "Active" %></span></td>
+                  <td><%= link_to "View", ics_exit_declaration_record_path(declaration), class: "table-action" %></td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="9">No ICS exit declaration saved yet.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="ics_exit_declaration_list"></div>
+    </section>
+  </section>
+</main>

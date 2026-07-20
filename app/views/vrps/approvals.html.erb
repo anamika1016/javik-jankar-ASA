@@ -1,0 +1,72 @@
+<% content_for :title, "Jeevika Jankar Approval Queue" %>
+
+<main class="vrp-list-page">
+  <section class="vrp-list-shell">
+    <div class="vrp-list-header">
+      <div>
+        <p class="vrp-eyebrow">Jeevika Jankar Registration</p>
+        <h1>Jeevika Jankar Approval Queue</h1>
+      </div>
+    </div>
+
+    <div class="vrp-list-card">
+      <div class="list-controls">
+        <div class="list-search">
+          <span>⌕</span>
+          <input type="search" placeholder="Search approvals" data-table-search="vrp_approval_list">
+        </div>
+        <div class="list-control-actions">
+          <button type="button" class="list-btn export" data-export-table="vrp_approval_list">Export</button>
+        </div>
+      </div>
+
+      <div class="table-shell">
+        <table class="module-table vrp-list-table" id="vrp_approval_list" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Mobile No</th>
+              <th>Email</th>
+              <th>Level</th>
+              <th>Approver</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if @approval_rows.any? %>
+              <% @approval_rows.each do |row| %>
+                <% vrp = row[:vrp] %>
+                <% status_class = row[:status_label].to_s.include?("Rejected") ? "rejected" : (row[:status_label].to_s.include?("Approved") ? "approved" : "pending") %>
+                <tr>
+                  <td><%= vrp.id %></td>
+                  <td><%= vrp.name %></td>
+                  <td><%= vrp.mobile_no %></td>
+                  <td><%= vrp.email %></td>
+                  <td><%= row[:approval_level] %></td>
+                  <td><%= row[:approver] %></td>
+                  <td><span class="grid-status <%= status_class %>"><%= row[:status_label] %></span></td>
+                  <td>
+                    <div class="table-actions">
+                      <%= link_to "View", vrp_path(vrp), class: "table-action" %>
+                      <% if row[:can_act] %>
+                        <%= button_to "Approve", approve_vrp_path(vrp), method: :patch, class: "table-action" %>
+                        <%= button_to "Reject", reject_vrp_path(vrp), method: :patch, class: "table-action danger", form: { data: { turbo_confirm: "Reject this Jeevika Jankar?" } } %>
+                      <% end %>
+                    </div>
+                  </td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="8">No Jeevika Jankar approval records found.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="vrp_approval_list"></div>
+    </div>
+  </section>
+</main>

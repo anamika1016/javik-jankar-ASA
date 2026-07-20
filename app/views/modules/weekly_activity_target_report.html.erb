@@ -1,0 +1,163 @@
+<% content_for :title, "Weekly Activity Target Report" %>
+<% quantity = ->(value) { value.to_f == value.to_i ? value.to_i : format("%.2f", value.to_f) } %>
+<% filter_params = {
+  training_month: @weekly_selected_month.presence,
+  activity: @weekly_selected_activity.presence,
+  training_sub_activity: @weekly_selected_sub_activity.presence,
+  status: @weekly_report_status.presence
+}.compact_blank %>
+<% status_counts = @weekly_report_totals || { green: 0, yellow: 0, red: 0, total: 0 } %>
+
+<section class="dashboard-page">
+  <div class="dashboard-topbar">
+    <div>
+      <p class="vrp-eyebrow">Weekly Target</p>
+      <h1>Weekly Activity Progress Report</h1>
+      <p>Activity / Sub Activity wise weekly target report with Completion Date. Export ya full list yahi se check karo.</p>
+    </div>
+
+    <div class="dashboard-actions">
+      <%= link_to "Back to Dashboard", dashboard_path, class: "list-btn active" %>
+      <%= link_to "Export CSV", weekly_activity_target_report_path(filter_params.merge(format: :csv)), class: "list-btn export" %>
+      <%= link_to "Export Excel", weekly_activity_target_report_path(filter_params.merge(format: :xlsx)), class: "list-btn export" %>
+    </div>
+  </div>
+
+  <section class="module-card">
+    <div class="module-card-header">
+      <div>
+        <h2>Report Filters</h2>
+        <p>Month, Activity aur Sub Activity select karke weekly data fetch karo.</p>
+      </div>
+    </div>
+
+    <%= form_with url: weekly_activity_target_report_path, method: :get, local: true, html: { class: "dashboard-filter-bar" } do %>
+      <div class="dashboard-filter-grid">
+        <div class="dashboard-filter-field">
+          <label for="weekly_month">Month</label>
+          <select name="training_month" id="weekly_month" class="form-select dashboard-filter-select">
+            <option value="">All Months</option>
+            <% Array(@weekly_month_options).each do |month| %>
+              <option value="<%= month %>" <%= "selected" if @weekly_selected_month.to_s == month.to_s %>><%= month %></option>
+            <% end %>
+          </select>
+        </div>
+
+        <div class="dashboard-filter-field dashboard-filter-field--activity">
+          <label for="weekly_activity">Activity</label>
+          <select name="activity" id="weekly_activity" class="form-select dashboard-filter-select">
+            <option value="">All Activities</option>
+            <% Array(@weekly_activity_options).each do |activity| %>
+              <option value="<%= activity %>" <%= "selected" if @weekly_selected_activity.to_s == activity.to_s %>><%= activity %></option>
+            <% end %>
+          </select>
+        </div>
+
+        <div class="dashboard-filter-field dashboard-filter-field--activity">
+          <label for="weekly_sub_activity">Sub Activity</label>
+          <select name="training_sub_activity" id="weekly_sub_activity" class="form-select dashboard-filter-select">
+            <option value="">All Sub Activities</option>
+            <% Array(@weekly_sub_activity_options).each do |activity| %>
+              <option value="<%= activity %>" <%= "selected" if @weekly_selected_sub_activity.to_s == activity.to_s %>><%= activity %></option>
+            <% end %>
+          </select>
+        </div>
+
+        <div class="dashboard-filter-field">
+          <label for="weekly_status">Status</label>
+          <select name="status" id="weekly_status" class="form-select dashboard-filter-select">
+            <option value="">All Status</option>
+            <% %w[green yellow red].each do |status| %>
+              <option value="<%= status %>" <%= "selected" if @weekly_report_status.to_s == status %>><%= training_target_status_label(status) %></option>
+            <% end %>
+          </select>
+        </div>
+
+        <div class="dashboard-filter-actions">
+          <%= submit_tag "Apply Filters", class: "list-btn active" %>
+          <%= link_to "Clear", weekly_activity_target_report_path, class: "table-action" %>
+        </div>
+      </div>
+    <% end %>
+  </section>
+
+  <section class="module-card training-participation-status-card">
+    <div class="training-participation-boxes compact">
+      <%= link_to weekly_activity_target_report_path(filter_params.except(:status)), class: "training-participation-box total #{'is-active' if @weekly_report_status.blank?}" do %>
+        <span>Total Targets</span>
+        <strong><%= status_counts[:total].to_i %></strong>
+        <small>All filtered weekly targets</small>
+      <% end %>
+      <% %w[green yellow red].each do |status| %>
+        <%= link_to weekly_activity_target_report_path(filter_params.merge(status: status)), class: "training-participation-box #{status} #{'is-active' if @weekly_report_status == status}" do %>
+          <span><%= training_target_status_label(status) %></span>
+          <strong><%= status_counts[status.to_sym].to_i %></strong>
+          <small><%= training_target_status_caption(status) %></small>
+        <% end %>
+      <% end %>
+    </div>
+  </section>
+
+  <section class="module-card">
+    <div class="module-card-header">
+      <div>
+        <h2>Activity / Sub Activity Weekly Report</h2>
+        <p class="module-subtitle">
+          Total rows: <%= @weekly_report_rows.size %>
+          <% if @weekly_selected_month.present? %> | Month: <%= @weekly_selected_month %><% end %>
+          <% if @weekly_selected_activity.present? %> | Activity: <%= @weekly_selected_activity %><% end %>
+          <% if @weekly_selected_sub_activity.present? %> | Sub Activity: <%= @weekly_selected_sub_activity %><% end %>
+        </p>
+      </div>
+      <button type="button" class="list-btn export" data-export-table="weekly_activity_target_report_table" data-export-include-all="true">Export</button>
+    </div>
+
+    <div class="table-shell">
+      <table class="module-table compact-table" id="weekly_activity_target_report_table" data-paginated-table data-page-size="25">
+        <thead>
+          <tr>
+            <th>Week</th>
+            <th>Month</th>
+            <th>Completion Date</th>
+            <th>VRP</th>
+            <th>Main Activity</th>
+            <th>Sub Activity</th>
+            <th>FCO</th>
+            <th>Cluster Incharge</th>
+            <th>Post</th>
+            <th>Target</th>
+            <th>Completed</th>
+            <th>Pending</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if @weekly_report_rows.any? %>
+            <% @weekly_report_rows.each do |row| %>
+              <tr>
+                <td><%= row[:week] %></td>
+                <td><%= row[:month] %></td>
+                <td><%= row[:completion_date] %></td>
+                <td><%= row[:vrp] %></td>
+                <td class="dashboard-activity-cell"><%= row[:main_activity] %></td>
+                <td class="dashboard-activity-cell"><%= row[:sub_activity] %></td>
+                <td><%= row[:fco] %></td>
+                <td><%= row[:cluster_incharge] %></td>
+                <td><%= row[:post] %></td>
+                <td><%= quantity.call(row[:target_quantity]) %></td>
+                <td><%= quantity.call(row[:completed_quantity]) %></td>
+                <td><%= quantity.call(row[:pending_quantity]) %></td>
+                <td><span class="training-status-pill <%= row[:status_class] %>"><%= row[:status_label] %></span></td>
+              </tr>
+            <% end %>
+          <% else %>
+            <tr>
+              <td colspan="13">No weekly target data found for selected filters.</td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-pagination" data-pagination-for="weekly_activity_target_report_table"></div>
+  </section>
+</section>
