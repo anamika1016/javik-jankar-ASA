@@ -1117,11 +1117,21 @@ class ModulesController < ApplicationController
   def import
     load_module!
     if @slug == "lg-directory-list"
-      result = LgDirectoryImporter.import(params[:file])
-      counts = lg_directory_import_notice_counts(result[:counts])
-      notice = "LG Directory uploaded successfully. #{result[:imported]} records created"
-      notice = "#{notice} (#{counts})" if counts.present?
-      redirect_to module_path(@slug), notice: "#{notice}."
+      file = params[:file]
+      raise ArgumentError, "Please choose an Excel or CSV file." unless file.present?
+
+      extension = File.extname(file.original_filename.to_s).downcase
+      unless %w[.csv .xlsx].include?(extension)
+        raise ArgumentError, "Only .xlsx and .csv files are supported."
+      end
+
+      tmp_file = Tempfile.new(["lg_directory_import", extension], binmode: true)
+      tmp_file.write(file.read)
+      tmp_file.flush
+      tmp_file.close
+
+      LgDirectoryImportJob.perform_later(tmp_file.path)
+      redirect_to module_path(@slug), notice: "LG Directory upload started. Import is processing in the background. Refresh this page after a few minutes."
       return
     end
 
