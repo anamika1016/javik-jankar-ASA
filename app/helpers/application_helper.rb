@@ -523,22 +523,28 @@ module ApplicationHelper
   def active_stakeholder_records(module_slug)
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
-    ModuleRecord
+    @active_stakeholder_records ||= {}
+    @active_stakeholder_records[module_slug] ||= ModuleRecord
       .where(module_slug: module_slug)
       .order(updated_at: :desc)
       .select { |record| record.data["status"].blank? || record.data["status"] == "Active" }
   end
 
   def matching_stakeholder_record(module_slug)
-    names = current_user_stakeholder_names
-    return if names.blank?
+    @matching_stakeholder_records ||= {}
+    return @matching_stakeholder_records[module_slug] if @matching_stakeholder_records.key?(module_slug)
 
-    active_stakeholder_records(module_slug).detect do |record|
+    names = current_user_stakeholder_names
+    return @matching_stakeholder_records[module_slug] = nil if names.blank?
+
+    @matching_stakeholder_records[module_slug] = active_stakeholder_records(module_slug).detect do |record|
       names.any? { |stakeholder_name| stakeholder_record_matches?(record, stakeholder_name) }
     end
   end
 
   def current_user_stakeholder_names
+    return @current_user_stakeholder_names if defined?(@current_user_stakeholder_names)
+
     names = [current_app_user&.dig("stakeholder")]
     username = current_app_user&.dig("username").to_s
 
@@ -555,7 +561,7 @@ module ApplicationHelper
       names << legacy_user&.data&.[]("stakeholder")
     end
 
-    names.compact_blank.map { |name| name.to_s.strip }.uniq
+    @current_user_stakeholder_names = names.compact_blank.map { |name| name.to_s.strip }.uniq
   end
 
   def stakeholder_record_matches?(record, stakeholder_name)

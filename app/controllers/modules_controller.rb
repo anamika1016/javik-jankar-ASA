@@ -881,8 +881,10 @@ class ModulesController < ApplicationController
     redirect_to users_path and return if @slug == "all-user"
     redirect_to new_user_path and return if @slug == "new-user"
 
-    @records = module_records
-    prepare_lg_directory_data if @slug == "lg-directory-list"
+    # The directory has its own, paginated data source. Loading module_records here
+    # would deserialize and sort the same (potentially very large) dataset twice.
+    @records = @slug == "lg-directory-list" ? [] : module_records
+    prepare_lg_directory_data(paginate: true) if @slug == "lg-directory-list"
     prepare_vrp_bill_data if @slug == "vrp-bill-add"
     prepare_jeevika_jankar_bill_data if @slug == "jeevika-jankar-bill-process"
     prepare_jeevika_jankar_bill_list if @slug == "jeevika-jankar-bill-list"
@@ -4015,10 +4017,19 @@ class ModulesController < ApplicationController
     (current_values & record_values).any?
   end
 
-  def prepare_lg_directory_data
+  def prepare_lg_directory_data(paginate: false)
     @lg_directory_filter = params[:table].presence_in(lg_directory_filter_fields) || "State Name"
     @lg_directory_query = params[:q].to_s.strip
     @lg_directory_rows = filtered_lg_directory_rows(lg_directory_rows)
+    paginate_lg_directory_rows! if paginate
+  end
+
+  def paginate_lg_directory_rows!
+    per_page = 100
+    @lg_directory_total_count = @lg_directory_rows.size
+    @lg_directory_total_pages = [(@lg_directory_total_count.to_f / per_page).ceil, 1].max
+    @lg_directory_page = params[:page].to_i.clamp(1, @lg_directory_total_pages)
+    @lg_directory_rows = @lg_directory_rows.slice((@lg_directory_page - 1) * per_page, per_page) || []
   end
 
   def filtered_lg_directory_rows(rows)
@@ -4031,6 +4042,17 @@ class ModulesController < ApplicationController
   def lg_directory_rows
     return [] unless model_ready?(:ModuleRecord)
 
+    version = ModuleRecord
+      .where(module_slug: lg_directory_allowed_slugs)
+      .pick(Arel.sql("COUNT(*)"), Arel.sql("MAX(updated_at)"))
+    cache_key = ["lg-directory-rows", version]
+
+    Rails.cache.fetch(cache_key, expires_in: 30.minutes, race_condition_ttl: 10.seconds) do
+      build_lg_directory_rows
+    end
+  end
+
+  def build_lg_directory_rows
     rows = []
     rows.concat(lg_rows_from_records("village-master", village: "village_name"))
     rows.concat(lg_rows_from_records("gram-panchayat-master", gram_panchayat: "gram_panchayat_name"))
@@ -4147,21 +4169,28 @@ class ModulesController < ApplicationController
   end
 
   def compact_lg_directory_rows(rows)
-    rows.reject { |row| lg_directory_prefix_covered?(row, rows) }
-  end
-
-  def lg_directory_prefix_covered?(row, rows)
     levels = [:state, :district, :sub_district, :block, :gram_panchayat, :village]
-    last_present_index = levels.rindex { |key| row[key].present? }
-    return false unless last_present_index
-    return false if last_present_index == levels.size - 1
+    covered_prefixes = Array.new(levels.size) { {} }
 
-    prefix = levels.first(last_present_index + 1)
-    rows.any? do |candidate|
-      next false if candidate.equal?(row)
+    # Index every populated descendant by each of its parent prefixes. The old
+    # implementation scanned the complete array for every row (O(n²)), which made
+    # large LG imports occupy a web worker until Nginx returned a 504.
+    rows.each do |row|
+      values = levels.map { |key| row[key].to_s.strip.downcase }
+      last_present_index = levels.rindex { |key| row[key].present? }
+      next unless last_present_index
 
-      prefix.all? { |key| candidate[key].to_s.strip.casecmp(row[key].to_s.strip).zero? } &&
-        levels[(last_present_index + 1)..].any? { |key| candidate[key].present? }
+      last_present_index.times do |prefix_end|
+        covered_prefixes[prefix_end][values.first(prefix_end + 1)] = true
+      end
+    end
+
+    rows.reject do |row|
+      last_present_index = levels.rindex { |key| row[key].present? }
+      next false unless last_present_index && last_present_index < levels.size - 1
+
+      prefix = levels.first(last_present_index + 1).map { |key| row[key].to_s.strip.downcase }
+      covered_prefixes[last_present_index].key?(prefix)
     end
   end
 
