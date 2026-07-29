@@ -61,6 +61,10 @@ a {
 }
 
 .mobile-menu-bar,
+.turbo-progress-bar {
+  display: none;
+}
+
 .mobile-sidebar-backdrop {
   display: none;
 }

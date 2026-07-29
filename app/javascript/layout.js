@@ -75,6 +75,7 @@ const initFastNavigation = () => {
       document.querySelectorAll(".side-module[open]").forEach((openModule) => {
         if (openModule !== module) openModule.removeAttribute("open");
       });
+
     });
   });
 };
@@ -497,7 +498,15 @@ function initDeferredLayoutPage() {
     }
 
     document.body.appendChild(form);
-    form.submit();
+    form.requestSubmit();
+  };
+
+  const refreshCurrentPage = () => {
+    if (window.Turbo?.visit) {
+      window.Turbo.visit(window.location.href, { action: "replace" });
+    } else {
+      window.location.reload();
+    }
   };
 
   const deleteSelected = async (paths, message) => {
@@ -523,7 +532,7 @@ function initDeferredLayoutPage() {
       return;
     }
 
-    window.location.reload();
+    refreshCurrentPage();
   };
 
   const vrpDeleteButton = document.querySelector("[data-vrp-delete-selected]");
@@ -561,7 +570,7 @@ function initDeferredLayoutPage() {
         return;
       }
 
-      window.location.reload();
+      refreshCurrentPage();
     });
   }
 
@@ -590,7 +599,7 @@ function initDeferredLayoutPage() {
         return;
       }
 
-      window.location.reload();
+      refreshCurrentPage();
     });
   });
 
@@ -684,7 +693,7 @@ function initDeferredLayoutPage() {
         }
 
         sessionStorage.removeItem(aflSelectAllKey());
-        window.location.reload();
+        refreshCurrentPage();
         return;
       }
 
@@ -781,7 +790,7 @@ function initDeferredLayoutPage() {
       return;
     }
 
-    window.location.reload();
+    refreshCurrentPage();
   };
 
   document.querySelector("[data-bill-send-selected]")?.addEventListener("click", () => {
@@ -831,7 +840,7 @@ function initDeferredLayoutPage() {
         return;
       }
 
-      window.location.reload();
+      refreshCurrentPage();
     });
   });
 
@@ -856,7 +865,7 @@ function initDeferredLayoutPage() {
         });
       }));
 
-      window.location.reload();
+      refreshCurrentPage();
     });
   });
 
@@ -3873,11 +3882,16 @@ function initDeferredLayoutPage() {
     const dataRows = rows.filter((row) => !row.dataset.emptyRow);
     const columnFilters = JSON.parse(table.dataset.columnFilters || "{}");
     const matchedRows = dataRows.filter((row) => {
-      const globalMatch = row.innerText.toLowerCase().includes(query);
+      // Reading innerText forces layout. Cache the normalized row text so
+      // searching and paginating large tables stays responsive.
+      row.__searchText ||= row.textContent.toLowerCase();
+      const globalMatch = row.__searchText.includes(query);
       if (!globalMatch) return false;
 
       return Object.entries(columnFilters).every(([columnIndex, filter]) => {
-        const cellText = (row.children[Number(columnIndex)]?.innerText || "").toLowerCase();
+        const cell = row.children[Number(columnIndex)];
+        if (cell && !cell.__searchText) cell.__searchText = cell.textContent.toLowerCase();
+        const cellText = cell?.__searchText || "";
         const filterValue = (filter.value || "").toLowerCase();
         if (!filterValue) return true;
 
@@ -3897,9 +3911,10 @@ function initDeferredLayoutPage() {
     const currentPage = Math.min(Math.max(page, 1), totalPages);
     const start = (currentPage - 1) * pageSize;
     const visibleRows = matchedRows.slice(start, start + pageSize);
+    const visibleRowSet = new Set(visibleRows);
 
     dataRows.forEach((row) => {
-      row.hidden = !visibleRows.includes(row);
+      row.hidden = !visibleRowSet.has(row);
     });
 
     const pagination = document.querySelector(`[data-pagination-for='${table.id}']`);

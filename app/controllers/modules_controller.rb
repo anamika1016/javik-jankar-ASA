@@ -6818,6 +6818,13 @@ class ModulesController < ApplicationController
   end
 
   def module_field_options(field)
+    @module_field_options ||= {}
+    return @module_field_options[field] if @module_field_options.key?(field)
+
+    @module_field_options[field] = uncached_module_field_options(field)
+  end
+
+  def uncached_module_field_options(field)
     return parent_office_parent_options if current_slug == "parent-office-add" && field == "Parent Office"
     return training_target_field_options(field) if training_target_field?(field)
     return training_activity_field_options(field) if training_activity_field?(field)
@@ -6929,10 +6936,12 @@ class ModulesController < ApplicationController
 
   def training_target_mappings
     return [] unless model_ready?(:TargetMapping)
+    return @training_target_mappings if defined?(@training_target_mappings)
 
     activity_settings = jeevika_jankar_main_activity_settings
 
-    training_target_scope
+    @training_target_mappings = training_target_scope
+      .includes(:vrp)
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
       .filter_map do |target|
         activity_setting = activity_settings[normalize_dashboard_text(target.main_activity_name)]
@@ -6961,11 +6970,13 @@ class ModulesController < ApplicationController
 
   def seed_distribution_target_mappings
     return [] unless model_ready?(:TargetMapping)
+    return @seed_distribution_target_mappings if defined?(@seed_distribution_target_mappings)
 
     activity_settings = jeevika_jankar_main_activity_settings
     sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
 
-    training_target_scope
+    @seed_distribution_target_mappings = training_target_scope
+      .includes(vrp: :vrp_profile)
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
       .filter_map do |target|
         activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
@@ -6986,7 +6997,7 @@ class ModulesController < ApplicationController
           training_subject: target.activity_name.to_s.strip,
           target: target.target_quantity.to_s,
           new_farmer_target: new_farmer_target_mapping?(target),
-          completed_farmer_ids: other_target_completed_farmer_ids_for(target.id),
+          completed_farmer_ids: other_target_completed_farmer_ids_for(target),
           farmers: training_farmers_for_ids(farmer_ids)
         }
       end
@@ -6998,10 +7009,15 @@ class ModulesController < ApplicationController
     normalize_dashboard_text(value.presence || "Training") == normalize_dashboard_text("Training")
   end
 
-  def other_target_completed_farmer_ids_for(target_mapping_id)
+  def other_target_completed_farmer_ids_for(target_or_id)
     return [] unless model_ready?(:ModuleRecord)
 
-    target = model_ready?(:TargetMapping) ? TargetMapping.find_by(id: target_mapping_id) : nil
+    target = if target_or_id.is_a?(TargetMapping)
+      target_or_id
+    elsif model_ready?(:TargetMapping)
+      TargetMapping.find_by(id: target_or_id)
+    end
+    target_mapping_id = target&.id || target_or_id
     mapped_farmer_ids = target ? target_farmer_ids(target) : nil
 
     ModuleRecord
@@ -7562,7 +7578,7 @@ class ModulesController < ApplicationController
   def office_category_mappings
     return [] unless model_ready?(:ModuleRecord)
 
-    ModuleRecord
+    @office_category_mappings ||= ModuleRecord
       .where(module_slug: ["office-category-add", "office-mapping-add"])
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
@@ -7593,7 +7609,7 @@ class ModulesController < ApplicationController
   def parent_office_mappings
     return [] unless model_ready?(:ModuleRecord)
 
-    ModuleRecord
+    @parent_office_mappings ||= ModuleRecord
       .where(module_slug: "parent-office-add")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
@@ -7625,7 +7641,7 @@ class ModulesController < ApplicationController
   def vrp_name_options
     return [] unless model_ready?(:Vrp)
 
-    Vrp.order(:name, :id).filter_map { |vrp| vrp_approval_label(vrp) }.uniq
+    @vrp_name_options ||= Vrp.order(:name, :id).filter_map { |vrp| vrp_approval_label(vrp) }.uniq
   end
 
   def vrp_approval_label(vrp)
@@ -7743,6 +7759,9 @@ class ModulesController < ApplicationController
   end
 
   def generic_field_options(field)
+    @generic_field_options ||= {}
+    return @generic_field_options[field] if @generic_field_options.key?(field)
+
     key = field.parameterize(separator: "_")
     candidate_keys = [
       key,
@@ -7753,7 +7772,7 @@ class ModulesController < ApplicationController
       "#{key.delete_prefix('select_')}_name"
     ].uniq
 
-    ModuleRecord
+    @generic_field_options[field] = ModuleRecord
       .where.not(module_slug: @slug || current_slug)
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
@@ -7762,6 +7781,14 @@ class ModulesController < ApplicationController
   end
 
   def values_from_module(module_slug, field_key)
+    @values_from_module ||= {}
+    cache_key = [module_slug, field_key]
+    return @values_from_module[cache_key] if @values_from_module.key?(cache_key)
+
+    @values_from_module[cache_key] = uncached_values_from_module(module_slug, field_key)
+  end
+
+  def uncached_values_from_module(module_slug, field_key)
     return approver_options if module_slug == "new-user" && field_key == "approver_name_with_role"
     if module_slug == "gram-panchayat-master" && field_key == "gram_panchayat_name"
       return ModuleRecord
