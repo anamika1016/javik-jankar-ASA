@@ -1314,12 +1314,12 @@ class ModulesController < ApplicationController
       redirect_to edit_module_record_path(edit_record.module_slug, edit_record)
     when "active", "inactive"
       next_status = params[:bulk_action] == "active" ? "Active" : "Inactive"
-      records_to_update = lg_directory_matching_records(selected_records)
-      records_to_update.each { |record| record.update!(data: record.data.merge("status" => next_status)) }
+      ModuleRecord.transaction do
+        selected_records.each { |record| record.update!(data: record.data.merge("status" => next_status)) }
+      end
       redirect_to module_path(@slug), notice: "#{selected_records.size} LG Directory row(s) marked #{next_status}."
     when "delete"
-      records_to_delete = lg_directory_matching_records(selected_records)
-      records_to_delete.each(&:destroy!)
+      ModuleRecord.transaction { selected_records.each(&:destroy!) }
       redirect_to module_path(@slug), notice: "#{selected_records.size} LG Directory row(s) deleted."
     else
       redirect_to module_path(@slug), alert: "Please choose a valid action."
