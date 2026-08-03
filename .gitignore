@@ -1,0 +1,19 @@
+# Rails runtime files. Keep directory placeholders, never generated contents.
+/log/*
+!/log/.keep
+/tmp/*
+!/tmp/.keep
+
+# Gems installed locally or on a deployment host.
+/vendor/bundle/
+
+# Local environment and database files.
+/.env*
+!/\.env.example
+/storage/*
+!/storage/.keep
+
+# OS/editor files.
+.DS_Store
+*.swp
+*~

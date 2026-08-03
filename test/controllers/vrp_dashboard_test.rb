@@ -1,6 +1,181 @@
 require "test_helper"
 
 class VrpDashboardTest < ActionDispatch::IntegrationTest
+  test "dashboard counts the same farmer once for each completed training activity" do
+    vrp = create_vrp(user_name: "multi_activity_vrp", password: "secret", agreement_accepted_at: Time.current)
+    farmer = create_afl(farmer_name: "Multi Activity Farmer", mobile_no: "9000000070")
+    mapping = VrpIcsMapping.create!(
+      vrp: vrp,
+      fco_id: "FCO-MULTI",
+      ics_id: "ICS-MULTI",
+      village_id: "V-MULTI",
+      village_name: "Multi Village",
+      afl_ids: [farmer.id],
+      created_by_type: "User",
+      created_by_id: 1
+    )
+    ["Organic Introduction", "Soil Preparation"].each do |activity|
+      TargetMapping.create!(
+        vrp: vrp,
+        vrp_ics_mapping: mapping,
+        fco_id: mapping.fco_id,
+        ics_id: mapping.ics_id,
+        village_id: mapping.village_id,
+        village_name: mapping.village_name,
+        farmer_count: 1,
+        afl_ids: [farmer.id],
+        month_name: "July",
+        completion_date: Date.new(2026, 7, 31),
+        main_activity_name: "Farmers' Training",
+        activity_name: activity,
+        target_quantity: 1,
+        created_by_type: "User",
+        created_by_id: 1
+      )
+      ModuleRecord.create!(
+        module_slug: "training-form",
+        data: {
+          "month" => "July",
+          "main_activity" => "Farmers' Training",
+          "sub_activity" => activity,
+          "ics" => mapping.ics_id,
+          "village" => mapping.village_name,
+          "selected_farmer_ids" => [farmer.id.to_s],
+          "vrp_id" => vrp.id.to_s
+        }
+      )
+    end
+
+    post login_path, params: { login: vrp.user_name, password: "secret" }
+    get dashboard_path, params: { training_month: "July" }
+
+    assert_response :success
+    assert_select ".assigned-target strong", text: "2"
+    assert_select ".achieved-target strong", text: "2"
+    assert_select ".pending-target strong", text: "0"
+    assert_select "#vrp_target_progress_table .grid-status", text: "100%", count: 2
+  end
+
+  test "dashboard counts training submitted after the target completion date" do
+    vrp = create_vrp(user_name: "late_completion_vrp", password: "secret", agreement_accepted_at: Time.current)
+    farmers = 2.times.map do |index|
+      create_afl(farmer_name: "Late Completion Farmer #{index + 1}", mobile_no: "900000009#{index}")
+    end
+    mapping = VrpIcsMapping.create!(
+      vrp: vrp,
+      fco_id: "FCO-LATE",
+      ics_id: "ICS-LATE",
+      village_id: "V-LATE",
+      village_name: "Late Village",
+      afl_ids: farmers.map(&:id),
+      created_by_type: "User",
+      created_by_id: 1
+    )
+    target = TargetMapping.create!(
+      vrp: vrp,
+      vrp_ics_mapping: mapping,
+      fco_id: mapping.fco_id,
+      ics_id: mapping.ics_id,
+      village_id: mapping.village_id,
+      village_name: mapping.village_name,
+      farmer_count: farmers.size,
+      afl_ids: farmers.map(&:id),
+      month_name: "July",
+      completion_date: Date.new(2026, 7, 20),
+      main_activity_name: "Farmers' Training",
+      activity_name: "1. Organic Introduction (M1), 2. Soil Preparation (M3)",
+      target_quantity: farmers.size,
+      created_by_type: "User",
+      created_by_id: 1
+    )
+    ModuleRecord.create!(
+      module_slug: "training-form",
+      data: {
+        "month" => "July",
+        "training_date" => "2026-07-25",
+        "main_activity" => target.main_activity_name,
+        "sub_activity" => "Organic Introduction (M1)",
+        "ics" => mapping.ics_id,
+        "village" => mapping.village_name,
+        "selected_farmer_ids" => farmers.map { |farmer| farmer.id.to_s },
+        "vrp_id" => vrp.id.to_s
+      }
+    )
+
+    post login_path, params: { login: vrp.user_name, password: "secret" }
+    get dashboard_path, params: { training_month: "July" }
+
+    assert_response :success
+    assert_select ".achieved-target strong", text: "2"
+    assert_select ".pending-target strong", text: "0"
+
+    get vrp_dashboard_list_path("pending_target"), params: { training_month: "July" }
+    assert_response :success
+    assert_includes response.body, "Total: 0"
+
+    get vrp_dashboard_list_path("target_farmers"), params: { target_id: target.id, farmer_scope: "pending" }
+    assert_response :success
+    assert_includes response.body, "Total: 0"
+    assert_includes response.body, "No records found for this list."
+  end
+
+  test "dashboard derives achieved and pending values from training submissions without activity master configuration" do
+    vrp = create_vrp(user_name: "dynamic_progress_vrp", password: "secret", agreement_accepted_at: Time.current)
+    farmers = 3.times.map do |index|
+      create_afl(farmer_name: "Progress Farmer #{index + 1}", mobile_no: "900000001#{index}")
+    end
+    mapping = VrpIcsMapping.create!(
+      vrp: vrp,
+      fco_id: "FCO-DYNAMIC",
+      ics_id: "ICS-DYNAMIC",
+      village_id: "V-DYNAMIC",
+      village_name: "Dynamic Village",
+      afl_ids: farmers.map(&:id),
+      created_by_type: "User",
+      created_by_id: 1
+    )
+    TargetMapping.create!(
+      vrp: vrp,
+      vrp_ics_mapping: mapping,
+      fco_id: mapping.fco_id,
+      ics_id: mapping.ics_id,
+      village_id: mapping.village_id,
+      village_name: mapping.village_name,
+      farmer_count: farmers.size,
+      afl_ids: farmers.map(&:id),
+      month_name: "July",
+      completion_date: Date.new(2026, 7, 31),
+      main_activity_name: "Unconfigured Training",
+      activity_name: "Dynamic Training",
+      target_quantity: 3,
+      created_by_type: "User",
+      created_by_id: 1
+    )
+    ModuleRecord.create!(
+      module_slug: "training-form",
+      data: {
+        "month" => "July",
+        "training_date" => "2026-07-20",
+        "main_activity" => "Unconfigured Training",
+        "sub_activity" => "Dynamic Training",
+        "selected_farmer_ids" => farmers.first(2).map { |farmer| farmer.id.to_s },
+        "vrp_id" => vrp.id.to_s
+      }
+    )
+
+    post login_path, params: { login: "dynamic_progress_vrp", password: "secret" }
+    get dashboard_path, params: { training_month: "July" }
+
+    assert_response :success
+    assert_select ".achieved-target strong", text: "2"
+    assert_select ".pending-target strong", text: "1"
+    assert_select "#vrp_target_progress_table tbody tr" do
+      assert_select "td", text: "2"
+      assert_select "td", text: "1"
+      assert_select ".grid-status", text: "67%"
+    end
+  end
+
   test "vrp sees own dashboard data and read only targets" do
     vrp = create_vrp(
       user_name: "dashboard_vrp",
@@ -145,7 +320,7 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_includes response.body, "Farmer Training Dashboard"
     assert_includes response.body, "Select Month"
     assert_includes response.body, "Select Sub Activity"
-    assert_includes response.body, "Select Month and Sub Activity to load training data."
+    refute_includes response.body, "Select Month and Sub Activity to load training data."
     refute_includes response.body, "Farmer Training Participation Status"
     refute_includes response.body, "Sessions"
     refute_includes response.body, "Photos"
@@ -165,6 +340,18 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_equal 1, response.body.scan("VRP Dashboard").size
     assert_includes response.body, "VRP Targets"
 
+    get farmer_participation_report_path
+
+    assert_response :success
+    assert_includes response.body, "Farmer Participation Report"
+    refute_includes response.body, "Participation List"
+
+    get farmer_participation_report_path, params: { farmer_id: repeat_previous.id }
+
+    assert_response :success
+    assert_includes response.body, "Repeat Farmer"
+    assert_includes response.body, "Farm Visit"
+
     get dashboard_path, params: { training_month: "June", training_sub_activity: "Farm Visit" }
 
     assert_response :success
@@ -176,6 +363,12 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_includes response.body, "Completed Farmers"
     assert_includes response.body, "Pending Farmers"
     refute_includes response.body, "Select Month and Sub Activity to load training data."
+
+    get dashboard_path(format: :xlsx), params: { training_month: "June", training_sub_activity: "Farm Visit" }
+
+    assert_response :success
+    assert_equal XlsxExporter::MIME_TYPE, response.media_type
+    assert response.body.start_with?("PK"), "expected an XLSX zip archive"
 
     get target_mappings_path
 
@@ -374,6 +567,9 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_includes response.body, "Farmer Training Form"
     assert_includes response.body, "Target Farmers"
+    assert_includes response.body, "Save Farmers"
+    assert_includes response.body, "Search target farmers"
+    assert_includes response.body, "No target farmers matched your search."
     assert_includes response.body, "Training Farmer 1"
     assert_includes response.body, "Training Farmer 2"
     refute_includes response.body, "Training Farmer 3"

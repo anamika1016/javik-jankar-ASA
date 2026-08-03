@@ -678,7 +678,7 @@
         </div>
 
         <div class="table-shell lg-directory-table-shell">
-          <table class="module-table user-list-table" id="lg_directory_all_list">
+          <table class="module-table user-list-table" id="lg_directory_all_list" data-paginated-table data-page-size="25">
             <thead>
               <tr>
                 <th><input type="checkbox" data-module-select-all></th>
@@ -721,15 +721,7 @@
             </tbody>
           </table>
         </div>
-        <div class="table-pagination">
-          <span><%= @lg_directory_total_count %> records &middot; Page <%= @lg_directory_page %> of <%= @lg_directory_total_pages %></span>
-          <% if @lg_directory_page > 1 %>
-            <%= link_to "Previous", module_path(@slug, table: @lg_directory_filter, q: @lg_directory_query, page: @lg_directory_page - 1), class: "list-btn" %>
-          <% end %>
-          <% if @lg_directory_page < @lg_directory_total_pages %>
-            <%= link_to "Next", module_path(@slug, table: @lg_directory_filter, q: @lg_directory_query, page: @lg_directory_page + 1), class: "list-btn" %>
-          <% end %>
-        </div>
+        <div class="table-pagination" data-pagination-for="lg_directory_all_list"></div>
       <% end %>
     </section>
   <% elsif @slug == "access-control" %>
@@ -1854,7 +1846,7 @@
                       <% value ||= Array(record.data["module_names"]).join(", ").presence if field == "Module Name" %>
                       <% value ||= Array(record.data["sub_module_names"].presence || record.data["sub_module_name"]).join(", ").presence if field == "Sub Module Name" %>
                     <% end %>
-                    <% value = value.join(", ") if value.is_a?(Array) %>
+                    <% value = value.join(", ") if value.is_a?(Array) && !(field == "Training Register Upload" || field == "Training Photo Upload with Geo Tag" || field.downcase.include?("upload") || field.downcase.include?("file")) %>
                     <% value ||= "-" %>
                     <% if field == "Status" %>
                       <td><span class="status-pill <%= value == "Inactive" ? "inactive" : "active" %>"><%= value == "-" ? "Active" : value %></span></td>
@@ -1884,12 +1876,28 @@
                         </div>
                       </td>
                     <% elsif field == "Training Register Upload" || field == "Training Photo Upload with Geo Tag" || field.downcase.include?("upload") || field.downcase.include?("file") %>
-                      <% file_url = module_upload_public_url(value) %>
-                      <td data-export-value="<%= file_url %>">
-                        <% if file_url.present? %>
-                          <a href="<%= file_url %>" class="grid-view-link eye-link" target="_blank" rel="noopener" title="View upload" aria-label="View upload">
-                            <span aria-hidden="true">◉</span>
-                          </a>
+                      <% file_urls = module_upload_public_urls(value) %>
+                      <td data-export-value="<%= file_urls.join(", ") %>">
+                        <% if file_urls.any? %>
+                          <% if field == "Training Photo Upload with Geo Tag" %>
+                            <button type="button"
+                              class="grid-view-link eye-link module-gallery-trigger"
+                              data-upload-gallery
+                              data-upload-urls="<%= ERB::Util.html_escape(file_urls.to_json) %>"
+                              title="View all <%= file_urls.size %> photos"
+                              aria-label="View all <%= file_urls.size %> training photos">
+                              <span aria-hidden="true">◉</span>
+                              <small><%= file_urls.size %></small>
+                            </button>
+                          <% else %>
+                            <div class="module-upload-list">
+                              <% file_urls.each_with_index do |file_url, index| %>
+                                <a href="<%= file_url %>" class="grid-view-link eye-link" target="_blank" rel="noopener" title="View upload <%= index + 1 %>" aria-label="View upload <%= index + 1 %>">
+                                  <span aria-hidden="true">◉</span>
+                                </a>
+                              <% end %>
+                            </div>
+                          <% end %>
                         <% else %>
                           -
                         <% end %>
@@ -1910,6 +1918,18 @@
       </div>
       <div class="table-pagination" data-pagination-for="<%= table_id %>"></div>
     </section>
+    <% if @slug == "training-form-list" %>
+      <dialog class="module-gallery-modal" data-upload-gallery-modal aria-labelledby="training-photo-gallery-title">
+        <div class="module-gallery-header">
+          <div>
+            <h2 id="training-photo-gallery-title">Training Photos</h2>
+            <p data-upload-gallery-count></p>
+          </div>
+          <button type="button" class="module-gallery-close" data-upload-gallery-close aria-label="Close photo gallery">×</button>
+        </div>
+        <div class="module-gallery-grid" data-upload-gallery-grid></div>
+      </dialog>
+    <% end %>
   <% else %>
   <div class="module-grid">
     <% location_fields = ["State", "District", "Block", "Gram Panchayat", "Village"] %>
@@ -1978,7 +1998,7 @@
               <span>
                 <%= resource_person_label(field) %>
                 <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
-                  <small class="field-hint inline-upload-hint">Max 5 MB</small>
+                  <small class="field-hint inline-upload-hint">Select multiple photos · max 5 MB each</small>
                 <% end %>
               </span>
               <% if add_farmer_form && field == "Mapped Village" %>
@@ -1999,8 +2019,9 @@
                 </select>
               <% elsif field.downcase.include?("upload") || field.downcase.include?("file") %>
                 <% upload_accept = field == "Excel Upload" ? "accept=\".csv,.xlsx,.xls\"" : nil %>
-                <% upload_accept = "accept=\"image/*\" data-max-size-mb=\"5\"" if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
-                <input name="module_record[<%= field_key %>]" type="file" <%= upload_accept&.html_safe %> <%= "required" if form_required && field_value.blank? && !other_target_form %>>
+                <% multiple_photo_upload = @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
+                <% upload_accept = "accept=\"image/*\" data-max-size-mb=\"5\"" if multiple_photo_upload %>
+                <input name="module_record[<%= field_key %>]<%= "[]" if multiple_photo_upload %>" type="file" <%= "multiple" if multiple_photo_upload %> <%= upload_accept&.html_safe %> <%= "required" if form_required && field_value.blank? && !other_target_form %>>
                 <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
                   <input type="hidden" name="module_record[geo_latitude]" data-training-geo-latitude value="<%= @record&.data&.[]("geo_latitude") %>">
                   <input type="hidden" name="module_record[geo_longitude]" data-training-geo-longitude value="<%= @record&.data&.[]("geo_longitude") %>">
@@ -2110,6 +2131,10 @@
                   <button type="button" class="list-btn active training-select-all-button" data-training-farmer-select-all-button>Select all</button>
                   <span data-training-farmer-count>0 farmer selected</span>
                 </div>
+                <div class="target-mapping-toolbar farmer-search-toolbar">
+                  <input type="search" placeholder="Search target farmers" data-training-farmer-search>
+                </div>
+                <div class="training-empty-state" data-training-farmer-search-empty hidden>No target farmers matched your search.</div>
                 <div class="vrp-ics-farmer-list" data-training-farmer-list>
                   Select Village Name to load target farmers.
                 </div>

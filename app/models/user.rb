@@ -1,4 +1,5 @@
 class User < ApplicationRecord
+  include GloballyUniqueUsername
   IMAGE_CONTENT_TYPES = %w[image/jpeg image/png].freeze
 
   has_one_attached :aadhar_upload

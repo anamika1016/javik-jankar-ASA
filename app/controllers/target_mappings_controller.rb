@@ -19,6 +19,12 @@ class TargetMappingsController < ApplicationController
     @main_activity_type_map = main_activity_type_map
     @target_sub_activity_map = target_sub_activity_map
     @target_mappings = visible_target_mappings.includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc).limit(100)
+    farmer_ids = @target_mappings.flat_map { |target| Array(target.afl_ids) }.map(&:to_s).reject(&:blank?).uniq
+    @target_farmers_by_id = farmer_ids.each_slice(5_000).flat_map do |ids|
+      Afl.where(id: ids)
+        .select(:id, :farmer_name, :father_name, :tracenet_no, :mobile_no, :village_name)
+        .to_a
+    end.index_by { |farmer| farmer.id.to_s }
     @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && @admin_mapping_actions
     @edit_payload = edit_payload(@edit_target)
     @sub_activity_options = target_sub_activity_options(@edit_target&.main_activity_name)
@@ -144,7 +150,7 @@ class TargetMappingsController < ApplicationController
         main_activity_name: main_activity,
         activity_name: sub_activity,
         target_quantity: plan&.fetch("monthly", nil).presence || single_target_mapping_attributes[:target_quantity]
-      ))
+      ).merge(weekly_target_attributes(plan)))
       target_mapping.vrp_ics_mapping_id = nil
       normalize_location_values(target_mapping)
       assign_afl_location_names(target_mapping)
@@ -221,6 +227,18 @@ class TargetMappingsController < ApplicationController
 
     plan = weekly_plan_for(target_mapping.main_activity_name, target_mapping.activity_name)
     target_mapping.target_quantity = plan["monthly"] if plan&.dig("monthly").present?
+    target_mapping.assign_attributes(weekly_target_attributes(plan)) if plan
+  end
+
+  def weekly_target_attributes(plan)
+    return {} unless plan
+
+    {
+      week_1_target: integer_plan_value(plan["week_1"]),
+      week_2_target: integer_plan_value(plan["week_2"]),
+      week_3_target: integer_plan_value(plan["week_3"]),
+      week_4_target: integer_plan_value(plan["week_4"])
+    }
   end
 
   def weekly_plan_error
@@ -441,7 +459,13 @@ class TargetMappingsController < ApplicationController
   end
 
   def new_farmer_target_mode?
-    new_farmer_target_quantity.present?
+    new_farmer_target_quantity.present? && submitted_farmer_ids.blank?
+  end
+
+  def submitted_farmer_ids
+    direct_ids = normalized_afl_ids(target_mapping_params[:afl_ids])
+    planned_ids = weekly_plan_rows.flat_map { |row| normalized_afl_ids(row["afl_ids"]) }
+    (direct_ids + planned_ids).uniq
   end
 
   def new_farmer_target_quantity
@@ -1121,10 +1145,10 @@ class TargetMappingsController < ApplicationController
       main_activity_type: training_mode ? "Training" : main_activity_type_for(target.main_activity_name),
       main_activity_names: [target.main_activity_name.to_s].reject(&:blank?),
       activity_names: [target.activity_name.to_s].reject(&:blank?),
-      target_quantity: target.target_quantity.to_s,
-      new_farmer_target_quantity: Array(target.afl_ids).blank? && !training_mode ? target.target_quantity.to_s : "",
+      target_quantity: target_number_value(target.target_quantity),
+      new_farmer_target_quantity: Array(target.afl_ids).blank? && !training_mode ? target_number_value(target.target_quantity) : "",
       training_targets: TRAINING_TARGET_FIELDS.keys.index_with do |key|
-        target.public_send("#{key}_target")&.to_s
+        target_number_value(target.public_send("#{key}_target"))
       end,
       afl_ids: Array(target.afl_ids).map(&:to_s)
     }
@@ -1136,6 +1160,14 @@ class TargetMappingsController < ApplicationController
 
     match = main_activity_type_map.find { |row| row[:main_activity].to_s.strip.downcase == name }
     match&.dig(:main_activity_type).presence || "Training"
+  end
+
+  def target_number_value(value)
+    return "" if value.blank?
+
+    BigDecimal(value.to_s).to_s("F").sub(/\.0+\z/, "").sub(/(\.\d*?)0+\z/, '\\1')
+  rescue ArgumentError
+    value.to_s
   end
 
   def encoded_location_values(values, labels)

@@ -8,7 +8,27 @@ class VrpsController < ApplicationController
   before_action :set_edit_dependencies, only: [:edit, :update]
 
   def index
-    @data = visible_vrps.map do |vrp|
+    vrps = visible_vrps.to_a
+    if params[:target_assignment] == "unassigned"
+      assigned_vrp_ids = TargetMapping.where(vrp_id: vrps.map(&:id)).distinct.pluck(:vrp_id)
+      vrps = vrps.reject { |vrp| assigned_vrp_ids.include?(vrp.id) }
+    end
+    if params[:activity_assignment] == "unassigned"
+      activity_assigned_vrp_ids = TargetMapping
+        .where(vrp_id: vrps.map(&:id))
+        .where("COALESCE(main_activity_name, '') <> '' OR COALESCE(activity_name, '') <> ''")
+        .distinct
+        .pluck(:vrp_id)
+      vrps = vrps.reject { |vrp| activity_assigned_vrp_ids.include?(vrp.id) }
+    end
+    if params[:fcoc].present?
+      selected_fcoc = params[:fcoc].to_s.downcase
+      vrps = vrps.select { |vrp| vrp.fcoc.to_s.downcase.include?(selected_fcoc) }
+    end
+    ActiveRecord::Associations::Preloader.new(records: vrps, associations: :vrp_bank_master).call
+    preload_registered_by_users!(vrps)
+
+    @data = vrps.map do |vrp|
       {
         id: vrp.id,
         user_name: vrp.user_name,
@@ -42,6 +62,7 @@ class VrpsController < ApplicationController
   def create
     @vrp = Vrp.new(vrp_params)
     @vrp.created_by_id = current_app_user_id if @vrp.respond_to?(:created_by_id=)
+    @vrp.created_by_type = current_app_user&.dig("record_type") if @vrp.respond_to?(:created_by_type=)
     @vrp.status = 10 if @vrp.respond_to?(:status=)
     apply_current_identity_to_vrp(@vrp)
 
@@ -116,6 +137,7 @@ class VrpsController < ApplicationController
   end
 
   def approvals
+    preload_approval_lookup_data!
     @approval_rows = approval_queue.map do |vrp|
       step = approval_display_step(vrp)
       {
@@ -359,25 +381,64 @@ class VrpsController < ApplicationController
     cache_key = vrp.id
     return @registered_by_user_cache[cache_key] if @registered_by_user_cache.key?(cache_key)
 
+    if vrp.created_by_id.present? && vrp.respond_to?(:created_by_type) && vrp.created_by_type.present?
+      creator = case vrp.created_by_type
+      when "User" then @preloaded_creator_users_by_id&.[](vrp.created_by_id)
+      when "ModuleRecord" then @preloaded_creator_records_by_id&.[](vrp.created_by_id)
+      end
+      return @registered_by_user_cache[cache_key] = creator if creator
+    end
+
     if vrp.created_by_id.present?
-      user = User.find_by(id: vrp.created_by_id) if model_ready?(:User)
-      return @registered_by_user_cache[cache_key] = user if user
-
-      record = ModuleRecord.find_by(id: vrp.created_by_id) if model_ready?(:ModuleRecord)
-      return @registered_by_user_cache[cache_key] = record if record
+      user = @preloaded_creator_users_by_id&.[](vrp.created_by_id)
+      record = @preloaded_creator_records_by_id&.[](vrp.created_by_id)
+      creator = legacy_registered_by_candidate(vrp, user, record)
+      return @registered_by_user_cache[cache_key] = creator if creator
     end
 
-    if model_ready?(:User)
-      user = User.find_by("LOWER(email) = ?", vrp.email.to_s.strip.downcase)
-      return @registered_by_user_cache[cache_key] = user if user
+    email_key = vrp.email.to_s.strip.downcase
+    user = @preloaded_creator_users_by_email&.[](email_key)
+    return @registered_by_user_cache[cache_key] = user if user
+
+    @registered_by_user_cache[cache_key] = @preloaded_creator_records_by_email&.[](email_key)
+  end
+
+  def preload_registered_by_users!(vrps)
+    creator_ids = vrps.filter_map(&:created_by_id).uniq
+    emails = vrps.filter_map { |vrp| vrp.email.to_s.strip.downcase.presence }.uniq
+
+    users = model_ready?(:User) ? User.where(id: creator_ids).or(User.where("LOWER(email) IN (?)", emails)).to_a : []
+    records = if model_ready?(:ModuleRecord)
+      ModuleRecord
+        .where(module_slug: "new-user")
+        .where("id IN (:ids) OR LOWER(COALESCE(data::jsonb->>'email', '')) IN (:emails)", ids: creator_ids.presence || [0], emails: emails.presence || [""])
+        .order(created_at: :desc)
+        .to_a
+    else
+      []
     end
 
-    return unless model_ready?(:ModuleRecord)
+    @preloaded_creator_users_by_id = users.index_by(&:id)
+    @preloaded_creator_records_by_id = records.index_by(&:id)
+    @preloaded_creator_users_by_email = users.index_by { |user| user.email.to_s.strip.downcase }
+    @preloaded_creator_records_by_email = records.reverse_each.to_a.index_by { |record| record.data["email"].to_s.strip.downcase }
+  end
 
-    @registered_by_user_cache[cache_key] = ModuleRecord.where(module_slug: "new-user")
-      .where("LOWER(COALESCE(data->>'email', '')) = ?", vrp.email.to_s.strip.downcase)
-      .order(created_at: :desc)
-      .first
+  def legacy_registered_by_candidate(vrp, user, record)
+    return record unless user
+    return user unless record
+
+    fields = %w[stakeholder stakeholder_role role user_management_role person_type]
+    user_score = fields.count do |field|
+      vrp.public_send(field).present? && user.respond_to?(field) &&
+        vrp.public_send(field).to_s.casecmp(user.public_send(field).to_s).zero?
+    end
+    record_score = fields.count do |field|
+      vrp.public_send(field).present? &&
+        vrp.public_send(field).to_s.casecmp(record.data[field].to_s).zero?
+    end
+
+    record_score > user_score ? record : user
   end
 
   def visible_vrps
@@ -460,7 +521,7 @@ class VrpsController < ApplicationController
   end
 
   def approval_queue
-    scope = Vrp.all.select { |vrp| approval_visible_after_sent?(vrp) }
+    scope = approval_candidate_vrps.select { |vrp| approval_visible_after_sent?(vrp) }
     return scope if admin_user?
 
     scope.select { |vrp| current_user_in_approval_channel?(vrp) }
@@ -554,10 +615,7 @@ class VrpsController < ApplicationController
     creator_identities = vrp_creator_identities(vrp)
     return @approval_steps_for_cache[cache_key] = [] if creator_identities.blank?
 
-    matching_records = ModuleRecord
-      .where(module_slug: "approval-master")
-      .order(created_at: :asc)
-      .select do |record|
+    matching_records = approval_master_records.select do |record|
         record_stakeholder = record.data["stakeholder_name"].to_s
         record_vrp_name = record.data["vrp_name"].to_s
 
@@ -853,26 +911,26 @@ class VrpsController < ApplicationController
     identities = []
 
     if vrp.created_by_id.present? && model_ready?(:User)
-      user = User.find_by(id: vrp.created_by_id)
+      user = approval_users_by_id[vrp.created_by_id.to_s]
       identities << user_approval_identity(user) if user
     end
 
     if model_ready?(:User)
       matched_users = []
-      matched_users << User.find_by(email: vrp.email) if vrp.email.present?
-      matched_users << User.find_by(mobile_no: vrp.mobile_no) if vrp.mobile_no.present?
+      matched_users.concat(Array(approval_users_by_email[vrp.email.to_s.downcase])) if vrp.email.present?
+      matched_users.concat(Array(approval_users_by_mobile[vrp.mobile_no.to_s])) if vrp.mobile_no.present?
       matched_users.compact.uniq.each do |user|
         identities << user_approval_identity(user)
       end
     end
 
     if vrp.created_by_id.present? && model_ready?(:ModuleRecord)
-      record = ModuleRecord.find_by(id: vrp.created_by_id)
+      record = approval_new_users_by_id[vrp.created_by_id.to_s]
       identities << record_approval_identity(record) if record
     end
 
     if model_ready?(:ModuleRecord)
-      matched_records = ModuleRecord.where(module_slug: "new-user").select do |record|
+      matched_records = approval_new_user_records.select do |record|
         (vrp.email.present? && record.data["email"].to_s.casecmp(vrp.email.to_s).zero?) ||
           (vrp.mobile_no.present? && record.data["mobile_no"].to_s == vrp.mobile_no.to_s)
       end
@@ -964,10 +1022,85 @@ class VrpsController < ApplicationController
     cache_key = vrp.id
     return @approval_history_for_cache[cache_key] if @approval_history_for_cache.key?(cache_key)
 
-    @approval_history_for_cache[cache_key] = ModuleRecord
+    @approval_history_for_cache[cache_key] = approval_history_records_by_vrp_id[vrp.id.to_s] || []
+  end
+
+  def preload_approval_lookup_data!
+    approval_master_records
+    approval_history_records_by_vrp_id
+    approval_new_user_records
+    approval_candidate_vrps
+    approval_users_by_id
+  end
+
+  def approval_candidate_vrps
+    @approval_candidate_vrps ||= begin
+      history_vrp_ids = approval_history_records_by_vrp_id.keys
+      scope = Vrp.where("status >= ?", 25)
+      scope = scope.or(Vrp.where(id: history_vrp_ids)) if history_vrp_ids.any?
+      scope.to_a
+    end
+  end
+
+  def approval_master_records
+    @approval_master_records ||= ModuleRecord
+      .where(module_slug: "approval-master")
+      .order(created_at: :asc)
+      .to_a
+  end
+
+  def approval_history_records_by_vrp_id
+    @approval_history_records_by_vrp_id ||= ModuleRecord
       .where(module_slug: "vrp-approval-history")
       .order(created_at: :asc)
-      .select { |record| record.data["vrp_id"].to_i == vrp.id }
+      .to_a
+      .group_by { |record| record.data["vrp_id"].to_s }
+  end
+
+  def approval_new_user_records
+    @approval_new_user_records ||= begin
+      creator_ids = approval_candidate_vrps.filter_map(&:created_by_id).uniq
+      emails = approval_candidate_vrps.filter_map { |vrp| vrp.email.to_s.downcase.presence }.uniq
+      mobiles = approval_candidate_vrps.filter_map { |vrp| vrp.mobile_no.to_s.presence }.uniq
+      scope = ModuleRecord.where(module_slug: "new-user")
+      matches = scope.none
+      matches = matches.or(scope.where(id: creator_ids)) if creator_ids.any?
+      matches = matches.or(scope.where("LOWER(data::jsonb ->> 'email') IN (?)", emails)) if emails.any?
+      matches = matches.or(scope.where("data::jsonb ->> 'mobile_no' IN (?)", mobiles)) if mobiles.any?
+      matches.to_a
+    end
+  end
+
+  def approval_new_users_by_id
+    @approval_new_users_by_id ||= approval_new_user_records.index_by { |record| record.id.to_s }
+  end
+
+  def approval_users_by_id
+    return {} unless model_ready?(:User)
+
+    @approval_users_by_id ||= begin
+      creator_ids = approval_candidate_vrps.filter_map(&:created_by_id).uniq
+      emails = approval_candidate_vrps.filter_map { |vrp| vrp.email.to_s.downcase.presence }.uniq
+      mobiles = approval_candidate_vrps.filter_map { |vrp| vrp.mobile_no.to_s.presence }.uniq
+      scope = User.none
+      scope = scope.or(User.where(id: creator_ids)) if creator_ids.any?
+      scope = scope.or(User.where("LOWER(email) IN (?)", emails)) if emails.any?
+      scope = scope.or(User.where(mobile_no: mobiles)) if mobiles.any?
+      users = scope.to_a
+      @approval_users_by_email = users.group_by { |user| user.email.to_s.downcase }
+      @approval_users_by_mobile = users.group_by { |user| user.mobile_no.to_s }
+      users.index_by { |user| user.id.to_s }
+    end
+  end
+
+  def approval_users_by_email
+    approval_users_by_id
+    @approval_users_by_email || {}
+  end
+
+  def approval_users_by_mobile
+    approval_users_by_id
+    @approval_users_by_mobile || {}
   end
 
   def approval_sent?(vrp)
@@ -1631,7 +1764,14 @@ class VrpsController < ApplicationController
         village: first_present_data(record, "village", "village_name"))
     end
 
-    states + districts + blocks + gram_panchayats + villages + lg_directory_rows
+    deduplicate_location_rows(states + districts + blocks + gram_panchayats + villages + lg_directory_rows)
+  end
+
+  def deduplicate_location_rows(rows)
+    rows.uniq do |row|
+      %i[state district block gram_panchayat village]
+        .map { |key| row[key].to_s.strip.downcase }
+    end
   end
 
   def active_records_for_location(module_slug)
@@ -1785,7 +1925,7 @@ class VrpsController < ApplicationController
     bank = VrpBankMaster.find_or_initialize_by(name: name)
     bank.is_active = record.data["status"].to_s != "Inactive" if bank.respond_to?(:is_active=)
     bank.is_deleted = false if bank.respond_to?(:is_deleted=)
-    bank.save(validate: false)
+    bank.save(validate: false) if bank.new_record? || bank.changed?
   end
 
   def sync_vrp_type(record)
@@ -1797,7 +1937,7 @@ class VrpsController < ApplicationController
     vrp_type = VrpType.find_or_initialize_by(type_name: type_name)
     vrp_type.is_active = record.data["status"].to_s != "Inactive" if vrp_type.respond_to?(:is_active=)
     vrp_type.is_deleted = false if vrp_type.respond_to?(:is_deleted=)
-    vrp_type.save(validate: false)
+    vrp_type.save(validate: false) if vrp_type.new_record? || vrp_type.changed?
   end
 
   def model_ready?(name)

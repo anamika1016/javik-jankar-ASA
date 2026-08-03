@@ -88,12 +88,17 @@ module VrpAccess
     cache_key = vrp.id
     return @registered_by_user_cache[cache_key] if @registered_by_user_cache.key?(cache_key)
 
+    if vrp.created_by_id.present? && vrp.respond_to?(:created_by_type) && vrp.created_by_type.present?
+      creator_class = { "User" => User, "ModuleRecord" => ModuleRecord }[vrp.created_by_type]
+      creator = creator_class.find_by(id: vrp.created_by_id) if creator_class&.respond_to?(:find_by)
+      return @registered_by_user_cache[cache_key] = creator if creator
+    end
+
     if vrp.created_by_id.present?
       user = User.find_by(id: vrp.created_by_id) if model_ready?(:User)
-      return @registered_by_user_cache[cache_key] = user if user
-
       record = ModuleRecord.find_by(id: vrp.created_by_id) if model_ready?(:ModuleRecord)
-      return @registered_by_user_cache[cache_key] = record if record
+      creator = legacy_registered_by_candidate(vrp, user, record)
+      return @registered_by_user_cache[cache_key] = creator if creator
     end
 
     if model_ready?(:User)
@@ -107,6 +112,23 @@ module VrpAccess
       .where("LOWER(COALESCE(data->>'email', '')) = ?", vrp.email.to_s.strip.downcase)
       .order(created_at: :desc)
       .first
+  end
+
+  def legacy_registered_by_candidate(vrp, user, record)
+    return record unless user
+    return user unless record
+
+    fields = %w[stakeholder stakeholder_role role user_management_role person_type]
+    user_score = fields.count do |field|
+      vrp.public_send(field).present? && user.respond_to?(field) &&
+        vrp.public_send(field).to_s.casecmp(user.public_send(field).to_s).zero?
+    end
+    record_score = fields.count do |field|
+      vrp.public_send(field).present? &&
+        vrp.public_send(field).to_s.casecmp(record.data[field].to_s).zero?
+    end
+
+    record_score > user_score ? record : user
   end
 
   def visible_vrps
@@ -539,6 +561,7 @@ module VrpAccess
   def vrp_status_label(vrp)
     return "Rejected" if vrp.status.to_i == 99 || approval_rejected?(vrp)
     return "Final Approved" if vrp.status.to_i == 55 || approval_complete?(vrp)
+    return "Returned" if approval_returned?(vrp)
 
     if approval_sent?(vrp)
       "Pending at #{approval_approver_name(current_approval_step(vrp))}"
@@ -700,13 +723,23 @@ module VrpAccess
   end
 
   def approval_sent?(vrp)
-    approval_history_for(vrp).any? do |record|
+    active_approval_history_for(vrp).any? do |record|
       ["Sent for Approval", "Approved", "Rejected"].include?(record.data["action"].to_s)
     end
   end
 
   def approval_rejected?(vrp)
-    approval_history_for(vrp).any? { |record| record.data["action"].to_s == "Rejected" }
+    active_approval_history_for(vrp).any? { |record| record.data["action"].to_s == "Rejected" }
+  end
+
+  def approval_returned?(vrp)
+    approval_history_for(vrp).last&.data&.[]("action").to_s == "Returned"
+  end
+
+  def active_approval_history_for(vrp)
+    history = approval_history_for(vrp)
+    returned_index = history.rindex { |record| record.data["action"].to_s == "Returned" }
+    returned_index ? history.drop(returned_index + 1) : history
   end
 
   def approval_complete?(vrp)
@@ -717,7 +750,7 @@ module VrpAccess
   end
 
   def approved_approval_sequences(vrp)
-    approval_history_for(vrp)
+    active_approval_history_for(vrp)
       .select { |record| record.data["action"].to_s == "Approved" }
       .map { |record| approval_sequence_from_level(record.data["approval_level"]) }
       .uniq
@@ -731,7 +764,7 @@ module VrpAccess
     step_sequence = approval_sequence(step)
     step_approver = normalize_approver_label(approval_approver_name(step))
 
-    approval_history_for(vrp).find do |record|
+    active_approval_history_for(vrp).find do |record|
       ["Approved", "Rejected"].include?(record.data["action"].to_s) &&
         (
           approval_sequence_from_level(record.data["approval_level"]) == step_sequence ||
@@ -760,6 +793,7 @@ module VrpAccess
         "action_by" => current_app_user&.dig("name").presence || current_app_user&.dig("username").to_s
       }
     )
+    @approval_history_for_cache&.delete(vrp.id)
   end
 
   def set_master_options

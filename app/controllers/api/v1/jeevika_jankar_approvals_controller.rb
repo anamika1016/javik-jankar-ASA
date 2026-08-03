@@ -70,6 +70,29 @@ module Api
         }, status: :ok
       end
 
+      def return_record
+        merge_json_body_params!
+        vrp = approvable_vrps.find { |record| record.id == params[:id].to_i }
+
+        unless vrp
+          return render json: {
+            success: false,
+            message: "This Jeevika Jankar is not pending for your approval."
+          }, status: :forbidden
+        end
+
+        remarks = params[:remarks].to_s
+        step = current_approval_step(vrp)
+        update_vrp_status!(vrp, 10)
+        log_approval_history(vrp, step, "Returned", remarks)
+
+        render json: {
+          success: true,
+          message: "Jeevika Jankar returned for correction.",
+          jeevika_jankar: detail_payload(vrp)
+        }, status: :ok
+      end
+
       private
 
       def current_app_user

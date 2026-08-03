@@ -1,22 +1,48 @@
 Rails.application.routes.draw do
+  # Uploaded training evidence is stored under public/uploads/module_records.
+  # Keep an authenticated Rails fallback so links also work when the web server
+  # is not configured to serve the uploads directory directly.
+  get "uploads/module_records/:filename",
+    to: "uploads#module_record",
+    as: :module_record_upload,
+    constraints: { filename: /[^\/]+/ },
+    format: false
+
   get "up" => "rails/health#show", as: :rails_health_check
 
   namespace :api do
     namespace :v1 do
       post "login", to: "sessions#create"
+      post "jeevika-jankar-login", to: "sessions#create_jeevika_jankar"
       post "login/otp/send", to: "otp_logins#send_otp"
       post "login/otp/verify", to: "otp_logins#verify_otp"
       post "forgot-password/send-otp", to: "password_resets#send_otp"
       post "forgot-password/reset", to: "password_resets#reset"
       get "me", to: "sessions#show"
+      get "user-dashboard", to: "user_dashboard#show"
+      get "jeevika-jankar-dashboard", to: "jeevika_jankar_dashboard#show"
+      get "jeevika-jankar-bills", to: "jeevika_jankar_payments#bills"
+      get "jeevika-jankar-bills/:id/download", to: "jeevika_jankar_payments#download_bill"
+      get "jeevika-jankar-bills/:id", to: "jeevika_jankar_payments#bill"
+      patch "jeevika-jankar-bills/:id/send-for-approval", to: "jeevika_jankar_payments#send_bill_for_approval"
+      patch "jeevika-jankar-bills/:id/approve", to: "jeevika_jankar_payments#approve_bill"
+      patch "jeevika-jankar-bills/:id/reject", to: "jeevika_jankar_payments#reject_bill"
+      patch "jeevika-jankar-bills/:id/return", to: "jeevika_jankar_payments#return_bill"
+      get "jeevika-jankar-payments", to: "jeevika_jankar_payments#payments"
+      get "jeevika-jankar-payments/export", to: "jeevika_jankar_payments#export_payments"
+      get "jeevika-jankar-payment-details", to: "jeevika_jankar_payments#payment_details"
+      get "jeevika-jankar-completed-payments", to: "jeevika_jankar_payments#completed_payments"
+      get "sidebar-menus", to: "sidebar_menus#index"
+      get "target-mappings/recent", to: "target_mappings#recent"
       delete "logout", to: "sessions#destroy"
 
       # Jeevika Jankar (VRP) — React Native APIs; web /vrps routes unchanged
       get "jeevika-jankars/form-options", to: "jeevika_jankars#form_options"
       get "jeevika-jankars/approvals", to: "jeevika_jankar_approvals#index"
       patch "jeevika-jankars/:id/approve", to: "jeevika_jankar_approvals#approve"
+      patch "jeevika-jankars/:id/return", to: "jeevika_jankar_approvals#return_record"
       patch "jeevika-jankars/:id/reject", to: "jeevika_jankar_approvals#reject"
-      resources :jeevika_jankars, path: "jeevika-jankars", only: [ :index, :create, :show ] do
+      resources :jeevika_jankars, path: "jeevika-jankars", only: [ :index, :create, :show, :update ] do
         member do
           patch :send_for_approval
         end
@@ -36,9 +62,15 @@ Rails.application.routes.draw do
       get "jeevika-jankar-masters/parent-offices", to: "jeevika_jankar_masters#parent_offices"
       get "jeevika-jankar-masters/office-categories", to: "jeevika_jankar_masters#office_categories"
       get "jeevika-jankar-masters/sub-offices", to: "jeevika_jankar_masters#sub_offices"
+      get "jeevika-jankar-masters/cluster-incharges", to: "jeevika_jankar_masters#cluster_incharges"
 
       # Farmer Target modules — React Native APIs; web /modules/* unchanged
       get "farmer-trainings/form-options", to: "farmer_trainings#form_options"
+      get "farmer-trainings/form-data", to: "farmer_trainings#form_data"
+      get "farmer-trainings/months", to: "farmer_trainings#months"
+      get "farmer-trainings/farmers", to: "farmer_trainings#farmers"
+      get "farmer-trainings/mapped-farmers", to: "farmer_trainings#mapped_farmers"
+      get "farmer-trainings/:id/photos", to: "farmer_trainings#photos"
       resources :farmer_trainings, path: "farmer-trainings", only: [ :index, :create, :show ]
 
       get "seed-distribution-targets/form-options", to: "seed_distribution_targets#form_options"
@@ -74,6 +106,7 @@ Rails.application.routes.draw do
   get "dashboard/farmer-training-participation", to: "modules#farmer_training_participation", as: :farmer_training_participation
   get "dashboard/farmer-training-target-status", to: "modules#farmer_training_target_status", as: :farmer_training_target_status
   get "dashboard/weekly-activity-target-report", to: "modules#weekly_activity_target_report", as: :weekly_activity_target_report
+  get "dashboard/farmer-participation-report", to: "modules#farmer_participation_report", as: :farmer_participation_report
 
   resources :users, except: [:show] do
     patch :toggle_status, on: :member

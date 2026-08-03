@@ -45,7 +45,44 @@ class Api::V1::JeevikaJankarsControllerTest < ActionDispatch::IntegrationTest
 
     vrp = Vrp.find(body.dig("jeevika_jankar", "id"))
     assert_equal @user.id, vrp.created_by_id
+    assert_equal "User", vrp.created_by_type
     assert_equal 10, vrp.status
+  end
+
+  test "registration preserves module record creator when ids collide" do
+    module_user = ModuleRecord.create!(
+      module_slug: "new-user",
+      data: {
+        "first_name" => "Android",
+        "last_name" => "Registrar",
+        "user_name" => "android_registrar",
+        "password" => "secret",
+        "status" => "Active"
+      }
+    )
+    User.create!(
+      id: module_user.id,
+      first_name: "Wrong",
+      last_name: "User",
+      email: "wrong_#{SecureRandom.hex(3)}@example.com",
+      mobile_no: "9#{SecureRandom.random_number(10**9).to_s.rjust(9, "0")}",
+      password: "secret",
+      user_name: "wrong_user",
+      user_type: "user",
+      status: "Active"
+    )
+    token = ApiAuthToken.encode(module_user)
+
+    post "/api/v1/jeevika-jankars",
+      params: registration_payload(user_name: "module_created_jj"),
+      headers: { "Authorization" => "Bearer #{token}" },
+      as: :json
+
+    assert_response :created
+    vrp = Vrp.find(response.parsed_body.dig("jeevika_jankar", "id"))
+    assert_equal module_user.id, vrp.created_by_id
+    assert_equal "ModuleRecord", vrp.created_by_type
+    assert_equal "Android Registrar", response.parsed_body.dig("jeevika_jankar", "registered_by")
   end
 
   test "registration rejects mismatched password" do
@@ -81,6 +118,39 @@ class Api::V1::JeevikaJankarsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert_equal vrp.id, response.parsed_body.dig("jeevika_jankar", "id")
+  end
+
+  test "update edits manageable jeevika jankar without clearing omitted fields" do
+    vrp = create_vrp(
+      name: "Old JJ Name",
+      user_name: "editable_jj",
+      email: "keep@example.com",
+      created_by_id: @user.id,
+      status: 10
+    )
+
+    patch "/api/v1/jeevika-jankars/#{vrp.id}",
+      params: { name: "Updated JJ Name", address: "Updated Address" },
+      headers: auth_headers,
+      as: :json
+
+    assert_response :success
+    assert_equal true, response.parsed_body["success"]
+    assert_equal "Updated JJ Name", response.parsed_body.dig("jeevika_jankar", "name")
+    assert_equal "keep@example.com", vrp.reload.email
+    assert_equal "secret", vrp.password
+  end
+
+  test "update rejects mismatched password confirmation" do
+    vrp = create_vrp(user_name: "password_edit_jj", created_by_id: @user.id, status: 10)
+
+    patch "/api/v1/jeevika-jankars/#{vrp.id}",
+      params: { password: "new-secret", confirmed_password: "different" },
+      headers: auth_headers,
+      as: :json
+
+    assert_response :unprocessable_entity
+    assert_equal "secret", vrp.reload.password
   end
 
   test "web vrps index still works after api addition" do

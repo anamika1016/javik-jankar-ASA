@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_17_170000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_01_124500) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -251,6 +251,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_17_170000) do
     t.text "data", null: false
     t.string "module_slug", null: false
     t.datetime "updated_at", null: false
+    t.index "(((data)::jsonb ->> 'mobile_no'::text))", name: "index_module_records_new_users_on_mobile_no", where: "((module_slug)::text = 'new-user'::text)"
+    t.index "lower(((data)::jsonb ->> 'email'::text))", name: "index_module_records_new_users_on_lower_email", where: "((module_slug)::text = 'new-user'::text)"
+    t.index "lower(((data)::jsonb ->> 'user_name'::text))", name: "index_module_records_new_users_on_lower_user_name", where: "((module_slug)::text = 'new-user'::text)"
+    t.index ["module_slug", "created_at"], name: "index_module_records_on_slug_and_created_at", order: { created_at: :desc }
     t.index ["module_slug"], name: "index_module_records_on_module_slug"
   end
 
@@ -381,10 +385,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_17_170000) do
     t.string "village_name"
     t.bigint "vrp_ics_mapping_id"
     t.bigint "vrp_id", null: false
+    t.integer "week_1_target"
+    t.integer "week_2_target"
+    t.integer "week_3_target"
+    t.integer "week_4_target"
     t.decimal "week_wise_opg_target", precision: 18, scale: 4
+    t.index ["created_by_type", "created_by_id", "updated_at"], name: "index_target_mappings_on_creator_and_updated_at", order: { updated_at: :desc }
     t.index ["created_by_type", "created_by_id"], name: "index_target_mappings_on_creator"
     t.index ["fco_id", "ics_id", "village_id", "main_activity_name", "activity_name"], name: "index_target_mappings_on_activity_scope"
+    t.index ["updated_at"], name: "index_target_mappings_on_updated_at", order: :desc
     t.index ["vrp_ics_mapping_id"], name: "index_target_mappings_on_vrp_ics_mapping_id"
+    t.index ["vrp_id", "updated_at"], name: "index_target_mappings_on_vrp_and_updated_at", order: { updated_at: :desc }
     t.index ["vrp_id", "vrp_ics_mapping_id", "month_name", "activity_name"], name: "index_target_mappings_on_scope"
     t.index ["vrp_id"], name: "index_target_mappings_on_vrp_id"
   end
@@ -422,6 +433,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_17_170000) do
     t.string "user_name", null: false
     t.string "user_type"
     t.string "village"
+    t.index "lower((email)::text)", name: "index_users_on_lower_email"
+    t.index "lower((user_name)::text)", name: "index_users_on_lower_user_name"
     t.index ["email"], name: "index_users_on_email"
     t.index ["mobile_no"], name: "index_users_on_mobile_no"
     t.index ["user_name"], name: "index_users_on_user_name"
@@ -484,6 +497,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_17_170000) do
     t.string "cluster_incharge"
     t.datetime "created_at", null: false
     t.integer "created_by_id"
+    t.string "created_by_type"
     t.date "date_of_birth", null: false
     t.date "date_of_joining", null: false
     t.string "email", null: false
@@ -516,9 +530,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_17_170000) do
     t.text "village_ids"
     t.integer "vrp_bank_master_id"
     t.text "vrp_type_ids"
+    t.index "lower((email)::text)", name: "index_vrps_on_lower_email"
+    t.index "lower((user_name)::text)", name: "index_vrps_on_lower_user_name"
     t.index ["aadhar_no"], name: "index_vrps_on_aadhar_no"
     t.index ["agreement_accepted_at"], name: "index_vrps_on_agreement_accepted_at"
     t.index ["created_by_id"], name: "index_vrps_on_created_by_id"
+    t.index ["created_by_type", "created_by_id"], name: "index_vrps_on_created_by_type_and_created_by_id"
     t.index ["email"], name: "index_vrps_on_email"
     t.index ["mobile_no"], name: "index_vrps_on_mobile_no"
     t.index ["user_id"], name: "index_vrps_on_user_id"

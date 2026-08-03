@@ -6,6 +6,8 @@ module AppUserPayload
   def app_user_session_payload(user)
     data = user.respond_to?(:data) ? user.data : {}
 
+    return app_vrp_session_payload(user) if user.is_a?(Vrp)
+
     {
       "id" => user.id,
       "record_type" => app_user_record_type(user),
@@ -27,6 +29,33 @@ module AppUserPayload
       "email" => user.respond_to?(:email) ? user.email : data["email"],
       "mobile_no" => user.respond_to?(:mobile_no) ? user.mobile_no : data["mobile_no"],
       "user_type" => app_user_type(user, data)
+    }
+  end
+
+  def app_vrp_session_payload(user)
+    vrp_types = app_user_vrp_types(user)
+
+    {
+      "id" => user.id,
+      "record_type" => "Vrp",
+      "username" => user.user_name,
+      "name" => app_user_display_name(user, {}),
+      "stakeholder" => nil,
+      "stakeholder_role" => nil,
+      "role" => vrp_types.first,
+      "role_name" => nil,
+      "user_management_role" => nil,
+      "person_type" => nil,
+      "vrp_types" => vrp_types,
+      "parent_office" => user.respond_to?(:parent_office) ? user.parent_office : nil,
+      "office_category" => user.respond_to?(:office_category) ? user.office_category : nil,
+      "office_name" => user.respond_to?(:office_name) ? user.office_name : nil,
+      "sub_office_name" => user.respond_to?(:sub_office_name) ? user.sub_office_name : nil,
+      "office" => user.respond_to?(:office) ? user.office : nil,
+      "fcoc" => user.respond_to?(:fcoc) ? user.fcoc : nil,
+      "email" => user.email,
+      "mobile_no" => user.mobile_no,
+      "user_type" => "VRP"
     }
   end
 

@@ -28,19 +28,22 @@
     </div>
 
     <section class="module-card">
-      <%= form_with model: form_record, url: form_url, method: form_method, local: true, html: { class: "module-entry-form" } do |f| %>
+      <%= form_with model: form_record, url: form_url, method: form_method, local: true, html: { class: "module-entry-form", data: { afl_farmer_mapping: true, afl_new_record: form_record.new_record? } } do |f| %>
         <div class="module-form-grid user-registration-grid">
           <label>
             <span>Farm ID <em>*</em></span>
-            <%= f.text_field :farm_id, required: true, placeholder: "Enter Farm ID" %>
+            <%= f.text_field :farm_id, required: true, placeholder: "Select a Farmer Name", data: { afl_mapped_field: "farm_id" } %>
           </label>
           <label>
             <span>ICS Name</span>
-            <%= f.text_field :ics_name, placeholder: "Enter ICS Name" %>
+            <%= f.select :ics_name,
+              options_for_select(@afl_ics_name_options, form_record.ics_name),
+              { include_blank: "Select ICS Name from AFL" },
+              data: { afl_mapped_field: "ics_name" } %>
           </label>
           <label>
             <span>Current Crop Year</span>
-            <%= f.text_field :current_crop_year, placeholder: "Enter Current Crop Year" %>
+            <%= f.text_field :current_crop_year, placeholder: "Select a Farmer Name", data: { afl_mapped_field: "crop_year" } %>
           </label>
           <label>
             <span>Season</span>
@@ -48,11 +51,17 @@
           </label>
           <label>
             <span>Farmer Name <em>*</em></span>
-            <%= f.text_field :farmer_name, required: true, placeholder: "Enter Farmer Name" %>
+            <%= f.select :farmer_name,
+              options_for_select(@afl_farmer_options, form_record.farmer_name),
+              { include_blank: "Select Bhabra Farmer from AFL" },
+              required: true, data: { afl_farmer_select: true } %>
           </label>
           <label>
             <span>Tracenet No</span>
-            <%= f.text_field :tracenet_no, placeholder: "Enter Tracenet No" %>
+            <%= f.select :tracenet_no,
+              options_for_select(@afl_tracenet_no_options, form_record.tracenet_no),
+              { include_blank: "Select Tracenet No from AFL" },
+              data: { afl_mapped_field: "tracenet_no" } %>
           </label>
           <label>
             <span>Father/Mother Name</span>
@@ -60,7 +69,7 @@
           </label>
           <label>
             <span>Aadhar Number</span>
-            <%= f.text_field :aadhar_number, placeholder: "Enter Aadhar Number" %>
+            <%= f.text_field :aadhar_number, placeholder: "Select a Farmer Name", data: { afl_mapped_field: "aadhar_number" } %>
           </label>
 
           <label>
@@ -199,3 +208,31 @@
     </section>
   </section>
 </main>
+
+<script>
+  (() => {
+    const form = document.querySelector("[data-afl-farmer-mapping]");
+    const farmerSelect = form?.querySelector("[data-afl-farmer-select]");
+    if (!form || !farmerSelect || farmerSelect.dataset.mappingReady === "true") return;
+
+    const applySelectedFarmer = () => {
+      const option = farmerSelect.selectedOptions[0];
+      const values = {
+        farm_id: option?.dataset.aflFarmId || "",
+        ics_name: option?.dataset.aflIcsName || "",
+        tracenet_no: option?.dataset.aflTracenetNo || "",
+        crop_year: option?.dataset.aflCropYear || "",
+        aadhar_number: option?.dataset.aflAadharNumber || ""
+      };
+
+      Object.entries(values).forEach(([name, value]) => {
+        const field = form.querySelector(`[data-afl-mapped-field='${name}']`);
+        if (field) field.value = value;
+      });
+    };
+
+    farmerSelect.addEventListener("change", applySelectedFarmer);
+    if (form.dataset.aflNewRecord === "true" && farmerSelect.value) applySelectedFarmer();
+    farmerSelect.dataset.mappingReady = "true";
+  })();
+</script>

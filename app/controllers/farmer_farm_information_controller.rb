@@ -1,4 +1,6 @@
 class FarmerFarmInformationController < ApplicationController
+  FARM_INFORMATION_AFL_FCO_ID = "1009".freeze
+
   before_action :set_farmer_farm_information, only: [:edit, :update, :destroy, :set_status]
   before_action :set_ics_exit_declaration, only: [
     :show_ics_exit_declaration,
@@ -127,8 +129,41 @@ class FarmerFarmInformationController < ApplicationController
     @query = params[:q].to_s.strip
     @edit_farmer_farm_information = FarmerFarmInformation.find_by(id: params[:edit_id]) if params[:edit_id].present?
     @farmer_farm_information ||= @edit_farmer_farm_information || FarmerFarmInformation.new
+    @afl_farmer_options = bhabhra_afls.map do |afl|
+      label = [afl.farmer_name, afl.tracenet_no.presence].compact.join(" — ")
+      [label, afl.farmer_name, {
+        data: {
+          afl_farm_id: afl.id,
+          afl_ics_name: afl.ics_name,
+          afl_tracenet_no: afl.tracenet_no,
+          afl_crop_year: afl.fy,
+          afl_aadhar_number: afl.aadhar
+        }
+      }]
+    end
+    @afl_ics_name_options = afl_distinct_options(:ics_name, @farmer_farm_information.ics_name)
+    @afl_tracenet_no_options = afl_distinct_options(:tracenet_no, @farmer_farm_information.tracenet_no)
     @production_technique_options = FarmerFarmInformation::PRODUCTION_TECHNIQUES
     @certification_status_options = FarmerFarmInformation::CERTIFICATION_STATUSES
+  end
+
+  def afl_distinct_options(column, current_value)
+    values = bhabhra_afls
+      .map { |afl| afl.public_send(column) }
+      .map { |value| value.to_s.strip }
+      .reject(&:blank?)
+      .uniq
+      .sort
+    values.unshift(current_value.to_s) if current_value.present? && !values.include?(current_value.to_s)
+    values
+  end
+
+  def bhabhra_afls
+    @bhabhra_afls ||= Afl.where(fco_id: FARM_INFORMATION_AFL_FCO_ID)
+      .where.not(farmer_name: [nil, ""])
+      .order(:farmer_name, :tracenet_no)
+      .limit(2_000)
+      .to_a
   end
 
   def load_ics_exit_declaration_state

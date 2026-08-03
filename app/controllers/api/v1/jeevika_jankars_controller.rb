@@ -32,6 +32,7 @@ module Api
 
         vrp = Vrp.new(attrs)
         vrp.created_by_id = current_app_user_id if vrp.respond_to?(:created_by_id=)
+        vrp.created_by_type = current_app_user&.dig("record_type") if vrp.respond_to?(:created_by_type=)
         vrp.status = 10 if vrp.respond_to?(:status=)
         apply_current_identity_to_vrp(vrp)
 
@@ -53,6 +54,38 @@ module Api
           render json: {
             success: false,
             message: "Jeevika Jankar registration failed.",
+            errors: vrp.errors.full_messages
+          }, status: :unprocessable_entity
+        end
+      end
+
+      def update
+        merge_json_body_params!
+        vrp = find_api_manageable_vrp(params[:id])
+        unless vrp
+          return render json: { success: false, message: "Jeevika Jankar record not found or you cannot edit it." }, status: :not_found
+        end
+
+        attrs = jeevika_jankar_attributes(for_update: true)
+        unless update_password_confirmed?(attrs)
+          return render json: {
+            success: false,
+            message: "Password and Confirm Password must match.",
+            errors: [ "Password and Confirm Password must match" ]
+          }, status: :unprocessable_entity
+        end
+
+        vrp.assign_attributes(attrs)
+        if vrp.save
+          render json: {
+            success: true,
+            message: "Jeevika Jankar updated successfully.",
+            jeevika_jankar: detail_payload(vrp)
+          }, status: :ok
+        else
+          render json: {
+            success: false,
+            message: "Jeevika Jankar update failed.",
             errors: vrp.errors.full_messages
           }, status: :unprocessable_entity
         end
@@ -107,6 +140,25 @@ module Api
         (visible_vrps.to_a + approval_queue).uniq.find { |vrp| vrp.id == id.to_i }
       end
 
+      def find_api_manageable_vrp(id)
+        if current_app_user&.dig("record_type") == "Vrp"
+          return Vrp.find_by(id: id, is_deleted: false) if current_app_user_id.to_i == id.to_i
+
+          return nil
+        end
+
+        find_manageable_vrp(id)
+      end
+
+      def update_password_confirmed?(attrs)
+        return true unless attrs.key?(:password) && attrs[:password].present?
+
+        confirmed = params[:confirmed_password].presence ||
+          params.dig(:vrp, :confirmed_password).presence ||
+          params.dig(:jeevika_jankar, :confirmed_password).to_s
+        attrs[:password].to_s == confirmed.to_s
+      end
+
       def password_confirmed?(vrp)
         confirmed = params[:confirmed_password].presence ||
           params.dig(:vrp, :confirmed_password).presence ||
@@ -116,7 +168,7 @@ module Api
         vrp.password.to_s == confirmed.to_s
       end
 
-      def jeevika_jankar_attributes
+      def jeevika_jankar_attributes(for_update: false)
         raw = params[:jeevika_jankar].presence || params[:vrp].presence || params
         permitted = raw.permit(
           :name,
@@ -179,7 +231,7 @@ module Api
           permitted[:vrp_profile_attributes] = profile if profile.present?
         end
 
-        permitted[:email] = permitted[:email].presence || ""
+        permitted[:email] = permitted[:email].presence || "" unless for_update
         permitted
       end
 

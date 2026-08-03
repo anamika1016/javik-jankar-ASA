@@ -149,25 +149,6 @@ class LgDirectoryImporter
     import_rows(rows, headers)
   end
 
-  def self.import_path(path)
-    raise ArgumentError, "Please choose an Excel or CSV file." unless path.present? && File.exist?(path)
-
-    extension = File.extname(path).downcase
-    rows = case extension
-    when ".csv"
-      CSV.read(path, headers: false)
-    when ".xlsx"
-      rows_from_xlsx(path)
-    else
-      raise ArgumentError, "Only .xlsx and .csv files are supported."
-    end
-
-    headers = rows.shift
-    raise ArgumentError, "Uploaded file is blank." if headers.blank?
-
-    import_rows(rows, headers)
-  end
-
   def self.import_rows(rows, headers)
     attributes_by_index = headers.map { |header| column_for_header(header) }
     raise ArgumentError, "Excel headers should include State Code, State Name, District Code, District Name, Gram Name, Gram Code, Village Code, Village Name, CD Block Code, and CD Block Name." if attributes_by_index.compact.blank?

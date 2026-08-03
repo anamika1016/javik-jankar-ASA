@@ -1,9 +1,10 @@
 <% content_for :title, "#{@training_participation_title} Farmer Training List" %>
 <% filter_params = {
   training_month: @training_selected_month.presence,
-  training_sub_activity: @training_selected_sub_activity.presence
+  training_sub_activity: @training_selected_sub_activity.presence,
+  training_fcoc: @training_selected_fcoc.presence
 }.compact_blank %>
-<% status_counts = @training_participation_totals || { green: 0, yellow: 0, red: 0, pending: 0, total: 0 } %>
+<% status_counts = @training_participation_totals || { unique: 0, green: 0, yellow: 0, red: 0, pending: 0, total: 0 } %>
 
 <section class="dashboard-page">
   <div class="dashboard-topbar">
@@ -24,7 +25,12 @@
       <%= link_to farmer_training_participation_path(filter_params.merge(status: "total")), class: "training-participation-box total #{'is-active' if @training_participation_status == 'total'}" do %>
         <span>Total Training Farmer</span>
         <strong><%= status_counts[:total].to_i %></strong>
-        <small>Farmer Training Form ke selected farmers.</small>
+        <small>Overall farmers included in selected filters.</small>
+      <% end %>
+      <%= link_to farmer_training_participation_path(filter_params.merge(status: "unique")), class: "training-participation-box total #{'is-active' if @training_participation_status == 'unique'}" do %>
+        <span>Total Unique Farmers</span>
+        <strong><%= status_counts[:unique].to_i %></strong>
+        <small>Sirf wahi farmer jinki training selected month me ek hi baar hui.</small>
       <% end %>
       <% %w[green yellow red pending].each do |status| %>
         <%= link_to farmer_training_participation_path(filter_params.merge(status: status)), class: "training-participation-box #{status} #{'is-active' if @training_participation_status == status}" do %>
@@ -48,13 +54,16 @@
           <% if @training_selected_sub_activity.present? %>
             | Sub Activity: <%= @training_selected_sub_activity %>
           <% end %>
+          <% if @training_selected_fcoc.present? %>
+            | FCOC: <%= @training_selected_fcoc %>
+          <% end %>
         </p>
       </div>
       <button type="button" class="list-btn export" data-export-table="training_participation_list">Export</button>
     </div>
 
     <div class="table-shell">
-      <table class="module-table compact-table training-participation-table" id="training_participation_list" data-paginated-table data-page-size="20">
+      <table class="module-table compact-table training-participation-table upload-report-table" id="training_participation_list" data-paginated-table data-page-size="20">
         <thead>
           <tr>
             <th>Farmer</th>
@@ -70,6 +79,8 @@
             <th>Status</th>
             <th>Training Dates</th>
             <th>Last Training Date</th>
+            <th class="upload-report-column">Training Register Upload</th>
+            <th class="upload-report-column">Training Photo Upload with Geo Tag</th>
           </tr>
         </thead>
         <tbody>
@@ -94,11 +105,31 @@
                 <td><span class="training-status-pill <%= row[:status] %>"><%= row[:status_label] %></span></td>
                 <td><%= row[:training_dates].presence || "-" %></td>
                 <td><%= row[:last_training_date].presence || "-" %></td>
+                <td class="upload-report-column" data-export-value="<%= Array(row[:training_register_urls]).join(', ') %>">
+                  <% if Array(row[:training_register_urls]).any? %>
+                    <% Array(row[:training_register_urls]).each_with_index do |url, index| %>
+                      <%= link_to "View #{index + 1}", url, target: "_blank", rel: "noopener", class: "grid-view-link" %>
+                    <% end %>
+                  <% else %>
+                    -
+                  <% end %>
+                </td>
+                <td class="upload-report-column" data-export-value="<%= Array(row[:training_photo_urls]).join(', ') %>">
+                  <% if Array(row[:training_photo_urls]).any? %>
+                    <% Array(row[:training_photo_urls]).each_with_index do |url, index| %>
+                      <%= link_to url, target: "_blank", rel: "noopener", class: "upload-thumbnail-link", title: "Open photo #{index + 1}" do %>
+                        <%= image_tag url, alt: "Training photo #{index + 1}", class: "upload-thumbnail", loading: "lazy" %>
+                      <% end %>
+                    <% end %>
+                  <% else %>
+                    -
+                  <% end %>
+                </td>
               </tr>
             <% end %>
           <% else %>
             <tr>
-              <td colspan="13">No farmers found for this status.</td>
+              <td colspan="15">No farmers found for this status.</td>
             </tr>
           <% end %>
         </tbody>

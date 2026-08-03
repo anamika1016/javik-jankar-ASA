@@ -261,6 +261,17 @@ class SessionsController < ApplicationController
 
     return unless module_record_auth_ready?
 
+    ModuleRecord
+      .where(module_slug: "new-user")
+      .where("LOWER(data::jsonb ->> 'user_name') = ?", username_key)
+      .where("COALESCE(LOWER(data::jsonb ->> 'status'), 'active') <> 'inactive'")
+      .first
+  rescue StandardError => e
+    Rails.logger.warn("Password reset lookup failed: #{e.class} - #{e.message}")
+    find_legacy_password_reset_account(username_key)
+  end
+
+  def find_legacy_password_reset_account(username_key)
     ModuleRecord.where(module_slug: "new-user").find_each do |record|
       next unless module_record_active_for_login?(record)
 
@@ -269,7 +280,7 @@ class SessionsController < ApplicationController
 
     nil
   rescue StandardError => e
-    Rails.logger.warn("Password reset lookup failed: #{e.class} - #{e.message}")
+    Rails.logger.warn("Legacy password reset lookup failed: #{e.class} - #{e.message}")
     nil
   end
 

@@ -1,4 +1,10 @@
 class UsersController < ApplicationController
+  FORM_OPTION_SLUGS = %w[
+    stakeholder-master stakeholder-role role-name user-management-role person-type
+    state-master district-master block-master gram-panchayat-master village-master
+    lg-directory-list parent-office-add office-category-add office-mapping-add ics-master
+  ].freeze
+
   before_action :set_user, only: [:edit, :update, :destroy, :toggle_status, :set_status]
   before_action :load_form_options, only: [:new, :edit, :create, :update]
 
@@ -83,35 +89,80 @@ class UsersController < ApplicationController
     @gender_options = ["Male", "Female", "Other"]
     @user_type_options = ["Admin", "User"]
     @status_options = ["Active", "Inactive"]
-    @stakeholder_options = module_record_options("stakeholder-master", "stakeholder_name_in_english")
-    @stakeholder_role_options = module_record_options("stakeholder-role", "stakeholder_role")
-    @role_options = module_record_options("role-name", "role_name")
-    @user_management_role_options = module_record_options("user-management-role", "user_management_role")
-    @person_type_options = module_record_options("person-type", "person_type")
-    @role_management_mappings = role_management_mappings
-    @state_options = module_record_options("state-master", "state_name")
-    @district_options = module_record_options("district-master", "district_name")
-    @block_options = module_record_options("block-master", "block_name")
-    @gram_panchayat_options = (
-      module_record_options("gram-panchayat-master", ["gram_panchayat_name", "gram_panchayat", "gp_name", "gram_name", "name"]) +
-      module_record_options("lg-directory-list", ["gram_panchayat", "gp_code"])
-    ).compact_blank.uniq
-    @village_options = module_record_options("village-master", "village_name")
-    @location_hierarchy_mappings = location_hierarchy_mappings
-    @parent_office_options = module_record_options("parent-office-add", ["parent_office_name", "parent_category"])
-    @office_name_options = module_record_options("office-category-add", ["office_name", "category_name"])
-    @office_category_mappings = office_category_mappings
-    @sub_office_name_options = module_record_options("office-mapping-add", ["sub_office_name", "office_mapping", "office"])
-    @ics_options = module_record_options("ics-master", "ics_name")
+    user_form_options_payload.each { |name, value| instance_variable_set("@#{name}", value) }
+  end
+
+  def user_form_options_payload
+    return empty_user_form_options_payload unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+
+    version = ModuleRecord.where(module_slug: FORM_OPTION_SLUGS)
+      .pick(Arel.sql("COUNT(*)"), Arel.sql("MAX(updated_at)"))
+    cache_key = ["users/form-options", version.first, version.last&.utc&.iso8601(6)]
+
+    Rails.cache.fetch(cache_key, expires_in: 1.hour) { build_user_form_options_payload }
+  end
+
+  def build_user_form_options_payload
+    preload_user_form_module_records!
+
+    {
+      stakeholder_options: module_record_options("stakeholder-master", "stakeholder_name_in_english"),
+      stakeholder_role_options: module_record_options("stakeholder-role", "stakeholder_role"),
+      role_options: module_record_options("role-name", "role_name"),
+      user_management_role_options: module_record_options("user-management-role", "user_management_role"),
+      person_type_options: module_record_options("person-type", "person_type"),
+      role_management_mappings: role_management_mappings,
+      state_options: module_record_options("state-master", "state_name"),
+      district_options: module_record_options("district-master", "district_name"),
+      block_options: module_record_options("block-master", "block_name"),
+      gram_panchayat_options: (
+        module_record_options("gram-panchayat-master", ["gram_panchayat_name", "gram_panchayat", "gp_name", "gram_name", "name"]) +
+        module_record_options("lg-directory-list", ["gram_panchayat", "gp_code"])
+      ).compact_blank.uniq,
+      village_options: module_record_options("village-master", "village_name"),
+      location_hierarchy_mappings: location_hierarchy_mappings,
+      parent_office_options: module_record_options("parent-office-add", ["parent_office_name", "parent_category"]),
+      office_name_options: module_record_options("office-category-add", ["office_name", "category_name"]),
+      office_category_mappings: office_category_mappings,
+      sub_office_name_options: module_record_options("office-mapping-add", ["sub_office_name", "office_mapping", "office"]),
+      ics_options: module_record_options("ics-master", "ics_name")
+    }
+  end
+
+  def empty_user_form_options_payload
+    {
+      stakeholder_options: [], stakeholder_role_options: [], role_options: [],
+      user_management_role_options: [], person_type_options: [], role_management_mappings: [],
+      state_options: [], district_options: [], block_options: [], gram_panchayat_options: [],
+      village_options: [], location_hierarchy_mappings: [], parent_office_options: [],
+      office_name_options: [], office_category_mappings: [], sub_office_name_options: [], ics_options: []
+    }
+  end
+
+  def preload_user_form_module_records!
+    @user_form_module_records = ModuleRecord
+      .where(module_slug: FORM_OPTION_SLUGS)
+      .order(created_at: :desc)
+      .group_by(&:module_slug)
+  end
+
+  def user_form_module_records(module_slugs)
+    slugs = Array(module_slugs)
+    if @user_form_module_records
+      return slugs
+        .flat_map { |slug| @user_form_module_records.fetch(slug, []) }
+        .sort_by(&:created_at)
+        .reverse
+    end
+
+    ModuleRecord.where(module_slug: slugs).order(created_at: :desc).to_a
   end
 
   def module_record_options(module_slug, field_key)
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
     field_keys = Array(field_key)
-    ModuleRecord
-      .where(module_slug: module_slug)
-      .order(created_at: :desc)
+    user_form_module_records(module_slug)
       .select { |record| active_module_record?(record) }
       .filter_map do |record|
         if ["gram-panchayat-master", "lg-directory-list"].include?(module_slug)
@@ -126,9 +177,7 @@ class UsersController < ApplicationController
   def role_management_mappings
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
-    stakeholder_role_mappings = ModuleRecord
-      .where(module_slug: "stakeholder-role")
-      .order(created_at: :desc)
+    stakeholder_role_mappings = user_form_module_records("stakeholder-role")
       .select { |record| active_module_record?(record) }
       .flat_map do |record|
         stakeholder_role = first_present_data(record, "stakeholder_role").to_s.strip
@@ -155,9 +204,7 @@ class UsersController < ApplicationController
         end
       end
 
-    role_mappings = ModuleRecord
-      .where(module_slug: "role-name")
-      .order(created_at: :desc)
+    role_mappings = user_form_module_records("role-name")
       .select { |record| active_module_record?(record) }
       .flat_map do |record|
         role = first_present_data(record, "role_name").to_s.strip
@@ -177,9 +224,7 @@ class UsersController < ApplicationController
         end
       end
 
-    user_management_role_mappings = ModuleRecord
-      .where(module_slug: "user-management-role")
-      .order(created_at: :desc)
+    user_management_role_mappings = user_form_module_records("user-management-role")
       .select { |record| active_module_record?(record) }
       .flat_map do |record|
         user_management_role = first_present_data(record, "user_management_role").to_s.strip
@@ -198,9 +243,7 @@ class UsersController < ApplicationController
         end
       end
 
-    person_type_mappings = ModuleRecord
-      .where(module_slug: "person-type")
-      .order(created_at: :desc)
+    person_type_mappings = user_form_module_records("person-type")
       .select { |record| active_module_record?(record) }
       .flat_map do |record|
         person_type = first_present_data(record, "person_type").to_s.strip
@@ -299,9 +342,7 @@ class UsersController < ApplicationController
   def office_category_mappings
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
-    ModuleRecord
-      .where(module_slug: ["office-category-add", "office-mapping-add"])
-      .order(created_at: :desc)
+    user_form_module_records(["office-category-add", "office-mapping-add"])
       .select { |record| active_module_record?(record) }
       .map do |record|
         office_category = first_present_data(record, "office_category", "category_name")
@@ -373,13 +414,18 @@ class UsersController < ApplicationController
         village: first_present_data(record, "village", "village_name"))
     end
 
-    states + districts + blocks + gram_panchayats + villages + lg_directory_rows
+    deduplicate_location_rows(states + districts + blocks + gram_panchayats + villages + lg_directory_rows)
+  end
+
+  def deduplicate_location_rows(rows)
+    rows.uniq do |row|
+      %i[state district block gram_panchayat village]
+        .map { |key| row[key].to_s.strip.downcase }
+    end
   end
 
   def active_records_for_location(module_slug)
-    ModuleRecord
-      .where(module_slug: module_slug)
-      .order(created_at: :desc)
+    user_form_module_records(module_slug)
       .select { |record| active_module_record?(record) }
   end
 

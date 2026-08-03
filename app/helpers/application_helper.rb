@@ -139,6 +139,7 @@ module ApplicationHelper
         # ["Farmer Training Topic Mapping", :module, "training-topic-mapping"],
         ["Farmer Training Form", :module, "training-form"],
         ["Farmer Training Form List", :module, "training-form-list"],
+        ["Farmer Participation Report", :route, :farmer_participation_report_path],
         ["Seed Distribution Target", :module, "seed-distribution-target"],
         ["Seed Distribution Target List", :module, "seed-distribution-target-list"],
         ["PAPL360 Target", :module, "papl360-target"],
@@ -153,27 +154,27 @@ module ApplicationHelper
     #     ["ICS Master", :module, "ics-master"]
     #   ]
     # },
-    # {
-    #   title: "Farmer Farm Information",
-    #   icon: "▥",
-    #   links: [
-    #     ["Farmer Farm Information", :route, :farmer_farm_information_path],
-    #     ["All Basic Detail List", :route, :list_farmer_farm_information_path],
-    #     ["Farm Map (lat long gps)", :route, :farm_map_farmer_farm_information_path],
-    #     ["Crop Map Session Wise Farm Map (lat long gps)", :route, :crop_map_session_wise_farmer_farm_information_path],
-    #     ["Farm-Crop-Area Details", :route, :farm_crop_area_details_path],
-    #     ["Seed & Planting Material", :route, :seed_planting_materials_path],
-    #     ["Soil Conditioners & Fertility Input Records", :route, :soil_conditioner_fertility_input_records_path],
-    #     ["On Farm Input Records", :route, :on_farm_input_records_path],
-    #     ["Disease, Insects, Pests & Weed Management Record", :route, :disease_pest_weed_management_records_path],
-    #     ["Contamination Control Records", :route, :contamination_control_records_path],
-    #     ["Records of Production & Harvest Details", :route, :production_harvest_details_path],
-    #     ["Post Harvest, Handling & Storage Area", :route, :post_harvest_handling_storage_records_path],
-    #     ["Sale Record", :route, :sale_records_path],
-    #     ["Dispatch Record", :route, :dispatch_records_path],
-    #     ["Application Format for Exit of Farmer from ICS", :route, :ics_exit_declaration_farmer_farm_information_path]
-    #   ]
-    # },
+    {
+      title: "Farmer Farm Information",
+      icon: "▥",
+      links: [
+        ["Farmer Farm Information", :route, :farmer_farm_information_path],
+        ["All Basic Detail List", :route, :list_farmer_farm_information_path],
+        ["Farm Map (lat long gps)", :route, :farm_map_farmer_farm_information_path],
+        ["Crop Map Session Wise Farm Map (lat long gps)", :route, :crop_map_session_wise_farmer_farm_information_path],
+        ["Farm-Crop-Area Details", :route, :farm_crop_area_details_path],
+        ["Seed & Planting Material", :route, :seed_planting_materials_path],
+        ["Soil Conditioners & Fertility Input Records", :route, :soil_conditioner_fertility_input_records_path],
+        ["On Farm Input Records", :route, :on_farm_input_records_path],
+        ["Disease, Insects, Pests & Weed Management Record", :route, :disease_pest_weed_management_records_path],
+        ["Contamination Control Records", :route, :contamination_control_records_path],
+        ["Records of Production & Harvest Details", :route, :production_harvest_details_path],
+        ["Post Harvest, Handling & Storage Area", :route, :post_harvest_handling_storage_records_path],
+        ["Sale Record", :route, :sale_records_path],
+        ["Dispatch Record", :route, :dispatch_records_path],
+        ["Application Format for Exit of Farmer from ICS", :route, :ics_exit_declaration_farmer_farm_information_path]
+      ]
+    },
     {
       title: "Jeevika Jankar Bill",
       icon: "▧",
@@ -338,13 +339,13 @@ module ApplicationHelper
       keys.concat(["vrp-type", "add-jeevika-jankar-type", "jeevika-jankar-type"])
     end
     if ["Farmer Training", "Farmer Target"].include?(name.to_s.strip)
-      keys.concat(["farmer-training", "farmer-target", "seed-distribution-target", "papl360-target", "add-farmer-form"])
+      keys.concat(["farmer-training", "farmer-target", "farmer-participation-report", "seed-distribution-target", "papl360-target", "add-farmer-form"])
     end
     if ["Farmer Training Form", "Farmer Target Form"].include?(name.to_s.strip)
       keys.concat(["farmer-training-form", "farmer-target-form", "seed-distribution-target", "papl360-target"])
     end
     if ["Farmer Training Form List", "Farmer Target Form List"].include?(name.to_s.strip)
-      keys.concat(["farmer-training-form-list", "farmer-target-form-list", "seed-distribution-target-list", "papl360-target-list"])
+      keys.concat(["farmer-training-form-list", "farmer-target-form-list", "farmer-participation-report", "seed-distribution-target-list", "papl360-target-list"])
     end
     if ["Seed Distribution Target", "Seed Distribution Target Form"].include?(name.to_s.strip)
       keys.concat(["seed-distribution-target", "seed-distribution-target-form", "seed-distribution-target-list"])
@@ -461,6 +462,7 @@ module ApplicationHelper
       links: [
         ["Farmer Training Form", :module, "training-form"],
         ["Farmer Training Form List", :module, "training-form-list"],
+        ["Farmer Participation Report", :route, :farmer_participation_report_path],
         ["Seed Distribution Target", :module, "seed-distribution-target"],
         ["Seed Distribution Target List", :module, "seed-distribution-target-list"],
         ["PAPL360 Target", :module, "papl360-target"],
@@ -507,13 +509,13 @@ module ApplicationHelper
   end
 
   def app_display_name
-    current_stakeholder&.data&.[]("stakeholder_name_in_english").presence ||
+    @app_display_name ||= current_stakeholder&.data&.[]("stakeholder_name_in_english").presence ||
       current_stakeholder&.data&.[]("stakeholder_name").presence ||
       ENV.fetch("APP_NAME", "VRP")
   end
 
   def app_logo_path
-    matching_stakeholder_record("stakeholder-master")&.data&.[]("logo_upload").presence ||
+    @app_logo_path ||= matching_stakeholder_record("stakeholder-master")&.data&.[]("logo_upload").presence ||
       matching_stakeholder_record("stakeholder-profile")&.data&.[]("logo_upload").presence ||
       current_stakeholder&.data&.[]("logo_upload").presence ||
       current_stakeholder_profile&.data&.[]("logo_upload").presence ||
@@ -556,11 +558,19 @@ module ApplicationHelper
     if defined?(ModuleRecord) && ModuleRecord.table_exists? && username.present?
       legacy_user = ModuleRecord
         .where(module_slug: "new-user")
+        .where("data::jsonb ->> 'user_name' = ?", username)
         .order(updated_at: :desc)
-        .detect { |record| record.data["user_name"].to_s == username }
+        .first
       names << legacy_user&.data&.[]("stakeholder")
     end
 
+    @current_user_stakeholder_names = names.compact_blank.map { |name| name.to_s.strip }.uniq
+  rescue ActiveRecord::StatementInvalid
+    legacy_user = ModuleRecord
+      .where(module_slug: "new-user")
+      .order(updated_at: :desc)
+      .detect { |record| record.data["user_name"].to_s == username }
+    names << legacy_user&.data&.[]("stakeholder")
     @current_user_stakeholder_names = names.compact_blank.map { |name| name.to_s.strip }.uniq
   end
 

@@ -2,6 +2,7 @@
 <% quantity = ->(value) { value.to_f == value.to_i ? value.to_i : format("%.2f", value.to_f) } %>
 <% filter_params = {
   training_month: @weekly_selected_month.presence,
+  training_fcoc: @weekly_selected_fcoc.presence,
   activity: @weekly_selected_activity.presence,
   training_sub_activity: @weekly_selected_sub_activity.presence,
   status: @weekly_report_status.presence
@@ -27,7 +28,7 @@
     <div class="module-card-header">
       <div>
         <h2>Report Filters</h2>
-        <p>Month, Activity aur Sub Activity select karke weekly data fetch karo.</p>
+        <p>Month, FCOC, Activity aur Sub Activity select karke weekly data fetch karo.</p>
       </div>
     </div>
 
@@ -39,6 +40,16 @@
             <option value="">All Months</option>
             <% Array(@weekly_month_options).each do |month| %>
               <option value="<%= month %>" <%= "selected" if @weekly_selected_month.to_s == month.to_s %>><%= month %></option>
+            <% end %>
+          </select>
+        </div>
+
+        <div class="dashboard-filter-field">
+          <label for="weekly_fcoc">FCOC</label>
+          <select name="training_fcoc" id="weekly_fcoc" class="form-select dashboard-filter-select">
+            <option value="">All FCOC</option>
+            <% Array(@weekly_fcoc_options).each do |fcoc| %>
+              <option value="<%= fcoc %>" <%= "selected" if @weekly_selected_fcoc.to_s == fcoc.to_s %>><%= fcoc %></option>
             <% end %>
           </select>
         </div>
@@ -66,7 +77,8 @@
         <div class="dashboard-filter-field">
           <label for="weekly_status">Status</label>
           <select name="status" id="weekly_status" class="form-select dashboard-filter-select">
-            <option value="">All Status</option>
+            <option value="">Select Status</option>
+            <option value="total" <%= "selected" if @weekly_report_status.to_s == "total" %>>Total Targets</option>
             <% %w[green yellow red].each do |status| %>
               <option value="<%= status %>" <%= "selected" if @weekly_report_status.to_s == status %>><%= training_target_status_label(status) %></option>
             <% end %>
@@ -83,13 +95,13 @@
 
   <section class="module-card training-participation-status-card">
     <div class="training-participation-boxes compact">
-      <%= link_to weekly_activity_target_report_path(filter_params.except(:status)), class: "training-participation-box total #{'is-active' if @weekly_report_status.blank?}" do %>
+      <%= link_to weekly_activity_target_report_path(filter_params.merge(status: "total")), class: "training-participation-box total #{'is-active' if @weekly_report_status == 'total'}", data: { turbo: false }, aria: ({ current: "true" } if @weekly_report_status == "total") do %>
         <span>Total Targets</span>
         <strong><%= status_counts[:total].to_i %></strong>
         <small>All filtered weekly targets</small>
       <% end %>
       <% %w[green yellow red].each do |status| %>
-        <%= link_to weekly_activity_target_report_path(filter_params.merge(status: status)), class: "training-participation-box #{status} #{'is-active' if @weekly_report_status == status}" do %>
+        <%= link_to weekly_activity_target_report_path(filter_params.merge(status: status)), class: "training-participation-box #{status} #{'is-active' if @weekly_report_status == status}", data: { turbo: false }, aria: ({ current: "true" } if @weekly_report_status == status) do %>
           <span><%= training_target_status_label(status) %></span>
           <strong><%= status_counts[status.to_sym].to_i %></strong>
           <small><%= training_target_status_caption(status) %></small>
@@ -103,8 +115,12 @@
       <div>
         <h2>Activity / Sub Activity Weekly Report</h2>
         <p class="module-subtitle">
+          <% if @weekly_report_status.present? %>
+            Showing: <%= @weekly_report_status == "total" ? "Total Targets" : training_target_status_label(@weekly_report_status) %> |
+          <% end %>
           Total rows: <%= @weekly_report_rows.size %>
           <% if @weekly_selected_month.present? %> | Month: <%= @weekly_selected_month %><% end %>
+          <% if @weekly_selected_fcoc.present? %> | FCOC: <%= @weekly_selected_fcoc %><% end %>
           <% if @weekly_selected_activity.present? %> | Activity: <%= @weekly_selected_activity %><% end %>
           <% if @weekly_selected_sub_activity.present? %> | Sub Activity: <%= @weekly_selected_sub_activity %><% end %>
         </p>
@@ -113,7 +129,7 @@
     </div>
 
     <div class="table-shell">
-      <table class="module-table compact-table" id="weekly_activity_target_report_table" data-paginated-table data-page-size="25">
+      <table class="module-table compact-table upload-report-table weekly-upload-report-table" id="weekly_activity_target_report_table" data-paginated-table data-page-size="25">
         <thead>
           <tr>
             <th>Week</th>
@@ -126,9 +142,15 @@
             <th>Cluster Incharge</th>
             <th>Post</th>
             <th>Target</th>
+            <th>Week 1<br><small>Progress</small></th>
+            <th>Week 2<br><small>Progress</small></th>
+            <th>Week 3<br><small>Progress</small></th>
+            <th>Week 4<br><small>Progress</small></th>
             <th>Completed</th>
             <th>Pending</th>
             <th>Status</th>
+            <th class="upload-report-column">Training Register Upload</th>
+            <th class="upload-report-column">Training Photo Upload with Geo Tag</th>
           </tr>
         </thead>
         <tbody>
@@ -145,14 +167,46 @@
                 <td><%= row[:cluster_incharge] %></td>
                 <td><%= row[:post] %></td>
                 <td><%= quantity.call(row[:target_quantity]) %></td>
+                <% 4.times do |week_index| %>
+                  <% week_target = Array(row[:weekly_targets])[week_index].to_f %>
+                  <% week_done = Array(row[:weekly_achievements])[week_index].to_f %>
+                  <% week_percent = week_target.positive? ? ((week_done / week_target) * 100).round : 0 %>
+                  <% week_status = training_target_status_for_percent(week_percent) %>
+                  <td class="weekly-progress-cell">
+                    <span class="weekly-progress-breakdown <%= week_status %>" title="Completed <%= quantity.call(week_done) %> out of target <%= quantity.call(week_target) %>">
+                      <span><small>Done</small><strong><%= quantity.call(week_done) %></strong></span>
+                      <span><small>Target</small><strong><%= quantity.call(week_target) %></strong></span>
+                    </span>
+                  </td>
+                <% end %>
                 <td><%= quantity.call(row[:completed_quantity]) %></td>
                 <td><%= quantity.call(row[:pending_quantity]) %></td>
                 <td><span class="training-status-pill <%= row[:status_class] %>"><%= row[:status_label] %></span></td>
+                <% [[:training_register_urls, "Register"], [:training_photo_urls, "Photo"]].each do |key, label| %>
+                  <% urls = Array(row[key]) %>
+                  <td class="upload-report-column" data-export-value="<%= urls.join(', ') %>">
+                    <% if urls.any? %>
+                      <% urls.each_with_index do |url, index| %>
+                        <% if key == :training_photo_urls %>
+                          <%= link_to url, target: "_blank", rel: "noopener", class: "upload-thumbnail-link", title: "Open #{label} #{index + 1}" do %>
+                            <%= image_tag url, alt: "#{label} #{index + 1}", class: "upload-thumbnail", loading: "lazy" %>
+                          <% end %>
+                        <% else %>
+                          <%= link_to "#{label} #{index + 1}", url, target: "_blank", rel: "noopener", class: "grid-view-link" %>
+                        <% end %>
+                      <% end %>
+                    <% else %>
+                      -
+                    <% end %>
+                  </td>
+                <% end %>
               </tr>
             <% end %>
           <% else %>
             <tr>
-              <td colspan="13">No weekly target data found for selected filters.</td>
+              <td colspan="19">
+                <%= @weekly_report_status.present? ? "No weekly target data found for selected status and filters." : "Total, Green, Yellow or Red box par click karke uski list dekhein." %>
+              </td>
             </tr>
           <% end %>
         </tbody>

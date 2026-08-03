@@ -50,7 +50,7 @@
     </div>
 
     <div class="table-shell">
-      <table class="module-table compact-table training-target-status-table" id="training_target_status_list" data-paginated-table data-page-size="20">
+      <table class="module-table compact-table training-target-status-table upload-report-table" id="training_target_status_list" data-paginated-table data-page-size="20">
         <thead>
           <tr>
             <th>VRP</th>
@@ -65,6 +65,8 @@
             <th>Pending</th>
             <th>Progress</th>
             <th>Status</th>
+            <th class="upload-report-column">Training Register Upload</th>
+            <th class="upload-report-column">Training Photo Upload with Geo Tag</th>
           </tr>
         </thead>
         <tbody>
@@ -83,11 +85,29 @@
                 <td><%= quantity.call(row[:pending_quantity]) %></td>
                 <td><%= row[:progress_percent].to_i %>%</td>
                 <td><span class="training-status-pill <%= row[:status_class] %>"><%= row[:status_label] %></span></td>
+                <% [[:training_register_urls, "Register"], [:training_photo_urls, "Photo"]].each do |key, label| %>
+                  <% urls = Array(row[key]) %>
+                  <td class="upload-report-column" data-export-value="<%= urls.join(', ') %>">
+                    <% if urls.any? %>
+                      <% urls.each_with_index do |url, index| %>
+                        <% if key == :training_photo_urls %>
+                          <%= link_to url, target: "_blank", rel: "noopener", class: "upload-thumbnail-link", title: "Open #{label} #{index + 1}" do %>
+                            <%= image_tag url, alt: "#{label} #{index + 1}", class: "upload-thumbnail", loading: "lazy" %>
+                          <% end %>
+                        <% else %>
+                          <%= link_to "#{label} #{index + 1}", url, target: "_blank", rel: "noopener", class: "grid-view-link" %>
+                        <% end %>
+                      <% end %>
+                    <% else %>
+                      -
+                    <% end %>
+                  </td>
+                <% end %>
               </tr>
             <% end %>
           <% else %>
             <tr>
-              <td colspan="12">No targets found for this status.</td>
+              <td colspan="14">No targets found for this status.</td>
             </tr>
           <% end %>
         </tbody>

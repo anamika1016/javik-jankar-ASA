@@ -1,4 +1,5 @@
 class Vrp < ApplicationRecord
+  include GloballyUniqueUsername
   IMAGE_CONTENT_TYPES = %w[image/jpeg image/png].freeze
 
   default_scope { where(is_deleted: false) }

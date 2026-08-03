@@ -24,6 +24,34 @@ class Api::V1::SessionsControllerTest < ActionDispatch::IntegrationTest
     assert_equal true, response.parsed_body["success"]
   end
 
+  test "jeevika jankar login only authenticates vrp and returns vrp type as role" do
+    type = VrpType.create!(type_name: "Jeevika Mobilizer", is_active: true, is_deleted: false)
+    vrp = create_vrp(
+      user_name: "shared_android_login",
+      password: "vrp-secret",
+      vrp_type_ids: [type.id],
+      stakeholder: "Wrong Stakeholder",
+      stakeholder_role: "Manager_ICS",
+      role: "Manager ics",
+      agreement_accepted_at: Time.current
+    )
+    duplicate_user = build_admin_user(user_name: "shared_android_login", password: "user-secret")
+    duplicate_user.save!(validate: false) # Simulates duplicate usernames already present in production data.
+
+    post "/api/v1/jeevika-jankar-login",
+      params: { login: "shared_android_login", password: "vrp-secret" },
+      as: :json
+
+    assert_response :success
+    body = response.parsed_body
+    assert_equal vrp.id, body.dig("user", "id")
+    assert_equal "Vrp", body.dig("user", "record_type")
+    assert_equal "Jeevika Mobilizer", body.dig("user", "role")
+    assert_equal ["Jeevika Mobilizer"], body.dig("user", "vrp_types")
+    assert_nil body.dig("user", "stakeholder")
+    assert_nil body.dig("user", "stakeholder_role")
+  end
+
   test "api login rejects invalid credentials" do
     create_vrp(user_name: "api_bad_vrp", password: "secret", agreement_accepted_at: Time.current)
 
@@ -100,5 +128,19 @@ class Api::V1::SessionsControllerTest < ActionDispatch::IntegrationTest
     }
 
     Vrp.create!(defaults.merge(attributes))
+  end
+  def build_admin_user(attributes = {})
+    defaults = {
+      first_name: "Duplicate",
+      last_name: "User",
+      email: "duplicate_#{SecureRandom.hex(3)}@example.com",
+      mobile_no: "8#{SecureRandom.random_number(10**9).to_s.rjust(9, "0")}",
+      password: "secret",
+      user_type: "admin",
+      status: "Active",
+      stakeholder: "PAPL",
+      role: "Manager ics"
+    }
+    User.new(defaults.merge(attributes))
   end
 end

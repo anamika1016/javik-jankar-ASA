@@ -11,6 +11,30 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
     assert_response :unauthorized
   end
 
+  test "farmer training form data requires auth" do
+    get "/api/v1/farmer-trainings/form-data", as: :json
+
+    assert_response :unauthorized
+  end
+
+  test "farmer training farmer list requires auth" do
+    get "/api/v1/farmer-trainings/farmers", as: :json
+
+    assert_response :unauthorized
+  end
+
+  test "farmer training months require auth" do
+    get "/api/v1/farmer-trainings/months", as: :json
+
+    assert_response :unauthorized
+  end
+
+  test "mapped farmer list requires auth" do
+    get "/api/v1/farmer-trainings/mapped-farmers", as: :json
+
+    assert_response :unauthorized
+  end
+
   test "farmer training list and form options work" do
     ModuleRecord.create!(
       module_slug: "training-form",
@@ -34,6 +58,7 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_equal true, response.parsed_body["success"]
     assert response.parsed_body["options"].key?("target_mappings")
+    assert response.parsed_body["options"].key?("autofill")
   end
 
   test "seed distribution list and form options work" do
@@ -56,6 +81,7 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
     get "/api/v1/seed-distribution-targets/form-options", headers: auth_headers, as: :json
     assert_response :success
     assert response.parsed_body["options"].key?("target_mappings")
+    assert response.parsed_body["options"].key?("autofill")
   end
 
   test "papl360 list and form options work" do

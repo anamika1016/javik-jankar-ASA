@@ -11,32 +11,45 @@
       </div>
 
       <div class="dashboard-actions">
+        <div class="dashboard-header-clock" aria-label="Live Clock">
+          <span>Live</span>
+          <strong data-dashboard-clock-time><%= @dashboard_generated_at.strftime("%I:%M:%S %p") %></strong>
+          <small data-dashboard-clock-date><%= @dashboard_generated_at.strftime("%d %b %Y") %></small>
+        </div>
+        <%= link_to "Participation Report", farmer_participation_report_path, class: "list-btn" %>
         <%= link_to "View Targets", target_mappings_path, class: "list-btn active" %>
       </div>
     </div>
 
-    <div class="dashboard-grid premium">
-      <% @dashboard_cards.each_with_index do |card, index| %>
-        <% title   = card.is_a?(Hash) ? card[:title]   : card[0] %>
-        <% value   = card.is_a?(Hash) ? card[:value]   : card[1] %>
-        <% caption = card.is_a?(Hash) ? card[:caption] : card[2] %>
-        <% path    = card.is_a?(Hash) && card[:path].present? ? card[:path] : target_mappings_path %>
-        <%= link_to path, class: "metric-card-link", data: { dashboard_card: true } do %>
-          <article class="metric-card <%= "featured" if index.zero? %>">
-            <div>
-              <span><%= title %></span>
-              <strong><%= value %></strong>
-              <small><%= caption %></small>
-            </div>
-            <b>↗</b>
-          </article>
+    <% dashboard_cards_by_title = @dashboard_cards.index_by { |card| card[:title] } %>
+    <section class="module-card vrp-work-overview">
+      <div class="vrp-work-overview-header">
+        <div>
+          <h2>Work Overview</h2>
+          <p><%= @training_selected_month %> assigned work area and target progress.</p>
+        </div>
+        <div class="dashboard-actions">
+          <%= form_with url: dashboard_path, method: :get, local: true do |form| %>
+            <%= form.label :training_month, "Month" %>
+            <%= form.select :training_month,
+                  options_for_select(@training_month_options.map { |month| [month, month] }, @training_selected_month),
+                  {},
+                  onchange: "this.form.submit()" %>
+          <% end %>
+          <span>Click any number to open its monthly detailed list</span>
+        </div>
+      </div>
+      <div class="vrp-work-overview-metrics">
+        <% ["Mapped Farmers", "Mapped Villages", "Main Activities", "Sub Activities", "Assigned Target", "Achieved Target", "Pending Target"].each do |title| %>
+          <% card = dashboard_cards_by_title[title] %>
+          <%= link_to card[:path], class: "#{title.parameterize}", title: card[:caption], data: { dashboard_card: true } do %>
+            <span><%= title %></span>
+            <strong><%= card[:value] %></strong>
+            <small><%= card[:caption] %></small>
+          <% end %>
         <% end %>
-      <% end %>
-    </div>
-
-    <% participation = @training_participation || { totals: { green: 0, yellow: 0, red: 0, total: 0 }, ics_rows: [], village_rows: [] } %>
-    <% training_rows = @farmer_training_dashboard_rows || [] %>
-    <%= render "farmer_training_dashboard", training_rows: training_rows, participation: participation %>
+      </div>
+    </section>
 
     <section class="module-card" id="vrp_target_progress">
       <div class="module-card-header">
@@ -56,6 +69,15 @@
               <th>Main Activity</th>
               <th>Sub Activity</th>
               <th>Target</th>
+              <th>Week 1</th>
+              <th>Week 2</th>
+              <th>Week 3</th>
+              <th>Week 4</th>
+              <th>OPG Training</th>
+              <th>General Training/Meeting</th>
+              <th>Input Demo INM</th>
+              <th>Input Demo PM</th>
+              <th>FFS</th>
               <th>Completed</th>
               <th>Pending</th>
               <th>Progress</th>
@@ -73,6 +95,15 @@
                   <td><%= row[:main_activity] %></td>
                   <td><%= row[:activity] %></td>
                   <td><%= quantity.call(row[:target]) %></td>
+                  <td><%= quantity.call(row[:week_1]) %></td>
+                  <td><%= quantity.call(row[:week_2]) %></td>
+                  <td><%= quantity.call(row[:week_3]) %></td>
+                  <td><%= quantity.call(row[:week_4]) %></td>
+                  <td><%= row[:opg_training].present? ? quantity.call(row[:opg_training]) : "-" %></td>
+                  <td><%= row[:general_training].present? ? quantity.call(row[:general_training]) : "-" %></td>
+                  <td><%= row[:input_demo_inm].present? ? quantity.call(row[:input_demo_inm]) : "-" %></td>
+                  <td><%= row[:input_demo_pm].present? ? quantity.call(row[:input_demo_pm]) : "-" %></td>
+                  <td><%= row[:ffs].present? ? quantity.call(row[:ffs]) : "-" %></td>
                   <td><%= quantity.call(row[:completed]) %></td>
                   <td><%= quantity.call(row[:pending]) %></td>
                   <td><span class="grid-status <%= row[:pending].to_f.zero? ? "approved" : "pending" %>"><%= row[:progress] %></span></td>
@@ -80,7 +111,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="11">No target has been assigned to this VRP yet.</td>
+                <td colspan="20">No target has been assigned to this Jeevika Jankar yet.</td>
               </tr>
             <% end %>
           </tbody>
@@ -89,51 +120,70 @@
       <div class="table-pagination" data-pagination-for="vrp_target_progress_table"></div>
     </section>
 
-    <section class="module-card" id="vrp_mapped_villages">
-      <div class="module-card-header">
-        <h2>Mapped Village Work Area</h2>
+    <% selected_target_week = params[:target_week].presence || "all" %>
+    <% target_week_options = [["All Weeks", "all"], ["Week 1", "week_1"], ["Week 2", "week_2"], ["Week 3", "week_3"], ["Week 4", "week_4"]] %>
+    <section class="module-card" id="vrp_weekly_target_plan">
+      <div class="module-card-header weekly-plan-header">
+        <div>
+          <h2>Weekly Target Plan</h2>
+          <p>Review the work planned for each week and compare it with overall progress.</p>
+        </div>
+        <div class="dashboard-actions">
+          <%= form_with url: dashboard_path, method: :get, local: true, class: "weekly-plan-filter" do |form| %>
+            <%= form.label :target_week, "Week" %>
+            <%= form.select :target_week, options_for_select(target_week_options, selected_target_week), {}, onchange: "this.form.submit()" %>
+          <% end %>
+          <button type="button" class="list-btn export" data-export-table="vrp_weekly_target_table">Export</button>
+        </div>
       </div>
 
       <div class="table-shell">
-        <table class="module-table compact-table">
+        <table class="module-table compact-table" id="vrp_weekly_target_table" data-paginated-table data-page-size="15">
           <thead>
             <tr>
-              <th>FCO</th>
-              <th>Gram Panchayat</th>
+              <th>Month</th>
               <th>Village</th>
-              <th>Mapped Farmers</th>
-              <th>Targets</th>
-              <th>Target Quantity</th>
-              <th>Action</th>
+              <th>Main Activity</th>
+              <th>Sub Activity</th>
+              <th>Total Target</th>
+              <% if selected_target_week == "all" %>
+                <th>Week 1 Plan</th><th>Week 2 Plan</th><th>Week 3 Plan</th><th>Week 4 Plan</th>
+              <% else %>
+                <th><%= target_week_options.to_h.key(selected_target_week) %> Plan</th>
+              <% end %>
+              <th>Overall Completed</th>
+              <th>Overall Pending</th>
+              <th>Completion Date</th>
             </tr>
           </thead>
           <tbody>
-            <% if @vrp_village_rows.any? %>
-              <% @vrp_village_rows.each do |row| %>
+            <% if @vrp_target_rows.any? %>
+              <% @vrp_target_rows.each do |row| %>
                 <tr>
-                  <td><%= row[:fco] %></td>
-                  <td><%= row[:gram_panchayat].presence || "-" %></td>
+                  <td><%= row[:month] %></td>
                   <td><%= row[:village] %></td>
-                  <td><%= row[:farmers] %></td>
-                  <td><%= row[:targets] %></td>
-                  <td><%= quantity.call(row[:target_quantity]) %></td>
-                  <td>
-                    <% if row[:mapping_id].present? %>
-                      <%= button_to "Delete", destroy_vrp_mapped_village_path(row[:mapping_id]), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this mapped village?" } } %>
-                    <% else %>
-                      -
-                    <% end %>
-                  </td>
+                  <td><%= row[:main_activity] %></td>
+                  <td><%= row[:activity] %></td>
+                  <td><%= quantity.call(row[:target]) %></td>
+                  <% if selected_target_week == "all" %>
+                    <td><%= quantity.call(row[:week_1]) %></td><td><%= quantity.call(row[:week_2]) %></td><td><%= quantity.call(row[:week_3]) %></td><td><%= quantity.call(row[:week_4]) %></td>
+                  <% else %>
+                    <td><%= quantity.call(row[selected_target_week.to_sym]) %></td>
+                  <% end %>
+                  <td><%= quantity.call(row[:completed]) %></td>
+                  <td><%= quantity.call(row[:pending]) %></td>
+                  <td><%= row[:completion_date] %></td>
                 </tr>
               <% end %>
             <% else %>
               <tr>
-                <td colspan="7">No village or farmer mapping found for this VRP yet.</td>
+                <td colspan="<%= selected_target_week == 'all' ? 12 : 9 %>">No weekly target plan has been assigned yet.</td>
               </tr>
             <% end %>
           </tbody>
         </table>
       </div>
+      <div class="table-pagination" data-pagination-for="vrp_weekly_target_table"></div>
     </section>
   </section>
 <% else %>
@@ -151,6 +201,11 @@
     </div>
 
     <div class="dashboard-actions">
+      <div class="dashboard-header-clock" aria-label="Live Clock">
+        <span>Live</span>
+        <strong data-dashboard-clock-time><%= @dashboard_generated_at.strftime("%I:%M:%S %p") %></strong>
+        <small data-dashboard-clock-date><%= @dashboard_generated_at.strftime("%d %b %Y") %></small>
+      </div>
       <div class="list-search">
         <span>⌕</span>
         <input type="search" placeholder="Search dashboard" data-dashboard-search>
@@ -293,6 +348,21 @@
   <%# ── METRIC CARDS ─────────────────────────────────────────────────── %>
   <div class="dashboard-grid premium">
     <% @dashboard_cards.each_with_index do |card, index| %>
+      <% next if card.blank? %>
+      <% if card.is_a?(Hash) && card[:items].present? %>
+        <article class="metric-card metric-card-group metric-card-group-<%= card[:style] %>">
+          <span class="metric-card-group-title"><%= card[:title] %></span>
+          <div class="metric-card-group-items">
+            <% card[:items].each do |item| %>
+              <%= link_to item[:path], class: "metric-card-group-item metric-card-group-item-#{item[:title].to_s.parameterize}", data: { dashboard_card: true } do %>
+                <span><%= item[:title] %></span>
+                <strong><%= item[:value] %></strong>
+              <% end %>
+            <% end %>
+          </div>
+        </article>
+        <% next %>
+      <% end %>
       <% title   = card.is_a?(Hash) ? card[:title]   : card[0] %>
       <% value   = card.is_a?(Hash) ? card[:value]   : card[1] %>
       <% caption = card.is_a?(Hash) ? card[:caption] : card[2] %>
@@ -318,14 +388,44 @@
 
   <%# ── WEEKLY TARGET STATUS BOXES ONLY (full data on report page) ── %>
   <% weekly_cards = @dashboard_weekly_target_cards || [] %>
-  <section class="module-card training-participation-status-card" id="dashboard_weekly_target_boxes">
+  <% weekly_selected_month = @weekly_dashboard_selected_month.to_s %>
+  <% weekly_month_filter_value = @weekly_target_month_filter_value.to_s %>
+  <% weekly_fcoc_filter_value = @weekly_target_fcoc_filter_value.to_s %>
+  <section class="module-card training-participation-status-card dashboard-status-panel weekly-status-panel" id="dashboard_weekly_target_boxes">
     <div class="module-card-header training-participation-status-header">
       <div>
         <h2>Weekly Activity Target Status</h2>
         <p>Dashboard pe sirf colour boxes. Full Activity / Sub Activity weekly report alag page pe dekho aur export karo.</p>
       </div>
       <div class="dashboard-actions">
-        <%= link_to "Open Weekly Report", weekly_activity_target_report_path(dashboard_weekly_report_filter_params), class: "list-btn active" %>
+        <%= form_with url: dashboard_path, method: :get, local: true, html: { class: "dashboard-month-filter" } do %>
+          <%= hidden_field_tag :participation_month, @participation_month_filter_value if @participation_month_filter_value.present? %>
+          <%= hidden_field_tag :participation_fcoc, @participation_fcoc_filter_value if @participation_fcoc_filter_value.present? %>
+          <label class="dashboard-month-select">
+            <span>Month</span>
+            <select name="weekly_target_month" onchange="this.form.submit()">
+              <option value="all" <%= "selected" if weekly_month_filter_value == "all" %>>All</option>
+              <% Array(@training_month_options).each do |option| %>
+                <option value="<%= option %>" <%= "selected" if weekly_selected_month == option.to_s %>><%= option %></option>
+              <% end %>
+            </select>
+          </label>
+          <label class="dashboard-month-select">
+            <span>FCOC</span>
+            <select name="weekly_target_fcoc" onchange="this.form.submit()">
+              <option value="">All FCOC</option>
+              <% Array(@filter_fcoc_options).each do |option| %>
+                <option value="<%= option %>" <%= "selected" if weekly_fcoc_filter_value == option.to_s %>><%= option %></option>
+              <% end %>
+            </select>
+          </label>
+        <% end %>
+        <% weekly_report_params = dashboard_weekly_report_filter_params %>
+        <% weekly_report_params.delete(:training_month) %>
+        <% weekly_report_params[:training_month] = weekly_selected_month if weekly_selected_month.present? %>
+        <% weekly_report_params[:training_fcoc] = weekly_fcoc_filter_value if weekly_fcoc_filter_value.present? %>
+        <%= link_to "Open Weekly Report", weekly_activity_target_report_path(weekly_report_params), class: "list-btn active" %>
+        <%= link_to "Export Excel", weekly_activity_target_report_path(weekly_report_params.merge(format: :xlsx)), class: "list-btn export" %>
       </div>
     </div>
 
@@ -345,73 +445,5 @@
     </div>
   </section>
 
-  <%# ── DASHBOARD REPORTS ────────────────────────────────────────────── %>
-  <section class="module-card">
-    <div class="module-card-header">
-      <h2>Dashboard Reports</h2>
-      <button type="button" class="list-btn export" data-export-table="dashboard_reports">Export</button>
-    </div>
-
-    <div class="dashboard-report-grid" id="dashboard_reports">
-      <% @dashboard_reports.each do |report| %>
-        <article class="report-card <%= "clock-report-card" if report[:clock] %>"
-                 <%= "id=\"#{report[:dom_id]}\"".html_safe if report[:dom_id].present? %>
-                 data-dashboard-card>
-
-          <% if report[:clock] %>
-            <h3><%= report[:title] %></h3>
-            <div class="dashboard-clock-face">
-              <div class="clock-content">
-                <div class="clock-info">
-                  <span class="clock-hud-label">Live</span>
-                  <strong data-dashboard-clock-time><%= @dashboard_generated_at.strftime("%I:%M:%S %p") %></strong>
-                  <small data-dashboard-clock-date><%= @dashboard_generated_at.strftime("%A, %d %B %Y") %></small>
-                </div>
-                <div class="clock-hud-panel">
-                  <div class="clock-dial"><i></i><span></span></div>
-                </div>
-              </div>
-              <div class="clock-card-footer">
-                <small>Refresh: <%= @dashboard_generated_at.strftime("%d-%m-%Y %I:%M %p") %></small>
-              </div>
-            </div>
-
-          <% elsif report[:collapsible] %>
-            <details class="dashboard-report-details" <%= "open" if report[:expanded] %>>
-              <summary class="dashboard-report-summary">
-                <h3><%= report[:title] %></h3>
-                <span>▾</span>
-              </summary>
-              <div class="dashboard-report-body">
-                <div class="table-shell compact-scroll">
-                  <table class="module-table compact-table">
-                    <thead><tr><% report[:headers].each do |h| %><th><%= h %></th><% end %></tr></thead>
-                    <tbody>
-                      <% report[:rows].each do |row| %>
-                        <tr><% row.each do |v| %><td><%= v %></td><% end %></tr>
-                      <% end %>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </details>
-
-          <% else %>
-            <h3><%= report[:title] %></h3>
-            <div class="table-shell compact-scroll">
-              <table class="module-table compact-table">
-                <thead><tr><% report[:headers].each do |h| %><th><%= h %></th><% end %></tr></thead>
-                <tbody>
-                  <% report[:rows].each do |row| %>
-                    <tr><% row.each do |v| %><td><%= v %></td><% end %></tr>
-                  <% end %>
-                </tbody>
-              </table>
-            </div>
-          <% end %>
-        </article>
-      <% end %>
-    </div>
-  </section>
 </section>
 <% end %>

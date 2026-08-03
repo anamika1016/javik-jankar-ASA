@@ -19,6 +19,11 @@
         <%= form_with url: target_mappings_path, method: :post, local: true, html: { class: "module-entry-form" } do %>
           <% if @edit_target %>
             <input type="hidden" name="target_mapping[id]" value="<%= @edit_target.id %>">
+            <div hidden data-edit-saved-target-farmers>
+              <% Array(@edit_target.afl_ids).map(&:to_s).reject(&:blank?).uniq.each do |farmer_id| %>
+                <input type="hidden" value="<%= farmer_id %>" data-edit-saved-target-farmer-id>
+              <% end %>
+            </div>
           <% end %>
           <div class="module-form-grid user-registration-grid">
             <label>
@@ -104,7 +109,7 @@
 
             <label data-target-standard-quantity-fields>
               <span>Target <em>*</em></span>
-              <input type="number" name="target_mapping[target_quantity]" min="1" step="1" placeholder="Selected farmer count" value="<%= @edit_target&.target_quantity %>" data-target-quantity-input readonly required>
+              <input type="number" name="target_mapping[target_quantity]" min="1" step="1" placeholder="Selected farmer count" value="<%= @edit_payload[:target_quantity] %>" data-target-quantity-input readonly required>
             </label>
 
             <label data-target-standard-quantity-fields>
@@ -216,6 +221,10 @@
             <div class="vrp-ics-farmer-list target-dialog-farmer-list" data-target-dialog-farmer-list>
               Select FCO Name, ICS and Village to load farmers.
             </div>
+            <div class="target-farmer-dialog-footer">
+              <span data-target-dialog-save-status>Select farmers, then save the selection.</span>
+              <button type="button" class="list-btn upload" data-target-dialog-save>Save Farmers</button>
+            </div>
           </div>
         </dialog>
         <% end %>
@@ -241,7 +250,6 @@
               <th>FCO</th>
               <th>ICS</th>
               <th>Village</th>
-              <th>Farmers</th>
               <th>Month</th>
               <th>Completion Date</th>
               <th class="target-activity-column">Main Activity</th>
@@ -250,7 +258,13 @@
               <th class="target-training-column">General Training/<wbr>Meeting</th>
               <th class="target-training-column">Input Demo INM</th>
               <th class="target-training-column">Input Demo PM</th>
-              <th>Target</th>
+              <th class="target-training-column">FFS</th>
+              <th class="target-count-column">Farmer Target</th>
+              <th class="target-count-column">Week 1</th>
+              <th class="target-count-column">Week 2</th>
+              <th class="target-count-column">Week 3</th>
+              <th class="target-count-column">Week 4</th>
+              <th class="target-farmer-view-column">View Farmers</th>
 	              <% if show_mapping_actions %>
 	                <th>Action</th>
 	              <% end %>
@@ -264,16 +278,53 @@
                   <td><%= target.fco_name.presence || target.fco_id %></td>
                   <td><%= target.ics_name.presence || target.ics_id %></td>
                   <td><%= target.village_name.presence || target.village_id %></td>
-                  <td><%= Array(target.afl_ids).blank? && target.target_quantity.to_f.positive? ? "New Farmer Target" : target.farmer_count %></td>
                   <td><%= target.month_name %></td>
                   <td><%= target.completion_date&.strftime("%d-%m-%Y") || "-" %></td>
                   <td class="target-activity-text"><%= target.main_activity_name %></td>
                   <td class="target-activity-text"><%= target.activity_name %></td>
-                  <td><%= target.opg_training_target %></td>
-                  <td><%= target.week_wise_opg_target %></td>
-                  <td><%= target.input_demo_inm_target %></td>
-                  <td><%= target.input_demo_pm_target %></td>
-                  <td><%= target.target_quantity %></td>
+                  <td><%= number_with_precision(target.opg_training_target, precision: 4, strip_insignificant_zeros: true) if target.opg_training_target.present? %></td>
+                  <td><%= number_with_precision(target.week_wise_opg_target, precision: 4, strip_insignificant_zeros: true) if target.week_wise_opg_target.present? %></td>
+                  <td><%= number_with_precision(target.input_demo_inm_target, precision: 4, strip_insignificant_zeros: true) if target.input_demo_inm_target.present? %></td>
+                  <td><%= number_with_precision(target.input_demo_pm_target, precision: 4, strip_insignificant_zeros: true) if target.input_demo_pm_target.present? %></td>
+                  <td><%= number_with_precision(target.ffs_target, precision: 4, strip_insignificant_zeros: true) if target.ffs_target.present? %></td>
+                  <td class="target-count-cell"><%= number_with_precision(target.target_quantity, precision: 4, strip_insignificant_zeros: true) %></td>
+                  <% week_targets = target.weekly_target_values %>
+                  <td class="target-count-cell"><%= week_targets[0] %></td>
+                  <td class="target-count-cell"><%= week_targets[1] %></td>
+                  <td class="target-count-cell"><%= week_targets[2] %></td>
+                  <td class="target-count-cell"><%= week_targets[3] %></td>
+                  <% target_farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?) %>
+                  <td class="target-farmer-view-cell">
+                    <% if target_farmer_ids.any? %>
+                      <% farmer_dialog_id = "target-farmers-#{target.id}" %>
+                      <button type="button" class="table-action" data-saved-target-farmers-open="<%= farmer_dialog_id %>">View</button>
+                      <dialog id="<%= farmer_dialog_id %>" class="target-farmer-dialog" data-saved-target-farmers-dialog>
+                        <div class="target-farmer-dialog-inner">
+                          <div class="target-farmer-dialog-header">
+                            <div>
+                              <strong>Farmer List</strong>
+                              <span><%= pluralize(target_farmer_ids.size, "farmer") %></span>
+                            </div>
+                            <button type="button" data-saved-target-farmers-close aria-label="Close">×</button>
+                          </div>
+                          <div class="vrp-ics-farmer-list target-dialog-farmer-list">
+                            <% target_farmer_ids.each do |farmer_id| %>
+                              <% farmer = @target_farmers_by_id[farmer_id] %>
+                              <div class="vrp-ics-farmer-item">
+                                <span aria-hidden="true">•</span>
+                                <span>
+                                  <strong><%= farmer&.farmer_name.presence || "Farmer ##{farmer_id}" %></strong>
+                                  <small><%= [farmer&.father_name.presence && "Father: #{farmer.father_name}", farmer&.tracenet_no.presence && "Tracenet: #{farmer.tracenet_no}", farmer&.mobile_no.presence && "Mobile: #{farmer.mobile_no}", farmer&.village_name.presence && "Village: #{farmer.village_name}"].compact.join(" | ") %></small>
+                                </span>
+                              </div>
+                            <% end %>
+                          </div>
+                        </div>
+                      </dialog>
+                    <% else %>
+                      <span class="target-no-farmers">—</span>
+                    <% end %>
+                  </td>
 	                  <% if show_mapping_actions %>
 	                    <td>
 	                      <div class="table-actions">
@@ -290,7 +341,7 @@
               <% end %>
             <% else %>
               <tr>
-	                <td colspan="<%= show_mapping_actions ? 15 : 14 %>">No target mapping saved yet.</td>
+	                <td colspan="<%= show_mapping_actions ? 20 : 19 %>">No target mapping saved yet.</td>
               </tr>
             <% end %>
           </tbody>

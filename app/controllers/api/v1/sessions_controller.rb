@@ -1,7 +1,7 @@
 module Api
   module V1
     class SessionsController < BaseController
-      skip_before_action :authenticate_api_user!, only: [ :create ]
+      skip_before_action :authenticate_api_user!, only: [ :create, :create_jeevika_jankar ]
 
       def create
         merge_json_body_params!
@@ -32,6 +32,35 @@ module Api
           success: true,
           message: "Logged in successfully.",
           token: token,
+          user: app_user_session_payload(user)
+        }, status: :ok
+      end
+
+      def create_jeevika_jankar
+        merge_json_body_params!
+
+        login = params[:login].presence || params[:email].presence || params[:username].presence
+        user = AppUserAuthenticator.authenticate_vrp(login: login, password: params[:password])
+
+        unless user
+          return render json: {
+            success: false,
+            message: "Invalid Jeevika Jankar username or password."
+          }, status: :unauthorized
+        end
+
+        if vrp_agreement_required?(user)
+          return render json: {
+            success: false,
+            error: "agreement_required",
+            message: "Please accept the VRP agreement on the web portal before using the app."
+          }, status: :forbidden
+        end
+
+        render json: {
+          success: true,
+          message: "Jeevika Jankar logged in successfully.",
+          token: ApiAuthToken.encode(user),
           user: app_user_session_payload(user)
         }, status: :ok
       end

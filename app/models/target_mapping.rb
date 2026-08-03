@@ -18,6 +18,15 @@ class TargetMapping < ApplicationRecord
 
   validates :target_quantity, numericality: { greater_than_or_equal_to: 0 }
 
+  def weekly_target_values
+    saved = [week_1_target, week_2_target, week_3_target, week_4_target]
+    return saved.map(&:to_i) if saved.all?(&:present?)
+
+    monthly = target_quantity.to_i
+    base, remainder = monthly.divmod(4)
+    4.times.map { |index| base + (index < remainder ? 1 : 0) }
+  end
+
   private
 
   def clean_afl_ids

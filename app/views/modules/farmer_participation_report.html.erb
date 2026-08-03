@@ -1,0 +1,136 @@
+<% content_for :title, "Farmer Participation Report" %>
+
+<main class="vrp-list-page farmer-participation-page">
+  <section class="vrp-list-shell">
+    <div class="vrp-list-header">
+      <div>
+        <p class="vrp-eyebrow">Farmer Target</p>
+        <h1>Farmer Participation Report</h1>
+        <p>Farmer-wise activity, sub activity aur training method participation history.</p>
+      </div>
+    </div>
+
+    <section class="module-card participation-filter-card">
+      <%= form_with url: farmer_participation_report_path, method: :get, local: true, html: { class: "participation-filter-form", data: { participation_filter_form: true, vrp_fcoc_map: json_escape(@farmer_participation_vrp_fcoc_map.to_json), farmer_filter_map: json_escape(@farmer_participation_farmer_filter_map.to_json) } } do |form| %>
+        <label>
+          <span>Month</span>
+          <%= form.select :month, options_for_select([["All Months", ""]] + @farmer_participation_filter_options[:months].map { |value| [value, value] }, @farmer_participation_selected_filters[:month]) %>
+        </label>
+        <label>
+          <span>FCOC</span>
+          <%= select_tag "fcocs[]",
+            options_for_select(@farmer_participation_filter_options[:fcocs].map { |value| [value, value] }, @farmer_participation_selected_filters[:fcocs]),
+            multiple: true,
+            data: { chip_multiselect: true, chip_hover_open: true, placeholder: "Select FCOC" } %>
+        </label>
+        <label>
+          <span>Jeevika Jankar</span>
+          <%= form.select :vrp_id, options_for_select([["All Jeevika Jankar", ""]] + @farmer_participation_filter_options[:vrps], @farmer_participation_selected_filters[:vrp_id]) %>
+        </label>
+        <label>
+          <span>Farmer</span>
+          <%= select_tag "farmer_ids[]",
+            options_for_select(@farmer_participation_filter_options[:farmers], @farmer_participation_selected_filters[:farmer_ids]),
+            multiple: true,
+            data: { chip_multiselect: true, chip_hover_open: true, chip_compact_selection: true, placeholder: "Select Farmers" } %>
+        </label>
+        <div class="participation-filter-actions">
+          <%= form.submit "Apply Filters", class: "list-btn active" %>
+          <%= link_to "Clear", farmer_participation_report_path, class: "list-btn" %>
+        </div>
+      <% end %>
+      <% if @farmer_participation_filter_warning.present? %>
+        <p class="participation-filter-warning"><%= @farmer_participation_filter_warning %></p>
+      <% end %>
+    </section>
+
+    <% if @farmer_participation_filters_applied %>
+    <section class="participation-summary-grid">
+      <article><span>Farmers</span><strong><%= @farmer_participation_totals[:farmers] %></strong></article>
+      <article><span>Total Participations</span><strong><%= @farmer_participation_totals[:participations] %></strong></article>
+      <article><span>Activity / Sub Activity</span><strong><%= @farmer_participation_totals[:activities] %></strong></article>
+      <article><span>Training Methods</span><strong><%= @farmer_participation_totals[:trainings] %></strong></article>
+    </section>
+
+    <section class="vrp-list-card">
+      <div class="list-controls">
+        <strong>Participation List</strong>
+        <div class="list-control-actions">
+          <%= link_to "Export Excel", farmer_participation_report_path(@farmer_participation_selected_filters.merge(format: :xlsx)), class: "list-btn export" %>
+          <div class="list-search compact">
+            <span>⌕</span>
+            <input type="search" placeholder="List search karein" data-table-search="farmer_participation_list">
+          </div>
+        </div>
+      </div>
+      <div class="table-shell">
+        <table class="module-table vrp-list-table" id="farmer_participation_list" data-paginated-table data-page-size="20">
+          <thead>
+            <tr>
+              <th>Farmer Name</th>
+              <th>Tracenet No.</th>
+              <th>Village</th>
+              <th>Month</th>
+              <th>FCOC</th>
+              <th>Jeevika Jankar</th>
+              <th>Main Activity</th>
+              <th>Sub Activity</th>
+              <th>Training Method</th>
+              <th>Participation Count</th>
+              <th>Training Dates</th>
+              <th class="upload-report-column">Training Register Upload</th>
+              <th class="upload-report-column">Training Photo Upload with Geo Tag</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if @farmer_participation_rows.any? %>
+              <% @farmer_participation_rows.each do |row| %>
+                <tr>
+                  <td><strong><%= row[:farmer_name] %></strong></td>
+                  <td><%= row[:tracenet_no] %></td>
+                  <td><%= row[:village] %></td>
+                  <td><%= row[:month] %></td>
+                  <td><%= row[:fcoc] %></td>
+                  <td><%= row[:vrp_name] %></td>
+                  <td><%= row[:main_activity] %></td>
+                  <td><%= row[:sub_activity] %></td>
+                  <td><%= row[:training_method] %></td>
+                  <td class="participation-count"><%= row[:participation_count] %></td>
+                  <td><%= row[:training_dates] %></td>
+                  <td class="upload-report-column" data-export-value="<%= Array(row[:training_register_urls]).join(', ') %>">
+                    <% if Array(row[:training_register_urls]).any? %>
+                      <% Array(row[:training_register_urls]).each_with_index do |url, index| %>
+                        <%= link_to "Register #{index + 1}", url, target: "_blank", rel: "noopener", class: "grid-view-link" %>
+                      <% end %>
+                    <% else %>
+                      -
+                    <% end %>
+                  </td>
+                  <td class="upload-report-column" data-export-value="<%= Array(row[:training_photo_urls]).join(', ') %>">
+                    <% if Array(row[:training_photo_urls]).any? %>
+                      <% Array(row[:training_photo_urls]).each_with_index do |url, index| %>
+                        <%= link_to url, target: "_blank", rel: "noopener", class: "upload-thumbnail-link", title: "Open training photo #{index + 1}" do %>
+                          <%= image_tag url, alt: "Training photo #{index + 1}", class: "upload-thumbnail", loading: "lazy" %>
+                        <% end %>
+                      <% end %>
+                    <% else %>
+                      -
+                    <% end %>
+                  </td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr><td colspan="13">Selected filters ke liye participation record nahi mila.</td></tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="farmer_participation_list"></div>
+    </section>
+    <% else %>
+      <section class="module-card participation-filter-prompt">
+        Farmer ya organization filter select karke <strong>Apply Filters</strong> karein. Participation list filter lagane ke baad dikhegi.
+      </section>
+    <% end %>
+  </section>
+</main>

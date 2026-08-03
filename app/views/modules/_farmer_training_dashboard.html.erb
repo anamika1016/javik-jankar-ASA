@@ -3,24 +3,58 @@
 <% sub_activity_options = Array(@training_sub_activity_options || []) %>
 <% selected_month = @training_selected_month.to_s %>
 <% selected_sub_activity = @training_selected_sub_activity.to_s %>
+<% participation_selected_month = @participation_selected_month.to_s %>
+<% participation_month_filter_value = @participation_month_filter_value.to_s %>
+<% participation_fcoc_filter_value = @participation_fcoc_filter_value.to_s %>
 <% filters_ready = selected_month.present? && selected_sub_activity.present? %>
 <% status_cards = Array(@training_participation_status_cards || []) %>
 <% status_total = status_cards.sum { |card| card[:value].to_i } %>
 <% total_status_path_params = { status: "total" } %>
-<% total_status_path_params[:training_month] = selected_month if selected_month.present? %>
-<% total_status_path_params[:training_sub_activity] = selected_sub_activity if selected_sub_activity.present? %>
+<% total_status_path_params[:training_month] = participation_selected_month if participation_selected_month.present? %>
+<% total_status_path_params[:training_fcoc] = participation_fcoc_filter_value if participation_fcoc_filter_value.present? %>
+<% unique_status_path_params = total_status_path_params.merge(status: "unique") %>
 <% target_status_cards = Array(@training_target_status_cards || []) %>
 
-<section class="module-card training-participation-status-card">
+<section class="module-card training-participation-status-card dashboard-status-panel training-status-panel">
   <div class="module-card-header training-participation-status-header">
     <div>
       <h2>Farmer Training Participation Status (Automatic)</h2>
-      <p>Farmer Target Form ke selected farmers ki training attendance count ke hisaab se status.</p>
+      <p>Total = farmers with training records; Green = 3 or more, Yellow = 1–2, Red = no training in a closed month, Pending = training due in an open month.</p>
     </div>
+    <%= form_with url: dashboard_path, method: :get, local: true, html: { class: "dashboard-month-filter" } do %>
+      <%= hidden_field_tag :weekly_target_month, @weekly_target_month_filter_value if @weekly_target_month_filter_value.present? %>
+      <label class="dashboard-month-select">
+        <span>Month</span>
+        <select name="participation_month" onchange="this.form.submit()">
+          <option value="all" <%= "selected" if participation_month_filter_value == "all" %>>All</option>
+          <% month_options.each do |option| %>
+            <option value="<%= option %>" <%= "selected" if participation_selected_month == option.to_s %>><%= option %></option>
+          <% end %>
+        </select>
+      </label>
+      <label class="dashboard-month-select">
+        <span>FCOC</span>
+        <select name="participation_fcoc" onchange="this.form.submit()">
+          <option value="">All FCOC</option>
+          <% Array(@filter_fcoc_options).each do |option| %>
+            <option value="<%= option %>" <%= "selected" if participation_fcoc_filter_value == option.to_s %>><%= option %></option>
+          <% end %>
+        </select>
+      </label>
+    <% end %>
+    <%= link_to "Export Excel",
+          farmer_training_participation_path(total_status_path_params.merge(status: "total", format: :xlsx)),
+          class: "list-btn export" %>
   </div>
 
-  <div class="training-participation-boxes">
+  <div class="training-participation-boxes compact">
     <% if status_cards.any? %>
+      <%= link_to farmer_training_participation_path(unique_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
+        <span>Total Unique Farmers</span>
+        <strong><%= @training_unique_farmer_count.to_i %></strong>
+        <small>Sirf wahi farmer jinki training selected month me ek hi baar hui.</small>
+        <b>View List</b>
+      <% end %>
       <%= link_to farmer_training_participation_path(total_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
         <span>Total Training Farmer</span>
         <strong><%= status_total %></strong>
@@ -39,57 +73,4 @@
       <div class="training-empty-state">No farmer training target data found.</div>
     <% end %>
   </div>
-</section>
-
-<section class="module-card training-dashboard-card">
-  <div class="module-card-header training-dashboard-header">
-    <div>
-      <h2>Target Dashboard</h2>
-      <p>Live month-wise target, activity, and farmer status.</p>
-    </div>
-    <div class="training-dashboard-header-actions">
-      <%= form_with url: dashboard_path, method: :get, local: true, html: { class: "dashboard-month-filter training-dashboard-month-filter" } do %>
-        <div class="training-dashboard-filter-group">
-          <label class="dashboard-month-select">
-            <span>Month</span>
-            <select name="training_month" data-dashboard-training-filter-select data-dashboard-training-month-select>
-              <option value="">Select Month</option>
-              <% month_options.each do |option| %>
-                <option value="<%= option %>" <%= "selected" if selected_month == option.to_s %>><%= option %></option>
-              <% end %>
-            </select>
-          </label>
-          <label class="dashboard-month-select">
-            <span>Sub Activity</span>
-            <select name="training_sub_activity" data-dashboard-training-filter-select data-dashboard-training-sub-activity-select <%= "disabled" if selected_month.blank? %>>
-              <option value="">Select Sub Activity</option>
-              <% sub_activity_options.each do |option| %>
-                <option value="<%= option %>" <%= "selected" if selected_sub_activity == option.to_s %>><%= option %></option>
-              <% end %>
-            </select>
-          </label>
-        </div>
-      <% end %>
-      <% if filters_ready %>
-        <div class="training-dashboard-total">
-          <span>Total Farmers</span>
-          <strong><%= totals[:total].to_i %></strong>
-        </div>
-      <% end %>
-    </div>
-  </div>
-
-  <% if filters_ready %>
-    <div class="training-dashboard-summary">
-      <% target_status_cards.each do |card| %>
-        <%= link_to card[:path], class: "training-summary-pill #{card[:status]} training-summary-link" do %>
-          <span><%= card[:title] %></span>
-          <strong><%= card[:value].to_i %></strong>
-          <small><%= card[:caption] %></small>
-        <% end %>
-      <% end %>
-    </div>
-  <% else %>
-    <div class="training-empty-state">Select Month and Sub Activity to load training data.</div>
-  <% end %>
 </section>

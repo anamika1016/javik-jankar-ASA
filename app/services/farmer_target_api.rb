@@ -3,6 +3,8 @@
 # Farmer Target module APIs for React Native.
 # Stores ModuleRecord rows with the same slugs as the web UI (ModulesController untouched).
 class FarmerTargetApi
+  MAX_TRAINING_PHOTO_SIZE = 5.megabytes
+  TRAINING_PHOTO_CONTENT_TYPES = %w[image/jpeg image/png image/webp image/heic image/heif].freeze
   OTHER_TARGET_SLUGS = %w[seed-distribution-target papl360-target].freeze
   TARGET_SLUGS = (%w[training-form add-farmer-form] + OTHER_TARGET_SLUGS).freeze
 
@@ -28,6 +30,9 @@ class FarmerTargetApi
   end
 
   def create(raw_attrs)
+    upload_errors = training_photo_upload_errors(raw_attrs)
+    return { success: false, errors: upload_errors } if upload_errors.any?
+
     data = normalize_incoming(raw_attrs)
     data = normalize_for_slug(data)
     errors = validation_errors(data)
@@ -45,12 +50,15 @@ class FarmerTargetApi
     case @module_slug
     when "training-form"
       {
+        autofill: target_form_autofill,
+        current_vrp: current_seed_target_vrp_option,
         months: training_target_mappings.map { |m| m[:month] }.compact_blank.uniq,
         target_mappings: training_target_mappings,
         training_methods: ["Input Demo INM", "Input Demo PM", "FFS", "OPG Training"]
       }
     when *OTHER_TARGET_SLUGS
       {
+        autofill: target_form_autofill,
         months: seed_distribution_target_mappings.map { |m| m[:month] }.compact_blank.uniq,
         target_mappings: seed_distribution_target_mappings,
         current_vrp: current_seed_target_vrp_option
@@ -65,13 +73,17 @@ class FarmerTargetApi
   end
 
   def record_payload(record)
-    {
+    payload = {
       id: record.id,
       module_slug: record.module_slug,
       created_at: record.created_at,
       updated_at: record.updated_at,
       data: record.data
     }
+    if record.module_slug == "training-form"
+      payload[:photo_count] = Array(record.data["training_photo_upload_with_geo_tag"]).compact_blank.size
+    end
+    payload
   end
 
   private
@@ -84,16 +96,22 @@ class FarmerTargetApi
       key = key.to_s
       next if %w[controller action format token authenticity_token].include?(key)
 
-      data[key] =
-        if value.respond_to?(:original_filename)
-          store_uploaded_module_file(value)
-        elsif value.is_a?(ActionController::Parameters)
-          value.to_unsafe_h
-        else
-          value
-        end
+      data[key] = normalize_incoming_value(value)
     end
     data
+  end
+
+  def normalize_incoming_value(value)
+    case value
+    when Array
+      value.map { |item| normalize_incoming_value(item) }.compact_blank
+    when ActionController::Parameters
+      value.to_unsafe_h.transform_values { |item| normalize_incoming_value(item) }
+    when Hash
+      value.transform_values { |item| normalize_incoming_value(item) }
+    else
+      value.respond_to?(:original_filename) ? store_uploaded_module_file(value) : value
+    end
   end
 
   def normalize_for_slug(data)
@@ -350,6 +368,7 @@ class FarmerTargetApi
       data["jeevika_jankar_id"] = mapping[:vrp_id]
       data["jeevika_jankar_name"] = mapping[:jeevika_jankar_name]
       data["jeevika_jankar_contact"] = mapping[:contact_number]
+      data["main_activity_type"] = mapping[:main_activity_type]
     end
 
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
@@ -384,6 +403,7 @@ class FarmerTargetApi
       data["jeevika_jankar_contact"] = mapping[:contact_number]
       data["department"] = mapping[:department]
       data["fcoc_name"] = mapping[:department]
+      data["main_activity_type"] = mapping[:main_activity_type]
       data["target"] = mapping[:target].to_s if data["target"].blank?
       data["main_activity"] = mapping[:training_topic]
       data["sub_activity"] = mapping[:training_subject]
@@ -526,22 +546,28 @@ class FarmerTargetApi
     return @training_target_mappings = [] unless model_ready?(:TargetMapping)
 
     activity_settings = main_activity_settings
+    sub_activity_settings = sub_activity_settings_for(activity_settings)
     @training_target_mappings = training_target_scope
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
       .filter_map do |target|
-        activity_setting = activity_settings[normalize_text(target.main_activity_name)]
+        activity_setting = activity_setting_for(target, activity_settings, sub_activity_settings)
         next if activity_setting.blank? || !training_main_activity_type?(activity_setting[:main_activity_type])
 
-        farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
+        farmer_ids = training_target_farmer_ids(target)
         {
           target_mapping_id: target.id.to_s,
           vrp_id: target.vrp_id.to_s,
           jeevika_jankar_name: target.vrp&.name.presence || target.vrp&.user_name.presence || "Jeevika Jankar ##{target.vrp_id}",
           contact_number: target.vrp&.mobile_no.to_s.gsub(/\D/, "").last(10),
+          fco_id: target.fco_id.to_s,
+          fco_name: target.fco_name.presence || target.vrp&.fcoc.to_s,
+          fpo_id: target.fco_id.to_s,
+          fpo_name: target.fco_name.presence || target.vrp&.fcoc.to_s,
+          department: target.vrp&.fcoc.to_s.strip,
           month: target.month_name.to_s.strip,
           ics: target.ics_name.presence || target.ics_id,
           village: target.village_name.presence || target.village_id,
-          main_activity_type: "Training",
+          main_activity_type: activity_setting[:main_activity_type].presence || "Training",
           main_activity: target.main_activity_name.to_s.strip,
           sub_activity: target.activity_name.to_s.strip,
           new_farmer_target: new_farmer_target_mapping?(target),
@@ -576,7 +602,7 @@ class FarmerTargetApi
           month: target.month_name.to_s.strip,
           ics: target.ics_name.presence || target.ics_id,
           village: target.village_name.presence || target.village_id,
-          main_activity_type: "Other",
+          main_activity_type: activity_setting[:main_activity_type].presence || "Other",
           training_topic: target.main_activity_name.to_s.strip,
           training_subject: target.activity_name.to_s.strip,
           main_activity: target.main_activity_name.to_s.strip,
@@ -658,15 +684,30 @@ class FarmerTargetApi
     }
   end
 
+  def target_form_autofill
+    vrp = current_vrp_record if vrp_login_user?
+
+    {
+      jeevika_jankar_id: vrp&.id&.to_s,
+      jeevika_jankar_name: vrp&.name.presence || current_app_user["name"].to_s,
+      contact_number: (vrp&.mobile_no.presence || current_app_user["mobile_no"]).to_s.gsub(/\D/, "").last(10),
+      department: vrp&.fcoc.presence || current_app_user["fcoc"].presence || current_app_user["fcoc_name"].to_s,
+      trainer_name: vrp&.name.presence || current_app_user["name"].to_s,
+      trainer_contact: (vrp&.mobile_no.presence || current_app_user["mobile_no"]).to_s.gsub(/\D/, "").last(10)
+    }
+  end
+
   def training_target_match(data)
     selected_month = normalize_text(data["month"])
     selected_ics = normalize_text(data["ics_block"].presence || data["ics"])
     selected_village = normalize_text(data["gram_name"].presence || data["village"])
     selected_main_activity = normalize_text(data["main_activity"].presence || data["training_topic"])
     selected_sub_activity = normalize_text(data["sub_activity"].presence || data["training_subject"])
+    selected_main_activity_type = normalize_text(data["main_activity_type"])
 
     training_target_mappings.find do |mapping|
       normalize_text(mapping[:month]) == selected_month &&
+        (selected_main_activity_type.blank? || normalize_text(mapping[:main_activity_type]) == selected_main_activity_type) &&
         normalize_text(mapping[:ics]) == selected_ics &&
         normalize_text(mapping[:village]) == selected_village &&
         normalize_text(mapping[:main_activity]) == selected_main_activity &&
@@ -681,9 +722,11 @@ class FarmerTargetApi
     selected_village = normalize_text(data["village"])
     selected_topic = normalize_text(data["training_topic"].presence || data["main_activity"])
     selected_subject = normalize_text(data["training_subject"].presence || data["sub_activity"])
+    selected_main_activity_type = normalize_text(data["main_activity_type"])
 
     seed_distribution_target_mappings.find do |mapping|
       [mapping[:vrp_id], mapping[:jeevika_jankar_name]].any? { |value| normalize_text(value) == selected_vrp } &&
+        (selected_main_activity_type.blank? || normalize_text(mapping[:main_activity_type]) == selected_main_activity_type) &&
         normalize_text(mapping[:month]) == selected_month &&
         normalize_text(mapping[:ics]) == selected_ics &&
         normalize_text(mapping[:village]) == selected_village &&
@@ -839,6 +882,42 @@ class FarmerTargetApi
     end
   end
 
+  def training_target_farmer_ids(target)
+    saved_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
+    return saved_ids if saved_ids.any?
+
+    mapped_ids = mapped_training_farmer_ids(target)
+    return mapped_ids if mapped_ids.any?
+
+    training_location_farmer_ids(target)
+  end
+
+  def mapped_training_farmer_ids(target)
+    return [] unless model_ready?(:VrpIcsMapping)
+
+    VrpIcsMapping.where(vrp_id: target.vrp_id).select do |mapping|
+      training_location_matches?(mapping.fco_id, mapping.fco_name, target.fco_id, target.fco_name) &&
+        training_location_matches?(mapping.ics_id, mapping.ics_name, target.ics_id, target.ics_name) &&
+        training_location_matches?(mapping.village_id, mapping.village_name, target.village_id, target.village_name)
+    end.flat_map { |mapping| Array(mapping.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
+  end
+
+  def training_location_farmer_ids(target)
+    return [] unless model_ready?(:Afl)
+
+    Afl.all.select do |farmer|
+      training_location_matches?(farmer.fco_id, farmer.fco, target.fco_id, target.fco_name) &&
+        training_location_matches?(farmer.ics_id, farmer.ics_name, target.ics_id, target.ics_name) &&
+        training_location_matches?(farmer.village_id, farmer.village_name, target.village_id, target.village_name)
+    end.map { |farmer| farmer.id.to_s }.uniq
+  end
+
+  def training_location_matches?(left_id, left_name, right_id, right_name)
+    left = [left_id, left_name].compact_blank.flat_map { |value| value.to_s.split("||") }.map { |value| normalize_text(value) }.reject(&:blank?)
+    right = [right_id, right_name].compact_blank.flat_map { |value| value.to_s.split("||") }.map { |value| normalize_text(value) }.reject(&:blank?)
+    left.any? && right.any? && (left & right).any?
+  end
+
   def training_farmer_names(farmer_ids)
     training_farmers_for_ids(farmer_ids).map { |farmer| farmer[:farmer_name] }
   end
@@ -946,8 +1025,30 @@ class FarmerTargetApi
     filename = "#{Time.current.to_i}-#{SecureRandom.hex(4)}-#{basename}#{extension.downcase}"
     path = upload_dir.join(filename)
 
-    File.binwrite(path, upload.read)
+    if upload.respond_to?(:tempfile) && upload.tempfile
+      upload.tempfile.rewind
+      IO.copy_stream(upload.tempfile, path)
+    else
+      File.binwrite(path, upload.read)
+    end
     "/uploads/module_records/#{filename}"
+  end
+
+  def training_photo_upload_errors(raw_attrs)
+    return [] unless @module_slug == "training-form"
+
+    raw = raw_attrs.respond_to?(:to_unsafe_h) ? raw_attrs.to_unsafe_h : Hash(raw_attrs)
+    uploads = Array(raw["training_photo_upload_with_geo_tag"] || raw[:training_photo_upload_with_geo_tag]).compact_blank
+    uploads.each_with_object([]) do |upload, errors|
+      next unless upload.respond_to?(:original_filename)
+
+      unless TRAINING_PHOTO_CONTENT_TYPES.include?(upload.content_type.to_s.downcase)
+        errors << "Training photos must be JPEG, PNG, WEBP, HEIC, or HEIF images."
+      end
+      if upload.respond_to?(:size) && upload.size.to_i > MAX_TRAINING_PHOTO_SIZE
+        errors << "Each training photo must be 5 MB or smaller."
+      end
+    end.uniq
   end
 
   def model_ready?(name)

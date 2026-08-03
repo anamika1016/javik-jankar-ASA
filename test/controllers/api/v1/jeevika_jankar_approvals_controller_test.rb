@@ -33,6 +33,18 @@ class Api::V1::JeevikaJankarApprovalsControllerTest < ActionDispatch::Integratio
     assert_equal false, response.parsed_body["success"]
   end
 
+  test "return rejects when not pending for user" do
+    vrp = create_vrp(name: "No Return Queue JJ", user_name: "no_return_queue_jj", created_by_id: @user.id, status: 10)
+
+    patch "/api/v1/jeevika-jankars/#{vrp.id}/return",
+      params: { remarks: "Please correct the details" },
+      headers: auth_headers,
+      as: :json
+
+    assert_response :forbidden
+    assert_equal false, response.parsed_body["success"]
+  end
+
   private
 
   def auth_headers
