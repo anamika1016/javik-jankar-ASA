@@ -746,8 +746,28 @@ function initDeferredLayoutPage() {
     });
   }
 
+  const lgDirectoryUploadForm = document.querySelector("[data-lg-directory-upload]");
+  if (lgDirectoryUploadForm) {
+    lgDirectoryUploadForm.addEventListener("submit", () => {
+      const button = lgDirectoryUploadForm.querySelector("[data-lg-directory-upload-button]");
+      if (!button) return;
+
+      button.disabled = true;
+      button.value = "Uploading...";
+    });
+  }
+
   const aflListTable = document.getElementById("afl_list");
   if (aflListTable) {
+    const aflUploadForm = document.querySelector("[data-afl-upload]");
+    aflUploadForm?.addEventListener("submit", () => {
+      const button = aflUploadForm.querySelector("[data-afl-upload-button]");
+      if (!button) return;
+
+      button.disabled = true;
+      button.value = "Uploading...";
+    });
+
     const aflSelectAll = aflListTable.querySelector("[data-afl-select-all]");
     const aflDeleteButton = document.querySelector("[data-afl-delete-selected]");
     const aflQueryInput = document.querySelector("[data-table-search='afl_list']");

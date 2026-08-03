@@ -11,10 +11,10 @@
 
     <div class="vrp-list-card">
       <div class="list-controls">
-        <%= form_with url: import_afls_path, multipart: true, local: true, class: "list-search" do |form| %>
+        <%= form_with url: import_afls_path, multipart: true, local: true, class: "list-search", data: { afl_upload: true } do |form| %>
           <span>▤</span>
           <%= form.file_field :file, accept: ".xlsx,.csv", class: "form-control", required: true %>
-          <%= form.submit "Upload", class: "list-btn upload" %>
+          <%= form.submit "Upload", class: "list-btn upload", data: { afl_upload_button: true } %>
         <% end %>
 
         <div class="list-control-actions">
@@ -51,6 +51,7 @@
               <th>ICS Name</th>
               <th>Village ID</th>
               <th>Village Name</th>
+              <th>Farm ID</th>
               <th>Farmer Name</th>
               <th>Father Name</th>
               <th>Tracenet No</th>
@@ -78,6 +79,7 @@
                   <td><%= afl.ics_name %></td>
                   <td><%= afl.village_id %></td>
                   <td><%= afl.village_name %></td>
+                  <td><%= afl.farm_id %></td>
                   <td><%= afl.farmer_name %></td>
                   <td><%= afl.father_name %></td>
                   <td><%= afl.tracenet_no %></td>
@@ -93,7 +95,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="21">No target mapping records uploaded yet.</td>
+                <td colspan="22">No target mapping records uploaded yet.</td>
               </tr>
             <% end %>
           </tbody>

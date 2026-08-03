@@ -1,8 +1,23 @@
 require "csv"
 require "rexml/document"
+require "set"
 require "zip"
 
 class LgDirectoryImporter
+  INSERT_BATCH_SIZE = 1_000
+  REQUIRED_ATTRIBUTES = {
+    state: "State Name",
+    state_code: "State Code",
+    district: "District Name",
+    district_code: "District Code",
+    block: "Block Name",
+    block_code: "Block Code",
+    gram_panchayat: "Gram Name",
+    gp_code: "Gram Code",
+    village: "Village Name",
+    village_code: "Village Code"
+  }.freeze
+
   HEADER_ALIASES = {
     "state" => :state,
     "stateentry" => :state,
@@ -151,11 +166,15 @@ class LgDirectoryImporter
 
   def self.import_rows(rows, headers)
     attributes_by_index = headers.map { |header| column_for_header(header) }
-    raise ArgumentError, "Excel headers should include State Code, State Name, District Code, District Name, Gram Name, Gram Code, Village Code, Village Name, CD Block Code, and CD Block Name." if attributes_by_index.compact.blank?
+    missing_headers = REQUIRED_ATTRIBUTES.except(*attributes_by_index.compact).values
+    if missing_headers.any?
+      raise ArgumentError, "Excel is missing required header(s): #{missing_headers.join(', ')}."
+    end
 
     created_counts = Hash.new(0)
     skipped = []
-    existing_records = existing_records_by_key
+    known_fingerprints = existing_fingerprints
+    pending_records = Hash.new { |hash, slug| hash[slug] = [] }
 
     ModuleRecord.transaction do
       rows.each_with_index do |row, index|
@@ -164,9 +183,12 @@ class LgDirectoryImporter
 
         attrs = normalize_gram_fields(attrs)
         attrs[:status] = normalized_status(attrs[:status])
-        created_for_row = create_hierarchy_records(attrs, existing_records, created_counts)
-        skipped << skipped_row(index + 2, "No LG Directory value found.") if created_for_row.zero?
+        created_for_row = queue_hierarchy_records(attrs, known_fingerprints, pending_records, created_counts)
+        skipped << skipped_row(index + 2, "No new LG Directory value found.") if created_for_row.zero?
+        flush_pending_records(pending_records)
       end
+
+      flush_pending_records(pending_records, force: true)
     end
 
     {
@@ -176,26 +198,37 @@ class LgDirectoryImporter
     }
   end
 
-  def self.create_hierarchy_records(attrs, existing_records, created_counts)
+  def self.queue_hierarchy_records(attrs, known_fingerprints, pending_records, created_counts)
     created = 0
+    timestamp = Time.current
 
     MODULE_DEFINITIONS.each do |definition|
       next if attrs[definition[:key]].blank?
 
       data = definition[:fields].transform_values { |source_key| attrs[source_key].to_s.strip }
       fingerprint = record_fingerprint(definition[:slug], data)
-      if (record = existing_records[fingerprint])
-        record.update!(data: record.data.merge(data.compact_blank))
-        next
-      end
+      next if known_fingerprints.include?(fingerprint)
 
-      record = ModuleRecord.create!(module_slug: definition[:slug], data: data)
-      existing_records[fingerprint] = record
+      known_fingerprints.add(fingerprint)
+      pending_records[definition[:slug]] << {
+        module_slug: definition[:slug],
+        data: data,
+        created_at: timestamp,
+        updated_at: timestamp
+      }
       created_counts[definition[:slug]] += 1
       created += 1
     end
 
     created
+  end
+
+  def self.flush_pending_records(pending_records, force: false)
+    pending_records.each_value do |records|
+      while records.size >= INSERT_BATCH_SIZE || (force && records.any?)
+        ModuleRecord.insert_all!(records.shift(INSERT_BATCH_SIZE))
+      end
+    end
   end
 
   def self.normalize_gram_fields(attrs)
@@ -279,13 +312,9 @@ class LgDirectoryImporter
     HEADER_ALIASES[normalized_header(header)]
   end
 
-  def self.existing_records_by_key
-    {}.tap do |records_by_key|
-      MODULE_DEFINITIONS.each do |definition|
-        ModuleRecord.where(module_slug: definition[:slug]).find_each do |record|
-          records_by_key[record_fingerprint(definition[:slug], record.data)] ||= record
-        end
-      end
+  def self.existing_fingerprints
+    ModuleRecord.where(module_slug: MODULE_DEFINITIONS.pluck(:slug)).pluck(:module_slug, :data).each_with_object(Set.new) do |(slug, data), fingerprints|
+      fingerprints.add(record_fingerprint(slug, data))
     end
   end
 

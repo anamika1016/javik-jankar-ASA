@@ -1,14 +1,14 @@
 require "csv"
 require "date"
 require "bigdecimal"
-require "rexml/document"
+require "nokogiri"
 require "zip"
 
 class Afl < ApplicationRecord
   IMPORT_BATCH_SIZE = 2_000
 
   IMPORT_COLUMNS = %i[
-    fco_id fco fpo_id fpo_name ics_id ics_name village_id village_name ginning_id broker_id farmer_name father_name
+    fco_id fco fpo_id fpo_name ics_id ics_name village_id village_name farm_id ginning_id broker_id farmer_name father_name
     tracenet_no total_farm_area purchase_quantity_amount estimate_quantity purchase_quantity
     purchase_date dispoce ip date estimate_quantity_admin slip_no mobile_no purchase_product
     purchase_product_type khasara_no longitude lattitude aadhar reg_type fy qr_aadhar
@@ -16,7 +16,7 @@ class Afl < ApplicationRecord
   ].freeze
 
   LIST_COLUMNS = %i[
-    id fco_id fco fpo_id fpo_name ics_id ics_name village_id village_name farmer_name father_name tracenet_no total_farm_area
+    id fco_id fco fpo_id fpo_name ics_id ics_name village_id village_name farm_id farmer_name father_name tracenet_no total_farm_area
     purchase_quantity_amount estimate_quantity purchase_quantity purchase_date mobile_no purchase_product
     status created_at
   ].freeze
@@ -38,6 +38,7 @@ class Afl < ApplicationRecord
     "ICS_NAME" => :ics_name,
     "Village_ID" => :village_id,
     "Village_Name" => :village_name,
+    "Farm_ID" => :farm_id,
     "Ginning_Id" => :ginning_id,
     "Broker_Id" => :broker_id,
     "Farmer_Name" => :farmer_name,
@@ -86,6 +87,7 @@ class Afl < ApplicationRecord
 
   def self.import_rows(rows, headers)
     attributes_by_index = headers.map { |header| column_for_header(header) }
+    validate_import_headers!(attributes_by_index)
     imported = 0
     skipped = []
     batch = []
@@ -105,6 +107,7 @@ class Afl < ApplicationRecord
     raise ArgumentError, "Uploaded file is blank." if headers.blank?
 
     attributes_by_index = headers.map { |header| column_for_header(header) }
+    validate_import_headers!(attributes_by_index)
     imported = 0
     skipped = []
     batch = []
@@ -126,6 +129,11 @@ class Afl < ApplicationRecord
 
     timestamp = Time.current
     batch << [row_number, attrs.merge(created_at: timestamp, updated_at: timestamp)]
+  end
+
+  def self.validate_import_headers!(attributes_by_index)
+    raise ArgumentError, "Excel does not contain any supported AFL columns." if attributes_by_index.compact.blank?
+    raise ArgumentError, "Excel is missing required header: Farmer_Name." unless attributes_by_index.include?(:farmer_name)
   end
 
   def self.flush_import_batch(batch, skipped)
@@ -192,7 +200,8 @@ class Afl < ApplicationRecord
       farmer_name: attrs[:farmer_name],
       father_name: attrs[:father_name],
       village_id: attrs[:village_id],
-      village_name: attrs[:village_name]
+      village_name: attrs[:village_name],
+      farm_id: attrs[:farm_id]
     }
   end
 
@@ -260,11 +269,11 @@ class Afl < ApplicationRecord
       sheet_entry = zip.find_entry("xl/worksheets/sheet1.xml")
       raise ArgumentError, "Could not find first sheet in the Excel file." unless sheet_entry
 
-      sheet = REXML::Document.new(sheet_entry.get_input_stream.read)
-      REXML::XPath.match(sheet, "//*[local-name()='row']").map do |row|
+      sheet = Nokogiri::XML(sheet_entry.get_input_stream.read)
+      sheet.xpath("//*[local-name()='row']").map do |row|
         cells = []
-        REXML::XPath.match(row, "*[local-name()='c']").each do |cell|
-          index = xlsx_column_index(cell.attributes["r"])
+        row.xpath("./*[local-name()='c']").each do |cell|
+          index = xlsx_column_index(cell["r"])
           cells[index] = xlsx_cell_value(cell, shared_strings)
         end
         cells
@@ -276,19 +285,19 @@ class Afl < ApplicationRecord
     entry = zip.find_entry("xl/sharedStrings.xml")
     return [] unless entry
 
-    document = REXML::Document.new(entry.get_input_stream.read)
-    REXML::XPath.match(document, "//*[local-name()='si']").map do |item|
-      REXML::XPath.match(item, ".//*[local-name()='t']").map(&:text).join
+    document = Nokogiri::XML(entry.get_input_stream.read)
+    document.xpath("//*[local-name()='si']").map do |item|
+      item.xpath(".//*[local-name()='t']").map(&:text).join
     end
   end
 
   def self.xlsx_cell_value(cell, shared_strings)
-    value = REXML::XPath.first(cell, "*[local-name()='v']")&.text
-    inline = REXML::XPath.match(cell, "*[local-name()='is']//*[local-name()='t']").map(&:text).join
+    value = cell.at_xpath("./*[local-name()='v']")&.text
+    inline = cell.xpath("./*[local-name()='is']//*[local-name()='t']").map(&:text).join
     return inline if inline.present?
     return if value.blank?
 
-    cell.attributes["t"] == "s" ? shared_strings[value.to_i] : value
+    cell["t"] == "s" ? shared_strings[value.to_i] : value
   end
 
   def self.xlsx_column_index(reference)

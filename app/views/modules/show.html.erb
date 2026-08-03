@@ -643,12 +643,12 @@
     <section class="module-card lg-directory-card">
       <div class="module-card-header">
         <h2>All List</h2>
-        <%= form_with url: import_module_path(@slug), method: :post, multipart: true, local: true, class: "lg-directory-upload" do |form| %>
+        <%= form_with url: import_module_path(@slug), method: :post, multipart: true, local: true, class: "lg-directory-upload", data: { lg_directory_upload: true } do |form| %>
           <label class="import-btn">
             Choose Excel
             <%= form.file_field :file, accept: ".xlsx,.csv", required: true, data: { import_file: true }, hidden: true %>
           </label>
-          <%= form.submit "Upload", class: "list-btn upload" %>
+          <%= form.submit "Upload", class: "list-btn upload", data: { lg_directory_upload_button: true } %>
         <% end %>
       </div>
 

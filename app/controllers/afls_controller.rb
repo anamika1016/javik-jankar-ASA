@@ -78,7 +78,7 @@ class AflsController < ApplicationController
     report_path = REPORT_DIR.join("#{report_id}.csv")
 
     CSV.open(report_path, "w") do |csv|
-      csv << ["Row", "Reason", "Tracenet_No", "Longitude", "Lattitude", "Khasara_NO", "Farmer_Name", "Father_Name", "Village_ID", "Village_Name"]
+      csv << ["Row", "Reason", "Tracenet_No", "Longitude", "Lattitude", "Khasara_NO", "Farmer_Name", "Father_Name", "Village_ID", "Village_Name", "Farm_ID"]
       skipped_rows.each do |skipped_row|
         row = normalize_skipped_row(skipped_row)
         csv << [
@@ -91,7 +91,8 @@ class AflsController < ApplicationController
           row[:farmer_name],
           row[:father_name],
           row[:village_id],
-          row[:village_name]
+          row[:village_name],
+          row[:farm_id]
         ]
       end
     end
