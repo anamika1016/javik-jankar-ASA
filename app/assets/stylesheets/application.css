@@ -7142,3 +7142,32 @@ body {
   transform: translateY(-1px);
   box-shadow: 0 4px 10px rgba(31, 55, 65, 0.16);
 }
+
+/* Final list-table guard. Keep this at the end of the stylesheet so page and
+   responsive rules cannot compress headings or values character-by-character. */
+.table-shell > table.module-table,
+.table-shell table.vrp-list-table {
+  width: max-content !important;
+  min-width: 100% !important;
+  table-layout: auto !important;
+}
+
+.table-shell > table.module-table > thead > tr > th,
+.table-shell > table.module-table > tbody > tr > td,
+.table-shell table.vrp-list-table > thead > tr > th,
+.table-shell table.vrp-list-table > tbody > tr > td {
+  min-width: 110px;
+  max-width: none !important;
+  white-space: nowrap !important;
+  overflow-wrap: normal !important;
+  word-break: keep-all !important;
+  vertical-align: middle;
+}
+
+.table-shell > table.module-table > thead > tr > th:first-child,
+.table-shell > table.module-table > tbody > tr > td:first-child,
+.table-shell table.vrp-list-table > thead > tr > th:first-child,
+.table-shell table.vrp-list-table > tbody > tr > td:first-child {
+  min-width: 42px;
+  width: 42px;
+}
