@@ -643,7 +643,7 @@
     <section class="module-card lg-directory-card">
       <div class="module-card-header">
         <h2>All List</h2>
-        <%= form_with url: import_module_path(@slug), method: :post, multipart: true, local: true, class: "lg-directory-upload", data: { lg_directory_upload: true } do |form| %>
+        <%= form_with url: import_module_path(@slug), method: :post, multipart: true, local: true, class: "lg-directory-upload", data: { lg_directory_upload: true, turbo: false } do |form| %>
           <label class="import-btn">
             Choose Excel
             <%= form.file_field :file, accept: ".xlsx,.csv", required: true, data: { import_file: true }, hidden: true %>
@@ -651,6 +651,19 @@
           <%= form.submit "Upload", class: "list-btn upload", data: { lg_directory_upload_button: true } %>
         <% end %>
       </div>
+
+      <% if @lg_directory_import_status.present? %>
+        <% import_status = @lg_directory_import_status.data["status"] %>
+        <div class="import-report-banner" data-lg-directory-import-status="<%= import_status %>">
+          <% if import_status == "Processing" %>
+            <span>Excel import background mein chal raha hai: <%= @lg_directory_import_status.data["filename"] %></span>
+          <% elsif import_status == "Completed" %>
+            <span><%= @lg_directory_import_status.data["imported"] %> LG Directory records uploaded successfully.</span>
+          <% else %>
+            <span>Excel import failed: <%= @lg_directory_import_status.data["error"] %></span>
+          <% end %>
+        </div>
+      <% end %>
 
       <%= form_with url: module_path(@slug), method: :get, local: true, class: "lg-directory-filter" do %>
         <label>

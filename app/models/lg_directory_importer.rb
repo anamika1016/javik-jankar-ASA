@@ -1,5 +1,5 @@
 require "csv"
-require "rexml/document"
+require "nokogiri"
 require "set"
 require "zip"
 
@@ -262,11 +262,11 @@ class LgDirectoryImporter
       sheet_entry = zip.find_entry("xl/worksheets/sheet1.xml")
       raise ArgumentError, "Could not find first sheet in the Excel file." unless sheet_entry
 
-      sheet = REXML::Document.new(sheet_entry.get_input_stream.read)
-      REXML::XPath.match(sheet, "//*[local-name()='row']").map do |row|
+      sheet = Nokogiri::XML(sheet_entry.get_input_stream.read)
+      sheet.xpath("//*[local-name()='row']").map do |row|
         cells = []
-        REXML::XPath.match(row, "*[local-name()='c']").each do |cell|
-          index = xlsx_column_index(cell.attributes["r"])
+        row.xpath("./*[local-name()='c']").each do |cell|
+          index = xlsx_column_index(cell["r"])
           cells[index] = xlsx_cell_value(cell, shared_strings)
         end
         cells
@@ -278,19 +278,19 @@ class LgDirectoryImporter
     entry = zip.find_entry("xl/sharedStrings.xml")
     return [] unless entry
 
-    document = REXML::Document.new(entry.get_input_stream.read)
-    REXML::XPath.match(document, "//*[local-name()='si']").map do |item|
-      REXML::XPath.match(item, ".//*[local-name()='t']").map(&:text).join
+    document = Nokogiri::XML(entry.get_input_stream.read)
+    document.xpath("//*[local-name()='si']").map do |item|
+      item.xpath(".//*[local-name()='t']").map(&:text).join
     end
   end
 
   def self.xlsx_cell_value(cell, shared_strings)
-    value = REXML::XPath.first(cell, "*[local-name()='v']")&.text
-    inline = REXML::XPath.match(cell, "*[local-name()='is']//*[local-name()='t']").map(&:text).join
+    value = cell.at_xpath("./*[local-name()='v']")&.text
+    inline = cell.xpath("./*[local-name()='is']//*[local-name()='t']").map(&:text).join
     return inline if inline.present?
     return if value.blank?
 
-    cell.attributes["t"] == "s" ? shared_strings[value.to_i] : value
+    cell["t"] == "s" ? shared_strings[value.to_i] : value
   end
 
   def self.xlsx_column_index(reference)

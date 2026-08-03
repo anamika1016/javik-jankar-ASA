@@ -1031,6 +1031,7 @@ class ModulesController < ApplicationController
 
     if @slug == "lg-directory-list"
       prepare_lg_directory_data
+      @lg_directory_import_status = ModuleRecord.where(module_slug: "lg-directory-import").order(created_at: :desc).first
     else
       @records = module_records
     end
@@ -1268,11 +1269,20 @@ class ModulesController < ApplicationController
   def import
     load_module!
     if @slug == "lg-directory-list"
-      result = LgDirectoryImporter.import(params[:file])
-      counts = lg_directory_import_notice_counts(result[:counts])
-      notice = "LG Directory uploaded successfully. #{result[:imported]} records created"
-      notice = "#{notice} (#{counts})" if counts.present?
-      redirect_to module_path(@slug), notice: "#{notice}."
+      file = params[:file]
+      raise ArgumentError, "Please choose an Excel or CSV file." unless file.present?
+
+      blob = ActiveStorage::Blob.create_and_upload!(
+        io: file,
+        filename: file.original_filename,
+        content_type: file.content_type
+      )
+      status = ModuleRecord.create!(
+        module_slug: "lg-directory-import",
+        data: { "status" => "Processing", "filename" => file.original_filename, "started_at" => Time.current.iso8601 }
+      )
+      LgDirectoryImportJob.perform_later(blob.id, status.id)
+      redirect_to module_path(@slug), notice: "LG Directory Excel upload started in background. This page will refresh automatically."
       return
     end
 

@@ -757,6 +757,11 @@ function initDeferredLayoutPage() {
     });
   }
 
+  const lgDirectoryImportStatus = document.querySelector("[data-lg-directory-import-status='Processing']");
+  if (lgDirectoryImportStatus) {
+    window.setTimeout(() => window.location.reload(), 10000);
+  }
+
   const aflListTable = document.getElementById("afl_list");
   if (aflListTable) {
     const aflUploadForm = document.querySelector("[data-afl-upload]");
