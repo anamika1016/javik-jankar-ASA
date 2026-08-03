@@ -6748,34 +6748,31 @@ body {
   line-height: 1.35;
 }
 
-/* Shared overflow protection for every report/list table. Database labels can
-   contain long comma-separated activities or unbroken identifiers; keep them
-   inside their own cell instead of allowing visible overflow into neighbours. */
+/* Keep headings and row values readable in every list/report. Tables with
+   many columns should grow horizontally inside the scrollable .table-shell,
+   instead of squeezing words, names, dates and IDs onto multiple lines. */
+.table-shell .module-table {
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
+}
+
 .table-shell .module-table th,
 .table-shell .module-table td {
   box-sizing: border-box;
-  max-width: 320px;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  white-space: normal;
-  vertical-align: top;
-}
-
-/* Column headings must stay readable. Wide tables already live inside a
-   horizontally scrollable .table-shell, so never squeeze a heading down to
-   one character per line. Body cells can still wrap long database values. */
-.table-shell .module-table th {
   max-width: none;
   overflow-wrap: normal;
   word-break: normal;
   white-space: nowrap;
+  vertical-align: middle;
 }
 
 .table-shell .module-table td > a,
 .table-shell .module-table td > span,
 .table-shell .module-table td > div {
-  max-width: 100%;
-  overflow-wrap: anywhere;
+  max-width: none;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .table-shell .module-table input,
