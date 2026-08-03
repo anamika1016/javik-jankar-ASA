@@ -6761,6 +6761,16 @@ body {
   vertical-align: top;
 }
 
+/* Column headings must stay readable. Wide tables already live inside a
+   horizontally scrollable .table-shell, so never squeeze a heading down to
+   one character per line. Body cells can still wrap long database values. */
+.table-shell .module-table th {
+  max-width: none;
+  overflow-wrap: normal;
+  word-break: normal;
+  white-space: nowrap;
+}
+
 .table-shell .module-table td > a,
 .table-shell .module-table td > span,
 .table-shell .module-table td > div {

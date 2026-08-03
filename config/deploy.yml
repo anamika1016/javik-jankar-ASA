@@ -48,8 +48,8 @@ env:
     # Set number of processes dedicated to Solid Queue (default: 1)
     # JOB_CONCURRENCY: 3
 
-    # Keep a second web process available when a large report/list request is busy.
-    WEB_CONCURRENCY: 2
+    # This deployment runs on a small-memory host; keep one Puma worker.
+    WEB_CONCURRENCY: 1
     RAILS_MAX_THREADS: 3
 
     # Match this to any external database server to configure Active Record correctly
