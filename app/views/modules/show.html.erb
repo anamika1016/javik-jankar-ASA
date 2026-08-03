@@ -669,11 +669,13 @@
       <% end %>
 
       <%= form_with url: bulk_update_module_path(@slug), method: :patch, local: true, data: { turbo: false } do %>
+        <input type="hidden" name="table" value="<%= @lg_directory_filter %>">
+        <input type="hidden" name="q" value="<%= @lg_directory_query %>">
         <div class="vrp-list-toolbar compact lg-directory-actions">
           <button type="submit" name="bulk_action" value="active" class="list-btn active">Active</button>
           <button type="submit" name="bulk_action" value="inactive" class="list-btn deactive">Inactive</button>
           <button type="submit" name="bulk_action" value="edit" class="list-btn edit">Edit</button>
-          <button type="submit" name="bulk_action" value="delete" class="list-btn delete" data-turbo-confirm="Delete selected LG Directory row(s)?">Delete</button>
+          <button type="submit" name="bulk_action" value="delete" class="list-btn delete" data-lg-directory-delete>Delete</button>
           <%= link_to "Export Excel", export_module_path(@slug, table: @lg_directory_filter, q: @lg_directory_query, format: :xlsx), class: "list-btn export" %>
         </div>
 
@@ -681,7 +683,7 @@
           <table class="module-table user-list-table" id="lg_directory_all_list">
             <thead>
               <tr>
-                <th><input type="checkbox" data-module-select-all></th>
+                <th><input type="checkbox" name="select_all_rows" value="1" data-module-select-all data-lg-directory-select-all></th>
                 <th>State Name</th>
                 <th>State Code</th>
                 <th>District Name</th>

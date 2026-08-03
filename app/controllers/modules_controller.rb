@@ -1301,8 +1301,11 @@ class ModulesController < ApplicationController
     load_module!
     redirect_to module_path(@slug), alert: "Bulk action is available only for LG Directory All List." and return unless @slug == "lg-directory-list"
 
+    all_rows_selected = params[:select_all_rows] == "1"
     selected_records = lg_directory_selected_records
-    redirect_to module_path(@slug), alert: "Please select at least one LG Directory row." and return if selected_records.blank?
+    if selected_records.blank? && !all_rows_selected
+      redirect_to module_path(@slug), alert: "Please select at least one LG Directory row." and return
+    end
 
     case params[:bulk_action]
     when "edit"
@@ -1319,8 +1322,15 @@ class ModulesController < ApplicationController
       end
       redirect_to module_path(@slug), notice: "#{selected_records.size} LG Directory row(s) marked #{next_status}."
     when "delete"
-      ModuleRecord.transaction { selected_records.each(&:destroy!) }
-      redirect_to module_path(@slug), notice: "#{selected_records.size} LG Directory row(s) deleted."
+      deleted_count = if all_rows_selected
+        @lg_directory_filter = params[:table].presence_in(lg_directory_filter_fields) || "State Name"
+        @lg_directory_query = params[:q].to_s.strip
+        lg_directory_page_scope.delete_all
+      else
+        ModuleRecord.transaction { selected_records.each(&:destroy!) }
+        selected_records.size
+      end
+      redirect_to module_path(@slug), notice: "#{deleted_count} LG Directory row(s) deleted."
     else
       redirect_to module_path(@slug), alert: "Please choose a valid action."
     end

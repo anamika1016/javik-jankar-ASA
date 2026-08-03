@@ -733,6 +733,19 @@ function initDeferredLayoutPage() {
     });
   }
 
+  const lgDirectoryDeleteButton = document.querySelector("[data-lg-directory-delete]");
+  if (lgDirectoryDeleteButton) {
+    lgDirectoryDeleteButton.addEventListener("click", (event) => {
+      const allRows = document.querySelector("[data-lg-directory-select-all]")?.checked;
+      const selectedCount = document.querySelectorAll("[data-module-row-select]:checked").length;
+      const message = allRows
+        ? "Delete ALL matching LG Directory rows across every page?"
+        : `Delete ${selectedCount} selected LG Directory row(s)?`;
+
+      if (!window.confirm(message)) event.preventDefault();
+    });
+  }
+
   const aflListTable = document.getElementById("afl_list");
   if (aflListTable) {
     const aflSelectAll = aflListTable.querySelector("[data-afl-select-all]");
