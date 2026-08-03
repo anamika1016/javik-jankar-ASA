@@ -558,7 +558,7 @@ module ApplicationHelper
     if defined?(ModuleRecord) && ModuleRecord.table_exists? && username.present?
       legacy_user = ModuleRecord
         .where(module_slug: "new-user")
-        .where("data::jsonb ->> 'user_name' = ?", username)
+        .where("LOWER(data::jsonb ->> 'user_name') = ?", username.downcase)
         .order(updated_at: :desc)
         .first
       names << legacy_user&.data&.[]("stakeholder")

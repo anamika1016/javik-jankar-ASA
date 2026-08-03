@@ -117,9 +117,12 @@ class ApplicationController < ActionController::Base
   def legacy_user_record_by_username(username)
     return if username.blank?
 
-    ModuleRecord
+    @legacy_user_records_by_username ||= {}
+    return @legacy_user_records_by_username[username] if @legacy_user_records_by_username.key?(username)
+
+    @legacy_user_records_by_username[username] = ModuleRecord
       .where(module_slug: "new-user")
-      .where("data::jsonb ->> 'user_name' = ?", username)
+      .where("LOWER(data::jsonb ->> 'user_name') = ?", username.to_s.downcase)
       .order(created_at: :desc)
       .first
   end

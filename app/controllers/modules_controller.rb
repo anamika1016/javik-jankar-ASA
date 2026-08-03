@@ -1029,8 +1029,11 @@ class ModulesController < ApplicationController
     redirect_to users_path and return if @slug == "all-user"
     redirect_to new_user_path and return if @slug == "new-user"
 
-    @records = module_records
-    prepare_lg_directory_data if @slug == "lg-directory-list"
+    if @slug == "lg-directory-list"
+      prepare_lg_directory_data
+    else
+      @records = module_records
+    end
     prepare_vrp_bill_data if @slug == "vrp-bill-add"
     prepare_jeevika_jankar_bill_data if @slug == "jeevika-jankar-bill-process"
     prepare_jeevika_jankar_bill_list if @slug == "jeevika-jankar-bill-list"
@@ -1283,7 +1286,7 @@ class ModulesController < ApplicationController
     load_module!
 
     if @slug == "lg-directory-list"
-      prepare_lg_directory_data
+      prepare_lg_directory_data(paginate: false)
       csv_data = lg_directory_csv(@lg_directory_rows)
       filename = "lg_directory_all_list_#{Date.current}.xlsx"
     else
@@ -4511,10 +4514,52 @@ class ModulesController < ApplicationController
     (current_values & record_values).any?
   end
 
-  def prepare_lg_directory_data
+  def prepare_lg_directory_data(paginate: true)
     @lg_directory_filter = params[:table].presence_in(lg_directory_filter_fields) || "State Name"
     @lg_directory_query = params[:q].to_s.strip
-    @lg_directory_rows = filtered_lg_directory_rows(lg_directory_rows)
+
+    unless paginate
+      @lg_directory_rows = filtered_lg_directory_rows(lg_directory_rows)
+      @lg_directory_total_count = @lg_directory_rows.size
+      @lg_directory_page_size = [@lg_directory_total_count, 1].max
+      @lg_directory_total_pages = 1
+      @lg_directory_page = 1
+      return
+    end
+
+    @lg_directory_page_size = 25
+    records = lg_directory_page_scope
+    @lg_directory_total_count = records.count
+    @lg_directory_total_pages = [(@lg_directory_total_count.to_f / @lg_directory_page_size).ceil, 1].max
+    @lg_directory_page = params[:lg_page].to_i.clamp(1, @lg_directory_total_pages)
+    offset = (@lg_directory_page - 1) * @lg_directory_page_size
+    page_records = records.order(created_at: :desc, id: :desc).offset(offset).limit(@lg_directory_page_size)
+    @lg_directory_rows = page_records.map do |record|
+      lg_directory_row_from_record(record, lg_directory_aliases_for_slug(record.module_slug))
+    end
+  end
+
+  def lg_directory_page_scope
+    scope = ModuleRecord.where(module_slug: lg_directory_allowed_slugs)
+    return scope if @lg_directory_query.blank?
+
+    expression = lg_directory_filter_sql(@lg_directory_filter)
+    scope.where("LOWER(#{expression}) LIKE ?", "%#{ActiveRecord::Base.sanitize_sql_like(@lg_directory_query.downcase)}%")
+  end
+
+  def lg_directory_filter_sql(field)
+    {
+      "State Name" => "COALESCE(data::jsonb ->> 'state', data::jsonb ->> 'state_name', '')",
+      "State Code" => "COALESCE(data::jsonb ->> 'state_code', '')",
+      "District Name" => "COALESCE(data::jsonb ->> 'district', data::jsonb ->> 'district_name', '')",
+      "District Code" => "COALESCE(data::jsonb ->> 'district_code', '')",
+      "Block Name" => "COALESCE(data::jsonb ->> 'block', data::jsonb ->> 'block_name', data::jsonb ->> 'cd_block_name', '')",
+      "Block Code" => "COALESCE(data::jsonb ->> 'block_code', data::jsonb ->> 'cd_block_code', '')",
+      "Gram Name" => "COALESCE(data::jsonb ->> 'gram_panchayat', data::jsonb ->> 'gram_panchayat_name', data::jsonb ->> 'gp_name', data::jsonb ->> 'gram_name', '')",
+      "Gram Code" => "COALESCE(data::jsonb ->> 'gp_code', data::jsonb ->> 'gram_code', '')",
+      "Village Name" => "COALESCE(data::jsonb ->> 'village', data::jsonb ->> 'village_name', '')",
+      "Village Code" => "COALESCE(data::jsonb ->> 'village_code', '')"
+    }.fetch(field)
   end
 
   def filtered_lg_directory_rows(rows)
@@ -5528,15 +5573,17 @@ class ModulesController < ApplicationController
   end
 
   def current_cluster_incharge_labels
-    labels = [
-      current_app_user&.dig("name"),
-      current_app_user&.dig("username"),
-      current_app_user&.dig("user_name")
-    ]
+    @current_cluster_incharge_labels ||= begin
+      labels = [
+        current_app_user&.dig("name"),
+        current_app_user&.dig("username"),
+        current_app_user&.dig("user_name")
+      ]
 
-    labels.concat(user_model_cluster_labels)
-    labels.concat(legacy_user_cluster_labels)
-    labels.compact_blank.uniq
+      labels.concat(user_model_cluster_labels)
+      labels.concat(legacy_user_cluster_labels)
+      labels.compact_blank.uniq
+    end
   end
 
   def user_model_cluster_labels

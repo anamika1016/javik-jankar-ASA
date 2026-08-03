@@ -678,7 +678,7 @@
         </div>
 
         <div class="table-shell lg-directory-table-shell">
-          <table class="module-table user-list-table" id="lg_directory_all_list" data-paginated-table data-page-size="25">
+          <table class="module-table user-list-table" id="lg_directory_all_list">
             <thead>
               <tr>
                 <th><input type="checkbox" data-module-select-all></th>
@@ -721,7 +721,21 @@
             </tbody>
           </table>
         </div>
-        <div class="table-pagination" data-pagination-for="lg_directory_all_list"></div>
+        <div class="table-pagination">
+          <span>
+            <%= @lg_directory_total_count.zero? ? 0 : ((@lg_directory_page - 1) * @lg_directory_page_size) + 1 %>
+            to
+            <%= [@lg_directory_page * @lg_directory_page_size, @lg_directory_total_count].min %>
+            of <%= @lg_directory_total_count %>
+          </span>
+          <% if @lg_directory_page > 1 %>
+            <%= link_to "Previous", module_path(@slug, table: @lg_directory_filter, q: @lg_directory_query, lg_page: @lg_directory_page - 1), class: "table-action" %>
+          <% end %>
+          <span>Page <%= @lg_directory_page %> of <%= @lg_directory_total_pages %></span>
+          <% if @lg_directory_page < @lg_directory_total_pages %>
+            <%= link_to "Next", module_path(@slug, table: @lg_directory_filter, q: @lg_directory_query, lg_page: @lg_directory_page + 1), class: "table-action" %>
+          <% end %>
+        </div>
       <% end %>
     </section>
   <% elsif @slug == "access-control" %>
