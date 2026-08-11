@@ -687,9 +687,10 @@ class ModulesController < ApplicationController
     @participation_month_filter_value = params[:participation_month].presence || default_status_month
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
     @participation_fcoc_filter_value = params[:participation_fcoc].presence
+    participation_targets = dashboard_targets_for_month(targets, @participation_selected_month)
     participation_records = dashboard_training_participation_records(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
-    @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
-    @training_unique_farmer_count = training_unique_farmer_count_from_records(participation_records)
+    @training_participation_status_cards = training_participation_status_cards(participation_targets, month_name: @participation_selected_month)
+    @training_unique_farmer_count = vrp_targeted_farmer_ids(participation_targets).size
     if request.format.xlsx?
       @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
       @training_participation = training_participation_summary(training_targets, month_name: selected_month)
@@ -1444,9 +1445,10 @@ class ModulesController < ApplicationController
     @participation_month_filter_value = params[:participation_month].presence || default_vrp_dashboard_month(@training_month_options)
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
     @participation_fcoc_filter_value = params[:participation_fcoc].presence
+    participation_targets = dashboard_targets_for_month(targets, @participation_selected_month)
     participation_records = dashboard_training_participation_records(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
-    @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
-    @training_unique_farmer_count = training_unique_farmer_count_from_records(participation_records)
+    @training_participation_status_cards = training_participation_status_cards(participation_targets, month_name: @participation_selected_month)
+    @training_unique_farmer_count = vrp_targeted_farmer_ids(participation_targets).size
     village_count = @vrp_village_rows.size
     preload_training_farmers_for_targets!(filtered_targets)
     @vrp_target_rows = vrp_dashboard_target_progress_rows(filtered_targets, bills)
@@ -2607,7 +2609,7 @@ class ModulesController < ApplicationController
     rows = training_participation_farmer_rows_from_records(records)
 
     {
-      unique: rows.count { |row| row[:attendance_count].to_i == 1 },
+      unique: rows.size,
       green: rows.count { |row| row[:status] == "green" },
       yellow: rows.count { |row| row[:status] == "yellow" },
       red: rows.count { |row| row[:status] == "red" },
@@ -2617,9 +2619,7 @@ class ModulesController < ApplicationController
   end
 
   def training_unique_farmer_count_from_records(records)
-    training_participation_farmer_rows_from_records(records).count do |row|
-      row[:attendance_count].to_i == 1
-    end
+    training_participation_farmer_rows_from_records(records).size
   end
 
   def training_participation_farmer_unique_key(farmer_id, farmer: nil, saved_name: nil, location_key: nil)
