@@ -1722,7 +1722,7 @@ function initDeferredLayoutPage() {
     const immediateParent = parents[parents.length - 1];
     return parents.every((parentLevel) => {
       const parentValues = selectedLocationValues(selects[parentLevel]);
-      if (parentValues.length === 0) return parentLevel !== immediateParent;
+      if (parentValues.length === 0) return false;
 
       const parentKey = locationKeys[parentLevel];
       const rowValues = locationRowValues(row, parentKey);

@@ -18,7 +18,7 @@ class VrpIcsMappingsController < ApplicationController
 
     blocked_ids = already_mapped_farmer_ids(mapping) & Array(mapping.afl_ids).map(&:to_s)
     if blocked_ids.any?
-      redirect_to vrp_ics_mappings_path(edit_id: mapping.persisted? ? mapping.id : nil), alert: "#{blocked_ids.size} farmer already mapped in another VRP ICS mapping."
+      redirect_to vrp_ics_mappings_path(edit_id: mapping.persisted? ? mapping.id : nil), alert: "#{blocked_ids.size} farmer already mapped in another Jeevika JankaR ICS mapping."
       return
     end
 
@@ -31,7 +31,7 @@ class VrpIcsMappingsController < ApplicationController
 
   def destroy
     visible_mappings.find(params[:id]).destroy
-    redirect_to vrp_ics_mappings_path, notice: admin_login? ? "VRP ICS mapping deleted successfully." : "VRP ICS mapping removed successfully."
+    redirect_to vrp_ics_mappings_path, notice: admin_login? ? "Jeevika JankaR ICS mapping deleted successfully." : "Jeevika JankaR ICS mapping removed successfully."
   end
 
   def ics_options

@@ -6767,38 +6767,6 @@ body {
   vertical-align: middle;
 }
 
-.table-shell .module-table .training-list-main-activities,
-.table-shell .module-table .training-list-sub-activities {
-  display: grid;
-  gap: 6px;
-  min-width: 260px;
-  max-width: 420px;
-  white-space: normal;
-}
-
-.table-shell .module-table .training-list-main-activities strong,
-.table-shell .module-table .training-list-sub-activities strong {
-  color: var(--vrp-text);
-  font-size: 0.78rem;
-  font-weight: 900;
-  white-space: nowrap;
-}
-
-.table-shell .module-table .training-list-main-activities span,
-.table-shell .module-table .training-list-sub-activities span {
-  display: block;
-  width: max-content;
-  max-width: 100%;
-  border: 1px solid rgba(82, 144, 67, 0.24);
-  border-radius: 8px;
-  padding: 5px 8px;
-  background: rgba(82, 144, 67, 0.08);
-  color: var(--vrp-green-dark);
-  line-height: 1.35;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
 .table-shell .module-table td > a,
 .table-shell .module-table td > span,
 .table-shell .module-table td > div {

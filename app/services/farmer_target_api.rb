@@ -356,7 +356,17 @@ class FarmerTargetApi
     trainer_name, trainer_contact = training_trainer_defaults
     data["trainer_name"] = trainer_name if trainer_name.present?
     data["trainer_contact"] = trainer_contact if trainer_contact.present?
-    data["trainee_department"] = training_trainee_department_default if data["trainee_department"].blank?
+    data["fco_name"] = data["trainee_department"] if data["fco_name"].blank? && data["trainee_department"].present?
+    data["trainee_department"] = data["fco_name"] if data["trainee_department"].blank? && data["fco_name"].present?
+    data["fco_name"] = training_trainee_department_default if data["fco_name"].blank?
+    data["trainee_department"] = data["fco_name"] if data["trainee_department"].blank? && data["fco_name"].present?
+    data["cluster_coordinator_name"] = data["internal_trainer_name_1"] if data["cluster_coordinator_name"].blank? && data["internal_trainer_name_1"].present?
+    data["internal_trainer_name_1"] = data["cluster_coordinator_name"] if data["internal_trainer_name_1"].blank? && data["cluster_coordinator_name"].present?
+    data["agronomist_name"] = data["internal_trainer_name_2"] if data["agronomist_name"].blank? && data["internal_trainer_name_2"].present?
+    data["agronomist_name"] = training_referred_by_name if data["agronomist_name"].blank? && training_referred_by_name.present?
+    data["internal_trainer_name_2"] = data["agronomist_name"] if data["internal_trainer_name_2"].blank? && data["agronomist_name"].present?
+    data["ics_block"] = data["ics_name"] if data["ics_block"].blank? && data["ics_name"].present?
+    data["gram_name"] = data["village_name"] if data["gram_name"].blank? && data["village_name"].present?
     data["main_activity_type"] = data["main_activity_type"].presence || "Training"
     data["main_activity"] = data["main_activity"].presence || data["training_topic"].presence
     data["sub_activity"] = data["sub_activity"].presence || data["training_subject"].presence
@@ -455,9 +465,13 @@ class FarmerTargetApi
       "month" => "Month",
       "ics_block" => "ICS Name",
       "gram_name" => "Village Name",
-      "trainee_department" => "Trainee Department",
+      "fco_name" => "FCO Name",
       "trainer_name" => "Trainer Name",
       "trainer_contact" => "Trainer Contact",
+      "cluster_coordinator_name" => "Cluster Coordinator Name",
+      "agronomist_name" => "Agronomist Name",
+      "papl_staff_name" => "PAPL Staff Name",
+      "external_input" => "External Input",
       "training_date" => "Training Date",
       "training_location" => "Training Location",
       "main_activity" => "Main Activity",
@@ -550,8 +564,7 @@ class FarmerTargetApi
     @training_target_mappings = training_target_scope
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
       .filter_map do |target|
-        activity_setting = activity_setting_for(target, activity_settings, sub_activity_settings)
-        next if activity_setting.blank? || !training_main_activity_type?(activity_setting[:main_activity_type])
+        activity_setting = activity_setting_for(target, activity_settings, sub_activity_settings) || {}
 
         farmer_ids = training_target_farmer_ids(target)
         {
@@ -699,20 +712,22 @@ class FarmerTargetApi
 
   def training_target_match(data)
     selected_month = normalize_text(data["month"])
-    selected_ics = normalize_text(data["ics_block"].presence || data["ics"])
-    selected_village = normalize_text(data["gram_name"].presence || data["village"])
-    selected_main_activity = normalize_text(data["main_activity"].presence || data["training_topic"])
-    selected_sub_activity = normalize_text(data["sub_activity"].presence || data["training_subject"])
-    selected_main_activity_type = normalize_text(data["main_activity_type"])
+    selected_ics = normalize_text(data["ics_name"].presence || data["ics_block"].presence || data["ics"])
+    selected_village = normalize_text(data["village_name"].presence || data["gram_name"].presence || data["village"])
+    selected_main_activities = normalized_text_values(data["main_activity"].presence || data["training_topic"])
+    selected_sub_activities = normalized_text_values(data["sub_activity"].presence || data["training_subject"])
 
     training_target_mappings.find do |mapping|
       normalize_text(mapping[:month]) == selected_month &&
-        (selected_main_activity_type.blank? || normalize_text(mapping[:main_activity_type]) == selected_main_activity_type) &&
         normalize_text(mapping[:ics]) == selected_ics &&
         normalize_text(mapping[:village]) == selected_village &&
-        normalize_text(mapping[:main_activity]) == selected_main_activity &&
-        normalize_text(mapping[:sub_activity]) == selected_sub_activity
+        selected_main_activities.include?(normalize_text(mapping[:main_activity])) &&
+        selected_sub_activities.include?(normalize_text(mapping[:sub_activity]))
     end
+  end
+
+  def normalized_text_values(value)
+    Array(value).flatten.map { |item| normalize_text(item) }.reject(&:blank?).uniq
   end
 
   def seed_distribution_target_match(data)
@@ -758,32 +773,63 @@ class FarmerTargetApi
     ].compact_blank.first.to_s
   end
 
+  def training_referred_by_name
+    @training_referred_by_name ||= begin
+      vrp = current_vrp_record
+      creator = training_vrp_creator(vrp)
+      training_creator_name(creator).presence
+    end
+  end
+
+  def training_vrp_creator(vrp)
+    return nil unless vrp&.created_by_id.present?
+
+    if vrp.respond_to?(:created_by_type) && vrp.created_by_type.present?
+      return User.find_by(id: vrp.created_by_id) if vrp.created_by_type == "User" && model_ready?(:User)
+      return ModuleRecord.find_by(id: vrp.created_by_id) if vrp.created_by_type == "ModuleRecord" && model_ready?(:ModuleRecord)
+    end
+
+    (model_ready?(:User) && User.find_by(id: vrp.created_by_id)) ||
+      (model_ready?(:ModuleRecord) && ModuleRecord.find_by(id: vrp.created_by_id))
+  end
+
+  def training_creator_name(creator)
+    return "" unless creator
+    return creator.full_name.presence || creator.user_name.to_s if creator.respond_to?(:full_name)
+
+    data = creator.respond_to?(:data) ? creator.data : {}
+    [data["first_name"], data["last_name"]].compact_blank.join(" ").presence ||
+      data["name"].presence ||
+      data["user_name"].to_s
+  end
+
   def training_form_activity_scope_present?(data)
-    data["month"].present? && data["gram_name"].present? && data["main_activity"].present? && data["sub_activity"].present?
+    data["month"].present? &&
+      (data["village_name"].present? || data["gram_name"].present?) &&
+      data["main_activity"].present? &&
+      data["sub_activity"].present?
   end
 
   def pending_training_farmer_ids_for(data)
     return nil unless model_ready?(:TargetMapping)
 
     selected_month = normalize_text(data["month"])
-    selected_ics = normalize_text(data["ics_block"])
-    selected_village = normalize_text(data["gram_name"])
+    selected_ics = normalize_text(data["ics_name"].presence || data["ics_block"])
+    selected_village = normalize_text(data["village_name"].presence || data["gram_name"])
     selected_main_activity_type = normalize_text(data["main_activity_type"])
-    selected_main_activity = normalize_text(data["main_activity"])
-    selected_sub_activity = normalize_text(data["sub_activity"])
+    selected_main_activities = normalized_text_values(data["main_activity"])
+    selected_sub_activities = normalized_text_values(data["sub_activity"])
     activity_settings = main_activity_settings
 
     training_target_scope.each_with_object([]) do |target, ids|
-      activity_setting = activity_settings[normalize_text(target.main_activity_name)]
-      next if activity_setting.blank? || !training_main_activity_type?(activity_setting[:main_activity_type])
+      activity_setting = activity_settings[normalize_text(target.main_activity_name)] || {}
 
       target_main_activity_type = normalize_text(activity_setting[:main_activity_type].presence || "Training")
       next if normalize_text(target.month_name) != selected_month
       next if selected_ics.present? && normalize_text(target.ics_name.presence || target.ics_id) != selected_ics
       next if normalize_text(target.village_name.presence || target.village_id) != selected_village
-      next if selected_main_activity_type.present? && target_main_activity_type != selected_main_activity_type
-      next if normalize_text(target.main_activity_name) != selected_main_activity
-      next if normalize_text(target.activity_name) != selected_sub_activity
+      next unless selected_main_activities.include?(normalize_text(target.main_activity_name))
+      next unless selected_sub_activities.include?(normalize_text(target.activity_name))
 
       farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
       ids.concat(farmer_ids - completed_training_farmer_ids_for(target, farmer_ids))

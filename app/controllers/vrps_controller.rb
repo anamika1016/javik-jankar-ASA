@@ -74,7 +74,7 @@ class VrpsController < ApplicationController
     end
 
     if @vrp.save
-      redirect_to vrps_path, notice: "VRP registration successfully."
+      redirect_to vrps_path, notice: "Jeevika JankaR registration successfully."
     else
       @vrp.build_vrp_profile unless @vrp.vrp_profile
       render :new, status: :unprocessable_entity
@@ -91,7 +91,7 @@ class VrpsController < ApplicationController
     end
 
     if @vrp.update(vrp_update_params)
-      redirect_to vrps_path, notice: "VRP updated successfully."
+      redirect_to vrps_path, notice: "Jeevika JankaR updated successfully."
     else
       @vrp.build_vrp_profile unless @vrp.vrp_profile
       render :edit, status: :unprocessable_entity
@@ -109,7 +109,7 @@ class VrpsController < ApplicationController
       return
     end
 
-    redirect_to vrps_path, alert: "VRP record not found."
+    redirect_to vrps_path, alert: "Jeevika JankaR record not found."
   end
 
   def destroy
@@ -117,9 +117,9 @@ class VrpsController < ApplicationController
 
     if @vrp
       @vrp.update_columns(is_deleted: true, updated_at: Time.current)
-      redirect_to vrps_path, notice: "VRP deleted successfully."
+      redirect_to vrps_path, notice: "Jeevika JankaR deleted successfully."
     else
-      redirect_to vrps_path, alert: "VRP record not found."
+      redirect_to vrps_path, alert: "Jeevika JankaR record not found."
     end
   end
 
@@ -127,13 +127,13 @@ class VrpsController < ApplicationController
     @vrp = find_manageable_vrp(params[:id])
 
     unless @vrp
-      redirect_to vrps_path, alert: "VRP record not found."
+      redirect_to vrps_path, alert: "Jeevika JankaR record not found."
       return
     end
 
     active = ActiveModel::Type::Boolean.new.cast(params[:active])
     @vrp.update_columns(is_active: active, updated_at: Time.current)
-    redirect_to vrps_path, notice: "VRP marked #{active ? "active" : "inactive"}."
+    redirect_to vrps_path, notice: "Jeevika JankaR marked #{active ? "active" : "inactive"}."
   end
 
   def approvals
@@ -154,7 +154,7 @@ class VrpsController < ApplicationController
     vrp = own_vrps.find_by(id: params[:id])
 
     unless vrp
-      redirect_to vrps_path, alert: "VRP record not found."
+      redirect_to vrps_path, alert: "Jeevika JankaR record not found."
       return
     end
 
@@ -167,21 +167,21 @@ class VrpsController < ApplicationController
     end
 
     if approval_sent?(vrp) || [31, 32, 55].include?(vrp.status.to_i)
-      redirect_to vrps_path, alert: "This VRP is already in approval process."
+      redirect_to vrps_path, alert: "This Jeevika JankaR is already in approval process."
       return
     end
 
     update_vrp_status!(vrp, 25)
     log_approval_history(vrp, first_step, "Sent for Approval", "Pending at #{approval_approver_name(first_step)}")
 
-    redirect_to vrps_path, notice: "VRP sent for approval. Pending at #{approval_approver_name(first_step)}."
+    redirect_to vrps_path, notice: "Jeevika JankaR sent for approval. Pending at #{approval_approver_name(first_step)}."
   end
 
   def approve
     vrp = approvable_vrps.find { |record| record.id == params[:id].to_i }
 
     unless vrp
-      redirect_to approvals_vrps_path, alert: "This VRP is not pending for your approval."
+      redirect_to approvals_vrps_path, alert: "This Jeevika JankaR is not pending for your approval."
       return
     end
 
@@ -196,7 +196,7 @@ class VrpsController < ApplicationController
       next_step = current_approval_step(vrp)
       "Approved and moved to #{approval_approver_name(next_step)}."
     else
-      "VRP final approved."
+      "Jeevika JankaR final approved."
     end
 
     redirect_to vrps_path, notice: message
@@ -206,14 +206,14 @@ class VrpsController < ApplicationController
     vrp = approvable_vrps.find { |record| record.id == params[:id].to_i }
 
     unless vrp
-      redirect_to approvals_vrps_path, alert: "This VRP is not pending for your approval."
+      redirect_to approvals_vrps_path, alert: "This Jeevika JankaR is not pending for your approval."
       return
     end
 
     step = current_approval_step(vrp)
     update_vrp_status!(vrp, 99)
     log_approval_history(vrp, step, "Rejected", params[:remarks])
-    redirect_to vrps_path, notice: "VRP rejected."
+    redirect_to vrps_path, notice: "Jeevika JankaR rejected."
   end
 
   private
@@ -225,7 +225,7 @@ class VrpsController < ApplicationController
   def set_edit_dependencies
     set_form_dependencies
     @vrp = find_manageable_vrp(params[:id])
-    redirect_to vrps_path, alert: "VRP record not found." unless @vrp
+    redirect_to vrps_path, alert: "Jeevika JankaR record not found." unless @vrp
   end
 
   def vrp_params
@@ -1188,7 +1188,7 @@ class VrpsController < ApplicationController
     @block_options = module_record_options("block-master", "block_name")
     @location_hierarchy_mappings = location_hierarchy_mappings
     @gram_panchayat_options = location_gram_panchayat_options
-    @village_options = module_record_options("village-master", "village_name")
+    @village_options = location_village_options
   end
 
   def vrp_type_options
@@ -1755,14 +1755,14 @@ class VrpsController < ApplicationController
         village: first_present_data(record, "village_name", "village", "name"))
     end
 
-    lg_directory_rows = active_records_for_location("lg-directory-list").map do |record|
-      location_row(record,
-        state: first_present_data(record, "state", "state_name"),
-        district: first_present_data(record, "district", "district_name"),
-        block: first_present_data(record, "block", "cd_block_name"),
-        gram_panchayat: gram_panchayat_name_from_record(record),
-        village: first_present_data(record, "village", "village_name"))
-    end
+	    lg_directory_rows = active_records_for_location("lg-directory-list").map do |record|
+	      location_row(record,
+	        state: location_name_from_record(record, "state_name", "state", "state_code"),
+	        district: location_name_from_record(record, "district_name", "district", "district_code"),
+	        block: location_name_from_record(record, "block_name", "block", "cd_block_name", "block_code"),
+	        gram_panchayat: gram_panchayat_name_from_record(record),
+	        village: first_present_data(record, "village_name", "village"))
+	    end
 
     deduplicate_location_rows(states + districts + blocks + gram_panchayats + villages + lg_directory_rows)
   end
@@ -1793,6 +1793,20 @@ class VrpsController < ApplicationController
     active_records_for_location(["gram-panchayat-master", "lg-directory-list", "village-master"])
       .filter_map do |record|
         label = gram_panchayat_name_from_record(record)
+        next if label.blank? || code_like_location_value?(label)
+
+        [label, record.id]
+      end
+      .uniq { |label, _value| label.to_s.downcase }
+      .sort_by { |label, _value| label.to_s.downcase }
+  end
+
+  def location_village_options
+    return [] unless model_ready?(:ModuleRecord)
+
+    active_records_for_location(["village-master", "lg-directory-list"])
+      .filter_map do |record|
+        label = first_present_data(record, "village_name", "village", "name")
         next if label.blank? || code_like_location_value?(label)
 
         [label, record.id]

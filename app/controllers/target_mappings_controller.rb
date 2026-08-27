@@ -295,6 +295,11 @@ class TargetMappingsController < ApplicationController
   end
 
   def target_activity_combinations
+    planned_combinations = weekly_plan_rows.map do |row|
+      [row["main_activity"].to_s.strip, row["sub_activity"].to_s.strip.presence || row["main_activity"].to_s.strip]
+    end.reject { |main_activity, sub_activity| main_activity.blank? || sub_activity.blank? }.uniq
+    return planned_combinations if planned_combinations.any?
+
     main_activities = target_activity_values(target_mapping_params[:main_activity_names].presence || target_mapping_params[:main_activity_name])
     sub_activities = target_activity_values(target_mapping_params[:activity_names].presence || target_mapping_params[:activity_name])
     return [] if main_activities.blank? || sub_activities.blank?
@@ -401,6 +406,7 @@ class TargetMappingsController < ApplicationController
 
     plan = weekly_plan_for(target_mapping.main_activity_name, target_mapping.activity_name)
     selected_ids = normalized_afl_ids(plan ? plan["afl_ids"] : target_mapping_params[:afl_ids])
+    target_mapping.afl_ids = selected_ids if plan
     if training_box_activity?(target_mapping.activity_name) || new_farmer_target_mode?
       if target_count <= 0
         target_mapping.errors.add(training_box_activity?(target_mapping.activity_name) ? :activity_name : :new_farmer_target_quantity, "target must be greater than 0")

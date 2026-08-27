@@ -1,3 +1,5 @@
+<% participation = local_assigns.fetch(:participation, {}) %>
+<% participation = participation.with_indifferent_access if participation.respond_to?(:with_indifferent_access) %>
 <% totals = participation[:totals] || {} %>
 <% month_options = Array(@training_month_options || []) %>
 <% sub_activity_options = Array(@training_sub_activity_options || []) %>

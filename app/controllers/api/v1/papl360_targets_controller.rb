@@ -2,7 +2,7 @@ module Api
   module V1
     class Papl360TargetsController < FarmerTargetBaseController
       MODULE_SLUG = "papl360-target".freeze
-      RESOURCE_TITLE = "PAPL360 Target".freeze
+      RESOURCE_TITLE = "ASA360 Target".freeze
       RESOURCE_KEY = "papl360_targets".freeze
       PARAM_KEY = :papl360_target
 

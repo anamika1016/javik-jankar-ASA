@@ -329,10 +329,10 @@
 	                    <td>
 	                      <div class="table-actions">
 	                        <% if @admin_mapping_actions %>
-	                          <%= link_to "Edit", target_mappings_path(edit_id: target.id), class: "table-action" %>
-	                          <%= button_to "Delete", target_mapping_path(target), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this target mapping?" } } %>
+	                          <%= link_to "Edit", target_mappings_path(edit_id: target.id), class: "table-action", data: { turbo: false } %>
+	                          <%= button_to "Delete", delete_target_mapping_path(target), method: :post, class: "table-action danger", form: { data: { turbo: false, turbo_confirm: "Delete this target mapping?" }, onsubmit: "return confirm('Delete this target mapping?')" } %>
 	                        <% elsif @remove_mapping_actions %>
-	                          <%= button_to "Remove", target_mapping_path(target), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Remove this target mapping?" } } %>
+	                          <%= button_to "Remove", delete_target_mapping_path(target), method: :post, class: "table-action danger", form: { data: { turbo: false, turbo_confirm: "Remove this target mapping?" }, onsubmit: "return confirm('Remove this target mapping?')" } %>
 	                        <% end %>
 	                      </div>
 	                    </td>

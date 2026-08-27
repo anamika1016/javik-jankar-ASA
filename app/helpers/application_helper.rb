@@ -142,8 +142,8 @@ module ApplicationHelper
         ["Farmer Participation Report", :route, :farmer_participation_report_path],
         ["Seed Distribution Target", :module, "seed-distribution-target"],
         ["Seed Distribution Target List", :module, "seed-distribution-target-list"],
-        ["PAPL360 Target", :module, "papl360-target"],
-        ["PAPL360 Target List", :module, "papl360-target-list"],
+        ["ASA360 Target", :module, "papl360-target"],
+        ["ASA360 Target List", :module, "papl360-target-list"],
         ["Add Farmer Form", :module, "add-farmer-form"]
       ]
     },
@@ -307,7 +307,7 @@ module ApplicationHelper
         person_type_match = access_value_matches?(record_person_type, current_app_user["person_type"])
         record_vrp_type = record.data["jeevika_jankar_type"].presence || record.data["vrp_type"].presence || record.data["select_vrp_type"]
         vrp_type_match = access_value_matches_any?(record_vrp_type, current_app_user["vrp_types"])
-        can_view = record.data["can_view"].blank? || record.data["can_view"].to_s.casecmp("Yes").zero?
+        can_view = record.data["can_view"].to_s.casecmp("Yes").zero?
         next can_view && record_vrp_type.present? && vrp_type_match if vrp_login_user?
 
         stakeholder_match && stakeholder_role_match && role_match && role_name_match && user_management_role_match && person_type_match && vrp_type_match && can_view
@@ -338,32 +338,32 @@ module ApplicationHelper
     if ["VRP Type", "Add Jeevika Jankar Type", "Jeevika Jankar Type"].include?(name.to_s.strip)
       keys.concat(["vrp-type", "add-jeevika-jankar-type", "jeevika-jankar-type"])
     end
-    if ["Farmer Training", "Farmer Target"].include?(name.to_s.strip)
-      keys.concat(["farmer-training", "farmer-target", "farmer-participation-report", "seed-distribution-target", "papl360-target", "add-farmer-form"])
-    end
     if ["Farmer Training Form", "Farmer Target Form"].include?(name.to_s.strip)
-      keys.concat(["farmer-training-form", "farmer-target-form", "seed-distribution-target", "papl360-target"])
+      keys.concat(["farmer-training-form", "farmer-target-form"])
     end
     if ["Farmer Training Form List", "Farmer Target Form List"].include?(name.to_s.strip)
-      keys.concat(["farmer-training-form-list", "farmer-target-form-list", "farmer-participation-report", "seed-distribution-target-list", "papl360-target-list"])
+      keys.concat(["farmer-training-form-list", "farmer-target-form-list"])
+    end
+    if ["Farmer Participation Report"].include?(name.to_s.strip)
+      keys << "farmer-participation-report"
     end
     if ["Seed Distribution Target", "Seed Distribution Target Form"].include?(name.to_s.strip)
-      keys.concat(["seed-distribution-target", "seed-distribution-target-form", "seed-distribution-target-list"])
+      keys.concat(["seed-distribution-target", "seed-distribution-target-form"])
     end
     if ["Seed Distribution Target List"].include?(name.to_s.strip)
       keys.concat(["seed-distribution-target-list"])
     end
-    if ["PAPL360 Target", "PAPL360 Targate", "PAPL360 Target Form"].include?(name.to_s.strip)
-      keys.concat(["papl360-target", "papl360-targate", "papl360-target-form", "papl360-target-list", "add-farmer-form"])
+    if ["ASA360 Target", "ASA360 Targate", "ASA360 Target Form", "PAPL360 Target", "PAPL360 Targate", "PAPL360 Target Form"].include?(name.to_s.strip)
+      keys.concat(["papl360-target", "papl360-targate", "papl360-target-form"])
     end
-    if ["PAPL360 Target List", "PAPL360 Targate List"].include?(name.to_s.strip)
-      keys.concat(["papl360-target-list", "papl360-targate-list", "add-farmer-form"])
+    if ["ASA360 Target List", "ASA360 Targate List", "PAPL360 Target List", "PAPL360 Targate List"].include?(name.to_s.strip)
+      keys.concat(["papl360-target-list", "papl360-targate-list"])
     end
     if ["Add Farmer Form"].include?(name.to_s.strip)
       keys.concat(["add-farmer-form"])
     end
     if ["Farmer Farm Information", "Farmer FARM Information", "Farmer_FARM _Information"].include?(name.to_s.strip)
-      keys.concat(["farmer-farm-information", "application-format-for-exit-of-farmer-from-ics"])
+      keys.concat(["farmer-farm-information"])
     end
     if ["All Basic Detail List", "All Land List", "Land List", "Farmer Farm Information List"].include?(name.to_s.strip)
       keys.concat(["all-basic-detail-list", "all-land-list", "land-list", "farmer-farm-information-list"])
@@ -392,6 +392,21 @@ module ApplicationHelper
     if ["Contamination Control Records", "Contamination Control"].include?(name.to_s.strip)
       keys << "contamination-control-records"
     end
+    if ["Records of Production & Harvest Details", "Production Harvest Details"].include?(name.to_s.strip)
+      keys << "records-of-production-harvest-details"
+    end
+    if ["Post Harvest, Handling & Storage Area", "Post Harvest Handling Storage Area"].include?(name.to_s.strip)
+      keys << "post-harvest-handling-storage-area"
+    end
+    if ["Sale Record"].include?(name.to_s.strip)
+      keys << "sale-record"
+    end
+    if ["Dispatch Record"].include?(name.to_s.strip)
+      keys << "dispatch-record"
+    end
+    if ["Application Format for Exit of Farmer from ICS"].include?(name.to_s.strip)
+      keys << "application-format-for-exit-of-farmer-from-ics"
+    end
     if ["Target Mapping Master", "Target Mapping", "VRP Targets", "Target Mapped JJ"].include?(name.to_s.strip)
       keys.concat(["target-mapping-master", "target-mapping", "vrp-targets", "target-mapped-jj"])
     end
@@ -399,13 +414,13 @@ module ApplicationHelper
       keys.concat(["bill-process", "jeevika-jankar-bill", "jeevika-jankar-bill-process"])
     end
     if ["Bill List", "Jeevika Jankar Bill List"].include?(name.to_s.strip)
-      keys.concat(["bill-list", "jeevika-jankar-bill-list", "payment-list", "jeevika-jankar-payment-list", "payment-list-detail", "jeevika-jankar-payment-list-detail", "completed-payment-list", "jeevika-jankar-completed-payment-list"])
+      keys.concat(["bill-list", "jeevika-jankar-bill-list"])
     end
     if ["Payment List", "Jeevika Jankar Payment List"].include?(name.to_s.strip)
-      keys.concat(["payment-list", "jeevika-jankar-payment-list", "payment-list-detail", "jeevika-jankar-payment-list-detail", "completed-payment-list", "jeevika-jankar-completed-payment-list"])
+      keys.concat(["payment-list", "jeevika-jankar-payment-list"])
     end
     if ["Payment List Detail", "Jeevika Jankar Payment List Detail"].include?(name.to_s.strip)
-      keys.concat(["payment-list-detail", "jeevika-jankar-payment-list-detail", "completed-payment-list", "jeevika-jankar-completed-payment-list"])
+      keys.concat(["payment-list-detail", "jeevika-jankar-payment-list-detail"])
     end
     if ["Completed Payment List", "Jeevika Jankar Completed Payment List"].include?(name.to_s.strip)
       keys.concat(["completed-payment-list", "jeevika-jankar-completed-payment-list"])
@@ -465,8 +480,8 @@ module ApplicationHelper
         ["Farmer Participation Report", :route, :farmer_participation_report_path],
         ["Seed Distribution Target", :module, "seed-distribution-target"],
         ["Seed Distribution Target List", :module, "seed-distribution-target-list"],
-        ["PAPL360 Target", :module, "papl360-target"],
-          ["PAPL360 Target List", :module, "papl360-target-list"],
+        ["ASA360 Target", :module, "papl360-target"],
+          ["ASA360 Target List", :module, "papl360-target-list"],
           ["Add Farmer Form", :module, "add-farmer-form"]
         ]
       },
@@ -511,7 +526,7 @@ module ApplicationHelper
   def app_display_name
     @app_display_name ||= current_stakeholder&.data&.[]("stakeholder_name_in_english").presence ||
       current_stakeholder&.data&.[]("stakeholder_name").presence ||
-      ENV.fetch("APP_NAME", "VRP")
+      ENV.fetch("APP_NAME", "Jeevika JankaR")
   end
 
   def app_logo_path

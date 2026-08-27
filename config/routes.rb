@@ -107,6 +107,7 @@ Rails.application.routes.draw do
   get "dashboard/farmer-training-target-status", to: "modules#farmer_training_target_status", as: :farmer_training_target_status
   get "dashboard/weekly-activity-target-report", to: "modules#weekly_activity_target_report", as: :weekly_activity_target_report
   get "dashboard/farmer-participation-report", to: "modules#farmer_participation_report", as: :farmer_participation_report
+  get "dashboard/ics-wise-farmer-report", to: "modules#ics_wise_farmer_report", as: :ics_wise_farmer_report
 
   resources :users, except: [:show] do
     patch :toggle_status, on: :member
@@ -128,6 +129,7 @@ Rails.application.routes.draw do
   end
 
   resources :target_mappings, only: [:index, :create, :destroy] do
+    post :delete, on: :member, action: :destroy
     get :vrp_mappings, on: :collection
   end
 

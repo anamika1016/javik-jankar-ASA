@@ -1,11 +1,11 @@
-<% content_for :title, "VRP ICS Mapping" %>
+<% content_for :title, "Jeevika JankaR ICS Mapping" %>
 
 <main class="vrp-list-page">
   <section class="vrp-list-shell">
     <div class="vrp-list-header">
       <div>
         <p class="vrp-eyebrow">Target Mapping</p>
-        <h1>VRP ICS Mapping</h1>
+        <h1>Jeevika JankaR ICS Mapping</h1>
       </div>
     </div>
 
@@ -21,9 +21,9 @@
         <% end %>
         <div class="module-form-grid vrp-ics-grid">
           <label>
-            Approved VRP
+            Approved Jeevika JankaR
             <select name="vrp_ics_mapping[vrp_id]" data-vrp-ics-vrp required>
-              <option value="">Select VRP</option>
+              <option value="">Select Jeevika JankaR</option>
               <% @approved_vrps.each do |vrp| %>
                 <option value="<%= vrp.id %>" <%= "selected" if @edit_mapping&.vrp_id == vrp.id %>><%= [vrp.name, vrp.mobile_no.presence].compact.join(" - ") %></option>
               <% end %>
@@ -82,13 +82,13 @@
 
     <div class="vrp-list-card">
       <div class="list-controls">
-        <strong>Recent VRP ICS Mappings</strong>
+        <strong>Recent Jeevika JankaR ICS Mappings</strong>
       </div>
       <div class="table-shell">
         <table class="module-table vrp-list-table" id="vrp_ics_mapping_list" data-paginated-table data-page-size="15">
           <thead>
             <tr>
-              <th>VRP</th>
+              <th>Jeevika JankaR</th>
               <th>FCO</th>
               <th>ICS</th>
               <th>Village</th>
@@ -111,9 +111,9 @@
 	                    <div class="table-actions">
 	                      <% if @admin_mapping_actions %>
 	                        <%= link_to "Edit", vrp_ics_mappings_path(edit_id: mapping.id), class: "table-action" %>
-	                        <%= button_to "Delete", vrp_ics_mapping_path(mapping), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this VRP ICS mapping?" } } %>
+	                        <%= button_to "Delete", vrp_ics_mapping_path(mapping), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this Jeevika JankaR ICS mapping?" } } %>
 	                      <% elsif @remove_mapping_actions %>
-	                        <%= button_to "Remove", vrp_ics_mapping_path(mapping), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Remove this VRP ICS mapping?" } } %>
+	                        <%= button_to "Remove", vrp_ics_mapping_path(mapping), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Remove this Jeevika JankaR ICS mapping?" } } %>
 	                      <% end %>
 	                    </div>
 	                  </td>
@@ -121,7 +121,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="7">No VRP ICS mapping saved yet.</td>
+                <td colspan="7">No Jeevika JankaR ICS mapping saved yet.</td>
               </tr>
             <% end %>
           </tbody>

@@ -818,7 +818,7 @@ module VrpAccess
     @block_options = module_record_options("block-master", "block_name")
     @location_hierarchy_mappings = location_hierarchy_mappings
     @gram_panchayat_options = location_gram_panchayat_options
-    @village_options = module_record_options("village-master", "village_name")
+    @village_options = location_village_options
   end
 
   def vrp_type_options
@@ -1385,14 +1385,14 @@ module VrpAccess
         village: first_present_data(record, "village_name", "village", "name"))
     end
 
-    lg_directory_rows = active_records_for_location("lg-directory-list").map do |record|
-      location_row(record,
-        state: first_present_data(record, "state", "state_name"),
-        district: first_present_data(record, "district", "district_name"),
-        block: first_present_data(record, "block", "cd_block_name"),
-        gram_panchayat: gram_panchayat_name_from_record(record),
-        village: first_present_data(record, "village", "village_name"))
-    end
+	    lg_directory_rows = active_records_for_location("lg-directory-list").map do |record|
+	      location_row(record,
+	        state: location_name_from_record(record, "state_name", "state", "state_code"),
+	        district: location_name_from_record(record, "district_name", "district", "district_code"),
+	        block: location_name_from_record(record, "block_name", "block", "cd_block_name", "block_code"),
+	        gram_panchayat: gram_panchayat_name_from_record(record),
+	        village: first_present_data(record, "village_name", "village"))
+	    end
 
     states + districts + blocks + gram_panchayats + villages + lg_directory_rows
   end
@@ -1416,6 +1416,20 @@ module VrpAccess
     active_records_for_location(["gram-panchayat-master", "lg-directory-list", "village-master"])
       .filter_map do |record|
         label = gram_panchayat_name_from_record(record)
+        next if label.blank? || code_like_location_value?(label)
+
+        [label, record.id]
+      end
+      .uniq { |label, _value| label.to_s.downcase }
+      .sort_by { |label, _value| label.to_s.downcase }
+  end
+
+  def location_village_options
+    return [] unless model_ready?(:ModuleRecord)
+
+    active_records_for_location(["village-master", "lg-directory-list"])
+      .filter_map do |record|
+        label = first_present_data(record, "village_name", "village", "name")
         next if label.blank? || code_like_location_value?(label)
 
         [label, record.id]
@@ -1582,7 +1596,7 @@ module VrpAccess
       districts: options_as_hashes(module_record_options("district-master", "district_name")),
       blocks: options_as_hashes(module_record_options("block-master", "block_name")),
       gram_panchayats: options_as_hashes(location_gram_panchayat_options),
-      villages: options_as_hashes(module_record_options("village-master", "village_name")),
+      villages: options_as_hashes(location_village_options),
       banks: bank_options_payload,
       fcoc_options: options_as_hashes(fcoc_options_for_api(office_mappings)),
       to_options: options_as_hashes(to_options_for_api(office_mappings)),
