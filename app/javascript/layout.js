@@ -1961,14 +1961,15 @@ function initDeferredLayoutPage() {
       const selectedOptions = Array.from(mainActivitySelect.selectedOptions).filter((option) => option.value);
       mainActivityChips.innerHTML = "";
       if (!selectedOptions.length) {
-        mainActivityChips.innerHTML = '<span class="training-sub-activity-empty">Mapped Main Activities select karein.</span>';
+        mainActivityChips.innerHTML = '<div class="training-sub-activity-empty">Mapped Main Activities select karein.</div>';
         return;
       }
 
       selectedOptions.forEach((option) => {
-        const chip = document.createElement("span");
+        const chip = document.createElement("div");
         chip.className = "training-sub-activity-chip";
-        chip.append(document.createTextNode(option.textContent || option.value));
+        const text = document.createElement("span");
+        text.textContent = option.textContent || option.value;
         const remove = document.createElement("button");
         remove.type = "button";
         remove.className = "training-sub-activity-remove";
@@ -1980,6 +1981,7 @@ function initDeferredLayoutPage() {
           renderMainActivityChips();
           mainActivitySelect.dispatchEvent(new Event("change", { bubbles: true }));
         });
+        chip.appendChild(text);
         chip.appendChild(remove);
         mainActivityChips.appendChild(chip);
       });
@@ -2000,14 +2002,15 @@ function initDeferredLayoutPage() {
       const selectedOptions = Array.from(subActivitySelect.selectedOptions).filter((option) => option.value);
       subActivityChips.innerHTML = "";
       if (!selectedOptions.length) {
-        subActivityChips.innerHTML = '<span class="training-sub-activity-empty">Main Activity select karne par mapped Sub Activities yahan aayengi.</span>';
+        subActivityChips.innerHTML = '<div class="training-sub-activity-empty">Main Activity select karne par mapped Sub Activities yahan aayengi.</div>';
         return;
       }
 
       selectedOptions.forEach((option) => {
-        const chip = document.createElement("span");
+        const chip = document.createElement("div");
         chip.className = "training-sub-activity-chip";
-        chip.append(document.createTextNode(option.textContent || option.value));
+        const text = document.createElement("span");
+        text.textContent = option.textContent || option.value;
         const remove = document.createElement("button");
         remove.type = "button";
         remove.className = "training-sub-activity-remove";
@@ -2019,6 +2022,7 @@ function initDeferredLayoutPage() {
           renderSubActivityChips();
           subActivitySelect.dispatchEvent(new Event("change", { bubbles: true }));
         });
+        chip.appendChild(text);
         chip.appendChild(remove);
         subActivityChips.appendChild(chip);
       });
@@ -3463,21 +3467,40 @@ function initDeferredLayoutPage() {
       const mainActivities = selectedMainActivityNames();
       if (!mainActivities.length) return [];
       const subActivities = selectedSubActivityNames();
-      return [{
-        mainActivity: "__common__",
-        mainActivityLabel: mainActivities.join(", "),
-        subActivityLabels: subActivities,
-        subActivity: "",
-        label: mainActivities.join(", ")
-      }];
+      if (!subActivities.length) return [];
+
+      const selectedMainSet = new Set(mainActivities.map((value) => normalizeOption(value)));
+      const selectedSubSet = new Set(subActivities.map((value) => normalizeOption(value)));
+      const mappedRows = targetSubActivityRows
+        .filter((row) => selectedMainSet.has(normalizeOption(row.main_activity)) && selectedSubSet.has(normalizeOption(row.sub_activity)))
+        .map((row) => ({
+          mainActivity: row.main_activity,
+          mainActivityLabel: row.main_activity,
+          subActivityLabels: [row.sub_activity],
+          subActivity: row.sub_activity,
+          label: [row.main_activity, row.sub_activity].filter(Boolean).join(" - ")
+        }));
+
+      if (mappedRows.length) return mappedRows;
+
+      return mainActivities.map((mainActivity, index) => {
+        const subActivity = subActivities[index] || subActivities[0] || "";
+        return {
+          mainActivity,
+          mainActivityLabel: mainActivity,
+          subActivityLabels: [subActivity].filter(Boolean),
+          subActivity,
+          label: [mainActivity, subActivity].filter(Boolean).join(" - ")
+        };
+      });
     };
 
-    const weeklyRowKey = (row) => `${row.mainActivity || ""}`;
+    const weeklyRowKey = (row) => `${row.mainActivity || ""}||${row.subActivity || ""}`;
     const farmerIdsForRow = (rowKey) => {
       const mainActivity = String(rowKey || "");
       const savedFarmerIds = savedEditFarmerIds();
       const editRowMatches = editTarget.id &&
-        normalizeOption(mainActivity) === normalizeOption(editTarget.main_activity_names?.[0]);
+        normalizeOption(mainActivity) === normalizeOption((editTarget.main_activity_names || []).join(", "));
 
       if (editRowMatches && savedFarmerIds.length && !weeklyPlanFarmerIdsDirty.has(rowKey)) {
         weeklyPlanFarmerIds[rowKey] = new Set(savedFarmerIds);
@@ -3502,6 +3525,36 @@ function initDeferredLayoutPage() {
     };
     const selectedFarmerIdsForActiveRow = () => farmerIdsForRow(activeFarmerDialogRowKey);
     const totalActivityFarmerSelections = () => Object.values(weeklyPlanFarmerIds).reduce((total, ids) => total + ids.size, 0);
+    const allPlannedFarmerIds = () => {
+      const ids = [];
+      Object.values(weeklyPlanFarmerIds).forEach((rowIds) => {
+        rowIds.forEach((id) => ids.push(String(id)));
+      });
+      return [...new Set(ids.filter(Boolean))];
+    };
+    const syncPlannedFarmerInputs = () => {
+      shell.querySelectorAll("[data-target-synced-afl-input]").forEach((input) => input.remove());
+
+      const plannedIds = allPlannedFarmerIds();
+      const plannedIdSet = new Set(plannedIds);
+      targetBoxes().forEach((checkbox) => {
+        checkbox.checked = plannedIdSet.has(String(checkbox.value));
+      });
+
+      const existingBoxIds = new Set(targetBoxes().map((checkbox) => String(checkbox.value)));
+      plannedIds.forEach((id) => {
+        if (existingBoxIds.has(id)) return;
+
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = "target_mapping[afl_ids][]";
+        input.value = id;
+        input.dataset.targetSyncedAflInput = "true";
+        form?.appendChild(input);
+      });
+
+      if (targetInput && plannedIds.length) targetInput.value = String(plannedIds.length);
+    };
     const weeklyPlanValue = (row, field, fallback = "") => {
       const savedValue = weeklyPlanValues[weeklyRowKey(row)]?.[field];
       return savedValue === undefined ? fallback : savedValue;
@@ -3860,7 +3913,57 @@ function initDeferredLayoutPage() {
 
     form?.addEventListener("submit", (event) => {
       syncTargetVillageHidden();
+      syncPlannedFarmerInputs();
       syncNewFarmerTargetMode();
+
+      if (!vrpSelect?.value) {
+        event.preventDefault();
+        window.alert("Please select Jeevika Jankar.");
+        return;
+      }
+
+      if (!fcoSelect?.value) {
+        event.preventDefault();
+        window.alert("Please select FCO Name.");
+        return;
+      }
+
+      if (!icsSelect?.value) {
+        event.preventDefault();
+        window.alert("Please select ICS.");
+        return;
+      }
+
+      if (!targetSelectedValues(villageSelect).length) {
+        event.preventDefault();
+        window.alert("Please select at least one Village.");
+        return;
+      }
+
+      if (!monthSelect?.value) {
+        event.preventDefault();
+        window.alert("Please select Month.");
+        return;
+      }
+
+      const completionDateInput = shell.querySelector("input[name='target_mapping[completion_date]']");
+      if (!completionDateInput?.value) {
+        event.preventDefault();
+        window.alert("Please select Completion Date.");
+        return;
+      }
+
+      if (!selectedMainActivityNames().length) {
+        event.preventDefault();
+        window.alert("Please select at least one Main Activity.");
+        return;
+      }
+
+      if (!selectedSubActivityNames().length) {
+        event.preventDefault();
+        window.alert("Please select at least one Sub Activity.");
+        return;
+      }
 
       const weeklyInputs = Array.from(weeklyRows?.querySelectorAll("[data-target-weekly-input]") || []);
       const weeklyRowKeys = [...new Set(weeklyInputs.map((input) => input.dataset.weeklyRowKey))];
