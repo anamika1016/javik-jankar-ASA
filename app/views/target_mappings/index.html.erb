@@ -16,7 +16,7 @@
         data-target-sub-activity-map="<%= html_escape(@target_sub_activity_map.to_json) %>"
         data-main-activity-type-map="<%= html_escape(@main_activity_type_map.to_json) %>"
         data-mappings-url="<%= vrp_mappings_target_mappings_path %>">
-        <%= form_with url: target_mappings_path, method: :post, local: true, html: { class: "module-entry-form" } do %>
+        <%= form_with url: target_mappings_path, method: :post, local: true, html: { class: "module-entry-form", novalidate: true } do %>
           <% if @edit_target %>
             <input type="hidden" name="target_mapping[id]" value="<%= @edit_target.id %>">
             <div hidden data-edit-saved-target-farmers>
@@ -56,7 +56,7 @@
                 <span class="location-select-all"><input type="checkbox" data-chip-select-all-for="target-village"> Select all</span>
               </span>
               <input type="hidden" name="target_mapping[village_id]" value="" data-target-village-hidden>
-              <select data-target-village data-selected-values="<%= html_escape(Array(@edit_payload[:village_ids]).to_json) %>" multiple required disabled data-chip-multiselect data-chip-select-all-key="target-village" data-placeholder="Select Village">
+              <select data-target-village data-selected-values="<%= html_escape(Array(@edit_payload[:village_ids]).to_json) %>" multiple disabled data-chip-multiselect data-chip-select-all-key="target-village" data-placeholder="Select Village">
                 <option value="">Select Village</option>
               </select>
             </div>
@@ -81,7 +81,7 @@
                 <span>Main Activity <em>*</em></span>
                 <span class="location-select-all"><input type="checkbox" data-chip-select-all-for="target-main-activity"> Select all</span>
               </span>
-              <select name="target_mapping[main_activity_names][]" data-target-main-activity data-selected-values="<%= html_escape(Array(@edit_payload[:main_activity_names]).to_json) %>" multiple required data-chip-multiselect data-chip-select-all-key="target-main-activity" data-placeholder="Select Main Activity">
+              <select name="target_mapping[main_activity_names][]" data-target-main-activity data-selected-values="<%= html_escape(Array(@edit_payload[:main_activity_names]).to_json) %>" multiple data-chip-multiselect data-chip-select-all-key="target-main-activity" data-placeholder="Select Main Activity">
                 <option value="">Select Main Activity</option>
                 <% @main_activity_options.each do |option| %>
                   <option value="<%= option %>" <%= "selected" if Array(@edit_payload[:main_activity_names]).map(&:to_s).include?(option.to_s) %>><%= option %></option>
@@ -94,7 +94,7 @@
                 <span>Sub Activity <em>*</em></span>
                 <span class="location-select-all"><input type="checkbox" data-chip-select-all-for="target-sub-activity"> Select all</span>
               </span>
-              <select name="target_mapping[activity_names][]" data-target-sub-activity data-selected-values="<%= html_escape(Array(@edit_payload[:activity_names]).to_json) %>" multiple required data-chip-multiselect data-chip-select-all-key="target-sub-activity" data-placeholder="Select Sub Activity">
+              <select name="target_mapping[activity_names][]" data-target-sub-activity data-selected-values="<%= html_escape(Array(@edit_payload[:activity_names]).to_json) %>" multiple data-chip-multiselect data-chip-select-all-key="target-sub-activity" data-placeholder="Select Sub Activity">
                 <option value="">Select Sub Activity</option>
                 <% @sub_activity_options.each do |option| %>
                   <option value="<%= option %>" <%= "selected" if Array(@edit_payload[:activity_names]).map(&:to_s).include?(option.to_s) %>><%= option %></option>
@@ -107,15 +107,8 @@
               <input type="text" value="0" data-target-registered-count readonly>
             </label>
 
-            <label data-target-standard-quantity-fields>
-              <span>Target <em>*</em></span>
-              <input type="number" name="target_mapping[target_quantity]" min="1" step="1" placeholder="Selected farmer count" value="<%= @edit_payload[:target_quantity] %>" data-target-quantity-input readonly required>
-            </label>
-
-            <label data-target-standard-quantity-fields>
-              <span>New Farmer Target</span>
-              <input type="number" name="target_mapping[new_farmer_target_quantity]" min="1" step="1" placeholder="Enter target without farmer selection" value="<%= @edit_payload[:new_farmer_target_quantity] %>" data-new-farmer-target-input>
-            </label>
+            <input type="hidden" name="target_mapping[target_quantity]" value="<%= @edit_payload[:target_quantity] %>" data-target-quantity-input>
+            <input type="hidden" name="target_mapping[new_farmer_target_quantity]" value="<%= @edit_payload[:new_farmer_target_quantity] %>" data-new-farmer-target-input>
           </div>
 
           <div class="target-training-fields" data-target-training-fields hidden>
@@ -280,8 +273,10 @@
                   <td><%= target.village_name.presence || target.village_id %></td>
                   <td><%= target.month_name %></td>
                   <td><%= target.completion_date&.strftime("%d-%m-%Y") || "-" %></td>
-                  <td class="target-activity-text"><%= target.main_activity_name %></td>
-                  <td class="target-activity-text"><%= target.activity_name %></td>
+                  <% display_main_activity = target.main_activity_name.to_s.strip.gsub("_", "").casecmp("common").zero? ? "-" : target.main_activity_name %>
+                  <% display_sub_activity = target.activity_name.to_s.strip.gsub("_", "").casecmp("common").zero? ? "-" : target.activity_name %>
+                  <td class="target-activity-text"><%= display_main_activity %></td>
+                  <td class="target-activity-text"><%= display_sub_activity %></td>
                   <td><%= number_with_precision(target.opg_training_target, precision: 4, strip_insignificant_zeros: true) if target.opg_training_target.present? %></td>
                   <td><%= number_with_precision(target.week_wise_opg_target, precision: 4, strip_insignificant_zeros: true) if target.week_wise_opg_target.present? %></td>
                   <td><%= number_with_precision(target.input_demo_inm_target, precision: 4, strip_insignificant_zeros: true) if target.input_demo_inm_target.present? %></td>
@@ -309,12 +304,11 @@
                           </div>
                           <div class="vrp-ics-farmer-list target-dialog-farmer-list">
                             <% target_farmer_ids.each do |farmer_id| %>
-                              <% farmer = @target_farmers_by_id[farmer_id] %>
                               <div class="vrp-ics-farmer-item">
                                 <span aria-hidden="true">•</span>
                                 <span>
-                                  <strong><%= farmer&.farmer_name.presence || "Farmer ##{farmer_id}" %></strong>
-                                  <small><%= [farmer&.father_name.presence && "Father: #{farmer.father_name}", farmer&.tracenet_no.presence && "Tracenet: #{farmer.tracenet_no}", farmer&.mobile_no.presence && "Mobile: #{farmer.mobile_no}", farmer&.village_name.presence && "Village: #{farmer.village_name}"].compact.join(" | ") %></small>
+                                  <strong><%= "Farmer ##{farmer_id}" %></strong>
+                                  <small>Mapped farmer ID: <%= farmer_id %></small>
                                 </span>
                               </div>
                             <% end %>

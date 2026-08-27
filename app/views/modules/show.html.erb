@@ -919,7 +919,7 @@
       data-activity-map="<%= json_escape(@bill_activity_map.to_json) %>"
       data-tci-map="<%= json_escape(@bill_tci_map.to_json) %>"
       data-village-options="<%= json_escape(@bill_village_options.to_json) %>">
-      <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form", multipart: true } do %>
+      <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form", multipart: true, novalidate: @slug == "training-form" } do %>
         <div class="module-form-grid user-registration-grid">
           <label>
             <span>Select VRP <em>*</em></span>

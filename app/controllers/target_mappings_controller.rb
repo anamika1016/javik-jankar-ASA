@@ -19,12 +19,6 @@ class TargetMappingsController < ApplicationController
     @main_activity_type_map = main_activity_type_map
     @target_sub_activity_map = target_sub_activity_map
     @target_mappings = visible_target_mappings.includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc).limit(100)
-    farmer_ids = @target_mappings.flat_map { |target| Array(target.afl_ids) }.map(&:to_s).reject(&:blank?).uniq
-    @target_farmers_by_id = farmer_ids.each_slice(5_000).flat_map do |ids|
-      Afl.where(id: ids)
-        .select(:id, :farmer_name, :father_name, :tracenet_no, :mobile_no, :village_name)
-        .to_a
-    end.index_by { |farmer| farmer.id.to_s }
     @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && @admin_mapping_actions
     @edit_payload = edit_payload(@edit_target)
     @sub_activity_options = target_sub_activity_options(@edit_target&.main_activity_name)
@@ -200,19 +194,34 @@ class TargetMappingsController < ApplicationController
   def weekly_plan_rows
     raw = target_mapping_params[:weekly_plan]
     rows = raw.respond_to?(:to_unsafe_h) ? raw.to_unsafe_h.values : Array(raw)
+    fallback_main_activity = selected_main_activity_names.join(", ")
+    fallback_sub_activity = selected_sub_activity_names.join(", ")
 
     rows.filter_map do |row|
       values = row.respond_to?(:to_h) ? row.to_h.stringify_keys : {}
       next if values["main_activity"].blank?
 
+      values["main_activity"] = fallback_main_activity if common_activity_token?(values["main_activity"]) && fallback_main_activity.present?
+      values["sub_activity"] = fallback_sub_activity if common_activity_token?(values["sub_activity"]) && fallback_sub_activity.present?
       values
     end
   end
 
   def weekly_plan_for(main_activity, sub_activity)
+    exact_plan = weekly_plan_rows.find do |row|
+      row_main_activities = target_activity_values(row["main_activity"])
+      row_sub_activities = target_activity_values(row["sub_activity"])
+      main_match = row_main_activities.any? { |value| value.casecmp(main_activity.to_s.strip).zero? }
+      sub_match = row_sub_activities.blank? || row_sub_activities.any? { |value| value.casecmp(sub_activity.to_s.strip).zero? }
+
+      main_match && sub_match
+    end
+    return exact_plan if exact_plan
+
     weekly_plan_rows.find do |row|
-      row["main_activity"].to_s.strip.casecmp(main_activity.to_s.strip).zero? &&
-        row["sub_activity"].to_s.strip.casecmp(sub_activity.to_s.strip).zero?
+      common_activity_token?(row["main_activity"]) ||
+        row["main_activity"].to_s.include?(",") ||
+        row["sub_activity"].to_s.include?(",")
     end
   end
 
@@ -270,6 +279,16 @@ class TargetMappingsController < ApplicationController
     )
   end
 
+  def selected_sub_activity_names
+    target_activity_values(
+      target_mapping_params[:activity_names].presence || target_mapping_params[:activity_name]
+    )
+  end
+
+  def common_activity_token?(value)
+    value.to_s.strip.gsub("_", "").casecmp("common").zero?
+  end
+
   def training_target_mode?
     selected_training_main_activity_names.any?
   end
@@ -295,13 +314,20 @@ class TargetMappingsController < ApplicationController
   end
 
   def target_activity_combinations
+    selected_combinations = selected_target_activity_combinations
+    return selected_combinations if selected_combinations.any?
+
     planned_combinations = weekly_plan_rows.map do |row|
       [row["main_activity"].to_s.strip, row["sub_activity"].to_s.strip.presence || row["main_activity"].to_s.strip]
     end.reject { |main_activity, sub_activity| main_activity.blank? || sub_activity.blank? }.uniq
     return planned_combinations if planned_combinations.any?
 
+    []
+  end
+
+  def selected_target_activity_combinations
     main_activities = target_activity_values(target_mapping_params[:main_activity_names].presence || target_mapping_params[:main_activity_name])
-    sub_activities = target_activity_values(target_mapping_params[:activity_names].presence || target_mapping_params[:activity_name])
+    sub_activities = selected_sub_activity_names
     return [] if main_activities.blank? || sub_activities.blank?
 
     mapped_pairs = target_sub_activity_map.map do |row|
@@ -401,11 +427,15 @@ class TargetMappingsController < ApplicationController
       target_mapping.village_name,
       vrp_id: target_mapping.vrp_id
     )
+    plan = weekly_plan_for(target_mapping.main_activity_name, target_mapping.activity_name)
+    selected_ids = normalized_afl_ids(plan ? plan["afl_ids"] : target_mapping_params[:afl_ids])
+    selected_ids = submitted_farmer_ids if selected_ids.blank? && submitted_farmer_ids.present?
+    if selected_ids.present? && target_mapping.target_quantity.to_i <= 0
+      target_mapping.target_quantity = selected_ids.size
+    end
     target_count = target_farmer_count(target_mapping)
     return false unless target_count
 
-    plan = weekly_plan_for(target_mapping.main_activity_name, target_mapping.activity_name)
-    selected_ids = normalized_afl_ids(plan ? plan["afl_ids"] : target_mapping_params[:afl_ids])
     target_mapping.afl_ids = selected_ids if plan
     if training_box_activity?(target_mapping.activity_name) || new_farmer_target_mode?
       if target_count <= 0
