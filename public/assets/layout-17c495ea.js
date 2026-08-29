@@ -1749,6 +1749,18 @@ function initDeferredLayoutPage() {
     });
   };
 
+  const optionDataFromLocationRow = (row, level) => {
+    const key = locationKeys[level];
+    const label = locationRowValues(row, key).find((value) => !/^[\d\s.\/-]+$/.test(String(value || "").trim())) ||
+      locationRowValues(row, key)[0];
+    if (!label) return null;
+
+    return {
+      value: label,
+      label: label
+    };
+  };
+
   const replaceLocationOptions = (select, originalOptions, allowedRows, level) => {
     if (!select) return;
 
@@ -1758,6 +1770,9 @@ function initDeferredLayoutPage() {
       if (option.value === "") return false;
       return allowedRows.some((row) => optionMatchesLocationRow(option, row, level));
     });
+    const rowOptions = allowedRows
+      .map((row) => optionDataFromLocationRow(row, level))
+      .filter(Boolean);
 
     const parentSelected = (locationParents[level] || []).every((parentLevel) => {
       return selectedLocationValues(select.closest("[data-location-form]")?.querySelector(`[data-location-level="${parentLevel}"]`)).length > 0;
@@ -1766,8 +1781,14 @@ function initDeferredLayoutPage() {
     const fallbackOptions = originalOptions.filter((option) => option.value !== "");
     const finalOptions = hasParents && !parentSelected
       ? []
-      : (hasParents ? filteredOptions : fallbackOptions);
-    finalOptions.sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: "base" }));
+      : (hasParents ? filteredOptions.concat(rowOptions) : fallbackOptions.concat(rowOptions));
+    const uniqueFinalOptions = finalOptions
+      .filter((option) => option.value)
+      .filter((option, index, options) => {
+        const label = normalizeOption(option.label);
+        return options.findIndex((candidate) => normalizeOption(candidate.label) === label) === index;
+      });
+    uniqueFinalOptions.sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: "base" }));
     select.innerHTML = "";
 
     const prompt = document.createElement("option");
@@ -1775,7 +1796,7 @@ function initDeferredLayoutPage() {
     prompt.textContent = blankOption.label;
     select.appendChild(prompt);
 
-    finalOptions.forEach((optionData) => {
+    uniqueFinalOptions.forEach((optionData) => {
       const option = document.createElement("option");
       option.value = optionData.value;
       option.textContent = optionData.label;
@@ -1823,7 +1844,8 @@ function initDeferredLayoutPage() {
 
       const key = locationKeys[level];
       let allowedRows = mappings.filter((row) => row[key] && locationRowMatchesParents(row, selects, level));
-      if (!allowedRows.length) allowedRows = mappings.filter((row) => row[key]);
+      const parentSelected = (locationParents[level] || []).every((parentLevel) => selectedLocationValues(selects[parentLevel]).length > 0);
+      if (!allowedRows.length && parentSelected) allowedRows = mappings.filter((row) => row[key]);
       replaceLocationOptions(selects[level], originalOptions[level], allowedRows, level);
       syncLocationPrimary(level);
     };

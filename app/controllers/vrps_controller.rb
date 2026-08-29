@@ -1187,8 +1187,8 @@ class VrpsController < ApplicationController
     @district_options = module_record_options("district-master", "district_name")
     @block_options = location_block_options
     @location_hierarchy_mappings = location_hierarchy_mappings
-    @gram_panchayat_options = location_gram_panchayat_options
-    @village_options = location_village_options
+    @gram_panchayat_options = @vrp&.persisted? ? location_gram_panchayat_options : []
+    @village_options = @vrp&.persisted? ? location_village_options : []
   end
 
   def vrp_type_options
