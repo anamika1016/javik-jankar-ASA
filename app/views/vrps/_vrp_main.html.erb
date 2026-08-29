@@ -1,6 +1,7 @@
 <div class="row gx-3 vrp-form-grid"
      data-location-form
-     data-location-map="<%= json_escape(@location_hierarchy_mappings.to_json) %>"
+     data-location-map="<%= json_escape((@location_hierarchy_mappings || []).to_json) %>"
+     data-location-options-url="<%= location_options_vrps_path %>"
      data-vrp-office-form
      data-office-map="<%= json_escape((@office_management_mappings || []).to_json) %>"
      data-cluster-users="<%= json_escape((@cluster_incharge_user_mappings || []).to_json) %>">

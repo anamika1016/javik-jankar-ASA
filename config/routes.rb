@@ -231,6 +231,7 @@ Rails.application.routes.draw do
   resources :vrps, only: [:index, :new, :create, :edit, :update, :show, :destroy] do
     collection do
       get :approvals
+      get :location_options
     end
 
     member do

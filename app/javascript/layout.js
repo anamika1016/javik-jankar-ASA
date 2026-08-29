@@ -1806,6 +1806,27 @@ function initDeferredLayoutPage() {
     select.dispatchEvent(new Event("chip:refresh"));
   };
 
+  const replaceLocationOptionsWithData = (select, optionData, level) => {
+    if (!select) return;
+
+    const selectedValues = uniquePresent(locationSelectedValuesFromDataset(select).concat(selectedLocationValues(select)));
+    select.innerHTML = "";
+
+    const prompt = document.createElement("option");
+    prompt.value = "";
+    prompt.textContent = `Select ${level}`;
+    select.appendChild(prompt);
+
+    optionData.forEach((data) => {
+      const option = document.createElement("option");
+      option.value = data.value || data.label || "";
+      option.textContent = data.label || data.value || "";
+      option.selected = selectedValues.some((selected) => option.value === selected || option.textContent === selected);
+      if (option.value) select.appendChild(option);
+    });
+    select.dispatchEvent(new Event("chip:refresh"));
+  };
+
   document.querySelectorAll("[data-location-form]").forEach((formShell) => {
     let mappings = [];
     try {
@@ -1839,8 +1860,36 @@ function initDeferredLayoutPage() {
       Object.keys(selects).forEach(syncLocationPrimary);
     };
 
-    const refreshLocationLevel = (level) => {
+    const remoteLocationOptions = async (level) => {
+      if (!formShell.dataset.locationOptionsUrl) return null;
+
+      const parents = locationParents[level] || [];
+      if (parents.some((parentLevel) => selectedLocationValues(selects[parentLevel]).length === 0)) return [];
+
+      const url = new URL(formShell.dataset.locationOptionsUrl, window.location.origin);
+      url.searchParams.set("level", level);
+      parents.forEach((parentLevel) => {
+        const selected = Array.from(selects[parentLevel]?.selectedOptions || []).find((option) => option.value)?.textContent ||
+          selectedLocationValues(selects[parentLevel])[0];
+        if (selected) url.searchParams.set(locationKeys[parentLevel], selected);
+      });
+
+      const response = await fetch(url.toString(), { headers: { Accept: "application/json" } });
+      if (!response.ok) return null;
+
+      const payload = await response.json();
+      return Array.isArray(payload.options) ? payload.options : [];
+    };
+
+    const refreshLocationLevel = async (level) => {
       if (!selects[level]) return;
+
+      const remoteOptions = await remoteLocationOptions(level);
+      if (remoteOptions) {
+        replaceLocationOptionsWithData(selects[level], remoteOptions, level);
+        syncLocationPrimary(level);
+        return;
+      }
 
       const key = locationKeys[level];
       let allowedRows = mappings.filter((row) => row[key] && locationRowMatchesParents(row, selects, level));

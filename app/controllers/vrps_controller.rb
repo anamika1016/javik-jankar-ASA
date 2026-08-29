@@ -216,6 +216,17 @@ class VrpsController < ApplicationController
     redirect_to vrps_path, notice: "Jeevika JankaR rejected."
   end
 
+  def location_options
+    level = params[:level].to_s
+    labels = location_option_labels(level, params)
+    if labels.nil?
+      render json: { options: [] }
+      return
+    end
+
+    render json: { options: labels.map { |label| { value: label, label: label } } }
+  end
+
   private
 
   def set_form_dependencies
@@ -223,9 +234,13 @@ class VrpsController < ApplicationController
   end
 
   def set_edit_dependencies
-    set_form_dependencies
     @vrp = find_manageable_vrp(params[:id])
-    redirect_to vrps_path, alert: "Jeevika JankaR record not found." unless @vrp
+    unless @vrp
+      redirect_to vrps_path, alert: "Jeevika JankaR record not found."
+      return
+    end
+
+    set_form_dependencies
   end
 
   def vrp_params
@@ -1183,10 +1198,11 @@ class VrpsController < ApplicationController
     @current_user_office_name = current_user_office_name
     @cluster_incharge_user_mappings = cluster_incharge_user_mappings
     @cluster_incharge_options = cluster_incharge_options
-    @state_options = module_record_options("state-master", "state_name")
-    @district_options = module_record_options("district-master", "district_name")
-    @block_options = location_block_options
-    @location_hierarchy_mappings = location_hierarchy_mappings
+    editing_vrp = @vrp&.persisted?
+    @state_options = location_state_options
+    @district_options = editing_vrp ? location_district_options : []
+    @block_options = editing_vrp ? location_block_options : []
+    @location_hierarchy_mappings = []
     @gram_panchayat_options = @vrp&.persisted? ? location_gram_panchayat_options : []
     @village_options = @vrp&.persisted? ? location_village_options : []
   end
@@ -1809,45 +1825,75 @@ class VrpsController < ApplicationController
   end
 
   def location_block_options
-    return [] unless model_ready?(:ModuleRecord)
+    distinct_lg_directory_values("cd_block_name", "block").map { |label| [label, label] }
+  end
 
-    active_records_for_location(["block-master", "lg-directory-list"])
-      .filter_map do |record|
-        label = first_present_data(record, "block_name", "block", "cd_block_name")
-        next if label.blank? || code_like_location_value?(label)
+  def location_option_labels(level, params)
+    case level
+    when "state"
+      distinct_lg_directory_values("state_name", "state")
+    when "district"
+      return [] if params[:state].blank?
 
-        [label, record.id]
-      end
-      .uniq { |label, _value| label.to_s.downcase }
-      .sort_by { |label, _value| label.to_s.downcase }
+      distinct_lg_directory_values("district_name", "district", state: params[:state])
+    when "block"
+      return [] if params[:state].blank? || params[:district].blank?
+
+      distinct_lg_directory_values("cd_block_name", "block", state: params[:state], district: params[:district])
+    when "gram-panchayat"
+      return [] if params[:state].blank? || params[:district].blank? || params[:block].blank?
+
+      distinct_lg_directory_values("gram_panchayat", "gram_panchayat_name", state: params[:state], district: params[:district], block: params[:block])
+    when "village"
+      return [] if params[:state].blank? || params[:district].blank? || params[:block].blank? || params[:gram_panchayat].blank?
+
+      distinct_lg_directory_values("village_name", "village", state: params[:state], district: params[:district], block: params[:block], gram_panchayat: params[:gram_panchayat])
+    end
+  end
+
+  def distinct_lg_directory_values(*value_keys, **filters)
+    scope = ModuleRecord.where(module_slug: "lg-directory-list")
+    filters.each do |name, selected|
+      value = selected.to_s.strip
+      next if value.blank?
+
+      keys = location_filter_keys(name)
+      clauses = keys.map { |key| "LOWER(data::jsonb ->> #{ActiveRecord::Base.connection.quote(key)}) = ?" }.join(" OR ")
+      scope = scope.where("(#{clauses})", *Array.new(keys.length, normalize_hierarchy_label(value)))
+    end
+
+    expressions = value_keys.map { |key| "NULLIF(TRIM(data::jsonb ->> #{ActiveRecord::Base.connection.quote(key)}), '')" }
+    scope
+      .pluck(Arel.sql("DISTINCT COALESCE(#{expressions.join(', ')})"))
+      .compact_blank
+      .reject { |value| code_like_location_value?(value) }
+      .uniq { |value| normalize_hierarchy_label(value) }
+      .sort_by { |value| value.to_s.downcase }
+  end
+
+  def location_filter_keys(name)
+    {
+      state: ["state_name", "state", "state_code"],
+      district: ["district_name", "district", "district_code"],
+      block: ["cd_block_name", "block", "block_name", "cd_block_code", "block_code"],
+      gram_panchayat: ["gram_panchayat", "gram_panchayat_name", "gp_code", "gram_code"]
+    }[name.to_sym] || [name.to_s]
+  end
+
+  def location_state_options
+    distinct_lg_directory_values("state_name", "state").map { |label| [label, label] }
+  end
+
+  def location_district_options
+    distinct_lg_directory_values("district_name", "district").map { |label| [label, label] }
   end
 
   def location_gram_panchayat_options
-    return [] unless model_ready?(:ModuleRecord)
-
-    active_records_for_location(["gram-panchayat-master", "lg-directory-list", "village-master"])
-      .filter_map do |record|
-        label = gram_panchayat_name_from_record(record)
-        next if label.blank? || code_like_location_value?(label)
-
-        [label, record.id]
-      end
-      .uniq { |label, _value| label.to_s.downcase }
-      .sort_by { |label, _value| label.to_s.downcase }
+    distinct_lg_directory_values("gram_panchayat", "gram_panchayat_name").map { |label| [label, label] }
   end
 
   def location_village_options
-    return [] unless model_ready?(:ModuleRecord)
-
-    active_records_for_location(["village-master", "lg-directory-list"])
-      .filter_map do |record|
-        label = first_present_data(record, "village_name", "village", "name")
-        next if label.blank? || code_like_location_value?(label)
-
-        [label, record.id]
-      end
-      .uniq { |label, _value| label.to_s.downcase }
-      .sort_by { |label, _value| label.to_s.downcase }
+    distinct_lg_directory_values("village_name", "village").map { |label| [label, label] }
   end
 
   def gram_panchayat_name_from_record(record)
