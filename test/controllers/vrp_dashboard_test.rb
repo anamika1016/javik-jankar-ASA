@@ -512,6 +512,81 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     refute_includes response.body, "VRP Dashboard"
   end
 
+  test "jeevika jankar approval starts with first approver from creator channel" do
+    creator = User.create!(
+      user_name: "akashdeep_nath",
+      password: "secret",
+      first_name: "Akashdeep",
+      last_name: "Nath",
+      stakeholder: "ASA",
+      role: "PMC-Oprection",
+      user_type: "user",
+      status: "Active"
+    )
+    User.create!(
+      user_name: "soumen_day",
+      password: "secret",
+      first_name: "Soumen",
+      last_name: "Day",
+      stakeholder: "ASA",
+      role: "PMC-Oprection",
+      user_type: "user",
+      status: "Active"
+    )
+    User.create!(
+      user_name: "anurag_patel",
+      password: "secret",
+      first_name: "Anurag",
+      last_name: "Patel",
+      stakeholder: "ASA",
+      role: "PMC-Oprection",
+      user_type: "user",
+      status: "Active"
+    )
+    vrp = create_vrp(
+      name: "Anjali Kumari",
+      user_name: "to_barhait_jj1",
+      mobile_no: "9876543999",
+      email: "anjali-kumari@example.com",
+      created_by_id: creator.id,
+      created_by_type: "User",
+      stakeholder: "ASA",
+      status: 10
+    )
+
+    [
+      ["Akashdeep Nath", "First Approval", "Soumen Day (PMC-Oprection)"],
+      ["Akashdeep Nath", "Second Approval", "Anurag Patel (PMC-Oprection)"],
+      ["Pritesh Jain", "First Approval", "Anurag Patel (PMC-Oprection)"]
+    ].each do |user_name, level, approver|
+      ModuleRecord.create!(
+        module_slug: "approval-master",
+        data: {
+          "module_name" => "Jeevika Jankar Registration",
+          "stakeholder_name" => "ASA",
+          "user_name" => user_name,
+          "approval_level" => level,
+          "approver_approved_by" => approver,
+          "status" => "Active"
+        }
+      )
+    end
+
+    post login_path, params: { login: "akashdeep_nath", password: "secret" }
+    patch send_for_approval_vrp_path(vrp)
+
+    assert_redirected_to vrps_path
+    sent_history = ModuleRecord.where(module_slug: "vrp-approval-history").order(:created_at).last
+    assert_equal vrp.id.to_s, sent_history.data["vrp_id"]
+    assert_equal "Pending at Soumen Day (PMC-Oprection)", sent_history.data["status"]
+
+    get vrp_path(vrp)
+
+    assert_response :success
+    assert_select ".approval-progress-card.current", text: /Pending at: Soumen Day \(PMC-Oprection\)/
+    assert_no_match(/Pending at: Anurag Patel \(PMC-Oprection\).*Current step/m, response.body)
+  end
+
   test "vrp training form shows only target assigned farmers" do
     vrp = create_vrp(
       name: "Training VRP",

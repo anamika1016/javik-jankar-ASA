@@ -6169,7 +6169,7 @@ class ModulesController < ApplicationController
     return @dashboard_approval_steps_for_visibility_cache[cache_key] = [] if identities.blank?
 
     @dashboard_approval_visibility_steps ||= ModuleRecord.where(module_slug: "approval-master").order(created_at: :asc).to_a
-    @dashboard_approval_steps_for_visibility_cache[cache_key] = @dashboard_approval_visibility_steps
+    matching_records = @dashboard_approval_visibility_steps
       .select do |record|
         record.data["status"].to_s != "Inactive" &&
           approval_registration_module?(record.data["module_name"]) &&
@@ -6179,6 +6179,17 @@ class ModulesController < ApplicationController
               approval_identity_filters_match?(record, identity)
           end
       end
+
+    @dashboard_approval_steps_for_visibility_cache[cache_key] = selected_vrp_approval_channel_steps(matching_records)
+  end
+
+  def selected_vrp_approval_channel_steps(records)
+    selected_channel = records
+      .group_by { |record| vrp_approval_channel_key(record) }
+      .values
+      .max_by { |channel_records| vrp_approval_channel_priority(channel_records) } || []
+
+    selected_channel
       .group_by { |record| vrp_approval_sequence(record) }
       .values
       .map { |records| records.max_by { |record| approval_record_priority(record) } }
@@ -6323,7 +6334,7 @@ class ModulesController < ApplicationController
     return @vrp_approval_steps_for_cache[cache_key] = [] if identities.blank?
 
     @dashboard_approval_steps ||= ModuleRecord.where(module_slug: "approval-master").order(created_at: :asc).to_a
-    @vrp_approval_steps_for_cache[cache_key] = @dashboard_approval_steps
+    matching_records = @dashboard_approval_steps
       .select do |record|
         record.data["status"].to_s != "Inactive" &&
           approval_registration_module?(record.data["module_name"]) &&
@@ -6340,10 +6351,8 @@ class ModulesController < ApplicationController
               approval_identity_filters_match?(record, identity)
           end
       end
-      .group_by { |record| vrp_approval_sequence(record) }
-      .values
-      .map { |records| records.max_by { |record| approval_record_priority(record) } }
-      .sort_by { |record| vrp_approval_sequence(record) }
+
+    @vrp_approval_steps_for_cache[cache_key] = selected_vrp_approval_channel_steps(matching_records)
   end
 
   def vrp_creator_identities_for_dashboard(vrp)
@@ -10943,6 +10952,44 @@ class ModulesController < ApplicationController
 
   def approval_record_priority(record)
     [(record.data["user_name"].present? || record.data["vrp_name"].present?) ? 1 : 0, record.id]
+  end
+
+  def vrp_approval_channel_key(record)
+    data = record.data
+    [
+      data["module_name"],
+      data["stakeholder_name"],
+      data["user_name"],
+      data["status"],
+      data["role"].presence || data["role_name"],
+      data["stakeholder_role"],
+      data["user_management_role"],
+      data["person_type"],
+      approval_record_office(record),
+      data["office_category"],
+      data["vrp_name"]
+    ].map { |value| normalize_approval_label(value) }
+  end
+
+  def vrp_approval_channel_priority(records)
+    [
+      records.sum { |record| vrp_approval_channel_specificity(record) },
+      records.map(&:id).compact.max.to_i
+    ]
+  end
+
+  def vrp_approval_channel_specificity(record)
+    data = record.data
+    [
+      data["user_name"],
+      data["vrp_name"],
+      data["role"].presence || data["role_name"],
+      data["stakeholder_role"],
+      data["user_management_role"],
+      data["person_type"],
+      approval_record_office(record),
+      data["office_category"]
+    ].count(&:present?)
   end
 
   def approval_user_options

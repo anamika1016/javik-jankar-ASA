@@ -321,13 +321,18 @@ module VrpAccess
           end
       end
 
-    matching_records
+    selected_channel = matching_records
+      .group_by { |record| approval_channel_key(record) }
+      .values
+      .max_by { |records| approval_channel_priority(records) } || []
+
+    steps = selected_channel
       .group_by { |record| approval_sequence(record) }
       .values
       .map { |records| records.max_by { |record| approval_record_priority(record) } }
       .sort_by { |record| approval_sequence(record) }
 
-    @approval_steps_for_cache[cache_key] = matching_records
+    @approval_steps_for_cache[cache_key] = steps
   end
 
   def approval_sequence(record)
@@ -556,6 +561,44 @@ module VrpAccess
 
   def approval_record_priority(record)
     [(record.data["user_name"].present? || record.data["vrp_name"].present?) ? 1 : 0, record.id]
+  end
+
+  def approval_channel_key(record)
+    data = record.data
+    [
+      data["module_name"],
+      data["stakeholder_name"],
+      data["user_name"],
+      data["status"],
+      data["role"].presence || data["role_name"],
+      data["stakeholder_role"],
+      data["user_management_role"],
+      data["person_type"],
+      approval_record_office(record),
+      data["office_category"],
+      data["vrp_name"]
+    ].map { |value| normalize_approver_label(value) }
+  end
+
+  def approval_channel_priority(records)
+    [
+      records.sum { |record| approval_channel_specificity(record) },
+      records.map(&:id).compact.max.to_i
+    ]
+  end
+
+  def approval_channel_specificity(record)
+    data = record.data
+    [
+      data["user_name"],
+      data["vrp_name"],
+      data["role"].presence || data["role_name"],
+      data["stakeholder_role"],
+      data["user_management_role"],
+      data["person_type"],
+      approval_record_office(record),
+      data["office_category"]
+    ].count(&:present?)
   end
 
   def vrp_status_label(vrp)
