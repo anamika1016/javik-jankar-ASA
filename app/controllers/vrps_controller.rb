@@ -154,7 +154,10 @@ class VrpsController < ApplicationController
     vrp = own_vrps.find_by(id: params[:id])
 
     unless vrp
-      redirect_to vrps_path, alert: "Jeevika JankaR record not found."
+      respond_to do |format|
+        format.json { render json: { message: "Jeevika Jankar record not found." }, status: :not_found }
+        format.html { redirect_to vrps_path, alert: "Jeevika JankaR record not found." }
+      end
       return
     end
 
@@ -162,19 +165,36 @@ class VrpsController < ApplicationController
     first_step = steps.first
 
     unless first_step
-      redirect_to vrps_path, alert: "Approval channel is not configured for your role."
+      respond_to do |format|
+        format.json { render json: { message: "Approval channel is not configured for your role." }, status: :unprocessable_entity }
+        format.html { redirect_to vrps_path, alert: "Approval channel is not configured for your role." }
+      end
       return
     end
 
     if approval_sent?(vrp) || [31, 32, 55].include?(vrp.status.to_i)
-      redirect_to vrps_path, alert: "This Jeevika JankaR is already in approval process."
+      respond_to do |format|
+        format.json { render json: { message: "This Jeevika Jankar is already in approval process." }, status: :unprocessable_entity }
+        format.html { redirect_to vrps_path, alert: "This Jeevika JankaR is already in approval process." }
+      end
       return
     end
 
     update_vrp_status!(vrp, 25)
     log_approval_history(vrp, first_step, "Sent for Approval", "Pending at #{approval_approver_name(first_step)}")
 
-    redirect_to vrps_path, notice: "Jeevika JankaR sent for approval. Pending at #{approval_approver_name(first_step)}."
+    message = "Jeevika Jankar sent for approval. Pending at #{approval_approver_name(first_step)}."
+    respond_to do |format|
+      format.json do
+        render json: {
+          id: vrp.id,
+          message: message,
+          status_label: vrp_status_label(vrp),
+          status_class: vrp_status_class(vrp)
+        }
+      end
+      format.html { redirect_to vrps_path, notice: message }
+    end
   end
 
   def approve
@@ -889,6 +909,15 @@ class VrpsController < ApplicationController
     else
       "Submitted"
     end
+  end
+
+  def vrp_status_class(vrp)
+    label = vrp_status_label(vrp).to_s
+    return "rejected" if label.include?("Rejected")
+    return "approved" if label.include?("Approved")
+    return "pending" if label.include?("Pending")
+
+    "submitted"
   end
 
   def approval_approver_name(step)

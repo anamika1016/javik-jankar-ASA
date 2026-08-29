@@ -681,17 +681,40 @@ function initDeferredLayoutPage() {
           method: "PATCH",
           headers: {
             "X-CSRF-Token": csrfToken,
-            "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml"
+            "Accept": "application/json"
           }
         });
       }));
 
       if (responses.some((response) => !response.ok)) {
-        window.alert(replaceVrpUiText("Some selected VRP record(s) could not be sent for approval."));
+        const errorMessages = await Promise.all(responses.map(async (response) => {
+          if (response.ok) return "";
+
+          try {
+            const payload = await response.json();
+            return payload.message || payload.error || "";
+          } catch (_error) {
+            return "";
+          }
+        }));
+        window.alert(replaceVrpUiText(errorMessages.find(Boolean) || "Some selected Jeevika Jankar record(s) could not be sent for approval."));
         return;
       }
 
-      window.location.reload();
+      const payloads = await Promise.all(responses.map((response) => response.json()));
+      payloads.forEach((payload) => {
+        const row = document.querySelector(`[data-vrp-row-id="${payload.id}"]`);
+        const statusCell = row?.querySelector("[data-vrp-status-cell]");
+        if (!statusCell) return;
+
+        const statusClass = payload.status_class || "pending";
+        statusCell.innerHTML = `<span class="grid-status ${escapeHtml(statusClass)}">${escapeHtml(payload.status_label)}</span>`;
+        const checkbox = row.querySelector("[data-vrp-row-select]");
+        if (checkbox) checkbox.checked = false;
+      });
+
+      const message = payloads.map((payload) => payload.message).find(Boolean);
+      if (message) window.alert(replaceVrpUiText(message));
     });
   }
 
@@ -999,6 +1022,12 @@ function initDeferredLayoutPage() {
   const normalizeOption = (value) => stripDisplayName(value).toLowerCase();
   const optionValue = (option) => (typeof option === "object" && option !== null ? option.value : option);
   const optionLabel = (option) => (typeof option === "object" && option !== null ? (option.label || option.value) : option);
+  const escapeHtml = (value) => String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
   const makeOption = (value, label) => {
     const normalizedValue = `${value || ""}`.trim();
     if (!normalizedValue) return null;
@@ -1565,9 +1594,8 @@ function initDeferredLayoutPage() {
           .filter((user) => {
             const userOfficeCategory = normalizeOption(user.office_category);
             const userOfficeName = normalizeOption(user.office_name || user.office);
-            const hierarchyOnlyMapping = !userOfficeCategory && !userOfficeName;
-            const categoryMatches = hierarchyOnlyMapping || !normalizedOfficeCategory || userOfficeCategory === normalizedOfficeCategory;
-            const officeMatches = hierarchyOnlyMapping || !normalizedOfficeName || userOfficeName === normalizedOfficeName;
+            const categoryMatches = !normalizedOfficeCategory || !userOfficeCategory || userOfficeCategory === normalizedOfficeCategory;
+            const officeMatches = !normalizedOfficeName || userOfficeName === normalizedOfficeName;
             return categoryMatches && officeMatches;
           })
           .map((user) => makeOption(user.value, user.label || user.value))
@@ -1586,7 +1614,8 @@ function initDeferredLayoutPage() {
       if (!clusterInchargeSelect) return;
 
       const users = mappedClusterUsers(officeCategorySelect?.value, officeNameSelect?.value);
-      replaceSelectOptions(clusterInchargeSelect, users, "Select Cluster Incharge");
+      const selected = clusterInchargeSelect.dataset.selectedValue || (users.length === 1 ? optionValue(users[0]) : "");
+      replaceSelectOptions(clusterInchargeSelect, users, "Select Cluster Incharge", selected);
     };
 
     officeCategorySelect?.addEventListener("change", () => {

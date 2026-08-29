@@ -62,7 +62,7 @@
           <tbody>
             <% if @data.any? %>
               <% @data.each do |vrp| %>
-                <tr>
+                <tr data-vrp-row-id="<%= vrp[:id] %>">
                   <td><input type="checkbox" value="<%= vrp[:id] %>" data-vrp-row-select></td>
                   <td>
                     <a href="<%= vrp_path(vrp[:id]) %>" class="grid-view-link eye-link" title="View Details" aria-label="View Details">
@@ -70,7 +70,7 @@
                     </a>
                   </td>
                   <% status_class = vrp[:status_label].to_s.include?("Rejected") ? "rejected" : (vrp[:status_label].to_s.include?("Approved") ? "approved" : (vrp[:status_label].to_s.include?("Pending") ? "pending" : "submitted")) %>
-                  <td><span class="grid-status <%= status_class %>"><%= vrp[:status_label] %></span></td>
+                  <td data-vrp-status-cell><span class="grid-status <%= status_class %>"><%= vrp[:status_label] %></span></td>
                   <td><%= vrp[:id] %></td>
                   <td><%= vrp[:user_name] %></td>
                   <td><%= vrp[:name] %></td>

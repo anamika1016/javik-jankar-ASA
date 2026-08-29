@@ -137,7 +137,7 @@
 
   <div class="col-md-3 mb-3">
     <label class="form-label">Cluster Incharge</label>
-    <%= f.select :cluster_incharge, options_for_select(@cluster_incharge_options || [], f.object.cluster_incharge), { prompt: "Select Cluster Incharge" }, class: "form-select", data: { vrp_cluster_incharge: true, selected_value: f.object.cluster_incharge } %>
+    <%= f.select :cluster_incharge, options_for_select(@cluster_incharge_options || [], f.object.cluster_incharge), { prompt: "Select Cluster Incharge" }, class: "form-select", data: { vrp_cluster_incharge: true, selected_value: f.object.cluster_incharge, strict_options: true } %>
   </div>
 
   <div class="vrp-section-title">
