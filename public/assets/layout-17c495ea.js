@@ -1717,6 +1717,16 @@ function initDeferredLayoutPage() {
     return uniquePresent((locationAliasKeys[key] || [key]).map((alias) => row[alias]));
   };
 
+  const locationValuesMatch = (left, right) => {
+    const normalizedLeft = normalizeOption(left);
+    const normalizedRight = normalizeOption(right);
+    if (!normalizedLeft || !normalizedRight) return false;
+    return normalizedLeft === normalizedRight ||
+      normalizedLeft.replace(/\s+/g, "") === normalizedRight.replace(/\s+/g, "") ||
+      normalizedLeft.includes(normalizedRight) ||
+      normalizedRight.includes(normalizedLeft);
+  };
+
   const locationRowMatchesParents = (row, selects, level) => {
     const parents = locationParents[level] || [];
     const immediateParent = parents[parents.length - 1];
@@ -1728,18 +1738,14 @@ function initDeferredLayoutPage() {
       const rowValues = locationRowValues(row, parentKey);
       if (rowValues.length === 0) return parentLevel !== immediateParent;
 
-      return parentValues.some((value) => {
-        const normalizedValue = normalizeOption(value);
-        return rowValues.some((rowValue) => normalizeOption(rowValue) === normalizedValue);
-      });
+      return parentValues.some((value) => rowValues.some((rowValue) => locationValuesMatch(rowValue, value)));
     });
   };
 
   const optionMatchesLocationRow = (option, row, level) => {
     const key = locationKeys[level];
     return [row.id].concat(locationRowValues(row, key)).some((value) => {
-      return normalizeOption(value) === normalizeOption(option.value) ||
-        normalizeOption(value) === normalizeOption(option.textContent);
+      return locationValuesMatch(value, option.value) || locationValuesMatch(value, option.textContent);
     });
   };
 
@@ -1816,7 +1822,8 @@ function initDeferredLayoutPage() {
       if (!selects[level]) return;
 
       const key = locationKeys[level];
-      const allowedRows = mappings.filter((row) => row[key] && locationRowMatchesParents(row, selects, level));
+      let allowedRows = mappings.filter((row) => row[key] && locationRowMatchesParents(row, selects, level));
+      if (!allowedRows.length) allowedRows = mappings.filter((row) => row[key]);
       replaceLocationOptions(selects[level], originalOptions[level], allowedRows, level);
       syncLocationPrimary(level);
     };

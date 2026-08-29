@@ -1722,46 +1722,67 @@ class VrpsController < ApplicationController
     return [] unless model_ready?(:ModuleRecord)
 
     states = active_records_for_location("state-master").map do |record|
-      location_row(record, state: first_present_data(record, "state_name"))
+      location_row(record,
+        state: first_present_data(record, "state_name"),
+        state_code: first_present_data(record, "state_code"))
     end
 
     districts = active_records_for_location("district-master").map do |record|
       location_row(record,
         state: location_name_from_record(record, "state_name", "state", "state_id", "state_code"),
-        district: first_present_data(record, "district_name"))
+        state_code: first_present_data(record, "state_code", "state_id"),
+        district: first_present_data(record, "district_name"),
+        district_code: first_present_data(record, "district_code", "district_id"))
     end
 
     blocks = active_records_for_location("block-master").map do |record|
       location_row(record,
         state: location_name_from_record(record, "state_name", "state", "state_id", "state_code"),
+        state_code: first_present_data(record, "state_code", "state_id"),
         district: location_name_from_record(record, "district_name", "district", "district_id", "district_code"),
-        block: first_present_data(record, "block_name"))
+        district_code: first_present_data(record, "district_code", "district_id"),
+        block: first_present_data(record, "block_name"),
+        block_code: first_present_data(record, "block_code", "block_id"))
     end
 
     gram_panchayats = active_records_for_location("gram-panchayat-master").map do |record|
       location_row(record,
         state: location_name_from_record(record, "state_name", "state", "state_id", "state_code"),
+        state_code: first_present_data(record, "state_code", "state_id"),
         district: location_name_from_record(record, "district_name", "district", "district_id", "district_code"),
+        district_code: first_present_data(record, "district_code", "district_id"),
         block: location_name_from_record(record, "block_name", "block", "block_id", "block_code"),
-        gram_panchayat: gram_panchayat_name_from_record(record))
+        block_code: first_present_data(record, "block_code", "block_id"),
+        gram_panchayat: gram_panchayat_name_from_record(record),
+        gp_code: first_present_data(record, "gp_code", "gram_code", "gram_panchayat_code", "gram_panchayat_id"))
     end
 
     villages = active_records_for_location("village-master").map do |record|
       location_row(record,
         state: location_name_from_record(record, "state_name", "state", "state_id", "state_code"),
+        state_code: first_present_data(record, "state_code", "state_id"),
         district: location_name_from_record(record, "district_name", "district", "district_id", "district_code"),
+        district_code: first_present_data(record, "district_code", "district_id"),
         block: location_name_from_record(record, "block_name", "block", "block_id", "block_code"),
+        block_code: first_present_data(record, "block_code", "block_id"),
         gram_panchayat: gram_panchayat_name_from_record(record),
-        village: first_present_data(record, "village_name", "village", "name"))
+        gp_code: first_present_data(record, "gp_code", "gram_code", "gram_panchayat_code", "gram_panchayat_id"),
+        village: first_present_data(record, "village_name", "village", "name"),
+        village_code: first_present_data(record, "village_code", "village_id"))
     end
 
 	    lg_directory_rows = active_records_for_location("lg-directory-list").map do |record|
 	      location_row(record,
 	        state: location_name_from_record(record, "state_name", "state", "state_code"),
+	        state_code: first_present_data(record, "state_code"),
 	        district: location_name_from_record(record, "district_name", "district", "district_code"),
+	        district_code: first_present_data(record, "district_code"),
 	        block: location_name_from_record(record, "block_name", "block", "cd_block_name", "block_code"),
+	        block_code: first_present_data(record, "block_code", "cd_block_code"),
 	        gram_panchayat: gram_panchayat_name_from_record(record),
-	        village: first_present_data(record, "village_name", "village"))
+	        gp_code: first_present_data(record, "gp_code", "gram_code", "gram_panchayat_code"),
+	        village: first_present_data(record, "village_name", "village"),
+	        village_code: first_present_data(record, "village_code"))
 	    end
 
     deduplicate_location_rows(states + districts + blocks + gram_panchayats + villages + lg_directory_rows)

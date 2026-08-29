@@ -11098,6 +11098,8 @@ class ModulesController < ApplicationController
 
   def location_master_field?(module_slug, field_key)
     {
+      "state-master" => "state_name",
+      "district-master" => "district_name",
       "block-master" => "block_name",
       "gram-panchayat-master" => "gram_panchayat_name",
       "village-master" => "village_name"
@@ -11112,6 +11114,8 @@ class ModulesController < ApplicationController
       .filter_map { |record| location_value_from_record(record, module_slug, field_key) }
 
     lg_keys = {
+      "state-master" => ["state", "state_name"],
+      "district-master" => ["district", "district_name"],
       "block-master" => ["block", "cd_block_name"],
       "gram-panchayat-master" => ["gram_panchayat", "gram_panchayat_name", "gp_name", "gram_name"],
       "village-master" => ["village", "village_name"]
