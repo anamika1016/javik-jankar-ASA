@@ -1898,9 +1898,8 @@ function initDeferredLayoutPage() {
       const url = new URL(formShell.dataset.locationOptionsUrl, window.location.origin);
       url.searchParams.set("level", level);
       parents.forEach((parentLevel) => {
-        const selected = Array.from(selects[parentLevel]?.selectedOptions || []).find((option) => option.value)?.textContent ||
-          selectedLocationValues(selects[parentLevel])[0];
-        if (selected) url.searchParams.set(locationKeys[parentLevel], selected);
+        const selectedValues = selectedLocationValues(selects[parentLevel]);
+        if (selectedValues.length) url.searchParams.set(locationKeys[parentLevel], JSON.stringify(selectedValues));
       });
 
       const response = await fetch(url.toString(), { headers: { Accept: "application/json" } });

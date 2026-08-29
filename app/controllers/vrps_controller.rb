@@ -1883,12 +1883,12 @@ class VrpsController < ApplicationController
   def distinct_lg_directory_values(*value_keys, **filters)
     scope = ModuleRecord.where(module_slug: "lg-directory-list")
     filters.each do |name, selected|
-      value = selected.to_s.strip
-      next if value.blank?
+      values = location_filter_values(selected)
+      next if values.blank?
 
       keys = location_filter_keys(name)
-      clauses = keys.map { |key| "LOWER(data::jsonb ->> #{ActiveRecord::Base.connection.quote(key)}) = ?" }.join(" OR ")
-      scope = scope.where("(#{clauses})", *Array.new(keys.length, normalize_hierarchy_label(value)))
+      clauses = keys.map { |key| "LOWER(data::jsonb ->> #{ActiveRecord::Base.connection.quote(key)}) IN (?)" }.join(" OR ")
+      scope = scope.where("(#{clauses})", *Array.new(keys.length, values))
     end
 
     expressions = value_keys.map { |key| "NULLIF(TRIM(data::jsonb ->> #{ActiveRecord::Base.connection.quote(key)}), '')" }
@@ -1907,6 +1907,22 @@ class VrpsController < ApplicationController
       block: ["cd_block_name", "block", "block_name", "cd_block_code", "block_code"],
       gram_panchayat: ["gram_panchayat", "gram_panchayat_name", "gp_code", "gram_code"]
     }[name.to_sym] || [name.to_s]
+  end
+
+  def location_filter_values(selected)
+    values = if selected.is_a?(String) && selected.strip.start_with?("[")
+      JSON.parse(selected)
+    else
+      Array(selected)
+    end
+
+    values
+      .flat_map { |value| value.to_s.split(",") }
+      .map { |value| normalize_hierarchy_label(value) }
+      .compact_blank
+      .uniq
+  rescue JSON::ParserError
+    [normalize_hierarchy_label(selected)].compact_blank
   end
 
   def location_state_options
