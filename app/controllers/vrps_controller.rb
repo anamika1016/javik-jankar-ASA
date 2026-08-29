@@ -1185,7 +1185,7 @@ class VrpsController < ApplicationController
     @cluster_incharge_options = cluster_incharge_options
     @state_options = module_record_options("state-master", "state_name")
     @district_options = module_record_options("district-master", "district_name")
-    @block_options = module_record_options("block-master", "block_name")
+    @block_options = location_block_options
     @location_hierarchy_mappings = location_hierarchy_mappings
     @gram_panchayat_options = location_gram_panchayat_options
     @village_options = location_village_options
@@ -1785,6 +1785,20 @@ class VrpsController < ApplicationController
     row = { id: record.id.to_s }
     values.each { |key, value| row[key] = value.to_s.strip if value.present? }
     row
+  end
+
+  def location_block_options
+    return [] unless model_ready?(:ModuleRecord)
+
+    active_records_for_location(["block-master", "lg-directory-list"])
+      .filter_map do |record|
+        label = first_present_data(record, "block_name", "block", "cd_block_name")
+        next if label.blank? || code_like_location_value?(label)
+
+        [label, record.id]
+      end
+      .uniq { |label, _value| label.to_s.downcase }
+      .sort_by { |label, _value| label.to_s.downcase }
   end
 
   def location_gram_panchayat_options

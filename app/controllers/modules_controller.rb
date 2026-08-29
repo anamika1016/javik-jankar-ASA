@@ -10697,34 +10697,51 @@ class ModulesController < ApplicationController
     blocks = active_records_for_location("block-master").map do |record|
       location_row(record,
         state: first_present_data(record, "state"),
+        state_code: first_present_data(record, "state_code"),
         district: first_present_data(record, "district"),
-        block: first_present_data(record, "block_name"))
+        district_code: first_present_data(record, "district_code"),
+        block: first_present_data(record, "block_name"),
+        block_code: first_present_data(record, "block_code"))
     end
 
     gram_panchayats = active_records_for_location("gram-panchayat-master").map do |record|
       location_row(record,
         state: first_present_data(record, "state"),
+        state_code: first_present_data(record, "state_code"),
         district: first_present_data(record, "district"),
+        district_code: first_present_data(record, "district_code"),
         block: first_present_data(record, "block"),
-        gram_panchayat: gram_panchayat_name_from_record(record))
+        block_code: first_present_data(record, "block_code"),
+        gram_panchayat: gram_panchayat_name_from_record(record),
+        gp_code: first_present_data(record, "gp_code", "gram_code", "gram_panchayat_code"))
     end
 
     villages = active_records_for_location("village-master").map do |record|
       location_row(record,
         state: first_present_data(record, "state"),
+        state_code: first_present_data(record, "state_code"),
         district: first_present_data(record, "district"),
+        district_code: first_present_data(record, "district_code"),
         block: first_present_data(record, "block"),
+        block_code: first_present_data(record, "block_code"),
         gram_panchayat: gram_panchayat_name_from_record(record),
-        village: first_present_data(record, "village_name", "village", "name"))
+        gp_code: first_present_data(record, "gp_code", "gram_code", "gram_panchayat_code"),
+        village: first_present_data(record, "village_name", "village", "name"),
+        village_code: first_present_data(record, "village_code"))
     end
 
     lg_directory_rows = active_records_for_location("lg-directory-list").map do |record|
       location_row(record,
         state: first_present_data(record, "state", "state_name"),
+        state_code: first_present_data(record, "state_code"),
         district: first_present_data(record, "district", "district_name"),
+        district_code: first_present_data(record, "district_code"),
         block: first_present_data(record, "block", "cd_block_name"),
+        block_code: first_present_data(record, "block_code", "cd_block_code"),
         gram_panchayat: gram_panchayat_name_from_record(record),
-        village: first_present_data(record, "village", "village_name"))
+        gp_code: first_present_data(record, "gp_code", "gram_code", "gram_panchayat_code"),
+        village: first_present_data(record, "village", "village_name"),
+        village_code: first_present_data(record, "village_code"))
     end
 
     states + districts + blocks + gram_panchayats + villages + lg_directory_rows
@@ -11058,13 +11075,8 @@ class ModulesController < ApplicationController
     cache_key = [module_slug.to_s, field_key.to_s]
     return @values_from_module_cache[cache_key] if @values_from_module_cache.key?(cache_key)
 
-    if module_slug == "gram-panchayat-master" && field_key == "gram_panchayat_name"
-      return @values_from_module_cache[cache_key] = ModuleRecord
-        .where(module_slug: module_slug)
-        .order(created_at: :desc)
-        .select { |record| active_module_record?(record) }
-        .filter_map { |record| gram_panchayat_name_from_record(record) }
-        .uniq
+    if location_master_field?(module_slug, field_key)
+      return @values_from_module_cache[cache_key] = location_master_values(module_slug, field_key)
     end
 
     field_keys = [field_key]
@@ -11082,6 +11094,48 @@ class ModulesController < ApplicationController
       .select { |record| active_module_record?(record) }
       .flat_map { |record| field_keys.filter_map { |key| record.data[key].presence } }
       .uniq
+  end
+
+  def location_master_field?(module_slug, field_key)
+    {
+      "block-master" => "block_name",
+      "gram-panchayat-master" => "gram_panchayat_name",
+      "village-master" => "village_name"
+    }[module_slug] == field_key
+  end
+
+  def location_master_values(module_slug, field_key)
+    primary_values = ModuleRecord
+      .where(module_slug: module_slug)
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .filter_map { |record| location_value_from_record(record, module_slug, field_key) }
+
+    lg_keys = {
+      "block-master" => ["block", "cd_block_name"],
+      "gram-panchayat-master" => ["gram_panchayat", "gram_panchayat_name", "gp_name", "gram_name"],
+      "village-master" => ["village", "village_name"]
+    }[module_slug] || []
+
+    lg_values = ModuleRecord
+      .where(module_slug: "lg-directory-list")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .filter_map do |record|
+        if module_slug == "gram-panchayat-master"
+          gram_panchayat_name_from_record(record)
+        else
+          first_present_data(record, *lg_keys)
+        end
+      end
+
+    (primary_values + lg_values).compact_blank.uniq
+  end
+
+  def location_value_from_record(record, module_slug, field_key)
+    return gram_panchayat_name_from_record(record) if module_slug == "gram-panchayat-master"
+
+    first_present_data(record, field_key)
   end
 
   def approver_options

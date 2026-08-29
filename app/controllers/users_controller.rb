@@ -114,12 +114,12 @@ class UsersController < ApplicationController
       role_management_mappings: role_management_mappings,
       state_options: module_record_options("state-master", "state_name"),
       district_options: module_record_options("district-master", "district_name"),
-      block_options: module_record_options("block-master", "block_name"),
+      block_options: module_record_options(["block-master", "lg-directory-list"], ["block_name", "block", "cd_block_name"]),
       gram_panchayat_options: (
         module_record_options("gram-panchayat-master", ["gram_panchayat_name", "gram_panchayat", "gp_name", "gram_name", "name"]) +
         module_record_options("lg-directory-list", ["gram_panchayat", "gp_code"])
       ).compact_blank.uniq,
-      village_options: module_record_options("village-master", "village_name"),
+      village_options: module_record_options(["village-master", "lg-directory-list"], ["village_name", "village", "name"]),
       location_hierarchy_mappings: location_hierarchy_mappings,
       parent_office_options: module_record_options("parent-office-add", ["parent_office_name", "parent_category"]),
       office_name_options: module_record_options("office-category-add", ["office_name", "category_name"]),
