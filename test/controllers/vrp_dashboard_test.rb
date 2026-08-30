@@ -580,6 +580,12 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_equal vrp.id.to_s, sent_history.data["vrp_id"]
     assert_equal "Pending at Soumen Day (PMC-Oprection)", sent_history.data["status"]
 
+    get vrps_path
+
+    assert_response :success
+    assert_select "[data-vrp-status-cell]", text: /Pending at Soumen Day \(PMC-Oprection\)/
+    assert_no_match(/Pending at Anurag Patel \(PMC-Oprection\)/, response.body)
+
     get vrp_path(vrp)
 
     assert_response :success
