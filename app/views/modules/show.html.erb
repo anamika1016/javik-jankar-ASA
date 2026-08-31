@@ -25,7 +25,7 @@
     <% if @bill_print_mode %>
       <% bill_vrp = jeevika_bill_vrp(detail_record) %>
       <% prepared_by = jeevika_bill_prepared_by(detail_record) %>
-      <% approved_rows = jeevika_bill_approved_by_rows(detail_record) %>
+      <% approved_rows = jeevika_bill_invoice_approved_by_rows(detail_record) %>
       <section class="bill-print-sheet">
         <div class="bill-print-header">
           <div>

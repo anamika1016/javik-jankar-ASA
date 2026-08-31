@@ -20,6 +20,7 @@ class ModulesController < ApplicationController
                 :jeevika_jankar_vrp_label, :jeevika_bill_time_slot_rows,
                 :jeevika_bill_description_rows, :jeevika_bill_bank_rows,
                 :jeevika_bill_prepared_by, :jeevika_bill_approved_by_rows,
+                :jeevika_bill_invoice_approved_by_rows,
                 :jeevika_bill_payment_month_options, :jeevika_bill_payment_rows,
                 :jeevika_payment_bill_date_options, :jeevika_payment_selectable_rows,
                 :jeevika_payment_detail_rows, :jeevika_completed_payment_rows,
@@ -7493,6 +7494,13 @@ class ModulesController < ApplicationController
       end
   end
 
+  def jeevika_bill_invoice_approved_by_rows(record)
+    rows = jeevika_bill_approved_by_rows(record)
+    rows.each_with_index.map do |row, index|
+      index == rows.size - 1 ? row.dup.tap { |copy| copy[0] = "Finance Approval" } : row
+    end
+  end
+
   def jeevika_bill_status_label(record)
     status = record.data["status"].presence || "Submitted (Not sent for approval)"
     return status if status.to_s.downcase.match?(/rejected|returned/)
@@ -9964,17 +9972,19 @@ class ModulesController < ApplicationController
 
   def cluster_coordinator_options
     (
+      ["N/A"] +
       registered_user_options_matching(/cluster/i) +
       registered_vrp_cluster_names
     ).compact_blank.uniq
   end
 
   def agronomist_options
-    registered_user_options_matching(/agronomist/i)
+    (["N/A"] + registered_user_options_matching(/agronomist/i)).compact_blank.uniq
   end
 
   def papl_staff_options
     (
+      ["N/A"] +
       registered_app_user_names +
       registered_module_user_names
     ).compact_blank.uniq
