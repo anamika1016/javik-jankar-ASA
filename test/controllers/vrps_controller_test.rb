@@ -5,11 +5,24 @@ class VrpsControllerTest < ActionDispatch::IntegrationTest
     admin = create_admin_user(user_name: "vrp_show_admin", password: "secret")
     gram_panchayat = ModuleRecord.create!(
       module_slug: "gram-panchayat-master",
-      data: { "gram_panchayat_name" => "Gobardhanpur", "status" => "Active" }
+      data: {
+        "state_name" => "Odisha",
+        "district_name" => "Kalahandi",
+        "block_name" => "Bhawanipatna",
+        "gram_panchayat_name" => "Gobardhanpur",
+        "status" => "Active"
+      }
     )
     village = ModuleRecord.create!(
       module_slug: "village-master",
-      data: { "village_name" => "Patavaler", "status" => "Active" }
+      data: {
+        "state_name" => "Odisha",
+        "district_name" => "Kalahandi",
+        "block_name" => "Bhawanipatna",
+        "gram_panchayat_name" => "Gobardhanpur",
+        "village_name" => "Patavaler",
+        "status" => "Active"
+      }
     )
     vrp = create_vrp(
       user_name: "profile_blank_jj",
@@ -22,6 +35,9 @@ class VrpsControllerTest < ActionDispatch::IntegrationTest
     get vrp_path(vrp)
 
     assert_response :success
+    assert_select ".table-shell.mt-4 tbody td", text: "Odisha"
+    assert_select ".table-shell.mt-4 tbody td", text: "Kalahandi"
+    assert_select ".table-shell.mt-4 tbody td", text: "Bhawanipatna"
     assert_select ".table-shell.mt-4 tbody td", text: "Gobardhanpur"
     assert_select ".table-shell.mt-4 tbody td", text: "Patavaler"
   end

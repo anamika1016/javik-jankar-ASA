@@ -83,9 +83,9 @@
         </thead>
         <tbody>
           <tr>
-            <td><%= module_record_label("state-master", @vrp&.vrp_profile&.state_id, "state_name") %></td>
-            <td><%= module_record_label("district-master", @vrp&.vrp_profile&.district_id, "district_name") %></td>
-            <td><%= module_record_label("block-master", @vrp&.vrp_profile&.block_id, "block_name") %></td>
+            <td><%= vrp_detail_hierarchy_label(@vrp, :state) %></td>
+            <td><%= vrp_detail_hierarchy_label(@vrp, :district) %></td>
+            <td><%= vrp_detail_hierarchy_label(@vrp, :block) %></td>
             <td><%= vrp_detail_location_label("gram-panchayat-master", @vrp&.vrp_profile&.gram_panchayat_id, @vrp&.gram_panchayat_ids, "gram_panchayat_name") %></td>
             <td><%= vrp_detail_location_label("village-master", @vrp&.vrp_profile&.village_id, @vrp&.village_ids, "village_name") %></td>
           </tr>

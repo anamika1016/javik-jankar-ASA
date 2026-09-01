@@ -1,5 +1,6 @@
 class VrpsController < ApplicationController
-  helper_method :blank_display, :module_record_label, :module_record_labels, :vrp_detail_location_label, :vrp_type_labels,
+  helper_method :blank_display, :module_record_label, :module_record_labels, :vrp_detail_hierarchy_label,
+                :vrp_detail_location_label, :vrp_type_labels,
                 :approval_step_closed?, :closing_approval_history, :mapped_office_name?
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
@@ -2069,6 +2070,59 @@ class VrpsController < ApplicationController
       primary_id.to_s.presence ||
       Array(fallback_ids).reject(&:blank?).first.to_s.presence ||
       ""
+  end
+
+  def vrp_detail_hierarchy_label(vrp, level)
+    profile = vrp&.vrp_profile
+    profile_value = case level
+    when :state
+      module_record_label("state-master", profile&.state_id, "state_name")
+    when :district
+      module_record_label("district-master", profile&.district_id, "district_name")
+    when :block
+      module_record_label("block-master", profile&.block_id, "block_name")
+    end
+    return profile_value if profile_value.present?
+
+    vrp_detail_location_records(vrp).filter_map do |record|
+      case level
+      when :state
+        location_name_from_record(record, "state_name", "state", "state_id", "state_code")
+      when :district
+        location_name_from_record(record, "district_name", "district", "district_id", "district_code")
+      when :block
+        location_name_from_record(record, "block_name", "block", "cd_block_name", "block_id", "block_code", "cd_block_code")
+      end.presence
+    end.first.to_s
+  end
+
+  def vrp_detail_location_records(vrp)
+    return [] if vrp.blank? || !model_ready?(:ModuleRecord)
+
+    village_ids = Array(vrp.village_ids).reject(&:blank?)
+    gram_panchayat_ids = Array(vrp.gram_panchayat_ids).reject(&:blank?)
+
+    village_records = active_records_for_location("village-master").select do |record|
+      vrp_detail_location_record_matches?(record, village_ids, "village-master", "village_name")
+    end
+    gram_panchayat_records = active_records_for_location("gram-panchayat-master").select do |record|
+      vrp_detail_location_record_matches?(record, gram_panchayat_ids, "gram-panchayat-master", "gram_panchayat_name")
+    end
+
+    village_records + gram_panchayat_records
+  end
+
+  def vrp_detail_location_record_matches?(record, selected_values, module_slug, field_key)
+    values = Array(selected_values).map { |value| value.to_s.strip }.reject(&:blank?)
+    return false if values.blank?
+
+    lookup_values = [
+      record.id.to_s,
+      module_record_display_label(module_slug, record, field_key),
+      first_present_data(record, "name")
+    ].map { |value| value.to_s.strip.downcase }.reject(&:blank?)
+
+    (values.map(&:downcase) & lookup_values).any?
   end
 
   def vrp_type_labels(ids)
