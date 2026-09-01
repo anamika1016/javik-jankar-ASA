@@ -1,5 +1,5 @@
 class VrpsController < ApplicationController
-  helper_method :blank_display, :module_record_label, :module_record_labels, :vrp_type_labels,
+  helper_method :blank_display, :module_record_label, :module_record_labels, :vrp_detail_location_label, :vrp_type_labels,
                 :approval_step_closed?, :closing_approval_history, :mapped_office_name?
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
@@ -2059,6 +2059,16 @@ class VrpsController < ApplicationController
     Array(ids)
       .filter_map { |id| module_record_label(module_slug, id, field_key).presence }
       .join(", ")
+  end
+
+  def vrp_detail_location_label(module_slug, primary_id, fallback_ids, field_key)
+    module_record_label(module_slug, primary_id, field_key).presence ||
+      Array(fallback_ids)
+        .filter_map { |id| module_record_label(module_slug, id, field_key).presence }
+        .first ||
+      primary_id.to_s.presence ||
+      Array(fallback_ids).reject(&:blank?).first.to_s.presence ||
+      ""
   end
 
   def vrp_type_labels(ids)
