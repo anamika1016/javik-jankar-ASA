@@ -5840,17 +5840,6 @@ function initDeferredLayoutPage() {
   });
 
   const initializeLanguageSwitcher = () => {
-    const unboundSignatureShell = document.querySelector(
-      "[data-agreement-signature-shell]:not([data-agreement-signature-bound])"
-    );
-
-    if (window.__vrpLanguageSwitcherInitialized && !unboundSignatureShell) {
-      const language = localStorage.getItem("vrp_language") || "en";
-      if (language !== "en" && typeof window.__vrpApplyLanguage === "function") {
-        window.__vrpApplyLanguage(language, document.querySelector(".app-main") || document.body);
-      }
-      return;
-    }
     window.__vrpLanguageSwitcherInitialized = true;
 
     const switcher = document.querySelector("[data-language-switcher]");
@@ -6626,6 +6615,12 @@ function initDeferredLayoutPage() {
 }
 
 document.addEventListener("turbo:load", () => {
+  initFastNavigation();
+  initAflFarmerMapping();
+  scheduleDeferredLayoutInit();
+});
+
+document.addEventListener("DOMContentLoaded", () => {
   initFastNavigation();
   initAflFarmerMapping();
   scheduleDeferredLayoutInit();

@@ -6,10 +6,26 @@
     <%= csrf_meta_tags %>
     <%= csp_meta_tag %>
     <%= stylesheet_link_tag :application, "data-turbo-track": "reload" %>
+    <%= javascript_importmap_tags %>
     <%= yield :head %>
   </head>
   <body class="agreement-pdf-body">
     <main class="agreement-pdf-page">
+      <div class="app-language-bar agreement-language-bar">
+        <div class="language-switcher" data-language-switcher>
+          <span>Language</span>
+          <button type="button" data-language-option="en">English</button>
+          <button type="button" data-language-option="hi">हिन्दी</button>
+          <button type="button" data-language-option="mr">मराठी</button>
+          <button type="button" data-language-option="or">ଓଡ଼ିଆ</button>
+          <button type="button" data-language-option="gu">ગુજરાતી</button>
+        </div>
+        <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle dark mode">
+          <span data-theme-toggle-icon>☾</span>
+          <strong data-theme-toggle-label>Dark</strong>
+        </button>
+        <div id="google_translate_element" class="google-translate-holder" aria-hidden="true"></div>
+      </div>
       <%= yield %>
     </main>
   </body>
