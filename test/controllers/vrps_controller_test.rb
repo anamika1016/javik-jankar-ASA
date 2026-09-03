@@ -1,6 +1,27 @@
 require "test_helper"
 
 class VrpsControllerTest < ActionDispatch::IntegrationTest
+  test "index includes both registered and mapped jeevika jankars for user login" do
+    user = create_user(
+      first_name: "Diwakar",
+      last_name: "Tiwari",
+      user_name: "diwakar_jj_list",
+      email: "diwakar_jj_list@example.com"
+    )
+
+    own_vrp = create_vrp(name: "Registered JJ", user_name: "registered_jj", created_by_id: user.id)
+    mapped_vrp = create_vrp(name: "Mapped JJ", user_name: "mapped_jj", cluster_incharge: "Diwakar Tiwari")
+    hidden_vrp = create_vrp(name: "Hidden JJ", user_name: "hidden_jj")
+
+    post login_path, params: { login: user.user_name, password: "secret" }
+    get vrps_path
+
+    assert_response :success
+    assert_includes response.body, own_vrp.name
+    assert_includes response.body, mapped_vrp.name
+    assert_not_includes response.body, hidden_vrp.name
+  end
+
   test "show falls back to saved gram panchayat and village lists when profile location is blank" do
     admin = create_admin_user(user_name: "vrp_show_admin", password: "secret")
     gram_panchayat = ModuleRecord.create!(
@@ -43,6 +64,21 @@ class VrpsControllerTest < ActionDispatch::IntegrationTest
   end
 
   private
+
+  def create_user(attributes = {})
+    defaults = {
+      first_name: "Regular",
+      last_name: "User",
+      email: "user_#{SecureRandom.hex(3)}@example.com",
+      mobile_no: "8#{SecureRandom.random_number(10**9).to_s.rjust(9, "0")}",
+      password: "secret",
+      user_type: "user",
+      status: "Active",
+      stakeholder: "PAPL",
+      role: "User"
+    }
+    User.create!(defaults.merge(attributes))
+  end
 
   def create_admin_user(attributes = {})
     defaults = {
