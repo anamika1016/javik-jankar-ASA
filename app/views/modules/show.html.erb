@@ -12,7 +12,7 @@
     </div>
   <% end %>
 
-  <% list_only_slugs = ["activity-group-list", "vrp-activity-list", "task-completion-indicator-list", "approval-list", "access-control-list", "vrp-bill-list", "jeevika-jankar-bill-list", "jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail", "jeevika-jankar-completed-payment-list", "training-form-list", "seed-distribution-target-list", "papl360-target-list"] %>
+  <% list_only_slugs = ["activity-group-list", "vrp-activity-list", "task-completion-indicator-list", "approval-list", "access-control-list", "vrp-bill-list", "jeevika-jankar-bill-list", "jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail", "jeevika-jankar-completed-payment-list", "training-form-list", "seed-distribution-target-list", "papl360-target-list", "other-target-list"] %>
   <% entry_only_slugs = ["add-activity-group", "add-vrp-activity", "task-completion-indicator", "approval-master", "access-control", "vrp-bill-add", "jeevika-jankar-bill-process", "training-form"] %>
 
   <% if @slug == "jeevika-jankar-bill-list" && (@bill_print_mode || @bill_detail_record.present?) %>
@@ -639,6 +639,60 @@
         <div class="table-pagination" data-pagination-for="module_saved_records"></div>
       </section>
     </div>
+  <% elsif @slug == "office-list" %>
+    <section class="module-card lg-directory-card">
+      <div class="module-card-header">
+        <h2>Office Detail List</h2>
+      </div>
+
+      <div class="vrp-list-toolbar compact lg-directory-actions" style="justify-content: flex-end;">
+        <%= link_to "Export Excel", export_module_path(@slug, format: :xlsx), class: "list-btn export" %>
+      </div>
+
+      <div class="table-shell lg-directory-table-shell">
+        <table class="module-table user-list-table" id="office_detail_list" data-paginated-table data-page-size="25">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Office Name</th>
+              <th>Description</th>
+              <th>Parent Office</th>
+              <th>Office Category</th>
+              <th>Office Level</th>
+              <th>State</th>
+              <th>District</th>
+              <th>Block</th>
+              <th>Gram Panchayat</th>
+              <th>Village</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if @office_list_rows.any? %>
+              <% @office_list_rows.each do |row| %>
+                <tr>
+                  <td><%= row[:id] %></td>
+                  <td><%= row[:name] || "-" %></td>
+                  <td><%= row[:desc] || "-" %></td>
+                  <td><%= row[:parent] || "-" %></td>
+                  <td><%= row[:office_name] || "-" %></td>
+                  <td><%= row[:office_level] || "-" %></td>
+                  <td><%= row[:states].presence || "-" %></td>
+                  <td><%= row[:districts].presence || "-" %></td>
+                  <td><%= row[:blocks].presence || "-" %></td>
+                  <td><%= row[:gps].presence || "-" %></td>
+                  <td><%= row[:villages].presence || "-" %></td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="11">No offices found.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="office_detail_list"></div>
+    </section>
   <% elsif @slug == "lg-directory-list" %>
     <section class="module-card lg-directory-card">
       <div class="module-card-header">
@@ -813,8 +867,10 @@
     <% form_method = @record.present? ? :patch : :post %>
     <section class="module-card jeevika-bill-card"
       data-jeevika-jankar-bill
+      data-bill-rows-url="<%= bill_target_rows_module_path(@slug) %>"
       data-bill-rows="<%= json_escape(@jeevika_jankar_bill_rows.to_json) %>"
       data-achievement-summary="<%= json_escape(@jeevika_jankar_achievement_summary.to_json) %>"
+      data-target-summary="<%= json_escape((@jeevika_jankar_target_summary || {}).to_json) %>"
       data-saved-items="<%= json_escape(@jeevika_jankar_saved_items.to_json) %>"
       data-existing-bills="<%= json_escape(@jeevika_jankar_existing_bills.to_json) %>">
       <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form" } do %>
@@ -1685,10 +1741,10 @@
     <% bill_months << default_bill_month unless bill_months.include?(default_bill_month) %>
     <% bill_months.sort_by! { |month| Date::MONTHNAMES.index { |name| name.to_s.casecmp(month.to_s).zero? } || 99 } %>
     <% selected_bill_month = params[:bill_month].presence || default_bill_month %>
-    <% selected_bill_status = params[:bill_status].presence_in(["pending", "final-approved"]) || "pending" %>
+    <% selected_bill_status = params[:bill_status].presence_in(["pending", "submitted", "final-approved"]) || "pending" %>
     <% if @jeevika_bill_user_filters %>
       <% bill_rows = bill_rows.select { |row| row[:bill_month].to_s.casecmp(selected_bill_month).zero? } %>
-      <% bill_rows = bill_rows.select { |row| selected_bill_status == "final-approved" ? row[:status].to_s.downcase.include?("final approved") : (row[:current_approver] && row[:status].to_s.downcase.include?("pending")) } %>
+      <% bill_rows = bill_rows.select { |row| jeevika_bill_row_matches_status_filter?(row, selected_bill_status) } %>
     <% end %>
     <section class="module-card list-only-card">
       <div class="module-card-header list-title-header">
@@ -1717,7 +1773,8 @@
           <label>
             <span>Approval Status</span>
             <select name="bill_status" data-bill-status-filter onchange="this.form.requestSubmit()">
-              <option value="pending" <%= "selected" if selected_bill_status == "pending" %>>Pending</option>
+              <option value="pending" <%= "selected" if selected_bill_status == "pending" %>>Pending / Not Sent</option>
+              <option value="submitted" <%= "selected" if selected_bill_status == "submitted" %>>Not Sent</option>
               <option value="final-approved" <%= "selected" if selected_bill_status == "final-approved" %>>Final Approved</option>
             </select>
           </label>
@@ -1758,7 +1815,7 @@
               <% bill_rows.each do |row| %>
                 <tr data-bill-list-row
                   data-bill-month="<%= row[:bill_month] %>"
-                  data-bill-status="<%= row[:status].to_s.downcase.include?("final approved") ? "final-approved" : (row[:current_approver] && row[:status].to_s.downcase.include?("pending") ? "pending" : "other") %>">
+                  data-bill-status="<%= jeevika_bill_status_filter_key(row[:status]) %>">
                   <td>
                     <input type="checkbox"
                       value="<%= row[:edit_path] %>"
@@ -1831,7 +1888,7 @@
     <% table_id = "#{@slug.tr("-", "_")}_table" %>
     <section class="module-card list-only-card">
       <div class="module-card-header list-title-header">
-        <h2><%= { "activity-group-list" => "All Main Activities", "vrp-activity-list" => "All Sub Activities", "task-completion-indicator-list" => "All Task Completion Indicators", "approval-list" => "All Approvals", "access-control-list" => "All Access Control", "vrp-bill-list" => "All VRP Bills", "jeevika-jankar-bill-list" => "All Jeevika Jankar Bills", "training-form-list" => "All Farmer Target Records", "seed-distribution-target-list" => "All Seed Distribution Target Records", "papl360-target-list" => "All ASA360 Target Records" }[@slug] %></h2>
+        <h2><%= { "activity-group-list" => "All Main Activities", "vrp-activity-list" => "All Sub Activities", "task-completion-indicator-list" => "All Task Completion Indicators", "approval-list" => "All Approvals", "access-control-list" => "All Access Control", "vrp-bill-list" => "All VRP Bills", "jeevika-jankar-bill-list" => "All Jeevika Jankar Bills", "training-form-list" => "All Farmer Target Records", "seed-distribution-target-list" => "All Seed Distribution Target Records", "papl360-target-list" => "All ASA360 Target Records", "other-target-list" => "All Other Target Records" }[@slug] %></h2>
       </div>
 
       <div class="vrp-list-toolbar compact">
@@ -1978,7 +2035,7 @@
                           <% end %>
                         </div>
                       </td>
-                    <% elsif field == "Training Register Upload" || field == "Training Photo Upload with Geo Tag" || field.downcase.include?("upload") || field.downcase.include?("file") %>
+                    <% elsif field == "Training Register Upload" || field == "Training Photo Upload with Geo Tag" || field.downcase.include?("upload") || field.downcase.include?("file") || field.downcase.include?("photo") %>
                       <% file_urls = if @slug == "training-form-list"
                         group_records.flat_map do |item|
                           grouped_value = module_record_field_value(item, field).presence || item.data[field_key].presence
@@ -1989,13 +2046,13 @@
                       end %>
                       <td data-export-value="<%= file_urls.join(", ") %>">
                         <% if file_urls.any? %>
-                          <% if field == "Training Photo Upload with Geo Tag" %>
+                          <% if field == "Training Photo Upload with Geo Tag" || field == "Field Photo" || field == "Field Photo Upload" %>
                             <button type="button"
                               class="grid-view-link eye-link module-gallery-trigger"
                               data-upload-gallery
                               data-upload-urls="<%= ERB::Util.html_escape(file_urls.to_json) %>"
                               title="View all <%= file_urls.size %> photos"
-                              aria-label="View all <%= file_urls.size %> training photos">
+                              aria-label="View all <%= file_urls.size %> photos">
                               <span aria-hidden="true">◉</span>
                               <small><%= file_urls.size %></small>
                             </button>
@@ -2047,11 +2104,11 @@
       </div>
       <div class="table-pagination" data-pagination-for="<%= table_id %>"></div>
     </section>
-    <% if @slug == "training-form-list" %>
+    <% if @slug == "training-form-list" || @slug.include?("target-list") %>
       <dialog class="module-gallery-modal" data-upload-gallery-modal aria-labelledby="training-photo-gallery-title">
         <div class="module-gallery-header">
           <div>
-            <h2 id="training-photo-gallery-title">Training Photos</h2>
+            <h2 id="training-photo-gallery-title">Photo Gallery</h2>
             <p data-upload-gallery-count></p>
           </div>
           <button type="button" class="module-gallery-close" data-upload-gallery-close aria-label="Close photo gallery">×</button>
@@ -2063,7 +2120,7 @@
   <div class="module-grid">
     <% location_fields = ["State", "District", "Block", "Gram Panchayat", "Village"] %>
     <% has_location_fields = (@module[:fields] & location_fields).any? %>
-    <% other_target_form = ["seed-distribution-target", "papl360-target"].include?(@slug) %>
+    <% other_target_form = ["seed-distribution-target", "papl360-target", "other-target"].include?(@slug) %>
     <% add_farmer_form = @slug == "add-farmer-form" %>
     <% seed_target_form = @slug == "seed-distribution-target" %>
     <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if @slug == "parent-office-add" %>data-parent-office-form data-parent-office-map="<%= json_escape(parent_office_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_setup_mappings.to_json) %>" data-training-month-options="<%= json_escape(training_target_month_options.to_json) %>"<% end %> <% if other_target_form %>data-seed-target-form data-seed-target-map="<%= json_escape(seed_distribution_target_mappings.to_json) %>" data-seed-month-options="<%= json_escape(seed_distribution_target_month_options.to_json) %>" data-seed-current-vrp-option="<%= json_escape(current_seed_target_vrp_option.to_json) %>"<% end %> <% if add_farmer_form %>data-add-farmer-form data-add-farmer-map="<%= json_escape(add_farmer_form_mappings.to_json) %>"<% end %>>
@@ -2153,11 +2210,13 @@
                   <option <%= "selected" if field_value == "Active" %>>Active</option>
                   <option <%= "selected" if field_value == "Inactive" %>>Inactive</option>
                 </select>
-              <% elsif field.downcase.include?("upload") || field.downcase.include?("file") %>
+              <% elsif @slug == "training-form" && (field == "PAPL Staff Name" || field == "ASA Staff Name") %>
+                <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= field %>" value="<%= field_value %>" <%= "required" if form_required %>>
+              <% elsif field.downcase.include?("upload") || field.downcase.include?("file") || field.downcase.include?("photo") %>
                 <% upload_accept = field == "Excel Upload" ? "accept=\".csv,.xlsx,.xls\"" : nil %>
-                <% multiple_photo_upload = @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
+                <% multiple_photo_upload = (@slug == "training-form" && field == "Training Photo Upload with Geo Tag") || (other_target_form && (field == "Field Photo" || field.downcase.include?("photo"))) %>
                 <% upload_accept = "accept=\"image/*\" data-max-size-mb=\"5\"" if multiple_photo_upload %>
-                <input name="module_record[<%= field_key %>]<%= "[]" if multiple_photo_upload %>" type="file" <%= "multiple" if multiple_photo_upload %> <%= upload_accept&.html_safe %> <%= "required" if form_required && field_value.blank? && !other_target_form %>>
+                <input name="module_record[<%= field_key %>]<%= "[]" if multiple_photo_upload %>" type="file" <%= "multiple" if multiple_photo_upload %> <%= upload_accept&.html_safe %> <%= "required" if form_required && field_value.blank? && !other_target_form %>>>
                 <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
                   <input type="hidden" name="module_record[geo_latitude]" data-training-geo-latitude value="<%= @record&.data&.[]("geo_latitude") %>">
                   <input type="hidden" name="module_record[geo_longitude]" data-training-geo-longitude value="<%= @record&.data&.[]("geo_longitude") %>">
@@ -2343,7 +2402,7 @@
           <% end %>
         </div>
 
-        <% if other_target_form %>
+        <% if other_target_form && @slug != "other-target" %>
           <div class="training-farmer-panel" data-seed-farmer-panel data-selected-farmer-ids="<%= json_escape((selected_seed_target_farmer_ids || []).to_json) %>">
             <div class="target-mapping-toolbar">
               <strong>Mapped Farmers</strong>

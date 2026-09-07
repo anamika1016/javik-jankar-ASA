@@ -8,10 +8,16 @@ class ApplicationController < ActionController::Base
   stale_when_importmap_changes
 
   before_action :require_app_login
+  rescue_from ActionController::InvalidAuthenticityToken, with: :handle_invalid_authenticity_token
 
   helper_method :current_app_user
 
   private
+
+  def handle_invalid_authenticity_token
+    reset_session
+    redirect_to login_path, alert: "Session expired. Please login again."
+  end
 
   def send_xlsx(rows:, filename:, headers: nil, sheet_name: "Sheet1")
     data = if headers

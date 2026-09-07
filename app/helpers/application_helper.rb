@@ -53,7 +53,8 @@ module ApplicationHelper
       links: [
         ["Parent Office Add", :module, "parent-office-add"],
         ["Office Category Add", :module, "office-category-add"],
-        ["Sub Office Add", :module, "office-mapping-add"]
+        ["Sub Office Add", :module, "office-mapping-add"],
+        ["Office List", :module, "office-list"]
       ]
     },
     {
@@ -137,13 +138,15 @@ module ApplicationHelper
       icon: "▥",
       links: [
         # ["Farmer Training Topic Mapping", :module, "training-topic-mapping"],
-        ["Farmer Training Form", :module, "training-form"],
-        ["Farmer Training Form List", :module, "training-form-list"],
+        ["Training Form", :module, "training-form"],
+        ["Training Form List", :module, "training-form-list"],
+        ["Other Target", :module, "other-target"],
+        ["Other Target List", :module, "other-target-list"],
         ["Farmer Participation Report", :route, :farmer_participation_report_path],
         ["Seed Distribution Target", :module, "seed-distribution-target"],
         ["Seed Distribution Target List", :module, "seed-distribution-target-list"],
-        ["ASA360 Target", :module, "papl360-target"],
-        ["ASA360 Target List", :module, "papl360-target-list"],
+        ["PAPL360 Target", :module, "papl360-target"],
+        ["PAPL360 Target List", :module, "papl360-target-list"],
         ["Add Farmer Form", :module, "add-farmer-form"]
       ]
     },
@@ -154,27 +157,6 @@ module ApplicationHelper
     #     ["ICS Master", :module, "ics-master"]
     #   ]
     # },
-    {
-      title: "Farmer Farm Information",
-      icon: "▥",
-      links: [
-        ["Farmer Farm Information", :route, :farmer_farm_information_path],
-        ["All Basic Detail List", :route, :list_farmer_farm_information_path],
-        ["Farm Map (lat long gps)", :route, :farm_map_farmer_farm_information_path],
-        ["Crop Map Session Wise Farm Map (lat long gps)", :route, :crop_map_session_wise_farmer_farm_information_path],
-        ["Farm-Crop-Area Details", :route, :farm_crop_area_details_path],
-        ["Seed & Planting Material", :route, :seed_planting_materials_path],
-        ["Soil Conditioners & Fertility Input Records", :route, :soil_conditioner_fertility_input_records_path],
-        ["On Farm Input Records", :route, :on_farm_input_records_path],
-        ["Disease, Insects, Pests & Weed Management Record", :route, :disease_pest_weed_management_records_path],
-        ["Contamination Control Records", :route, :contamination_control_records_path],
-        ["Records of Production & Harvest Details", :route, :production_harvest_details_path],
-        ["Post Harvest, Handling & Storage Area", :route, :post_harvest_handling_storage_records_path],
-        ["Sale Record", :route, :sale_records_path],
-        ["Dispatch Record", :route, :dispatch_records_path],
-        ["Application Format for Exit of Farmer from ICS", :route, :ics_exit_declaration_farmer_farm_information_path]
-      ]
-    },
     {
       title: "Jeevika Jankar Bill",
       icon: "▧",
@@ -255,7 +237,11 @@ module ApplicationHelper
       "Activity Group Name" => "Main Activity Name",
       "Activity Name" => "Sub Activity Name",
       "VRP Activity" => "Sub Activity",
-      "Farmer Count" => "AFL Farmer Count",
+      "Farmer Count" => "Farmer Count",
+      "External Input" => "External mamber",
+      "External Member" => "External mamber",
+      "External मेम्बर" => "External mamber",
+      "PAPL Staff Name" => "ASA Staff Name",
       "VRP" => "Jeevika Jankar",
       "Select VRP" => "Select Jeevika Jankar",
       "VRP Name" => "Jeevika Jankar Name",
@@ -274,49 +260,75 @@ module ApplicationHelper
     return nil if admin_access_user?
     return @allowed_sidebar_keys = [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
-    cache_version = ModuleRecord.where(module_slug: "access-control").maximum(:updated_at)&.to_i
-    cache_key = [
-      "allowed_sidebar_keys",
-      current_app_user["id"],
-      current_app_user["username"],
-      cache_version
-    ]
-
-    @allowed_sidebar_keys = Rails.cache.fetch(cache_key, expires_in: 10.minutes) do
+    @allowed_sidebar_keys = Rails.cache.fetch(sidebar_access_cache_key, expires_in: 10.minutes, race_condition_ttl: 30.seconds) do
       compute_allowed_sidebar_keys
     end
+  rescue StandardError => error
+    Rails.logger.warn("Sidebar access cache skipped: #{error.class}: #{error.message}")
+    @allowed_sidebar_keys = compute_allowed_sidebar_keys
+  end
+
+  def sidebar_access_cache_key
+    [
+      "sidebar-access-keys",
+      sidebar_access_user_cache_key,
+      sidebar_access_records_fingerprint
+    ].to_json
+  end
+
+  def sidebar_access_user_cache_key
+    current_app_user
+      .slice("id", "user_id", "username", "user_name", "user_type", "stakeholder", "stakeholder_role", "role", "role_name", "user_management_role", "person_type", "vrp_types", "record_type")
+      .sort
+      .to_h
+  end
+
+  def sidebar_access_records_fingerprint
+    @sidebar_access_records_fingerprint ||= ModuleRecord
+      .where(module_slug: "access-control")
+      .pick(Arel.sql("COUNT(*)"), Arel.sql("COALESCE(MAX(id), 0)"), Arel.sql("COALESCE(EXTRACT(EPOCH FROM MAX(updated_at))::bigint, 0)"))
   end
 
   def compute_allowed_sidebar_keys
-    access_records = ModuleRecord
-      .where(module_slug: "access-control")
-      .order(created_at: :desc)
-      .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
+    access_records = active_sidebar_access_records
       .select do |record|
-        record_stakeholder = record.data["stakeholder_name"].presence || record.data["stakeholder"]
+        data = record_data(record)
+        record_stakeholder = data["stakeholder_name"].presence || data["stakeholder"]
         stakeholder_match = access_value_matches?(record_stakeholder, current_app_user["stakeholder"])
-        record_stakeholder_role = record.data["stakeholder_role"].presence || record.data["stakeholder_person_type"]
+        record_stakeholder_role = data["stakeholder_role"].presence || data["stakeholder_person_type"]
         stakeholder_role_match = access_value_matches?(record_stakeholder_role, current_app_user["stakeholder_role"])
-        record_role = record.data["role"].presence || record.data["role_name"]
+        record_role = data["role"].presence || data["role_name"]
         role_match = access_value_matches?(record_role, current_app_user["role"])
-        record_role_name = record.data["role"].present? ? record.data["role_name"] : nil
+        record_role_name = data["role"].present? ? data["role_name"] : nil
         role_name_match = access_value_matches?(record_role_name, current_app_user["role_name"])
-        record_user_management_role = record.data["user_management_role"].presence || record.data["user_management_person_type"]
+        record_user_management_role = data["user_management_role"].presence || data["user_management_person_type"]
         user_management_role_match = access_value_matches?(record_user_management_role, current_app_user["user_management_role"])
-        record_person_type = record.data["person_type"]
+        record_person_type = data["person_type"]
         person_type_match = access_value_matches?(record_person_type, current_app_user["person_type"])
-        record_vrp_type = record.data["jeevika_jankar_type"].presence || record.data["vrp_type"].presence || record.data["select_vrp_type"]
+        record_vrp_type = data["jeevika_jankar_type"].presence || data["vrp_type"].presence || data["select_vrp_type"]
         vrp_type_match = access_value_matches_any?(record_vrp_type, current_app_user["vrp_types"])
-        can_view = record.data["can_view"].to_s.casecmp("Yes").zero?
+        can_view = data["can_view"].blank? || data["can_view"].to_s.casecmp("Yes").zero?
         next can_view && record_vrp_type.present? && vrp_type_match if vrp_login_user?
 
         stakeholder_match && stakeholder_role_match && role_match && role_name_match && user_management_role_match && person_type_match && vrp_type_match && can_view
       end
 
     access_records.flat_map do |record|
-      access_values(record.data["sub_module_names"].presence || record.data["sub_module_name"])
+      data = record_data(record)
+      access_values(data["sub_module_names"].presence || data["sub_module_name"])
         .flat_map { |name| sidebar_access_name_keys(name) }
     end.uniq
+  end
+
+  def active_sidebar_access_records
+    @active_sidebar_access_records ||= ModuleRecord
+      .where(module_slug: "access-control")
+      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
+      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
+      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
+      .where("COALESCE(BTRIM(data::jsonb ->> 'status'), '') = '' OR LOWER(BTRIM(data::jsonb ->> 'status')) = 'active'")
+      .order(created_at: :desc)
+      .to_a
   end
 
   def sidebar_access_name_keys(name)
@@ -338,32 +350,32 @@ module ApplicationHelper
     if ["VRP Type", "Add Jeevika Jankar Type", "Jeevika Jankar Type"].include?(name.to_s.strip)
       keys.concat(["vrp-type", "add-jeevika-jankar-type", "jeevika-jankar-type"])
     end
-    if ["Farmer Training Form", "Farmer Target Form"].include?(name.to_s.strip)
-      keys.concat(["farmer-training-form", "farmer-target-form"])
+    if ["Farmer Training", "Farmer Target"].include?(name.to_s.strip)
+      keys.concat(["farmer-training", "farmer-target", "farmer-participation-report", "seed-distribution-target", "papl360-target", "add-farmer-form"])
     end
-    if ["Farmer Training Form List", "Farmer Target Form List"].include?(name.to_s.strip)
-      keys.concat(["farmer-training-form-list", "farmer-target-form-list"])
+    if ["Farmer Training Form", "Training Form", "Farmer Target Form"].include?(name.to_s.strip)
+      keys.concat(["farmer-training-form", "training-form", "farmer-target-form", "seed-distribution-target", "papl360-target", "other-target"])
     end
-    if ["Farmer Participation Report"].include?(name.to_s.strip)
-      keys << "farmer-participation-report"
+    if ["Farmer Training Form List", "Training Form List", "Farmer Target Form List"].include?(name.to_s.strip)
+      keys.concat(["farmer-training-form-list", "training-form-list", "farmer-target-form-list", "farmer-participation-report", "seed-distribution-target-list", "papl360-target-list", "other-target-list"])
     end
     if ["Seed Distribution Target", "Seed Distribution Target Form"].include?(name.to_s.strip)
-      keys.concat(["seed-distribution-target", "seed-distribution-target-form"])
+      keys.concat(["seed-distribution-target", "seed-distribution-target-form", "seed-distribution-target-list"])
     end
     if ["Seed Distribution Target List"].include?(name.to_s.strip)
       keys.concat(["seed-distribution-target-list"])
     end
-    if ["ASA360 Target", "ASA360 Targate", "ASA360 Target Form", "PAPL360 Target", "PAPL360 Targate", "PAPL360 Target Form"].include?(name.to_s.strip)
-      keys.concat(["papl360-target", "papl360-targate", "papl360-target-form"])
+    if ["PAPL360 Target", "PAPL360 Targate", "PAPL360 Target Form"].include?(name.to_s.strip)
+      keys.concat(["papl360-target", "papl360-targate", "papl360-target-form", "papl360-target-list", "add-farmer-form"])
     end
-    if ["ASA360 Target List", "ASA360 Targate List", "PAPL360 Target List", "PAPL360 Targate List"].include?(name.to_s.strip)
-      keys.concat(["papl360-target-list", "papl360-targate-list"])
+    if ["PAPL360 Target List", "PAPL360 Targate List"].include?(name.to_s.strip)
+      keys.concat(["papl360-target-list", "papl360-targate-list", "add-farmer-form"])
     end
     if ["Add Farmer Form"].include?(name.to_s.strip)
       keys.concat(["add-farmer-form"])
     end
     if ["Farmer Farm Information", "Farmer FARM Information", "Farmer_FARM _Information"].include?(name.to_s.strip)
-      keys.concat(["farmer-farm-information"])
+      keys.concat(["farmer-farm-information", "application-format-for-exit-of-farmer-from-ics"])
     end
     if ["All Basic Detail List", "All Land List", "Land List", "Farmer Farm Information List"].include?(name.to_s.strip)
       keys.concat(["all-basic-detail-list", "all-land-list", "land-list", "farmer-farm-information-list"])
@@ -392,21 +404,6 @@ module ApplicationHelper
     if ["Contamination Control Records", "Contamination Control"].include?(name.to_s.strip)
       keys << "contamination-control-records"
     end
-    if ["Records of Production & Harvest Details", "Production Harvest Details"].include?(name.to_s.strip)
-      keys << "records-of-production-harvest-details"
-    end
-    if ["Post Harvest, Handling & Storage Area", "Post Harvest Handling Storage Area"].include?(name.to_s.strip)
-      keys << "post-harvest-handling-storage-area"
-    end
-    if ["Sale Record"].include?(name.to_s.strip)
-      keys << "sale-record"
-    end
-    if ["Dispatch Record"].include?(name.to_s.strip)
-      keys << "dispatch-record"
-    end
-    if ["Application Format for Exit of Farmer from ICS"].include?(name.to_s.strip)
-      keys << "application-format-for-exit-of-farmer-from-ics"
-    end
     if ["Target Mapping Master", "Target Mapping", "VRP Targets", "Target Mapped JJ"].include?(name.to_s.strip)
       keys.concat(["target-mapping-master", "target-mapping", "vrp-targets", "target-mapped-jj"])
     end
@@ -424,6 +421,9 @@ module ApplicationHelper
     end
     if ["Completed Payment List", "Jeevika Jankar Completed Payment List"].include?(name.to_s.strip)
       keys.concat(["completed-payment-list", "jeevika-jankar-completed-payment-list"])
+    end
+    if ["Office List", "Office Detail List"].include?(name.to_s.strip)
+      keys.concat(["office-list", "office-detail-list"])
     end
     keys.uniq
   end
@@ -475,14 +475,16 @@ module ApplicationHelper
         title: "Farmer Target",
         icon: "▥",
       links: [
-        ["Farmer Training Form", :module, "training-form"],
-        ["Farmer Training Form List", :module, "training-form-list"],
+        ["Training Form", :module, "training-form"],
+        ["Training Form List", :module, "training-form-list"],
+        ["Other Target", :module, "other-target"],
+        ["Other Target List", :module, "other-target-list"],
         ["Farmer Participation Report", :route, :farmer_participation_report_path],
         ["Seed Distribution Target", :module, "seed-distribution-target"],
         ["Seed Distribution Target List", :module, "seed-distribution-target-list"],
-        ["ASA360 Target", :module, "papl360-target"],
-          ["ASA360 Target List", :module, "papl360-target-list"],
-          ["Add Farmer Form", :module, "add-farmer-form"]
+        ["PAPL360 Target", :module, "papl360-target"],
+        ["PAPL360 Target List", :module, "papl360-target-list"],
+        ["Add Farmer Form", :module, "add-farmer-form"]
         ]
       },
       {
@@ -526,7 +528,7 @@ module ApplicationHelper
   def app_display_name
     @app_display_name ||= current_stakeholder&.data&.[]("stakeholder_name_in_english").presence ||
       current_stakeholder&.data&.[]("stakeholder_name").presence ||
-      ENV.fetch("APP_NAME", "Jeevika JankaR")
+      ENV.fetch("APP_NAME", "VRP")
   end
 
   def app_logo_path
@@ -544,7 +546,10 @@ module ApplicationHelper
     @active_stakeholder_records[module_slug] ||= ModuleRecord
       .where(module_slug: module_slug)
       .order(updated_at: :desc)
-      .select { |record| record.data["status"].blank? || record.data["status"] == "Active" }
+      .select do |record|
+        status = record_data(record)["status"]
+        status.blank? || status.to_s.casecmp("Active").zero?
+      end
   end
 
   def matching_stakeholder_record(module_slug)
@@ -573,7 +578,7 @@ module ApplicationHelper
     if defined?(ModuleRecord) && ModuleRecord.table_exists? && username.present?
       legacy_user = ModuleRecord
         .where(module_slug: "new-user")
-        .where("LOWER(data::jsonb ->> 'user_name') = ?", username.downcase)
+        .where("data::jsonb ->> 'user_name' = ?", username)
         .order(updated_at: :desc)
         .first
       names << legacy_user&.data&.[]("stakeholder")
@@ -584,7 +589,7 @@ module ApplicationHelper
     legacy_user = ModuleRecord
       .where(module_slug: "new-user")
       .order(updated_at: :desc)
-      .detect { |record| record.data["user_name"].to_s == username }
+      .detect { |record| record_data(record)["user_name"].to_s == username }
     names << legacy_user&.data&.[]("stakeholder")
     @current_user_stakeholder_names = names.compact_blank.map { |name| name.to_s.strip }.uniq
   end
@@ -593,11 +598,12 @@ module ApplicationHelper
     normalized_stakeholder = normalize_stakeholder_name(stakeholder_name)
     return false if normalized_stakeholder.blank?
 
+    data = record_data(record)
     values = [
-      record.data["stakeholder_name_in_english"],
-      record.data["stakeholder_name_in_hindi"],
-      record.data["stakeholder_name"],
-      record.data["profile_name"]
+      data["stakeholder_name_in_english"],
+      data["stakeholder_name_in_hindi"],
+      data["stakeholder_name"],
+      data["profile_name"]
     ]
 
     values.compact.any? do |value|
@@ -606,6 +612,11 @@ module ApplicationHelper
         normalized_value.split.include?(normalized_stakeholder) ||
         normalized_stakeholder.split.include?(normalized_value)
     end
+  end
+
+  def record_data(record)
+    data = record.respond_to?(:data) ? record.data : nil
+    data.is_a?(Hash) ? data : {}
   end
 
   def normalize_stakeholder_name(value)

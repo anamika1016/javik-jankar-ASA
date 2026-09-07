@@ -1378,6 +1378,116 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_equal "1", bill.data["approval_current_sequence"]
   end
 
+  test "jeevika bill creator sees submitted bill in default pending list" do
+    user = User.create!(
+      user_name: "bill_creator_#{SecureRandom.hex(4)}",
+      password: "secret",
+      first_name: "Bill",
+      last_name: "Creator",
+      stakeholder: "PAPL",
+      role: "User",
+      status: "Active"
+    )
+    vrp = create_vrp(
+      name: "Creator Visible Bill VRP",
+      user_name: "creator_visible_bill_vrp",
+      mobile_no: "9876543888",
+      email: "creator-visible-bill-vrp@example.com",
+      aadhar_no: "123456789088",
+      status: 55,
+      created_by_id: user.id
+    )
+    bill = ModuleRecord.create!(
+      module_slug: "jeevika-jankar-bill-process",
+      data: {
+        "select_vrp" => vrp.id.to_s,
+        "select_vrp_name" => vrp.name,
+        "financial_year" => "2026-2027",
+        "bill_month" => Date.current.prev_month.strftime("%B"),
+        "created_by_id" => user.id.to_s,
+        "created_by_username" => user.user_name,
+        "created_by_name" => user.full_name,
+        "status" => "Submitted (Not sent for approval)"
+      }
+    )
+
+    post login_path, params: { login: user.user_name, password: "secret" }
+    follow_redirect!
+    get module_path("jeevika-jankar-bill-list")
+
+    assert_response :success
+    assert_select "td", text: bill.id.to_s
+    assert_select ".grid-status", text: /Submitted/
+  end
+
+  test "jeevika bill appears in approver login after send for approval" do
+    owner = User.create!(
+      user_name: "bill_owner_queue_#{SecureRandom.hex(4)}",
+      password: "secret",
+      first_name: "Bill",
+      last_name: "Owner",
+      stakeholder: "PAPL",
+      role: "User",
+      status: "Active"
+    )
+    approver = User.create!(
+      user_name: "bill_approver_queue_#{SecureRandom.hex(4)}",
+      password: "secret",
+      first_name: "Bill",
+      last_name: "Approver",
+      stakeholder: "PAPL",
+      role: "Manager",
+      status: "Active"
+    )
+    vrp = create_vrp(
+      name: "Approver Queue Bill VRP",
+      user_name: "approver_queue_bill_vrp",
+      mobile_no: "9876543777",
+      email: "approver-queue-bill-vrp@example.com",
+      aadhar_no: "123456789077",
+      status: 55,
+      created_by_id: owner.id
+    )
+    ModuleRecord.create!(
+      module_slug: "approval-master",
+      data: {
+        "module_name" => "Jeevika Jankar Bill",
+        "stakeholder_name" => "PAPL",
+        "user_name" => owner.user_name,
+        "approval_level" => "First Appovel",
+        "approver_approved_by" => "#{approver.full_name} (#{approver.role})",
+        "status" => "Active"
+      }
+    )
+    bill = ModuleRecord.create!(
+      module_slug: "jeevika-jankar-bill-process",
+      data: {
+        "select_vrp" => vrp.id.to_s,
+        "select_vrp_name" => vrp.name,
+        "financial_year" => "2026-2027",
+        "bill_month" => Date.current.prev_month.strftime("%B"),
+        "created_by_id" => owner.id.to_s,
+        "created_by_username" => owner.user_name,
+        "created_by_name" => owner.full_name,
+        "status" => "Submitted (Not sent for approval)"
+      }
+    )
+
+    post login_path, params: { login: owner.user_name, password: "secret" }
+    follow_redirect!
+    patch send_for_approval_module_record_path("jeevika-jankar-bill-list", bill)
+    delete logout_path
+
+    post login_path, params: { login: approver.user_name, password: "secret" }
+    follow_redirect!
+    get module_path("jeevika-jankar-bill-list")
+
+    assert_response :success
+    assert_select "td", text: bill.id.to_s
+    assert_select ".grid-status", text: /Pending at #{Regexp.escape(approver.full_name)}/
+    assert_select "[data-approval-url='#{approve_bill_module_record_path("jeevika-jankar-bill-list", bill)}']"
+  end
+
   private
 
   def target_params(vrp, mapping, month, target_quantity, farmer_ids, activity_name = "Farm Visit", main_activity_name = "Farmer Visit")

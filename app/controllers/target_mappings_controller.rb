@@ -1,3 +1,6 @@
+require "net/http"
+require "uri"
+
 class TargetMappingsController < ApplicationController
   before_action :block_vrp_target_write, only: [:create, :destroy]
 
@@ -84,7 +87,30 @@ class TargetMappingsController < ApplicationController
     }
   end
 
+  def user_blocks
+    render json: { options: user_block_options }
+  end
+
   private
+
+  def user_block_options
+    uri = URI("http://144.76.19.201:3003/api/get_user_list")
+    response = Net::HTTP.start(uri.hostname, uri.port, open_timeout: 3, read_timeout: 8) do |http|
+      http.get(uri.request_uri)
+    end
+    return [] unless response.is_a?(Net::HTTPSuccess)
+
+    payload = JSON.parse(response.body)
+    Array(payload["result"]).flat_map { |user| Array(user["working_zones"]) }.filter_map do |zone|
+      block_id = zone["block_id"].to_s.strip
+      block_name = zone["block"].to_s.strip
+      next if block_id.blank? || block_name.blank?
+
+      { value: [block_id, block_name].join("||"), label: block_name }
+    end.uniq { |option| [option[:value], option[:label].downcase] }.sort_by { |option| option[:label].downcase }
+  rescue JSON::ParserError, SocketError, Errno::ECONNREFUSED, Net::OpenTimeout, Net::ReadTimeout
+    []
+  end
 
   def block_vrp_target_write
     return unless non_admin_vrp_login?
@@ -103,6 +129,7 @@ class TargetMappingsController < ApplicationController
       :main_activity_name,
       :activity_name,
       :target_quantity,
+      :target_entry_mode,
       :new_farmer_target_quantity,
       main_activity_names: [],
       activity_names: [],
@@ -126,6 +153,7 @@ class TargetMappingsController < ApplicationController
       :main_activity_names,
       :activity_names,
       :afl_ids,
+      :target_entry_mode,
       :new_farmer_target_quantity,
       :training_targets,
       :weekly_plan
@@ -437,9 +465,9 @@ class TargetMappingsController < ApplicationController
     return false unless target_count
 
     target_mapping.afl_ids = selected_ids if plan
-    if training_box_activity?(target_mapping.activity_name) || new_farmer_target_mode?
+    if training_box_activity?(target_mapping.activity_name) || new_farmer_target_mode? || village_target_mode?
       if target_count <= 0
-        target_mapping.errors.add(training_box_activity?(target_mapping.activity_name) ? :activity_name : :new_farmer_target_quantity, "target must be greater than 0")
+        target_mapping.errors.add(training_box_activity?(target_mapping.activity_name) ? :activity_name : :target_quantity, "target must be greater than 0")
         return false
       end
 
@@ -496,6 +524,10 @@ class TargetMappingsController < ApplicationController
 
   def new_farmer_target_mode?
     new_farmer_target_quantity.present? && submitted_farmer_ids.blank?
+  end
+
+  def village_target_mode?
+    target_mapping_params[:target_type].to_s.strip.downcase == "village"
   end
 
   def submitted_farmer_ids
@@ -937,10 +969,10 @@ class TargetMappingsController < ApplicationController
     target_mapping.ics_id = ics_id
     target_mapping.ics_name = ics_name
     target_mapping.village_id = if village_ids.blank?
-      nil
-    else
-      village_ids.one? ? village_ids.first : village_ids.to_json
-    end
+                                  nil
+                                else
+                                  village_ids.one? ? village_ids.first : village_ids.to_json
+                                end
     target_mapping.village_name = village_names.join(", ").presence
   end
 

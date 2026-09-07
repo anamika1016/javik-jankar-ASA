@@ -15,8 +15,9 @@
         data-edit-target="<%= html_escape(@edit_payload.to_json) %>"
         data-target-sub-activity-map="<%= html_escape(@target_sub_activity_map.to_json) %>"
         data-main-activity-type-map="<%= html_escape(@main_activity_type_map.to_json) %>"
+        data-user-blocks-url="<%= user_blocks_target_mappings_path %>"
         data-mappings-url="<%= vrp_mappings_target_mappings_path %>">
-        <%= form_with url: target_mappings_path, method: :post, local: true, html: { class: "module-entry-form", novalidate: true } do %>
+        <%= form_with url: target_mappings_path, method: :post, local: true, data: { turbo: false }, html: { class: "module-entry-form" } do %>
           <% if @edit_target %>
             <input type="hidden" name="target_mapping[id]" value="<%= @edit_target.id %>">
             <div hidden data-edit-saved-target-farmers>
@@ -37,6 +38,14 @@
             </label>
 
             <label>
+              <span>Target Entry <em>*</em></span>
+              <select name="target_mapping[target_entry_mode]" data-target-entry-mode required>
+                <option value="ics_wise">ICS Wise</option>
+                <option value="block_wise">Block Wise</option>
+              </select>
+            </label>
+
+            <label>
               <span>FCO Name <em>*</em></span>
               <select name="target_mapping[fco_id]" data-target-fco data-selected-value="<%= [@edit_target&.fco_id, @edit_target&.fco_name].compact_blank.join("||") %>" required>
                 <option value="">Select FCO Name</option>
@@ -44,10 +53,18 @@
             </label>
 
             <label>
+              <span>Block <em>*</em></span>
+              <select data-target-block disabled>
+                <option value="">Select Block</option>
+              </select>
+            </label>
+
+            <label>
               <span>ICS <em>*</em></span>
-              <select name="target_mapping[ics_id]" data-target-ics data-selected-value="<%= [@edit_target&.ics_id, @edit_target&.ics_name].compact_blank.join("||") %>" required disabled>
+              <select data-target-ics data-selected-value="<%= [@edit_target&.ics_id, @edit_target&.ics_name].compact_blank.join("||") %>" required disabled>
                 <option value="">Select ICS</option>
               </select>
+              <input type="hidden" name="target_mapping[ics_id]" value="<%= [@edit_target&.ics_id, @edit_target&.ics_name].compact_blank.join("||") %>" data-target-ics-hidden>
             </label>
 
             <div class="target-village-field">
@@ -56,7 +73,7 @@
                 <span class="location-select-all"><input type="checkbox" data-chip-select-all-for="target-village"> Select all</span>
               </span>
               <input type="hidden" name="target_mapping[village_id]" value="" data-target-village-hidden>
-              <select data-target-village data-selected-values="<%= html_escape(Array(@edit_payload[:village_ids]).to_json) %>" multiple disabled data-chip-multiselect data-chip-select-all-key="target-village" data-placeholder="Select Village">
+              <select data-target-village data-selected-values="<%= html_escape(Array(@edit_payload[:village_ids]).to_json) %>" multiple required disabled data-chip-multiselect data-chip-select-all-key="target-village" data-placeholder="Select Village">
                 <option value="">Select Village</option>
               </select>
             </div>
@@ -76,12 +93,22 @@
               <input type="date" name="target_mapping[completion_date]" value="<%= @edit_target&.completion_date&.strftime("%Y-%m-%d") %>" required>
             </label>
 
+            <% selected_target_type = @edit_payload[:target_type].presence || "farmer" %>
+            <% village_target_selected = selected_target_type == "village" %>
+            <label>
+              <span>Target Type <em>*</em></span>
+              <select name="target_mapping[target_type]" data-target-type required>
+                <option value="village" <%= "selected" if selected_target_type == "village" %>>Villages</option>
+                <option value="farmer" <%= "selected" if selected_target_type == "farmer" %>>Farmer</option>
+              </select>
+            </label>
+
             <div class="target-village-field">
               <span class="location-multi-label">
                 <span>Main Activity <em>*</em></span>
                 <span class="location-select-all"><input type="checkbox" data-chip-select-all-for="target-main-activity"> Select all</span>
               </span>
-              <select name="target_mapping[main_activity_names][]" data-target-main-activity data-selected-values="<%= html_escape(Array(@edit_payload[:main_activity_names]).to_json) %>" multiple data-chip-multiselect data-chip-select-all-key="target-main-activity" data-placeholder="Select Main Activity">
+              <select name="target_mapping[main_activity_names][]" data-target-main-activity data-selected-values="<%= html_escape(Array(@edit_payload[:main_activity_names]).to_json) %>" multiple required data-chip-multiselect data-chip-select-all-key="target-main-activity" data-placeholder="Select Main Activity">
                 <option value="">Select Main Activity</option>
                 <% @main_activity_options.each do |option| %>
                   <option value="<%= option %>" <%= "selected" if Array(@edit_payload[:main_activity_names]).map(&:to_s).include?(option.to_s) %>><%= option %></option>
@@ -94,7 +121,7 @@
                 <span>Sub Activity <em>*</em></span>
                 <span class="location-select-all"><input type="checkbox" data-chip-select-all-for="target-sub-activity"> Select all</span>
               </span>
-              <select name="target_mapping[activity_names][]" data-target-sub-activity data-selected-values="<%= html_escape(Array(@edit_payload[:activity_names]).to_json) %>" multiple data-chip-multiselect data-chip-select-all-key="target-sub-activity" data-placeholder="Select Sub Activity">
+              <select name="target_mapping[activity_names][]" data-target-sub-activity data-selected-values="<%= html_escape(Array(@edit_payload[:activity_names]).to_json) %>" multiple required data-chip-multiselect data-chip-select-all-key="target-sub-activity" data-placeholder="Select Sub Activity">
                 <option value="">Select Sub Activity</option>
                 <% @sub_activity_options.each do |option| %>
                   <option value="<%= option %>" <%= "selected" if Array(@edit_payload[:activity_names]).map(&:to_s).include?(option.to_s) %>><%= option %></option>
@@ -102,13 +129,17 @@
               </select>
             </div>
 
-            <label data-target-standard-quantity-fields>
+            <label data-target-farmer-only-field data-village-target-hide <%= "hidden" if village_target_selected %>>
               <span>Registered Farmers</span>
-              <input type="text" value="0" data-target-registered-count readonly>
+              <input type="text" value="0" data-target-registered-count readonly <%= "disabled" if village_target_selected %>>
             </label>
 
             <input type="hidden" name="target_mapping[target_quantity]" value="<%= @edit_payload[:target_quantity] %>" data-target-quantity-input>
-            <input type="hidden" name="target_mapping[new_farmer_target_quantity]" value="<%= @edit_payload[:new_farmer_target_quantity] %>" data-new-farmer-target-input>
+
+            <label data-target-farmer-only-field data-village-target-hide <%= "hidden" if village_target_selected %>>
+              <span>New Farmer Target</span>
+              <input type="number" name="target_mapping[new_farmer_target_quantity]" min="1" step="1" placeholder="Enter target without farmer selection" value="<%= @edit_payload[:new_farmer_target_quantity] %>" data-new-farmer-target-input <%= "disabled" if village_target_selected %>>
+            </label>
           </div>
 
           <div class="target-training-fields" data-target-training-fields hidden>
@@ -166,15 +197,15 @@
           <div class="table-shell target-weekly-table-shell">
             <table class="module-table vrp-list-table target-weekly-table">
               <thead>
-                <tr>
+                <tr data-target-weekly-header-row>
                   <th>Activity</th>
                   <th>Monthly</th>
                   <th>Week 1</th>
                   <th>Week 2</th>
                   <th>Week 3</th>
                   <th>Week 4</th>
-                  <th>Total</th>
-                  <th>View</th>
+                  <th data-target-weekly-total-header>Total</th>
+                  <th data-target-weekly-view-header>View</th>
                 </tr>
               </thead>
               <tbody data-target-weekly-rows>
@@ -220,8 +251,92 @@
             </div>
           </div>
         </dialog>
-        <% end %>
-      </section>
+        <script>
+          (() => {
+            const shell = document.currentScript.closest("[data-target-mapping]");
+            if (!shell || shell.dataset.villageTargetFallbackBound === "true") return;
+
+            shell.dataset.villageTargetFallbackBound = "true";
+            const syncVillageTargetFallback = () => {
+              const targetType = shell.querySelector("[data-target-type]");
+              const villageMode = (targetType?.value || "").trim().toLowerCase() === "village";
+              shell.classList.toggle("village-target-mode", villageMode);
+              shell.querySelectorAll("[data-village-target-hide]").forEach((element) => {
+                element.hidden = villageMode;
+                element.style.display = villageMode ? "none" : "";
+                element.querySelectorAll("input, select, textarea, button").forEach((input) => {
+                  input.disabled = villageMode;
+                  input.setCustomValidity?.("");
+                });
+              });
+              shell.querySelectorAll("[data-target-weekly-total-header], [data-target-weekly-view-header], [data-target-weekly-view], [data-target-weekly-selected-total]").forEach((element) => {
+                element.hidden = villageMode;
+                element.style.display = villageMode ? "none" : "";
+              });
+
+              if (!villageMode) return;
+
+              const targetInput = shell.querySelector("[data-target-quantity-input]");
+              const registeredCountInput = shell.querySelector("[data-target-registered-count]");
+              if (targetInput && registeredCountInput?.value) {
+                targetInput.disabled = false;
+                targetInput.value = registeredCountInput.value;
+              }
+
+              const weeklySummary = shell.querySelector("[data-target-weekly-summary]");
+              const weeklyRows = shell.querySelector("[data-target-weekly-rows]");
+              const selectedTotal = shell.querySelector("[data-target-weekly-selected-total]");
+              const selectedMainActivities = Array.from(shell.querySelector("[data-target-main-activity]")?.selectedOptions || [])
+                .map((option) => option.textContent.trim())
+                .filter(Boolean);
+              const selectedSubActivities = Array.from(shell.querySelector("[data-target-sub-activity]")?.selectedOptions || [])
+                .map((option) => option.textContent.trim())
+                .filter(Boolean);
+
+              if (selectedTotal) selectedTotal.textContent = "Village target";
+              if (weeklySummary && selectedMainActivities.length) {
+                weeklySummary.hidden = false;
+                weeklySummary.style.display = "";
+              }
+              if (weeklyRows && selectedMainActivities.length && !weeklyRows.querySelector("[data-target-weekly-input]")) {
+                const escapeText = (value) => String(value || "").replace(/[&<>"']/g, (char) => ({
+                  "&": "&amp;",
+                  "<": "&lt;",
+                  ">": "&gt;",
+                  '"': "&quot;",
+                  "'": "&#039;"
+                }[char]));
+                const activityLabel = escapeText(selectedMainActivities.join(", "));
+                const subActivityLabel = selectedSubActivities.map((label) => `<div class="target-weekly-subactivity"><span>${escapeText(label)}</span></div>`).join("");
+                weeklyRows.innerHTML = `
+                  <tr>
+                    <td>
+                      <div class="target-weekly-activity">
+                        <strong>${activityLabel}</strong>
+                        <div class="target-weekly-subactivities">${subActivityLabel}</div>
+                      </div>
+                      <input type="hidden" name="target_mapping[weekly_plan][0][main_activity]" value="__common__">
+                      <input type="hidden" name="target_mapping[weekly_plan][0][sub_activity]" value="">
+                    </td>
+                    <td><div class="target-weekly-cell-center"><input type="number" min="0" step="1" class="target-weekly-input" name="target_mapping[weekly_plan][0][monthly]" value="" data-target-weekly-input data-weekly-row-key="__common__" data-weekly-field="monthly"></div></td>
+                    <td><div class="target-weekly-cell-center"><input type="number" min="0" step="1" class="target-weekly-input" name="target_mapping[weekly_plan][0][week_1]" value="" data-target-weekly-input data-weekly-row-key="__common__" data-weekly-field="week_1"></div></td>
+                    <td><div class="target-weekly-cell-center"><input type="number" min="0" step="1" class="target-weekly-input" name="target_mapping[weekly_plan][0][week_2]" value="" data-target-weekly-input data-weekly-row-key="__common__" data-weekly-field="week_2"></div></td>
+                    <td><div class="target-weekly-cell-center"><input type="number" min="0" step="1" class="target-weekly-input" name="target_mapping[weekly_plan][0][week_3]" value="" data-target-weekly-input data-weekly-row-key="__common__" data-weekly-field="week_3"></div></td>
+                    <td><div class="target-weekly-cell-center"><input type="number" min="0" step="1" class="target-weekly-input" name="target_mapping[weekly_plan][0][week_4]" value="" data-target-weekly-input data-weekly-row-key="__common__" data-weekly-field="week_4"></div></td>
+                  </tr>
+                `;
+              }
+            };
+
+            shell.addEventListener("change", (event) => {
+              if (event.target.closest("[data-target-type], [data-target-village]")) syncVillageTargetFallback();
+            });
+            document.addEventListener("turbo:load", syncVillageTargetFallback);
+            window.requestAnimationFrame(syncVillageTargetFallback);
+          })();
+        </script>
+      <% end %>
+    </section>
     <% end %>
 
 	    <div class="vrp-list-card">
@@ -233,62 +348,106 @@
             <span>⌕</span>
             <input type="search" placeholder="Search targets" data-table-search="target_mapping_list">
           </div>
+          <%= link_to "Export Excel", target_mappings_path(request.query_parameters.merge(format: :xlsx)), class: "list-btn export" %>
         </div>
       </div>
       <div class="table-shell">
-        <table class="module-table vrp-list-table" id="target_mapping_list" data-paginated-table data-page-size="15">
+        <table class="module-table vrp-list-table" id="target_mapping_list" data-paginated-table data-fast-open-table="true" data-page-size="15">
           <thead>
-            <tr>
-              <th>Jeevika Jankar</th>
-              <th>FCO</th>
-              <th>ICS</th>
-              <th>Village</th>
-              <th>Month</th>
-              <th>Completion Date</th>
-              <th class="target-activity-column">Main Activity</th>
-              <th class="target-activity-column">Sub Activity</th>
-              <th class="target-training-column">OPG Training</th>
-              <th class="target-training-column">General Training/<wbr>Meeting</th>
-              <th class="target-training-column">Input Demo INM</th>
-              <th class="target-training-column">Input Demo PM</th>
-              <th class="target-training-column">FFS</th>
-              <th class="target-count-column">Farmer Target</th>
-              <th class="target-count-column">Week 1</th>
-              <th class="target-count-column">Week 2</th>
-              <th class="target-count-column">Week 3</th>
-              <th class="target-count-column">Week 4</th>
-              <th class="target-farmer-view-column">View Farmers</th>
-	              <% if show_mapping_actions %>
-	                <th>Action</th>
-	              <% end %>
-            </tr>
+            <% if @target_summary_mode == "main_activity" %>
+              <tr>
+                <th>Main Activity</th>
+                <th>Sub Activity Count</th>
+                <th>Mapped Farmer Count</th>
+                <th>Target Mapping Count</th>
+              </tr>
+            <% elsif @target_summary_mode == "sub_activity" %>
+              <tr>
+                <th>Sub Activity</th>
+                <th>Main Activity</th>
+                <th>Mapped Farmer Count</th>
+                <th>Target Mapping Count</th>
+              </tr>
+            <% else %>
+              <tr>
+                <th>Jeevika Jankar</th>
+                <th>FCO</th>
+                <th>ICS</th>
+                <th>Village</th>
+                <th>Month</th>
+                <th>Completion Date</th>
+                <th class="target-activity-column">Main Activity</th>
+                <th class="target-activity-column">Sub Activity</th>
+                <th class="target-training-column">OPG Training</th>
+                <th class="target-training-column">General Training/<wbr>Meeting</th>
+                <th class="target-training-column">Input Demo INM</th>
+                <th class="target-training-column">Input Demo PM</th>
+                <th class="target-training-column">FFS</th>
+                <th class="target-count-column">Farmer Target</th>
+                <th class="target-count-column">Week 1</th>
+                <th class="target-count-column">Week 2</th>
+                <th class="target-count-column">Week 3</th>
+                <th class="target-count-column">Week 4</th>
+                <th class="target-farmer-view-column">View Farmers</th>
+	                <% if show_mapping_actions %>
+	                  <th>Action</th>
+	                <% end %>
+              </tr>
+            <% end %>
           </thead>
           <tbody>
-            <% if @target_mappings.any? %>
-              <% @target_mappings.each do |target| %>
-                <tr>
-                  <td><%= target.vrp&.name %></td>
+            <% target_mapping_display_rows = Array(@target_mapping_display_rows || @target_mapping_rows) %>
+            <% if target_mapping_display_rows.any? %>
+              <% target_mapping_display_rows.each do |row| %>
+                <% if @target_summary_mode == "main_activity" %>
+                  <tr>
+                    <td><%= row[:main_activity].presence || "-" %></td>
+                    <td><%= row[:sub_activity_count].to_i %></td>
+                    <td><%= row[:farmer_count].to_i %></td>
+                    <td><%= row[:target_count].to_i %></td>
+                  </tr>
+                <% elsif @target_summary_mode == "sub_activity" %>
+                  <tr>
+                    <td><%= row[:sub_activity].presence || "-" %></td>
+                    <td><%= row[:main_activity].presence || "-" %></td>
+                    <td><%= row[:farmer_count].to_i %></td>
+                    <td><%= row[:target_count].to_i %></td>
+                  </tr>
+                <% else %>
+                  <% target = row[:target] %>
+                  <tr>
+                    <td><%= target.vrp&.name %></td>
                   <td><%= target.fco_name.presence || target.fco_id %></td>
                   <td><%= target.ics_name.presence || target.ics_id %></td>
                   <td><%= target.village_name.presence || target.village_id %></td>
                   <td><%= target.month_name %></td>
                   <td><%= target.completion_date&.strftime("%d-%m-%Y") || "-" %></td>
-                  <% display_main_activity = target.main_activity_name.to_s.strip.gsub("_", "").casecmp("common").zero? ? "-" : target.main_activity_name %>
-                  <% display_sub_activity = target.activity_name.to_s.strip.gsub("_", "").casecmp("common").zero? ? "-" : target.activity_name %>
-                  <td class="target-activity-text"><%= display_main_activity %></td>
-                  <td class="target-activity-text"><%= display_sub_activity %></td>
+                  <td class="target-activity-text">
+                    <div class="target-activity-grouped-list">
+                      <% Array(row[:main_activities]).each do |main_activity| %>
+                        <span><%= main_activity %></span>
+                      <% end %>
+                    </div>
+                  </td>
+                  <td class="target-activity-text">
+                    <div class="target-activity-grouped-list">
+                      <% Array(row[:sub_activities]).each do |sub_activity| %>
+                        <span><%= sub_activity %></span>
+                      <% end %>
+                    </div>
+                  </td>
                   <td><%= number_with_precision(target.opg_training_target, precision: 4, strip_insignificant_zeros: true) if target.opg_training_target.present? %></td>
                   <td><%= number_with_precision(target.week_wise_opg_target, precision: 4, strip_insignificant_zeros: true) if target.week_wise_opg_target.present? %></td>
                   <td><%= number_with_precision(target.input_demo_inm_target, precision: 4, strip_insignificant_zeros: true) if target.input_demo_inm_target.present? %></td>
                   <td><%= number_with_precision(target.input_demo_pm_target, precision: 4, strip_insignificant_zeros: true) if target.input_demo_pm_target.present? %></td>
                   <td><%= number_with_precision(target.ffs_target, precision: 4, strip_insignificant_zeros: true) if target.ffs_target.present? %></td>
-                  <td class="target-count-cell"><%= number_with_precision(target.target_quantity, precision: 4, strip_insignificant_zeros: true) %></td>
-                  <% week_targets = target.weekly_target_values %>
+                  <td class="target-count-cell"><%= number_with_precision(row[:target_quantity], precision: 4, strip_insignificant_zeros: true) %></td>
+                  <% week_targets = Array(row[:weekly_values]).presence || target.weekly_target_values %>
                   <td class="target-count-cell"><%= week_targets[0] %></td>
                   <td class="target-count-cell"><%= week_targets[1] %></td>
                   <td class="target-count-cell"><%= week_targets[2] %></td>
                   <td class="target-count-cell"><%= week_targets[3] %></td>
-                  <% target_farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?) %>
+                  <% target_farmer_ids = Array(row[:farmer_ids]).map(&:to_s).reject(&:blank?) %>
                   <td class="target-farmer-view-cell">
                     <% if target_farmer_ids.any? %>
                       <% farmer_dialog_id = "target-farmers-#{target.id}" %>
@@ -304,11 +463,12 @@
                           </div>
                           <div class="vrp-ics-farmer-list target-dialog-farmer-list">
                             <% target_farmer_ids.each do |farmer_id| %>
+                              <% farmer = @target_farmers_by_id[farmer_id] %>
                               <div class="vrp-ics-farmer-item">
                                 <span aria-hidden="true">•</span>
                                 <span>
-                                  <strong><%= "Farmer ##{farmer_id}" %></strong>
-                                  <small>Mapped farmer ID: <%= farmer_id %></small>
+                                  <strong><%= farmer&.farmer_name.presence || "Farmer ##{farmer_id}" %></strong>
+                                  <small><%= [farmer&.father_name.presence && "Father: #{farmer.father_name}", farmer&.tracenet_no.presence && "Tracenet: #{farmer.tracenet_no}", farmer&.mobile_no.presence && "Mobile: #{farmer.mobile_no}", farmer&.village_name.presence && "Village: #{farmer.village_name}"].compact.join(" | ") %></small>
                                 </span>
                               </div>
                             <% end %>
@@ -323,19 +483,20 @@
 	                    <td>
 	                      <div class="table-actions">
 	                        <% if @admin_mapping_actions %>
-	                          <%= link_to "Edit", target_mappings_path(edit_id: target.id), class: "table-action", data: { turbo: false } %>
-	                          <%= button_to "Delete", delete_target_mapping_path(target), method: :post, class: "table-action danger", form: { data: { turbo: false, turbo_confirm: "Delete this target mapping?" }, onsubmit: "return confirm('Delete this target mapping?')" } %>
+	                          <%= link_to "Edit", target_mappings_path(edit_id: target.id), class: "table-action" %>
+	                          <%= button_to "Delete", target_mapping_path(target), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this target mapping?" } } %>
 	                        <% elsif @remove_mapping_actions %>
-	                          <%= button_to "Remove", delete_target_mapping_path(target), method: :post, class: "table-action danger", form: { data: { turbo: false, turbo_confirm: "Remove this target mapping?" }, onsubmit: "return confirm('Remove this target mapping?')" } %>
+	                          <%= button_to "Remove", target_mapping_path(target), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Remove this target mapping?" } } %>
 	                        <% end %>
 	                      </div>
 	                    </td>
 	                  <% end %>
-                </tr>
+                  </tr>
+                <% end %>
               <% end %>
             <% else %>
               <tr>
-	                <td colspan="<%= show_mapping_actions ? 20 : 19 %>">No target mapping saved yet.</td>
+	                <td colspan="<%= @target_summary_mode.present? ? 4 : (show_mapping_actions ? 20 : 19) %>">No target mapping saved yet.</td>
               </tr>
             <% end %>
           </tbody>
