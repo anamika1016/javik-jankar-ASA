@@ -3311,6 +3311,7 @@ function initDeferredLayoutPage() {
     const monthSelect = shell.querySelector("select[name='target_mapping[month_name]']");
     const targetTypeSelect = shell.querySelector("[data-target-type]");
     const mainActivitySelect = shell.querySelector("[data-target-main-activity]");
+    const mainActivityField = mainActivitySelect?.closest(".target-village-field");
     const subActivitySelect = shell.querySelector("[data-target-sub-activity]");
     const subActivityField = shell.querySelector("[data-target-sub-activity-field]");
     const standardQuantityFields = Array.from(shell.querySelectorAll("[data-target-standard-quantity-fields]"));
@@ -3426,6 +3427,30 @@ function initDeferredLayoutPage() {
       targetInput.disabled = manualMode && !villageTargetMode();
       targetInput.required = !manualMode || villageTargetMode();
       targetInput.setCustomValidity("");
+
+      // A New Farmer Target is intentionally independent of activity.  Do
+      // not let browser required validation block a save for Main/Sub Activity.
+      [mainActivityField, subActivityField].forEach((field) => {
+        if (!field) return;
+        const skipActivities = manualMode && !villageTargetMode();
+        field.hidden = skipActivities;
+        field.classList.toggle("target-new-farmer-activity-hidden", skipActivities);
+        field.querySelectorAll("select, input").forEach((input) => {
+          input.disabled = skipActivities;
+          input.required = !skipActivities;
+          if (skipActivities) input.setCustomValidity?.("");
+        });
+      });
+
+      if (manualMode && !villageTargetMode()) {
+        [mainActivitySelect, subActivitySelect].forEach((select) => {
+          if (!select) return;
+          Array.from(select.options || []).forEach((option) => { option.selected = false; });
+          select.dataset.selectedValues = "[]";
+          select.dataset.selectionDirty = "true";
+          select.dispatchEvent(new Event("chip:refresh"));
+        });
+      }
     };
     const locationValueParts = (value) => `${value || ""}`.split("||");
     const targetOptionMatches = (optionValueText, selectedValueText) => {
@@ -3543,7 +3568,8 @@ function initDeferredLayoutPage() {
       const selectedValues = resetSelection ? [] : targetSelectedValues(mainActivitySelect);
       const filteredOptions = originalMainActivityOptions.filter((option) => {
         if (!option.value) return true;
-        return !villageTargetMode() || mainActivityTypeFor(option.value) !== normalizeOption("Training");
+        const requiredType = villageTargetMode() ? "Other" : "Training";
+        return mainActivityTypeFor(option.value) === normalizeOption(requiredType);
       });
 
       mainActivitySelect.innerHTML = "";
@@ -3854,8 +3880,14 @@ function initDeferredLayoutPage() {
 
           if (dialogBox.checked) selectedIds.add(String(dialogBox.value));
           else selectedIds.delete(String(dialogBox.value));
+          // Keep the source checkbox in sync as well.  The hidden weekly
+          // inputs submit the activity-wise selection, while this source
+          // checkbox keeps the selected count and regular farmer selection
+          // state accurate for the user.
+          sourceBox.checked = dialogBox.checked;
           if (dialogBox.checked) clearNewFarmerTargetForSelection();
           weeklyPlanFarmerIdsDirty.add(activeFarmerDialogRowKey);
+          updateTargetFarmerCount();
           syncDialogFarmerTotals();
           renderTargetWeeklySummary();
         });
@@ -4079,11 +4111,16 @@ function initDeferredLayoutPage() {
       const available = availableTargetBoxes();
       const selectedIds = selectedFarmerIdsForActiveRow();
       selectedIds.clear();
+      available.forEach((checkbox) => { checkbox.checked = false; });
       available.forEach((checkbox, index) => {
-        if (!Number.isInteger(limit) || limit < 0 || index < limit) selectedIds.add(String(checkbox.value));
+        if (!Number.isInteger(limit) || limit < 0 || index < limit) {
+          selectedIds.add(String(checkbox.value));
+          checkbox.checked = true;
+        }
       });
       if (selectedIds.size) clearNewFarmerTargetForSelection();
       weeklyPlanFarmerIdsDirty.add(activeFarmerDialogRowKey);
+      updateTargetFarmerCount();
       renderTargetWeeklySummary();
       renderDialogFarmers();
       if (Number.isInteger(limit) && limit >= 0 && available.length > limit) {
@@ -4092,7 +4129,9 @@ function initDeferredLayoutPage() {
     });
     farmerDialogClear?.addEventListener("click", () => {
       selectedFarmerIdsForActiveRow().clear();
+      targetBoxes().forEach((checkbox) => { checkbox.checked = false; });
       weeklyPlanFarmerIdsDirty.add(activeFarmerDialogRowKey);
+      updateTargetFarmerCount();
       renderTargetWeeklySummary();
       renderDialogFarmers();
     });
@@ -4111,6 +4150,7 @@ function initDeferredLayoutPage() {
     newFarmerTargetInput?.addEventListener("input", () => {
       syncNewFarmerTargetMode();
       updateTargetFarmerCount();
+      renderTargetWeeklySummary();
     });
     trainingTargetInputs().forEach((input) => {
       input.addEventListener("input", renderTargetWeeklySummary);

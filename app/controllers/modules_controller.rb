@@ -8842,6 +8842,9 @@ class ModulesController < ApplicationController
   def module_records_required_for_show?
     return true if @record.present?
     return true if @slug.to_s.end_with?("-list")
+    # These entry screens include a Saved Records table.  Loading the visible
+    # records here makes a just-saved entry appear immediately after redirect.
+    return true if %w[training-form seed-distribution-target papl360-target other-target add-farmer-form].include?(@slug)
     return true if @slug == "lg-directory-list"
     return true if @slug == "jeevika-jankar-payment-list-detail"
     return true if @slug == "jeevika-jankar-completed-payment-list"
@@ -8875,6 +8878,9 @@ class ModulesController < ApplicationController
     return true if admin_dashboard_user?
 
     if vrp_login_user?
+      # A form record created by the currently logged-in JJ must remain
+      # visible even when an old/incomplete VRP label cannot be matched.
+      return true if target_record_created_by_current_user?(record)
       return false unless current_vrp_record.present?
 
       return target_record_matches_vrp?(record, current_vrp_record)

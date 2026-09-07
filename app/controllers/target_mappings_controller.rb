@@ -31,8 +31,9 @@ class TargetMappingsController < ApplicationController
     # summary rows).  Build the normal record rows here; previously this was
     # never assigned, so a successfully saved mapping always looked empty.
     @target_mapping_rows = target_mapping_rows(@target_mappings)
+    saved_farmer_ids = @target_mapping_rows.flat_map { |row| row[:farmer_ids] }.uniq
     @target_farmers_by_id = target_farmer_profiles_by_id(
-      Afl.where(id: @target_mapping_rows.flat_map { |row| row[:farmer_ids] })
+      Afl.where(id: saved_farmer_ids).select(:id, :farmer_name, :father_name, :tracenet_no, :mobile_no, :khasara_no, :village_name)
     )
     @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && @admin_mapping_actions
     @edit_payload = edit_payload(@edit_target)
@@ -292,6 +293,10 @@ class TargetMappingsController < ApplicationController
   end
 
   def weekly_plan_error
+    # New Farmer Target is not activity based.  It deliberately has no weekly
+    # plan, Main Activity, or Sub Activity.
+    return nil if new_farmer_target_mode?
+
     weekly_plan_rows.each do |row|
       monthly = integer_plan_value(row["monthly"])
       weeks = %w[week_1 week_2 week_3 week_4].map { |field| integer_plan_value(row[field]) }
@@ -355,6 +360,8 @@ class TargetMappingsController < ApplicationController
   end
 
   def target_activity_combinations
+    return [["New Farmer Target", "New Farmer Target"]] if new_farmer_target_mode?
+
     selected_combinations = selected_target_activity_combinations
     return selected_combinations if selected_combinations.any?
 
@@ -1004,39 +1011,22 @@ class TargetMappingsController < ApplicationController
     ids = afls.map { |afl| afl.id.to_s }.reject(&:blank?).uniq
     return {} if ids.blank?
 
-    farmer_infos = target_farmer_information_records(afls)
-    declarations = target_farmer_exit_declarations(afls)
-
-    farmer_info_by_farm_id = farmer_infos.index_by { |farmer| farmer.farm_id.to_s }
-    farmer_info_by_tracenet = farmer_infos.each_with_object({}) do |farmer_info, index|
-      key = target_farmer_text_value(farmer_info.tracenet_no)
-      index[key] ||= farmer_info if key.present?
-    end
-    farmer_info_by_aadhar = farmer_infos.each_with_object({}) do |farmer_info, index|
-      key = target_farmer_text_value(farmer_info.aadhar_number)
-      index[key] ||= farmer_info if key.present?
-    end
-    farmer_info_by_mobile = farmer_infos.each_with_object({}) do |farmer_info, index|
-      key = target_farmer_text_value(farmer_info.farmer_contact_no)
-      index[key] ||= farmer_info if key.present?
-    end
-    farmer_info_by_name = farmer_infos.each_with_object({}) do |farmer_info, index|
-      key = target_farmer_text_value(farmer_info.farmer_name)
-      index[key] ||= farmer_info if key.present?
-    end
-
+    afls_by_id = afls.index_by { |afl| afl.id.to_s }
     ids.each_with_object({}) do |id, memo|
-      afl = afls.find { |row| row.id.to_s == id }
-      declaration = target_farmer_declaration_for_afl(afl, declarations)
-      farmer_info = farmer_info_by_farm_id[id]
-      farmer_info ||= farmer_info_by_tracenet[target_farmer_text_value(afl&.tracenet_no)] if afl.present?
-      farmer_info ||= farmer_info_by_aadhar[target_farmer_text_value(afl&.aadhar)] if afl.present?
-      farmer_info ||= farmer_info_by_aadhar[target_farmer_text_value(afl&.qr_aadhar)] if afl.present?
-      farmer_info ||= farmer_info_by_mobile[target_farmer_text_value(afl&.mobile_no)] if afl.present?
-      farmer_info ||= farmer_info_by_name[target_farmer_text_value(afl&.farmer_name)] if afl.present?
-      farmer_info ||= farmer_infos.find { |farmer| farmer.id.to_s == declaration&.farmer_farm_information_id.to_s } if declaration&.farmer_farm_information_id.present?
-
-      memo[id] = target_farmer_profile_from_records(id, afl, farmer_info, declaration)
+      afl = afls_by_id[id]
+      # AFL already contains the fields shown in Target Mapping.  Resolving
+      # every selected farmer again through name-based Farmer Information and
+      # Exit Declaration searches created massive IN queries and delayed a
+      # target submit by several seconds.  Use this one preloaded AFL batch.
+      memo[id] = {
+        id: id,
+        farmer_name: target_farmer_text_value(afl&.farmer_name).presence || "Farmer ##{id}",
+        father_name: target_farmer_text_value(afl&.father_name),
+        tracenet_no: target_farmer_text_value(afl&.tracenet_no),
+        mobile_no: target_farmer_text_value(afl&.mobile_no),
+        khasara_no: target_farmer_text_value(afl&.khasara_no),
+        village_name: target_farmer_text_value(afl&.village_name)
+      }
     end
   end
 
