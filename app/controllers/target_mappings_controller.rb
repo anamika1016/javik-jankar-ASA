@@ -21,7 +21,19 @@ class TargetMappingsController < ApplicationController
     @main_activity_options = module_options("add-activity-group", "main_activity_name", "activity_group_name")
     @main_activity_type_map = main_activity_type_map
     @target_sub_activity_map = target_sub_activity_map
+    @block_fco_options = office_fco_options
+    @block_options_by_fco = @block_fco_options.to_h do |option|
+      fco_id, = parse_location_value(option[:value])
+      [fco_id, office_block_options(option[:value])]
+    end
     @target_mappings = visible_target_mappings.includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc).limit(100)
+    # The table is deliberately rendered from row hashes (it also supports
+    # summary rows).  Build the normal record rows here; previously this was
+    # never assigned, so a successfully saved mapping always looked empty.
+    @target_mapping_rows = target_mapping_rows(@target_mappings)
+    @target_farmers_by_id = target_farmer_profiles_by_id(
+      Afl.where(id: @target_mapping_rows.flat_map { |row| row[:farmer_ids] })
+    )
     @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && @admin_mapping_actions
     @edit_payload = edit_payload(@edit_target)
     @sub_activity_options = target_sub_activity_options(@edit_target&.main_activity_name)
@@ -71,9 +83,10 @@ class TargetMappingsController < ApplicationController
 
   def vrp_mappings
     render json: {
-      fco_options: fco_options(params[:vrp_id]),
+      fco_options: target_entry_mode_block_wise? ? office_fco_options : fco_options(params[:vrp_id]),
+      block_options: target_entry_mode_block_wise? ? office_block_options(params[:fco_id]) : [],
       ics_options: ics_options_for(params[:fco_id], params[:vrp_id]),
-      village_options: village_options_for(params[:fco_id], params[:ics_id], params[:vrp_id]),
+      village_options: target_entry_mode_block_wise? ? office_village_options(params[:fco_id], params[:block_id]) : village_options_for(params[:fco_id], params[:ics_id], params[:vrp_id]),
       farmers: target_farmers_for(
         vrp_id: params[:vrp_id],
         fco_id: params[:fco_id],
@@ -638,6 +651,168 @@ class TargetMappingsController < ApplicationController
     unique_fco_options(afl_fco_options + saved_location_options(vrp_id, :fco_id, :fco_name))
   end
 
+  # Block-wise targets are assigned to offices, rather than to an AFL FCO.
+  # Office List is supplied by the office-detail API; its `name` is the office
+  # name and `office_name.name` is the office category.
+  def office_fco_options
+    api_options = office_list_fco_options
+    return api_options if api_options.any?
+
+    office_mapping_fco_options
+  end
+
+  def office_list_fco_options
+    office_list_items.filter_map do |office|
+      category = office.dig("office_name", "name").to_s.strip
+      next unless category.casecmp("fco").zero?
+
+      office_name = office["name"].to_s.strip
+      next if office_name.blank?
+
+      option_hash(office["id"].presence || office_name, office_name)
+    end.then { |options| unique_fco_options(options).sort_by { |option| option[:label].to_s.downcase } }
+  end
+
+  def office_block_options(fco_value)
+    fco_id, fco_name = parse_location_value(fco_value)
+    return [] if fco_id.blank? && fco_name.blank?
+
+    office_list_items
+      .select do |office|
+        office_id = office["id"].to_s.strip
+        office_name = office["name"].to_s.strip
+        parent_id = office.dig("parent", "id").to_s.strip
+        parent_name = office.dig("parent", "name").to_s.strip
+        selected_name = fco_name.presence || fco_id
+
+        # FCO records normally have their blocks on the child FPC/ICS offices,
+        # whose parent is the selected FCO (for example, Betul-FCO -> Athner).
+        office_id == fco_id ||
+          office_name.casecmp?(selected_name) ||
+          parent_id == fco_id ||
+          parent_name.casecmp?(selected_name)
+      end
+      .flat_map { |office| Array(office["territory_zones"]) }
+      .flat_map { |zone| Array(zone["block"]) }
+      .filter_map do |block|
+        block_id = block["id"].presence || block["block_id"].presence
+        block_name = office_location_name(block["name"]).presence || office_location_name(block["block_name"])
+        next if block_name.blank?
+
+        option_hash(block_id || block_name, block_name)
+      end
+      .then { |options| unique_location_options(options).sort_by { |option| option[:label].to_s.downcase } }
+  end
+
+  def office_village_options(fco_value, block_value)
+    fco_id, fco_name = parse_location_value(fco_value)
+    block_id, block_name = parse_location_value(block_value)
+    return [] if fco_id.blank? || block_id.blank?
+
+    offices = office_list_items
+    office_ids = office_descendant_ids(offices, fco_id, fco_name)
+    return [] if office_ids.blank?
+
+    offices
+      .select { |office| office_ids.include?(office["id"].to_s) }
+      .flat_map { |office| Array(office["territory_zones"]) }
+      .select do |zone|
+        Array(zone["block"]).any? do |block|
+          zone_block_id = block["id"].to_s
+          zone_block_name = office_location_name(block["name"])
+          zone_block_id == block_id || zone_block_name.to_s.casecmp?(block_name.presence || block_id)
+        end
+      end
+      .flat_map { |zone| Array(zone["village"]) }
+      .filter_map do |village|
+        village_id = village["id"].presence || village["village_id"].presence
+        village_name = office_location_name(village["name"]).presence || office_location_name(village["village_name"])
+        next if village_name.blank?
+
+        option_hash(village_id || village_name, village_name)
+      end
+      .then { |options| unique_location_options(options).sort_by { |option| option[:label].to_s.downcase } }
+  end
+
+  def office_descendant_ids(offices, fco_id, fco_name)
+    selected_name = fco_name.presence || fco_id
+    ids = offices.filter_map do |office|
+      office_id = office["id"].to_s
+      office_name = office["name"].to_s.strip
+      office_id if office_id == fco_id || office_name.casecmp?(selected_name)
+    end.uniq
+
+    loop do
+      child_ids = offices.filter_map do |office|
+        office_id = office["id"].to_s
+        office_id if office.dig("parent", "id").to_s.in?(ids) && !ids.include?(office_id)
+      end
+      break if child_ids.empty?
+
+      ids.concat(child_ids)
+    end
+    ids
+  end
+
+  def office_list_items
+    return @office_list_items if defined?(@office_list_items)
+
+    @office_list_items = Rails.cache.fetch("office-list-api-items-v1", expires_in: 10.minutes) do
+      office_list_api_urls.each do |url|
+        items = fetch_office_list_items(url)
+        break items if items.any?
+      end || []
+    end
+  end
+
+  def fetch_office_list_items(url)
+    uri = URI(url)
+    response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https", open_timeout: 3, read_timeout: 8) do |http|
+      http.get(uri.request_uri)
+    end
+    return [] unless response.is_a?(Net::HTTPSuccess)
+
+    Array(JSON.parse(response.body)["result"])
+  rescue StandardError => error
+    Rails.logger.warn("Unable to load Office List from #{url}: #{error.message}")
+    []
+  end
+
+  def office_list_api_urls
+    [
+      "http://144.76.19.201:3003/api/get_office_detail_list",
+      "https://asa.ploughmanagro.com/api/get_office_detail_list"
+    ]
+  end
+
+  def office_location_name(value)
+    value.is_a?(Hash) ? value["en"].presence || value["hn"].presence : value.to_s.strip
+  end
+
+  # Keep locally maintained Office Setup records as a fallback when the Office
+  # List service is temporarily unavailable.
+  def office_mapping_fco_options
+    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+
+    ModuleRecord.where(module_slug: "office-mapping-add")
+      .order(created_at: :desc)
+      .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("active").zero? }
+      .filter_map do |record|
+        category = first_present_data(record, "office_name", "office_category", "category_name").to_s.strip
+        next unless category.casecmp("fco").zero?
+
+        office_name = first_present_data(record, "sub_office_name", "office_mapping", "office").to_s.strip
+        next if office_name.blank?
+
+        option_hash(office_name, office_name)
+      end
+      .then { |options| unique_fco_options(options).sort_by { |option| option[:label].to_s.downcase } }
+  end
+
+  def target_entry_mode_block_wise?
+    params[:target_entry_mode].to_s == "block_wise"
+  end
+
   def ics_options_for(fco_value, vrp_id = nil)
     return [] if fco_value.blank?
 
@@ -1135,6 +1310,19 @@ class TargetMappingsController < ApplicationController
     return TargetMapping.where(vrp_id: current_app_user["id"]) if non_admin_vrp_login?
 
     TargetMapping.where(created_by_type: current_app_user["record_type"], created_by_id: current_app_user["id"])
+  end
+
+  def target_mapping_rows(target_mappings)
+    Array(target_mappings).map do |target|
+      {
+        target: target,
+        main_activities: target_activity_values(target.main_activity_name),
+        sub_activities: target_activity_values(target.activity_name),
+        target_quantity: target.target_quantity,
+        weekly_values: target.weekly_target_values,
+        farmer_ids: normalized_afl_ids(target.afl_ids)
+      }
+    end
   end
 
   def visible_vrp_ics_mappings

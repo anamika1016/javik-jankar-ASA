@@ -214,6 +214,8 @@ Rails.application.routes.draw do
     get :export, action: :export, on: :member
     patch :bulk_update, action: :bulk_update, on: :member
     get :bill_target_rows, action: :jeevika_jankar_bill_target_rows, on: :member
+    get :training_target_farmers, on: :member
+    get :seed_target_farmers, on: :member
 
     resources :records, controller: :modules, only: [:edit, :update, :destroy] do
       get :selected_farmers, on: :member

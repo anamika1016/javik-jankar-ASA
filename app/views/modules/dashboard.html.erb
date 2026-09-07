@@ -57,7 +57,7 @@
       </div>
     <% end %>
 
-  <% demonstration_method_titles = ["OPG Target", "OPG Achievement", "General Training/Meeting", "Input Demo INM", "FFS", "Input Demo PM"] %>
+  <% demonstration_method_titles = ["OPG Training Target", "OPG Training Achievement", "General Training/Meeting", "Input Demo INM", "FFS", "Input Demo PM"] %>
     <% all_dashboard_summary_cards = Array(@dashboard_summary_cards) %>
     <% demonstration_method_cards = Array(@demonstration_method_cards).presence || all_dashboard_summary_cards.select { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
     <% dashboard_summary_cards = all_dashboard_summary_cards.reject { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
@@ -431,7 +431,7 @@
     </div>
   <% end %>
 
-  <% demonstration_method_titles = ["OPG Target", "OPG Achievement", "General Training/Meeting", "Input Demo INM", "FFS", "Input Demo PM"] %>
+  <% demonstration_method_titles = ["OPG Training Target", "OPG Training Achievement", "General Training/Meeting", "Input Demo INM", "FFS", "Input Demo PM"] %>
   <% all_dashboard_summary_cards = Array(@dashboard_summary_cards) %>
   <% demonstration_method_cards = Array(@demonstration_method_cards).presence || all_dashboard_summary_cards.select { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
   <% dashboard_summary_cards = all_dashboard_summary_cards.reject { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
@@ -501,9 +501,9 @@
 
   <% if farmer_activity_mode %>
     <div class="dashboard-grid premium dashboard-training-secondary-summaries">
-      <% Array(@dashboard_cards).sort_by { |card| ["Jeevika Jankar Registration", "Jeevika Jankar Billing", "Gender Count", "FCO-wise JJ Requirement"].index(card[:title]) || 99 }.each do |card| %>
+      <% Array(@dashboard_cards).sort_by { |card| ["FCO-wise JJ Requirement", "Jeevika Jankar Billing", "Gender Count"].index(card[:title]) || 99 }.each do |card| %>
         <% next if card.blank? %>
-        <% next unless ["Jeevika Jankar Registration", "Jeevika Jankar Billing", "Gender Count", "FCO-wise JJ Requirement"].include?(card[:title]) %>
+        <% next unless ["FCO-wise JJ Requirement", "Jeevika Jankar Billing", "Gender Count"].include?(card[:title]) %>
         <% next unless card.is_a?(Hash) && card[:items].present? %>
         <article class="metric-card metric-card-group metric-card-group-<%= card[:style] %>">
           <span class="metric-card-group-title"><%= card[:title] %></span>

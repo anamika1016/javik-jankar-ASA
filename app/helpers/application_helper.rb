@@ -145,8 +145,8 @@ module ApplicationHelper
         ["Farmer Participation Report", :route, :farmer_participation_report_path],
         ["Seed Distribution Target", :module, "seed-distribution-target"],
         ["Seed Distribution Target List", :module, "seed-distribution-target-list"],
-        ["PAPL360 Target", :module, "papl360-target"],
-        ["PAPL360 Target List", :module, "papl360-target-list"],
+        ["ASA360 Target", :module, "papl360-target"],
+        ["ASA360 Target List", :module, "papl360-target-list"],
         ["Add Farmer Form", :module, "add-farmer-form"]
       ]
     },
@@ -286,7 +286,9 @@ module ApplicationHelper
   def sidebar_access_records_fingerprint
     @sidebar_access_records_fingerprint ||= ModuleRecord
       .where(module_slug: "access-control")
-      .pick(Arel.sql("COUNT(*)"), Arel.sql("COALESCE(MAX(id), 0)"), Arel.sql("COALESCE(EXTRACT(EPOCH FROM MAX(updated_at))::bigint, 0)"))
+      # Preserve sub-second precision so an edit made immediately after a
+      # create invalidates the sidebar permission cache on the next request.
+      .pick(Arel.sql("COUNT(*)"), Arel.sql("COALESCE(MAX(id), 0)"), Arel.sql("COALESCE(MAX(updated_at)::text, '')"))
   end
 
   def compute_allowed_sidebar_keys
@@ -350,29 +352,19 @@ module ApplicationHelper
     if ["VRP Type", "Add Jeevika Jankar Type", "Jeevika Jankar Type"].include?(name.to_s.strip)
       keys.concat(["vrp-type", "add-jeevika-jankar-type", "jeevika-jankar-type"])
     end
-    if ["Farmer Training", "Farmer Target"].include?(name.to_s.strip)
-      keys.concat(["farmer-training", "farmer-target", "farmer-participation-report", "seed-distribution-target", "papl360-target", "add-farmer-form"])
-    end
-    if ["Farmer Training Form", "Training Form", "Farmer Target Form"].include?(name.to_s.strip)
-      keys.concat(["farmer-training-form", "training-form", "farmer-target-form", "seed-distribution-target", "papl360-target", "other-target"])
-    end
-    if ["Farmer Training Form List", "Training Form List", "Farmer Target Form List"].include?(name.to_s.strip)
-      keys.concat(["farmer-training-form-list", "training-form-list", "farmer-target-form-list", "farmer-participation-report", "seed-distribution-target-list", "papl360-target-list", "other-target-list"])
-    end
-    if ["Seed Distribution Target", "Seed Distribution Target Form"].include?(name.to_s.strip)
-      keys.concat(["seed-distribution-target", "seed-distribution-target-form", "seed-distribution-target-list"])
-    end
-    if ["Seed Distribution Target List"].include?(name.to_s.strip)
-      keys.concat(["seed-distribution-target-list"])
-    end
-    if ["PAPL360 Target", "PAPL360 Targate", "PAPL360 Target Form"].include?(name.to_s.strip)
-      keys.concat(["papl360-target", "papl360-targate", "papl360-target-form", "papl360-target-list", "add-farmer-form"])
-    end
-    if ["PAPL360 Target List", "PAPL360 Targate List"].include?(name.to_s.strip)
-      keys.concat(["papl360-target-list", "papl360-targate-list", "add-farmer-form"])
-    end
-    if ["Add Farmer Form"].include?(name.to_s.strip)
-      keys.concat(["add-farmer-form"])
+    # Farmer Target permissions are independent.  Granting Training Form,
+    # for example, must not also expose Seed/ASA360/Other Target menus.
+    case name.to_s.strip
+    when "Farmer Training Form", "Training Form", "Farmer Target Form"
+      keys.concat(["farmer-training-form", "training-form", "farmer-target-form"])
+    when "Farmer Training Form List", "Training Form List", "Farmer Target Form List"
+      keys.concat(["farmer-training-form-list", "training-form-list", "farmer-target-form-list"])
+    when "Seed Distribution Target Form"
+      keys << "seed-distribution-target"
+    when "PAPL360 Targate", "PAPL360 Target Form", "ASA360 Targate", "ASA360 Target Form"
+      keys << "papl360-target"
+    when "PAPL360 Targate List", "ASA360 Targate List"
+      keys << "papl360-target-list"
     end
     if ["Farmer Farm Information", "Farmer FARM Information", "Farmer_FARM _Information"].include?(name.to_s.strip)
       keys.concat(["farmer-farm-information", "application-format-for-exit-of-farmer-from-ics"])
@@ -482,8 +474,8 @@ module ApplicationHelper
         ["Farmer Participation Report", :route, :farmer_participation_report_path],
         ["Seed Distribution Target", :module, "seed-distribution-target"],
         ["Seed Distribution Target List", :module, "seed-distribution-target-list"],
-        ["PAPL360 Target", :module, "papl360-target"],
-        ["PAPL360 Target List", :module, "papl360-target-list"],
+        ["ASA360 Target", :module, "papl360-target"],
+        ["ASA360 Target List", :module, "papl360-target-list"],
         ["Add Farmer Form", :module, "add-farmer-form"]
         ]
       },

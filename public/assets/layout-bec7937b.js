@@ -17,6 +17,11 @@ if (!window.__vrpLayoutGlobalsReady) {
   window.__vrpLayoutGlobalsReady = true;
   document.addEventListener("keydown", closeMobileMenuOnEscape);
   document.addEventListener("click", closeOpenChipMultiControls);
+  document.addEventListener("click", (event) => {
+    document.querySelectorAll("[data-dashboard-activity-picker][open]").forEach((picker) => {
+      if (!picker.contains(event.target)) picker.removeAttribute("open");
+    });
+  });
 }
 
 const vrpUiLabel = "Jeevika Jankar";
@@ -25,6 +30,21 @@ const replaceVrpUiText = (value) => `${value || ""}`
   .replace(/वीआरपी/g, vrpUiLabel)
   .replace(/व्हीआरपी/g, vrpUiLabel)
   .replace(/ଭିଆରପି/g, vrpUiLabel);
+
+const fetchJson = async (url, params = {}) => {
+  const requestUrl = new URL(url, window.location.origin);
+  if (params && typeof params === "object") {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        requestUrl.searchParams.set(key, value);
+      }
+    });
+  }
+
+  const response = await fetch(requestUrl, { headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error("Request failed");
+  return response.json();
+};
 
 const initAflFarmerMapping = () => {
   document.querySelectorAll("[data-afl-farmer-mapping]").forEach((form) => {
@@ -107,6 +127,24 @@ const initFastNavigation = () => {
       document.querySelectorAll(".side-module[open]").forEach((openModule) => {
         if (openModule !== module) openModule.removeAttribute("open");
       });
+    });
+  });
+};
+
+const initPasswordToggles = () => {
+  document.querySelectorAll("[data-password-toggle]").forEach((button) => {
+    if (button.dataset.passwordToggleBound === "true") return;
+
+    button.dataset.passwordToggleBound = "true";
+    button.addEventListener("click", () => {
+      const input = button.closest(".password-field, .login-password-field")?.querySelector("[data-password-toggle-input]");
+      if (!input) return;
+
+      const showPassword = input.type === "password";
+      input.type = showPassword ? "text" : "password";
+      button.setAttribute("aria-label", showPassword ? "Hide password" : "Show password");
+      button.title = showPassword ? "Hide password" : "Show password";
+      button.classList.toggle("is-visible", showPassword);
     });
   });
 };
@@ -300,18 +338,7 @@ function initDeferredLayoutPage() {
     });
   });
 
-  document.querySelectorAll("[data-password-toggle]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const input = button.closest(".password-field, .login-password-field")?.querySelector("[data-password-toggle-input]");
-      if (!input) return;
-
-      const showPassword = input.type === "password";
-      input.type = showPassword ? "text" : "password";
-      button.setAttribute("aria-label", showPassword ? "Hide password" : "Show password");
-      button.title = showPassword ? "Hide password" : "Show password";
-      button.classList.toggle("is-visible", showPassword);
-    });
-  });
+  initPasswordToggles();
 
   const capitalizeFirstLetter = (input) => {
     const value = input.value;
@@ -438,11 +465,6 @@ function initDeferredLayoutPage() {
       });
     });
 
-    document.addEventListener("click", (event) => {
-      if (!picker.hasAttribute("open")) return;
-      if (picker.contains(event.target)) return;
-      picker.removeAttribute("open");
-    });
   });
 
   const trainingDrilldown = document.querySelector("[data-training-participation-drilldown]");
@@ -696,6 +718,9 @@ function initDeferredLayoutPage() {
   }
 
   document.querySelectorAll("[data-vrp-active-selected]").forEach((button) => {
+    if (button.dataset.vrpActiveBound === "true") return;
+
+    button.dataset.vrpActiveBound = "true";
     button.addEventListener("click", async () => {
       const selected = Array.from(document.querySelectorAll("[data-vrp-row-select]:checked"));
       const active = button.dataset.vrpActiveSelected;
@@ -705,17 +730,20 @@ function initDeferredLayoutPage() {
         return;
       }
 
-      const responses = await Promise.all(selected.map((checkbox) => {
-        return fetch(`/vrps/${checkbox.value}/set_active?active=${encodeURIComponent(active)}`, {
-          method: "PATCH",
-          headers: {
-            "X-CSRF-Token": csrfToken,
-            "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml"
-          }
-        });
-      }));
+      const response = await fetch("/vrps/bulk_set_active", {
+        method: "PATCH",
+        headers: {
+          "X-CSRF-Token": csrfToken,
+          "Accept": "application/json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          ids: selected.map((checkbox) => checkbox.value),
+          active: active
+        })
+      });
 
-      if (responses.some((response) => !response.ok)) {
+      if (!response.ok) {
         window.alert(replaceVrpUiText("Some selected VRP record(s) could not be updated."));
         return;
       }
@@ -1717,48 +1745,30 @@ function initDeferredLayoutPage() {
     return uniquePresent((locationAliasKeys[key] || [key]).map((alias) => row[alias]));
   };
 
-  const locationValuesMatch = (left, right) => {
-    const normalizedLeft = normalizeOption(left);
-    const normalizedRight = normalizeOption(right);
-    if (!normalizedLeft || !normalizedRight) return false;
-    return normalizedLeft === normalizedRight ||
-      normalizedLeft.replace(/\s+/g, "") === normalizedRight.replace(/\s+/g, "") ||
-      normalizedLeft.includes(normalizedRight) ||
-      normalizedRight.includes(normalizedLeft);
-  };
-
   const locationRowMatchesParents = (row, selects, level) => {
     const parents = locationParents[level] || [];
     const immediateParent = parents[parents.length - 1];
     return parents.every((parentLevel) => {
       const parentValues = selectedLocationValues(selects[parentLevel]);
-      if (parentValues.length === 0) return parentLevel !== immediateParent;
+      if (parentValues.length === 0) return false;
 
       const parentKey = locationKeys[parentLevel];
       const rowValues = locationRowValues(row, parentKey);
       if (rowValues.length === 0) return parentLevel !== immediateParent;
 
-      return parentValues.some((value) => rowValues.some((rowValue) => locationValuesMatch(rowValue, value)));
+      return parentValues.some((value) => {
+        const normalizedValue = normalizeOption(value);
+        return rowValues.some((rowValue) => normalizeOption(rowValue) === normalizedValue);
+      });
     });
   };
 
   const optionMatchesLocationRow = (option, row, level) => {
     const key = locationKeys[level];
     return [row.id].concat(locationRowValues(row, key)).some((value) => {
-      return locationValuesMatch(value, option.value) || locationValuesMatch(value, option.textContent);
+      return normalizeOption(value) === normalizeOption(option.value) ||
+        normalizeOption(value) === normalizeOption(option.textContent);
     });
-  };
-
-  const optionDataFromLocationRow = (row, level) => {
-    const key = locationKeys[level];
-    const label = locationRowValues(row, key).find((value) => !/^[\d\s.\/-]+$/.test(String(value || "").trim())) ||
-      locationRowValues(row, key)[0];
-    if (!label) return null;
-
-    return {
-      value: label,
-      label: label
-    };
   };
 
   const replaceLocationOptions = (select, originalOptions, allowedRows, level) => {
@@ -1770,9 +1780,6 @@ function initDeferredLayoutPage() {
       if (option.value === "") return false;
       return allowedRows.some((row) => optionMatchesLocationRow(option, row, level));
     });
-    const rowOptions = allowedRows
-      .map((row) => optionDataFromLocationRow(row, level))
-      .filter(Boolean);
 
     const parentSelected = (locationParents[level] || []).every((parentLevel) => {
       return selectedLocationValues(select.closest("[data-location-form]")?.querySelector(`[data-location-level="${parentLevel}"]`)).length > 0;
@@ -1781,14 +1788,8 @@ function initDeferredLayoutPage() {
     const fallbackOptions = originalOptions.filter((option) => option.value !== "");
     const finalOptions = hasParents && !parentSelected
       ? []
-      : (hasParents ? filteredOptions.concat(rowOptions) : fallbackOptions.concat(rowOptions));
-    const uniqueFinalOptions = finalOptions
-      .filter((option) => option.value)
-      .filter((option, index, options) => {
-        const label = normalizeOption(option.label);
-        return options.findIndex((candidate) => normalizeOption(candidate.label) === label) === index;
-      });
-    uniqueFinalOptions.sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: "base" }));
+      : (hasParents ? filteredOptions : fallbackOptions);
+    finalOptions.sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: "base" }));
     select.innerHTML = "";
 
     const prompt = document.createElement("option");
@@ -1796,33 +1797,12 @@ function initDeferredLayoutPage() {
     prompt.textContent = blankOption.label;
     select.appendChild(prompt);
 
-    uniqueFinalOptions.forEach((optionData) => {
+    finalOptions.forEach((optionData) => {
       const option = document.createElement("option");
       option.value = optionData.value;
       option.textContent = optionData.label;
       option.selected = selectedValues.some((selected) => optionData.value === selected || optionData.label === selected);
       select.appendChild(option);
-    });
-    select.dispatchEvent(new Event("chip:refresh"));
-  };
-
-  const replaceLocationOptionsWithData = (select, optionData, level) => {
-    if (!select) return;
-
-    const selectedValues = uniquePresent(locationSelectedValuesFromDataset(select).concat(selectedLocationValues(select)));
-    select.innerHTML = "";
-
-    const prompt = document.createElement("option");
-    prompt.value = "";
-    prompt.textContent = `Select ${level}`;
-    select.appendChild(prompt);
-
-    optionData.forEach((data) => {
-      const option = document.createElement("option");
-      option.value = data.value || data.label || "";
-      option.textContent = data.label || data.value || "";
-      option.selected = selectedValues.some((selected) => option.value === selected || option.textContent === selected);
-      if (option.value) select.appendChild(option);
     });
     select.dispatchEvent(new Event("chip:refresh"));
   };
@@ -1860,41 +1840,11 @@ function initDeferredLayoutPage() {
       Object.keys(selects).forEach(syncLocationPrimary);
     };
 
-    const remoteLocationOptions = async (level) => {
-      if (!formShell.dataset.locationOptionsUrl) return null;
-
-      const parents = locationParents[level] || [];
-      if (parents.some((parentLevel) => selectedLocationValues(selects[parentLevel]).length === 0)) return [];
-
-      const url = new URL(formShell.dataset.locationOptionsUrl, window.location.origin);
-      url.searchParams.set("level", level);
-      parents.forEach((parentLevel) => {
-        const selected = Array.from(selects[parentLevel]?.selectedOptions || []).find((option) => option.value)?.textContent ||
-          selectedLocationValues(selects[parentLevel])[0];
-        if (selected) url.searchParams.set(locationKeys[parentLevel], selected);
-      });
-
-      const response = await fetch(url.toString(), { headers: { Accept: "application/json" } });
-      if (!response.ok) return null;
-
-      const payload = await response.json();
-      return Array.isArray(payload.options) ? payload.options : [];
-    };
-
-    const refreshLocationLevel = async (level) => {
+    const refreshLocationLevel = (level) => {
       if (!selects[level]) return;
 
-      const remoteOptions = await remoteLocationOptions(level);
-      if (remoteOptions) {
-        replaceLocationOptionsWithData(selects[level], remoteOptions, level);
-        syncLocationPrimary(level);
-        return;
-      }
-
       const key = locationKeys[level];
-      let allowedRows = mappings.filter((row) => row[key] && locationRowMatchesParents(row, selects, level));
-      const parentSelected = (locationParents[level] || []).every((parentLevel) => selectedLocationValues(selects[parentLevel]).length > 0);
-      if (!allowedRows.length && parentSelected) allowedRows = mappings.filter((row) => row[key]);
+      const allowedRows = mappings.filter((row) => row[key] && locationRowMatchesParents(row, selects, level));
       replaceLocationOptions(selects[level], originalOptions[level], allowedRows, level);
       syncLocationPrimary(level);
     };
@@ -1925,6 +1875,10 @@ function initDeferredLayoutPage() {
   });
 
   document.querySelectorAll("[data-training-target-form]").forEach((formShell) => {
+    if (formShell.dataset.trainingTargetBound === "true") return;
+    formShell.dataset.trainingTargetBound = "true";
+    formShell.querySelectorAll(".training-main-activity-chips, .training-sub-activity-chips").forEach((element) => element.remove());
+
     let mappings = [];
     let activityMappings = [];
     let monthOptions = [];
@@ -1943,6 +1897,8 @@ function initDeferredLayoutPage() {
     } catch (_error) {
       monthOptions = [];
     }
+    mappings = mappings.filter((mapping) => normalizeOption(mapping.main_activity_type || "Training") === normalizeOption("Training"));
+    activityMappings = activityMappings.filter((mapping) => normalizeOption(mapping.main_activity_type || "Training") === normalizeOption("Training"));
 
 	    const monthSelect = formShell.querySelector("[data-training-target-month]");
 	    const icsSelect = formShell.querySelector("[data-training-target-ics]");
@@ -1965,6 +1921,9 @@ function initDeferredLayoutPage() {
 	    const geoLongitudeInput = formShell.querySelector("[data-training-geo-longitude]");
 	    if (!icsSelect || !villageSelect) return;
 	    const selectedFarmerIds = new Set(JSON.parse(farmerPanel?.dataset.selectedFarmerIds || "[]").map(String));
+    const farmersUrl = formShell.dataset.trainingFarmersUrl;
+    const trainingFarmerCache = new Map();
+    let activeFarmerLoadKey = "";
 	    let mainActivityChips = null;
 	    if (mainActivitySelect) {
 	      mainActivityChips = document.createElement("div");
@@ -2039,15 +1998,14 @@ function initDeferredLayoutPage() {
       const selectedOptions = Array.from(mainActivitySelect.selectedOptions).filter((option) => option.value);
       mainActivityChips.innerHTML = "";
       if (!selectedOptions.length) {
-        mainActivityChips.innerHTML = '<div class="training-sub-activity-empty">Mapped Main Activities select karein.</div>';
+        mainActivityChips.innerHTML = '<span class="training-sub-activity-empty">Mapped Main Activities select karein.</span>';
         return;
       }
 
       selectedOptions.forEach((option) => {
-        const chip = document.createElement("div");
+        const chip = document.createElement("span");
         chip.className = "training-sub-activity-chip";
-        const text = document.createElement("span");
-        text.textContent = option.textContent || option.value;
+        chip.append(document.createTextNode(option.textContent || option.value));
         const remove = document.createElement("button");
         remove.type = "button";
         remove.className = "training-sub-activity-remove";
@@ -2059,7 +2017,6 @@ function initDeferredLayoutPage() {
           renderMainActivityChips();
           mainActivitySelect.dispatchEvent(new Event("change", { bubbles: true }));
         });
-        chip.appendChild(text);
         chip.appendChild(remove);
         mainActivityChips.appendChild(chip);
       });
@@ -2080,15 +2037,14 @@ function initDeferredLayoutPage() {
       const selectedOptions = Array.from(subActivitySelect.selectedOptions).filter((option) => option.value);
       subActivityChips.innerHTML = "";
       if (!selectedOptions.length) {
-        subActivityChips.innerHTML = '<div class="training-sub-activity-empty">Main Activity select karne par mapped Sub Activities yahan aayengi.</div>';
+        subActivityChips.innerHTML = '<span class="training-sub-activity-empty">Main Activity select karne par mapped Sub Activities yahan aayengi.</span>';
         return;
       }
 
       selectedOptions.forEach((option) => {
-        const chip = document.createElement("div");
+        const chip = document.createElement("span");
         chip.className = "training-sub-activity-chip";
-        const text = document.createElement("span");
-        text.textContent = option.textContent || option.value;
+        chip.append(document.createTextNode(option.textContent || option.value));
         const remove = document.createElement("button");
         remove.type = "button";
         remove.className = "training-sub-activity-remove";
@@ -2100,7 +2056,6 @@ function initDeferredLayoutPage() {
           renderSubActivityChips();
           subActivitySelect.dispatchEvent(new Event("change", { bubbles: true }));
         });
-        chip.appendChild(text);
         chip.appendChild(remove);
         subActivityChips.appendChild(chip);
       });
@@ -2204,7 +2159,7 @@ function initDeferredLayoutPage() {
       monthSelect.dataset.selectedValue = months[0];
     };
 
-    const mappedFarmers = () => {
+    const selectedTrainingTargetRows = () => {
       syncTrainingMonthFromSelection();
 
       const selectedVillage = normalizeOption(villageSelect.value);
@@ -2214,23 +2169,51 @@ function initDeferredLayoutPage() {
         : [];
       if (!monthSelect?.value || !selectedVillage || !selectedMainActivities.length) return [];
 
-      const farmersById = new Map();
-      targetRowsForSelection({ requireMonth: true, requireVillage: true, requireMainActivity: true })
+      return targetRowsForSelection({ requireMonth: true, requireVillage: true, requireMainActivity: true })
 	        .filter((mapping) => mappingMatchesSelectedSubActivities(mapping, selectedSubActivities))
-	        .forEach((mapping) => {
-	          const includedFarmerIds = new Set((mapping.completed_farmer_ids || []).map(String));
-	          (mapping.farmers || []).forEach((farmer) => {
-	            if (!farmer.id) return;
-	            const farmerId = String(farmer.id);
-	            const existingFarmer = farmersById.get(farmerId);
-	            farmersById.set(farmerId, {
-	              ...farmer,
-	              already_included: Boolean(existingFarmer?.already_included || includedFarmerIds.has(farmerId))
-	            });
-	          });
-	        });
-	      return Array.from(farmersById.values());
-	    };
+    };
+
+    const targetRowsKey = (rows) => rows
+      .map((mapping) => String(mapping.target_mapping_id || ""))
+      .filter(Boolean)
+      .sort()
+      .join(",");
+
+    const mappedFarmers = async () => {
+      const rows = selectedTrainingTargetRows();
+      if (!rows.length) return [];
+
+      const key = targetRowsKey(rows);
+      if (!key) return [];
+      if (trainingFarmerCache.has(key)) return trainingFarmerCache.get(key);
+
+      const inlineFarmers = rows.flatMap((mapping) => mapping.farmers || []);
+      if (inlineFarmers.length || !farmersUrl) {
+        const farmersById = new Map();
+        rows.forEach((mapping) => {
+          const includedFarmerIds = new Set((mapping.completed_farmer_ids || []).map(String));
+          (mapping.farmers || []).forEach((farmer) => {
+            if (!farmer.id) return;
+            const farmerId = String(farmer.id);
+            const existingFarmer = farmersById.get(farmerId);
+            farmersById.set(farmerId, {
+              ...farmer,
+              already_included: Boolean(existingFarmer?.already_included || includedFarmerIds.has(farmerId))
+            });
+          });
+        });
+        const farmers = Array.from(farmersById.values());
+        trainingFarmerCache.set(key, farmers);
+        return farmers;
+      }
+
+      const url = new URL(farmersUrl, window.location.origin);
+      url.searchParams.set("target_mapping_ids", key);
+      const data = await fetchJson(url.toString());
+      const farmers = Array.isArray(data.farmers) ? data.farmers : [];
+      trainingFarmerCache.set(key, farmers);
+      return farmers;
+    };
 
 	    const selectedFarmerBoxes = () => Array.from(formShell.querySelectorAll("[data-training-farmer-checkbox]:checked"));
 	    const allFarmerBoxes = () => Array.from(formShell.querySelectorAll("[data-training-farmer-checkbox]"));
@@ -2250,12 +2233,20 @@ function initDeferredLayoutPage() {
 	    };
 	    const numberValue = (input) => Number(input?.value || 0);
 
-	    const syncTotalFarmerCount = () => {
+    const syncTotalFarmerCount = () => {
 	      if (!totalFarmerCountInput) return;
 
 	      const total = numberValue(maleCountInput) + numberValue(femaleCountInput);
 	      totalFarmerCountInput.value = total ? String(total) : "";
 	    };
+
+    const syncIcsFarmerCountSplit = () => {
+      if (!icsSelect?.value || !maleCountInput || !femaleCountInput) return;
+
+      const count = selectedFarmerBoxes().length;
+      maleCountInput.value = "0";
+      femaleCountInput.value = String(count);
+    };
 
 	    const updateFarmerCount = () => {
 	      const count = selectedFarmerBoxes().length;
@@ -2272,6 +2263,7 @@ function initDeferredLayoutPage() {
 	        farmerSelectAllButton.disabled = boxes.length === 0;
 	        farmerSelectAllButton.textContent = boxes.length > 0 && count === boxes.length ? "Clear all" : "Select all";
 	      }
+      syncIcsFarmerCountSplit();
 	      syncTotalFarmerCount();
 	      validateTrainingCountSplit(false);
 	    };
@@ -2311,10 +2303,11 @@ function initDeferredLayoutPage() {
 	      return false;
 	    };
 
-	    const renderTrainingFarmers = () => {
+	    const renderTrainingFarmers = async () => {
 	      if (!farmerList) return;
 	      if (farmerSearchEmpty) farmerSearchEmpty.hidden = true;
-	      const farmers = mappedFarmers();
+      const targetRows = selectedTrainingTargetRows();
+      const loadKey = targetRowsKey(targetRows);
 
 	      if (monthSelect && !monthSelect.value) {
 	        farmerList.textContent = "Select Month to load target farmers.";
@@ -2350,6 +2343,27 @@ function initDeferredLayoutPage() {
       if (selectedMainActivityValues().length && !selectedSubActivityCount) {
         farmerList.textContent = "Select Sub Activity to narrow the target farmers.";
       }
+
+      if (!targetRows.length) {
+        farmerList.textContent = "No target farmers found for selected activity.";
+        if (farmerSelectAll) farmerSelectAll.checked = false;
+        updateFarmerCount();
+        return;
+      }
+
+      activeFarmerLoadKey = loadKey;
+      farmerList.textContent = "Loading target farmers...";
+      let farmers = [];
+      try {
+        farmers = await mappedFarmers();
+      } catch (_error) {
+        if (activeFarmerLoadKey === loadKey) {
+          farmerList.textContent = "Target farmers load failed. Please try again.";
+          updateFarmerCount();
+        }
+        return;
+      }
+      if (activeFarmerLoadKey !== loadKey) return;
 
       if (!farmers.length) {
         farmerList.textContent = "No target farmers found for selected activity.";
@@ -2598,6 +2612,9 @@ function initDeferredLayoutPage() {
     const farmerSearchEmpty = formShell.querySelector("[data-seed-farmer-search-empty]");
     if (!vrpSelect || !monthSelect || !icsSelect || !villageSelect || !topicSelect || !subjectSelect) return;
     const selectedSeedFarmerIds = new Set(JSON.parse(farmerPanel?.dataset.selectedFarmerIds || "[]").map(String));
+    const seedFarmersUrl = formShell.dataset.seedFarmersUrl;
+    const seedFarmerCache = new Map();
+    let activeSeedFarmerKey = "";
 
     const escapeSeedHtml = (value) => String(value || "")
       .replaceAll("&", "&amp;")
@@ -2766,7 +2783,28 @@ function initDeferredLayoutPage() {
       }
     };
 
-    const renderSeedFarmers = () => {
+    const seedFarmersForMapping = async (mapping) => {
+      const targetId = String(mapping?.target_mapping_id || "");
+      if (!targetId) return { farmers: mapping?.farmers || [], completedFarmerIds: mapping?.completed_farmer_ids || [] };
+      if (seedFarmerCache.has(targetId)) return seedFarmerCache.get(targetId);
+      if ((mapping.farmers || []).length || !seedFarmersUrl) {
+        const cached = { farmers: mapping.farmers || [], completedFarmerIds: mapping.completed_farmer_ids || [] };
+        seedFarmerCache.set(targetId, cached);
+        return cached;
+      }
+
+      const url = new URL(seedFarmersUrl, window.location.origin);
+      url.searchParams.set("target_mapping_id", targetId);
+      const data = await fetchJson(url.toString());
+      const cached = {
+        farmers: Array.isArray(data.farmers) ? data.farmers : [],
+        completedFarmerIds: Array.isArray(data.completed_farmer_ids) ? data.completed_farmer_ids : []
+      };
+      seedFarmerCache.set(targetId, cached);
+      return cached;
+    };
+
+    const renderSeedFarmers = async () => {
       if (!farmerList) return;
 
       const mapping = selectedSeedMapping();
@@ -2777,8 +2815,6 @@ function initDeferredLayoutPage() {
         return;
       }
 
-      const farmers = mapping.farmers || [];
-      const completedFarmerIds = new Set((mapping.completed_farmer_ids || []).map(String));
       if (mapping.new_farmer_target) {
         farmerList.textContent = "New Farmer Target saved without mapped farmers.";
         if (farmerSearchEmpty) farmerSearchEmpty.hidden = true;
@@ -2787,6 +2823,24 @@ function initDeferredLayoutPage() {
         return;
       }
 
+      const loadKey = String(mapping.target_mapping_id || "");
+      activeSeedFarmerKey = loadKey;
+      farmerList.textContent = "Loading mapped farmers...";
+      let loadedData = { farmers: [], completedFarmerIds: [] };
+      try {
+        loadedData = await seedFarmersForMapping(mapping);
+      } catch (_error) {
+        if (activeSeedFarmerKey === loadKey) {
+          farmerList.textContent = "Mapped farmers load failed. Please try again.";
+          if (farmerSearchEmpty) farmerSearchEmpty.hidden = true;
+          updateSeedFarmerCount();
+        }
+        return;
+      }
+      if (activeSeedFarmerKey !== loadKey) return;
+
+      const farmers = loadedData.farmers || [];
+      const completedFarmerIds = new Set((loadedData.completedFarmerIds || []).map(String));
       if (!farmers.length) {
         farmerList.textContent = "No mapped farmers found for selected activity.";
         if (farmerSearchEmpty) farmerSearchEmpty.hidden = true;
@@ -3099,16 +3153,7 @@ function initDeferredLayoutPage() {
       select.disabled = options.length === 0;
     };
 
-    const fetchJson = async (url, params) => {
-      const requestUrl = new URL(url, window.location.origin);
-      Object.entries(params).forEach(([key, value]) => {
-        if (value) requestUrl.searchParams.set(key, value);
-      });
 
-      const response = await fetch(requestUrl, { headers: { Accept: "application/json" } });
-      if (!response.ok) throw new Error("Request failed");
-      return response.json();
-    };
 
     const selectedFarmerBoxes = () => Array.from(shell.querySelectorAll("[data-vrp-ics-farmer-checkbox]:checked"));
 
@@ -3257,14 +3302,19 @@ function initDeferredLayoutPage() {
 
     const vrpSelect = shell.querySelector("[data-target-vrp]");
     const fcoSelect = shell.querySelector("[data-target-fco]");
+    const targetEntryModeSelect = shell.querySelector("[data-target-entry-mode]");
+    const blockSelect = shell.querySelector("[data-target-block]");
     const icsSelect = shell.querySelector("[data-target-ics]");
+    const icsHidden = shell.querySelector("[data-target-ics-hidden]");
     const villageSelect = shell.querySelector("[data-target-village]");
     const villageHidden = shell.querySelector("[data-target-village-hidden]");
     const monthSelect = shell.querySelector("select[name='target_mapping[month_name]']");
+    const targetTypeSelect = shell.querySelector("[data-target-type]");
     const mainActivitySelect = shell.querySelector("[data-target-main-activity]");
     const subActivitySelect = shell.querySelector("[data-target-sub-activity]");
     const subActivityField = shell.querySelector("[data-target-sub-activity-field]");
     const standardQuantityFields = Array.from(shell.querySelectorAll("[data-target-standard-quantity-fields]"));
+    const farmerOnlyFields = Array.from(shell.querySelectorAll("[data-target-farmer-only-field]"));
     const trainingFieldsPanel = shell.querySelector("[data-target-training-fields]");
     const trainingTargetInputs = () => Array.from(shell.querySelectorAll("[data-training-target-input]"));
     const targetInput = shell.querySelector("[data-target-quantity-input]");
@@ -3278,6 +3328,8 @@ function initDeferredLayoutPage() {
     const farmerSearchEmpty = shell.querySelector("[data-target-farmer-search-empty]");
     const weeklySummary = shell.querySelector("[data-target-weekly-summary]");
     const weeklyRows = shell.querySelector("[data-target-weekly-rows]");
+    const weeklyHeaderRow = shell.querySelector("[data-target-weekly-header-row]");
+    const weeklyViewHeader = shell.querySelector("[data-target-weekly-view-header]");
     const weeklySelectedTotal = shell.querySelector("[data-target-weekly-selected-total]");
     const farmerDialog = shell.querySelector("[data-target-farmer-dialog]");
     const farmerDialogTitle = shell.querySelector("[data-target-farmer-dialog-title]");
@@ -3301,6 +3353,9 @@ function initDeferredLayoutPage() {
     let editTarget = {};
     let targetSubActivityRows = [];
     let mainActivityTypeRows = [];
+    let blockFcoOptions = [];
+    let blockOptionsByFco = {};
+    let targetBlockOptions = [];
     let targetLoadRequestId = 0;
     let activeFarmerDialogRowKey = "";
     const weeklyPlanValues = {};
@@ -3321,6 +3376,28 @@ function initDeferredLayoutPage() {
     } catch (_error) {
       mainActivityTypeRows = [];
     }
+    try {
+      blockFcoOptions = JSON.parse(shell.dataset.blockFcoOptions || "[]");
+    } catch (_error) {
+      blockFcoOptions = [];
+    }
+    try {
+      blockOptionsByFco = JSON.parse(shell.dataset.blockOptionsByFco || "{}");
+    } catch (_error) {
+      blockOptionsByFco = {};
+    }
+    if (mainActivitySelect && !mainActivitySelect.dataset.originalOptions) {
+      mainActivitySelect.dataset.originalOptions = JSON.stringify(Array.from(mainActivitySelect.options || []).map((option) => ({
+        value: option.value,
+        label: option.textContent || ""
+      })));
+    }
+    let originalMainActivityOptions = [];
+    try {
+      originalMainActivityOptions = JSON.parse(mainActivitySelect?.dataset.originalOptions || "[]");
+    } catch (_error) {
+      originalMainActivityOptions = [];
+    }
 
     const escapeHtml = (value) => String(value || "")
       .replaceAll("&", "&amp;")
@@ -3334,6 +3411,7 @@ function initDeferredLayoutPage() {
     const availableTargetBoxes = () => targetBoxes().filter((checkbox) => !checkbox.disabled);
     const visibleAvailableTargetBoxes = () => availableTargetBoxes().filter((checkbox) => !checkbox.closest(".vrp-ics-farmer-item")?.hidden);
     const targetFarmerSearchTerm = () => (farmerSearchInput?.value || "").trim().toLowerCase();
+    const villageTargetMode = () => (targetTypeSelect?.value || "").trim().toLowerCase() === "village";
     const newFarmerTargetMode = () => (newFarmerTargetInput?.value || "").trim() !== "";
     const clearNewFarmerTargetForSelection = () => {
       if (!newFarmerTargetInput || !newFarmerTargetMode()) return;
@@ -3345,8 +3423,8 @@ function initDeferredLayoutPage() {
       if (!targetInput) return;
 
       const manualMode = newFarmerTargetMode();
-      targetInput.disabled = manualMode;
-      targetInput.required = !manualMode;
+      targetInput.disabled = manualMode && !villageTargetMode();
+      targetInput.required = !manualMode || villageTargetMode();
       targetInput.setCustomValidity("");
     };
     const locationValueParts = (value) => `${value || ""}`.split("||");
@@ -3384,8 +3462,34 @@ function initDeferredLayoutPage() {
 
       villageHidden.value = JSON.stringify(targetSelectedValues(villageSelect));
     };
+    const targetBlockWiseMode = () => (targetEntryModeSelect?.value || "").trim() === "block_wise";
+    const selectedTargetFcoId = () => locationValueParts(fcoSelect?.value || fcoSelect?.dataset.selectedValue)[0];
+    const blockOptionsForSelectedFco = () => blockOptionsByFco[selectedTargetFcoId()] || [];
+    const selectedTargetIcsValue = () => targetBlockWiseMode()
+      ? (blockSelect?.value || "")
+      : (icsSelect?.value || icsSelect?.dataset.selectedValue || "");
+    const syncTargetIcsHidden = () => {
+      if (icsHidden) icsHidden.value = selectedTargetIcsValue();
+    };
+    const syncTargetEntryMode = () => {
+      const blockWise = targetBlockWiseMode();
 
-    const fillTargetSelect = (select, options, placeholder) => {
+      if (blockSelect) {
+        const hasBlocks = targetBlockOptions.length > 0 || Array.from(blockSelect.options || []).some((option) => option.value);
+        // In Block Wise mode it becomes selectable as soon as an FCO is chosen.
+        // The Office List mapping fills its options immediately after that.
+        blockSelect.disabled = !blockWise || (!selectedTargetFcoId() && !hasBlocks);
+        blockSelect.required = blockWise;
+      }
+      if (icsSelect) {
+        const hasIcs = Array.from(icsSelect.options || []).some((option) => option.value);
+        icsSelect.disabled = blockWise || !hasIcs;
+        icsSelect.required = !blockWise;
+      }
+      syncTargetIcsHidden();
+    };
+
+    const fillTargetSelect = (select, options, placeholder, emptyLabel = "") => {
       if (!select) return;
 
       const selectedValues = targetSelectedValues(select);
@@ -3393,7 +3497,7 @@ function initDeferredLayoutPage() {
 
       const blank = document.createElement("option");
       blank.value = "";
-      blank.textContent = options.length ? placeholder : `No ${placeholder.replace(/^Select\s+/i, "")} saved yet`;
+      blank.textContent = options.length ? placeholder : (emptyLabel || `No ${placeholder.replace(/^Select\s+/i, "")} saved yet`);
       select.appendChild(blank);
 
       options.forEach((optionData) => {
@@ -3408,6 +3512,7 @@ function initDeferredLayoutPage() {
       delete select.dataset.selectedValues;
       select.disabled = options.length === 0;
       select.dispatchEvent(new Event("chip:refresh"));
+      syncTargetEntryMode();
     };
     const clearTargetVillageSelection = () => {
       if (!villageSelect) return;
@@ -3432,6 +3537,29 @@ function initDeferredLayoutPage() {
       return selected.some((name) => mainActivityTypeFor(name) === normalizeOption("Training"));
     };
     const filledTrainingTargets = () => trainingTargetInputs().filter((input) => String(input.value || "").trim() !== "");
+    const refreshMainActivityOptionsForTargetType = (resetSelection = false) => {
+      if (!mainActivitySelect || !originalMainActivityOptions.length) return;
+
+      const selectedValues = resetSelection ? [] : targetSelectedValues(mainActivitySelect);
+      const filteredOptions = originalMainActivityOptions.filter((option) => {
+        if (!option.value) return true;
+        return !villageTargetMode() || mainActivityTypeFor(option.value) !== normalizeOption("Training");
+      });
+
+      mainActivitySelect.innerHTML = "";
+      filteredOptions.forEach((optionData) => {
+        const option = document.createElement("option");
+        option.value = optionData.value;
+        option.textContent = optionData.label;
+        option.selected = selectedValues.some((selected) => targetOptionMatches(option.value, selected));
+        mainActivitySelect.appendChild(option);
+      });
+      mainActivitySelect.disabled = filteredOptions.filter((option) => option.value).length === 0;
+      mainActivitySelect.dataset.selectionDirty = "true";
+      delete mainActivitySelect.dataset.selectedValue;
+      delete mainActivitySelect.dataset.selectedValues;
+      mainActivitySelect.dispatchEvent(new Event("chip:refresh"));
+    };
 
     const targetSubActivityOptionsForMain = () => {
       const selectedMainActivities = selectedMainActivityNames().map((value) => normalizeOption(value));
@@ -3446,6 +3574,7 @@ function initDeferredLayoutPage() {
 
     const syncTargetActivityMode = () => {
       const trainingMode = trainingActivityTypeSelected();
+      const villageMode = villageTargetMode();
 
       // Sub Activity always stays visible and enabled (loads from selected Main Activity).
       if (subActivityField) {
@@ -3475,12 +3604,21 @@ function initDeferredLayoutPage() {
           }
         });
       });
+      farmerOnlyFields.forEach((field) => {
+        field.hidden = villageMode;
+        if (villageMode) field.setAttribute("hidden", "hidden");
+        else field.removeAttribute("hidden");
+        field.querySelectorAll("input").forEach((input) => {
+          input.disabled = villageMode;
+          if (villageMode) input.setCustomValidity("");
+        });
+      });
 
-      if (trainingFieldsPanel) trainingFieldsPanel.hidden = !trainingMode;
+      if (trainingFieldsPanel) trainingFieldsPanel.hidden = !trainingMode || villageMode;
 
       trainingTargetInputs().forEach((input) => {
-        input.disabled = !trainingMode;
-        if (!trainingMode && !editTarget.id) input.value = "";
+        input.disabled = !trainingMode || villageMode;
+        if ((!trainingMode || villageMode) && !editTarget.id) input.value = "";
       });
 
       syncNewFarmerTargetMode();
@@ -3545,40 +3683,21 @@ function initDeferredLayoutPage() {
       const mainActivities = selectedMainActivityNames();
       if (!mainActivities.length) return [];
       const subActivities = selectedSubActivityNames();
-      if (!subActivities.length) return [];
-
-      const selectedMainSet = new Set(mainActivities.map((value) => normalizeOption(value)));
-      const selectedSubSet = new Set(subActivities.map((value) => normalizeOption(value)));
-      const mappedRows = targetSubActivityRows
-        .filter((row) => selectedMainSet.has(normalizeOption(row.main_activity)) && selectedSubSet.has(normalizeOption(row.sub_activity)))
-        .map((row) => ({
-          mainActivity: row.main_activity,
-          mainActivityLabel: row.main_activity,
-          subActivityLabels: [row.sub_activity],
-          subActivity: row.sub_activity,
-          label: [row.main_activity, row.sub_activity].filter(Boolean).join(" - ")
-        }));
-
-      if (mappedRows.length) return mappedRows;
-
-      return mainActivities.map((mainActivity, index) => {
-        const subActivity = subActivities[index] || subActivities[0] || "";
-        return {
-          mainActivity,
-          mainActivityLabel: mainActivity,
-          subActivityLabels: [subActivity].filter(Boolean),
-          subActivity,
-          label: [mainActivity, subActivity].filter(Boolean).join(" - ")
-        };
-      });
+      return [{
+        mainActivity: "__common__",
+        mainActivityLabel: mainActivities.join(", "),
+        subActivityLabels: subActivities,
+        subActivity: "",
+        label: mainActivities.join(", ")
+      }];
     };
 
-    const weeklyRowKey = (row) => `${row.mainActivity || ""}||${row.subActivity || ""}`;
+    const weeklyRowKey = (row) => `${row.mainActivity || ""}`;
     const farmerIdsForRow = (rowKey) => {
       const mainActivity = String(rowKey || "");
       const savedFarmerIds = savedEditFarmerIds();
       const editRowMatches = editTarget.id &&
-        normalizeOption(mainActivity) === normalizeOption((editTarget.main_activity_names || []).join(", "));
+        normalizeOption(mainActivity) === normalizeOption(editTarget.main_activity_names?.[0]);
 
       if (editRowMatches && savedFarmerIds.length && !weeklyPlanFarmerIdsDirty.has(rowKey)) {
         weeklyPlanFarmerIds[rowKey] = new Set(savedFarmerIds);
@@ -3603,36 +3722,6 @@ function initDeferredLayoutPage() {
     };
     const selectedFarmerIdsForActiveRow = () => farmerIdsForRow(activeFarmerDialogRowKey);
     const totalActivityFarmerSelections = () => Object.values(weeklyPlanFarmerIds).reduce((total, ids) => total + ids.size, 0);
-    const allPlannedFarmerIds = () => {
-      const ids = [];
-      Object.values(weeklyPlanFarmerIds).forEach((rowIds) => {
-        rowIds.forEach((id) => ids.push(String(id)));
-      });
-      return [...new Set(ids.filter(Boolean))];
-    };
-    const syncPlannedFarmerInputs = () => {
-      shell.querySelectorAll("[data-target-synced-afl-input]").forEach((input) => input.remove());
-
-      const plannedIds = allPlannedFarmerIds();
-      const plannedIdSet = new Set(plannedIds);
-      targetBoxes().forEach((checkbox) => {
-        checkbox.checked = plannedIdSet.has(String(checkbox.value));
-      });
-
-      const existingBoxIds = new Set(targetBoxes().map((checkbox) => String(checkbox.value)));
-      plannedIds.forEach((id) => {
-        if (existingBoxIds.has(id)) return;
-
-        const input = document.createElement("input");
-        input.type = "hidden";
-        input.name = "target_mapping[afl_ids][]";
-        input.value = id;
-        input.dataset.targetSyncedAflInput = "true";
-        form?.appendChild(input);
-      });
-
-      if (targetInput && plannedIds.length) targetInput.value = String(plannedIds.length);
-    };
     const weeklyPlanValue = (row, field, fallback = "") => {
       const savedValue = weeklyPlanValues[weeklyRowKey(row)]?.[field];
       return savedValue === undefined ? fallback : savedValue;
@@ -3666,11 +3755,15 @@ function initDeferredLayoutPage() {
       restoreEditFarmerSelections(rows);
       const monthlyCount = selectedFarmerMonthlyCount();
       const selectedLabel = `${totalActivityFarmerSelections()} total farmer selections`;
-      if (weeklySelectedTotal) weeklySelectedTotal.textContent = selectedLabel;
+      if (weeklySelectedTotal) weeklySelectedTotal.textContent = villageTargetMode() ? "Village target" : selectedLabel;
+      if (weeklyViewHeader) weeklyViewHeader.hidden = villageTargetMode();
+      const totalHeader = weeklyHeaderRow?.querySelector("th:nth-last-child(2)");
+      if (totalHeader) totalHeader.hidden = villageTargetMode();
 
       weeklySummary.hidden = rows.length === 0;
+      weeklySummary.classList.toggle("target-weekly-village-mode", villageTargetMode());
       if (!rows.length) {
-        weeklyRows.innerHTML = '<tr><td colspan="8">Select Main Activity to view weekly plan.</td></tr>';
+        weeklyRows.innerHTML = `<tr><td colspan="${villageTargetMode() ? 6 : 8}">Select Main Activity to view weekly plan.</td></tr>`;
         return;
       }
 
@@ -3679,7 +3772,9 @@ function initDeferredLayoutPage() {
         const selectedIds = farmerIdsForRow(rowKey);
         const rowMonthlyCount = trainingMonthlyTargetFor(row) || monthlyCount;
         const rowWeeklyCounts = weeklyCountsFor(rowMonthlyCount);
-        const farmerInputs = Array.from(selectedIds).map((id) => `<input type="hidden" name="target_mapping[weekly_plan][${index}][afl_ids][]" value="${escapeHtml(id)}">`).join("");
+        const farmerInputs = villageTargetMode() ? "" : Array.from(selectedIds).map((id) => `<input type="hidden" name="target_mapping[weekly_plan][${index}][afl_ids][]" value="${escapeHtml(id)}">`).join("");
+        const viewCell = villageTargetMode() ? "" : `<td><div class="target-weekly-cell-center"><button type="button" class="table-action" data-target-weekly-view="${index}" data-weekly-row-key="${escapeHtml(weeklyRowKey(row))}" data-activity-label="${escapeHtml(row.label)}">View</button></div></td>`;
+        const totalCell = villageTargetMode() ? "" : `<td><div class="target-weekly-cell-center"><strong data-target-weekly-farmer-total>${selectedIds.size}</strong>${farmerInputs}</div></td>`;
         return `
         <tr>
           <td>
@@ -3692,8 +3787,8 @@ function initDeferredLayoutPage() {
           <td><div class="target-weekly-cell-center">${weeklyPlanInput(row, index, "week_2", rowWeeklyCounts[1])}</div></td>
           <td><div class="target-weekly-cell-center">${weeklyPlanInput(row, index, "week_3", rowWeeklyCounts[2])}</div></td>
           <td><div class="target-weekly-cell-center">${weeklyPlanInput(row, index, "week_4", rowWeeklyCounts[3])}</div></td>
-          <td><div class="target-weekly-cell-center"><strong data-target-weekly-farmer-total>${selectedIds.size}</strong>${farmerInputs}</div></td>
-          <td><div class="target-weekly-cell-center"><button type="button" class="table-action" data-target-weekly-view="${index}" data-weekly-row-key="${escapeHtml(weeklyRowKey(row))}" data-activity-label="${escapeHtml(row.label)}">View</button></div></td>
+          ${totalCell}
+          ${viewCell}
         </tr>
       `;
       }).join("");
@@ -3702,6 +3797,10 @@ function initDeferredLayoutPage() {
     const dialogFarmerSearchTerm = () => (farmerDialogSearch?.value || "").trim().toLowerCase();
 
     const syncDialogFarmerTotals = () => {
+      if (villageTargetMode()) {
+        if (weeklySelectedTotal) weeklySelectedTotal.textContent = "Village target";
+        return;
+      }
       const limit = activeFarmerLimit();
       const selectedCount = activeFarmerDialogRowKey ? selectedFarmerIdsForActiveRow().size : 0;
       const selectedLabel = activeFarmerDialogRowKey && Number.isInteger(limit) && limit > 0
@@ -3788,8 +3887,8 @@ function initDeferredLayoutPage() {
       const visibleSelectedCount = availableBoxes.filter((checkbox) => checkbox.checked).length;
       if (farmerCountLabel) farmerCountLabel.textContent = `${selectedCount} farmer selected`;
       if (registeredCountInput) registeredCountInput.value = String(totalCount);
-      if (targetInput) targetInput.value = String(selectedCount);
-      if (targetInput) targetInput.max = String(availableTargetBoxes().length || selectedCount || 1);
+      if (targetInput) targetInput.value = villageTargetMode() ? String(totalCount) : String(selectedCount);
+      if (targetInput) targetInput.max = String(availableTargetBoxes().length || selectedCount || totalCount || 1);
       syncNewFarmerTargetMode();
       if (farmerSelectAll) {
         farmerSelectAll.checked = availableCount > 0 && visibleSelectedCount === availableCount;
@@ -3870,9 +3969,12 @@ function initDeferredLayoutPage() {
       const url = new URL(shell.dataset.mappingsUrl, window.location.origin);
       if (vrpSelect?.value) url.searchParams.set("vrp_id", vrpSelect.value);
       const fcoValue = fcoSelect?.value || fcoSelect?.dataset.selectedValue;
-      const icsValue = icsSelect?.value || icsSelect?.dataset.selectedValue;
+      const blockValue = blockSelect?.value || "";
+      const icsValue = selectedTargetIcsValue();
       const villageValues = targetSelectedValues(villageSelect);
+      if (targetEntryModeSelect?.value) url.searchParams.set("target_entry_mode", targetEntryModeSelect.value);
       if (fcoValue) url.searchParams.set("fco_id", fcoValue);
+      if (blockValue) url.searchParams.set("block_id", blockValue);
       if (icsValue) url.searchParams.set("ics_id", icsValue);
       if (villageValues.length) url.searchParams.set("village_ids", JSON.stringify(villageValues));
       if (monthSelect?.value) url.searchParams.set("month_name", monthSelect.value);
@@ -3880,6 +3982,7 @@ function initDeferredLayoutPage() {
       const subActivityValues = targetSelectedValues(subActivitySelect);
       if (mainActivityValues.length) url.searchParams.set("main_activity_name", JSON.stringify(mainActivityValues));
       if (subActivityValues.length) url.searchParams.set("activity_name", JSON.stringify(subActivityValues));
+      if (targetTypeSelect?.value) url.searchParams.set("target_type", targetTypeSelect.value);
       if (editTarget.id) url.searchParams.set("edit_id", editTarget.id);
 
       try {
@@ -3888,10 +3991,29 @@ function initDeferredLayoutPage() {
         const data = await response.json();
         if (requestId !== targetLoadRequestId) return;
 
-        fillTargetSelect(fcoSelect, data.fco_options || [], "Select FCO Name");
+        // Block-wise FCOs always come from Office List.  Keep this client-side
+        // source authoritative so a late/stale AFL response cannot replace it.
+        fillTargetSelect(fcoSelect, targetBlockWiseMode() ? blockFcoOptions : (data.fco_options || []), "Select FCO Name");
+        if (targetBlockWiseMode()) {
+          targetBlockOptions = Array.isArray(data.block_options) ? data.block_options : [];
+          fillTargetSelect(blockSelect, targetBlockOptions, "Select Block");
+        }
         fillTargetSelect(icsSelect, data.ics_options || [], "Select ICS");
-        fillTargetSelect(villageSelect, data.village_options || [], "Select Village");
+        fillTargetSelect(
+          villageSelect,
+          data.village_options || [],
+          "Select Village",
+          targetBlockWiseMode() && blockSelect?.value ? "No villages mapped to this Block in Office List" : ""
+        );
+        if (targetBlockWiseMode() && blockSelect?.value && villageSelect) {
+          // A Block selection always unlocks Village in Block Wise mode.  If
+          // Office List has no village records for that block, its empty-state
+          // message remains visible but the control is still usable.
+          villageSelect.disabled = false;
+          villageSelect.dispatchEvent(new Event("chip:refresh"));
+        }
         syncTargetVillageHidden();
+        syncTargetEntryMode();
 
         if (targetSelectedValues(villageSelect).length) {
           renderTargetFarmers(data.farmers || []);
@@ -3991,57 +4113,8 @@ function initDeferredLayoutPage() {
 
     form?.addEventListener("submit", (event) => {
       syncTargetVillageHidden();
-      syncPlannedFarmerInputs();
+      syncTargetIcsHidden();
       syncNewFarmerTargetMode();
-
-      if (!vrpSelect?.value) {
-        event.preventDefault();
-        window.alert("Please select Jeevika Jankar.");
-        return;
-      }
-
-      if (!fcoSelect?.value) {
-        event.preventDefault();
-        window.alert("Please select FCO Name.");
-        return;
-      }
-
-      if (!icsSelect?.value) {
-        event.preventDefault();
-        window.alert("Please select ICS.");
-        return;
-      }
-
-      if (!targetSelectedValues(villageSelect).length) {
-        event.preventDefault();
-        window.alert("Please select at least one Village.");
-        return;
-      }
-
-      if (!monthSelect?.value) {
-        event.preventDefault();
-        window.alert("Please select Month.");
-        return;
-      }
-
-      const completionDateInput = shell.querySelector("input[name='target_mapping[completion_date]']");
-      if (!completionDateInput?.value) {
-        event.preventDefault();
-        window.alert("Please select Completion Date.");
-        return;
-      }
-
-      if (!selectedMainActivityNames().length) {
-        event.preventDefault();
-        window.alert("Please select at least one Main Activity.");
-        return;
-      }
-
-      if (!selectedSubActivityNames().length) {
-        event.preventDefault();
-        window.alert("Please select at least one Sub Activity.");
-        return;
-      }
 
       const weeklyInputs = Array.from(weeklyRows?.querySelectorAll("[data-target-weekly-input]") || []);
       const weeklyRowKeys = [...new Set(weeklyInputs.map((input) => input.dataset.weeklyRowKey))];
@@ -4057,14 +4130,14 @@ function initDeferredLayoutPage() {
           return;
         }
 
-        if (!newFarmerTargetMode() && farmerIdsForRow(rowKey).size !== monthly) {
+        if (!villageTargetMode() && !newFarmerTargetMode() && farmerIdsForRow(rowKey).size !== monthly) {
           event.preventDefault();
           window.alert(`Monthly target ${monthly} hai, isliye exactly ${monthly} farmers select karein.`);
           return;
         }
       }
 
-      if (trainingActivityTypeSelected()) {
+      if (trainingActivityTypeSelected() && !villageTargetMode()) {
         const filled = filledTrainingTargets();
         const invalid = filled.find((input) => {
           const value = Number(input.value || 0);
@@ -4103,12 +4176,34 @@ function initDeferredLayoutPage() {
 
     fcoSelect?.addEventListener("change", () => {
       fcoSelect.dataset.selectedValue = "";
+      if (blockSelect) blockSelect.value = "";
       if (icsSelect) icsSelect.dataset.selectedValue = "";
       if (villageSelect) villageSelect.dataset.selectedValue = "";
       if (villageSelect) villageSelect.dataset.selectedValues = "[]";
       if (icsSelect) icsSelect.value = "";
+      if (targetBlockWiseMode()) {
+        targetBlockOptions = blockOptionsForSelectedFco();
+        fillTargetSelect(blockSelect, targetBlockOptions, "Select Block");
+      }
       clearTargetVillageSelection();
       syncTargetVillageHidden();
+      syncTargetIcsHidden();
+      clearTargetFarmers();
+      loadTargetData();
+    });
+    blockSelect?.addEventListener("change", () => {
+      if (icsSelect) icsSelect.dataset.selectedValue = "";
+      if (villageSelect) villageSelect.dataset.selectedValue = "";
+      if (villageSelect) villageSelect.dataset.selectedValues = "[]";
+      if (icsSelect) icsSelect.value = "";
+      if (targetBlockWiseMode() && blockSelect.value && villageSelect) {
+        villageSelect.innerHTML = '<option value="">Loading villages...</option>';
+        villageSelect.disabled = false;
+        villageSelect.dispatchEvent(new Event("chip:refresh"));
+      }
+      clearTargetVillageSelection();
+      syncTargetVillageHidden();
+      syncTargetIcsHidden();
       clearTargetFarmers();
       loadTargetData();
     });
@@ -4118,6 +4213,7 @@ function initDeferredLayoutPage() {
       if (villageSelect) villageSelect.dataset.selectedValues = "[]";
       clearTargetVillageSelection();
       syncTargetVillageHidden();
+      syncTargetIcsHidden();
       clearTargetFarmers();
       loadTargetData();
     });
@@ -4138,14 +4234,64 @@ function initDeferredLayoutPage() {
       renderTargetWeeklySummary();
       loadTargetData();
     });
+    targetTypeSelect?.addEventListener("change", () => {
+      refreshMainActivityOptionsForTargetType(true);
+      refreshTargetSubActivities(true);
+      syncTargetActivityMode();
+      renderTargetWeeklySummary();
+      loadTargetData();
+    });
+    targetEntryModeSelect?.addEventListener("change", () => {
+      if (fcoSelect) {
+        fcoSelect.value = "";
+        fcoSelect.dataset.selectedValue = "";
+      }
+      if (targetBlockWiseMode()) {
+        if (icsSelect) icsSelect.value = "";
+      } else if (blockSelect) {
+        blockSelect.value = "";
+      }
+      if (icsSelect) icsSelect.dataset.selectedValue = "";
+      if (villageSelect) {
+        villageSelect.dataset.selectedValue = "";
+        villageSelect.dataset.selectedValues = "[]";
+      }
+      if (targetBlockWiseMode()) {
+        targetBlockOptions = blockOptionsForSelectedFco();
+        fillTargetSelect(blockSelect, targetBlockOptions, "Select Block");
+        fillTargetSelect(fcoSelect, blockFcoOptions, "Select FCO Name");
+      }
+      clearTargetVillageSelection();
+      syncTargetVillageHidden();
+      syncTargetEntryMode();
+      clearTargetFarmers();
+      loadTargetData();
+    });
 
+    refreshMainActivityOptionsForTargetType(false);
     refreshTargetSubActivities(false);
     syncTargetActivityMode();
     syncTargetVillageHidden();
     syncNewFarmerTargetMode();
+    syncTargetEntryMode();
+    syncTargetIcsHidden();
     renderTargetWeeklySummary();
     loadTargetData();
   });
+
+  document.addEventListener("turbo:before-cache", () => {
+    document.querySelectorAll(".chip-multi-control").forEach((control) => control.remove());
+    document.querySelectorAll(".chip-source-select").forEach((select) => {
+      select.classList.remove("chip-source-select");
+    });
+    document.querySelectorAll("*").forEach((element) => {
+      Object.keys(element.dataset || {}).forEach((key) => {
+        if (key.endsWith("Bound")) delete element.dataset[key];
+      });
+    });
+    document.body.classList.remove("mobile-menu-open");
+    document.querySelectorAll("dialog[open]").forEach((dialog) => dialog.close?.());
+  }, { once: true });
 
   document.querySelectorAll("[data-add-farmer-form]").forEach((formShell) => {
     const villageSelect = formShell.querySelector("[data-add-farmer-village]");
@@ -4631,15 +4777,19 @@ function initDeferredLayoutPage() {
   };
 
   document.querySelectorAll("[data-paginated-table]").forEach((table, index) => {
-    table.querySelectorAll("tbody tr").forEach((row) => {
+    const rows = Array.from(table.querySelectorAll("tbody tr"));
+    rows.forEach((row) => {
       if (row.children.length === 1 || row.innerText.toLowerCase().includes("no records")) {
         row.dataset.emptyRow = "true";
       }
     });
+    const largeTable = table.dataset.fastOpenTable === "true" || rows.length > 250;
     ensureTableSearch(table, index);
     ensureTablePagination(table);
-    sortTableRowsAlphabetically(table);
-    setupColumnFilters(table);
+    if (!largeTable) {
+      sortTableRowsAlphabetically(table);
+      setupColumnFilters(table);
+    }
     paginateTable(table, 1);
   });
 
@@ -5159,7 +5309,11 @@ function initDeferredLayoutPage() {
       const response = await fetch(approvalModalForm.action, {
         method: approvalModalForm.method || "POST",
         body: new FormData(approvalModalForm),
-        headers: { Accept: "application/json" }
+        credentials: "same-origin",
+        headers: {
+          "X-CSRF-Token": csrfToken,
+          Accept: "application/json"
+        }
       });
       const contentType = response.headers.get("content-type") || "";
       if (!response.ok || !contentType.includes("application/json")) {
@@ -5293,21 +5447,28 @@ function initDeferredLayoutPage() {
     const grandTotalInput = billForm.querySelector("[data-jeevika-grand-total]");
     const paymentRemarksField = billForm.querySelector("[data-jeevika-payment-remarks]");
     const paymentRemarksInput = billForm.querySelector("[data-jeevika-payment-remarks-input]");
+    const billRowsUrl = billForm.dataset.billRowsUrl;
     let billRows = [];
     let savedItems = [];
     let existingBills = [];
     let achievementSummary = {};
+    let targetSummary = {};
+    const billRowsCache = new Map();
+    let activeBillRowsKey = "";
+    const initialVrpValue = String(vrpSelect?.value || "");
 
     try {
       billRows = JSON.parse(billForm.dataset.billRows || "[]");
       savedItems = JSON.parse(billForm.dataset.savedItems || "[]");
       existingBills = JSON.parse(billForm.dataset.existingBills || "[]");
       achievementSummary = JSON.parse(billForm.dataset.achievementSummary || "{}");
+      targetSummary = JSON.parse(billForm.dataset.targetSummary || "{}");
     } catch (_error) {
       billRows = [];
       savedItems = [];
       existingBills = [];
       achievementSummary = {};
+      targetSummary = {};
     }
 
     const escapeHtml = (value) => String(value ?? "")
@@ -5333,9 +5494,25 @@ function initDeferredLayoutPage() {
     const rowInputs = () => Array.from(rowsBody?.querySelectorAll("tr[data-bill-row]") || []);
     const normalizedChoice = (value) => String(value || "").trim().toLowerCase().replaceAll(" ", "_");
     const normalizedMonth = (value) => String(value || "").trim().toLowerCase();
-    const originalVrpOptions = Array.from(vrpSelect?.options || [])
-      .filter((option) => option.value)
-      .map((option) => ({ value: option.value, label: option.textContent }));
+    const billRowsKey = (vrpId, month) => `${String(vrpId || "").trim()}|${normalizedMonth(month)}`;
+    const selectedVrpValue = () => {
+      const value = String(vrpSelect?.value || "").trim();
+      if (value) return value;
+
+      const selectedOption = vrpSelect?.selectedOptions?.[0];
+      const optionText = String(selectedOption?.textContent || "").trim();
+      const matchingOption = originalVrpOptions.find((option) => option.label === optionText);
+      return String(selectedOption?.dataset?.vrpId || matchingOption?.value || selectedOption?.value || optionText).trim();
+    };
+    if (!billForm.dataset.originalVrpOptions) {
+      const options = Array.from(vrpSelect?.options || [])
+        .filter((option) => option.value)
+        .map((option) => ({ value: option.value, label: option.textContent }));
+      if (options.length) {
+        billForm.dataset.originalVrpOptions = JSON.stringify(options);
+      }
+    }
+    const originalVrpOptions = JSON.parse(billForm.dataset.originalVrpOptions || "[]");
     const billExistsFor = (vrpId, month) => {
       const monthKey = normalizedMonth(month);
       return existingBills.some((bill) => String(bill.vrp_id || "") === String(vrpId || "") && normalizedMonth(bill.month) === monthKey);
@@ -5346,7 +5523,7 @@ function initDeferredLayoutPage() {
       return mainActivityType === "other" ? (row.other_activity_count ?? 0) : (row.achievement_count ?? 0);
     };
     const selectedAchievementTotal = () => {
-      const selectedVrp = String(vrpSelect?.value || "");
+      const selectedVrp = selectedVrpValue();
       const selectedMonth = normalizedMonth(monthSelect?.value);
       if (!selectedVrp) return null;
 
@@ -5372,10 +5549,14 @@ function initDeferredLayoutPage() {
         return;
       }
 
-      const availableOptions = originalVrpOptions.filter((option) => !billExistsFor(option.value, selectedMonth));
+      const availableOptions = originalVrpOptions.filter((option) => {
+        if (initialVrpValue && String(option.value) === initialVrpValue) return true;
+        return !billExistsFor(option.value, selectedMonth);
+      });
       availableOptions.forEach((optionData) => {
         const option = document.createElement("option");
         option.value = optionData.value;
+        option.dataset.vrpId = optionData.value;
         option.textContent = optionData.label;
         vrpSelect.appendChild(option);
       });
@@ -5383,6 +5564,8 @@ function initDeferredLayoutPage() {
       vrpSelect.disabled = false;
       if (availableOptions.some((option) => option.value === previousValue)) {
         vrpSelect.value = previousValue;
+      } else if (initialVrpValue && availableOptions.some((option) => String(option.value) === initialVrpValue)) {
+        vrpSelect.value = initialVrpValue;
       } else {
         vrpSelect.value = "";
       }
@@ -5433,13 +5616,14 @@ function initDeferredLayoutPage() {
       let totalTarget = 0;
       let totalAchievement = 0;
       let grandTotal = 0;
+      const totalsByTarget = new Map();
       rowInputs().forEach((row) => {
         const target = numberValue(row.dataset.targetQuantity);
         const assigned = numberValue(row.dataset.assignedCount);
         const achievementInput = row.querySelector("[data-jeevika-achievement]");
         const manualAchievement = row.dataset.achievementEntryMode === "self";
         const achievement = manualAchievement ? numberValue(achievementInput?.value) : numberValue(row.dataset.achievementCount);
-        const pendingBase = row.dataset.mainActivityType === "other" ? target : assigned;
+        const pendingBase = row.dataset.mainActivityType === "other" ? target : (assigned > 0 ? assigned : target);
         const pending = Math.max(pendingBase - achievement, 0);
         const rate = numberValue(row.querySelector("[data-jeevika-rate]")?.value);
         const amount = achievement * rate;
@@ -5449,8 +5633,11 @@ function initDeferredLayoutPage() {
         const pendingInput = row.querySelector("[data-jeevika-pending-input]");
         const farmerSummaryCount = row.nextElementSibling?.querySelector("[data-jeevika-farmer-achievement]");
 
-        totalTarget += target;
-        totalAchievement += achievement;
+        const targetKey = row.dataset.targetMappingId || `row-${row.dataset.rowIndex || totalsByTarget.size}`;
+        const groupedTotal = totalsByTarget.get(targetKey) || { target: 0, achievement: 0 };
+        groupedTotal.target = Math.max(groupedTotal.target, pendingBase);
+        groupedTotal.achievement += achievement;
+        totalsByTarget.set(targetKey, groupedTotal);
         grandTotal += amount;
         row.dataset.currentAchievement = String(achievement);
         if (achievementDisplay) achievementDisplay.textContent = String(achievement);
@@ -5460,25 +5647,61 @@ function initDeferredLayoutPage() {
         if (amountInput) amountInput.value = amount.toFixed(2);
       });
 
+      totalsByTarget.forEach((groupedTotal) => {
+        totalTarget += groupedTotal.target;
+        totalAchievement += Math.min(groupedTotal.achievement, groupedTotal.target);
+      });
+
+      if (totalsByTarget.size === 0) {
+        const selectedVrp = selectedVrpValue();
+        const selectedMonth = normalizedMonth(monthSelect?.value);
+        const dashboardTotals = selectedVrp && selectedMonth ? targetSummary?.[selectedVrp]?.[selectedMonth] : null;
+        if (dashboardTotals) {
+          totalTarget = numberValue(dashboardTotals.target);
+          totalAchievement = numberValue(dashboardTotals.achievement);
+        }
+      }
+
       if (totalTargetInput) totalTargetInput.value = String(totalTarget);
-      const currentRows = rowInputs();
-      const summaryAchievement = currentRows.length && currentRows.every((row) => row.dataset.mainActivityType === "training" && row.dataset.achievementEntryMode !== "self") ? selectedAchievementTotal() : null;
-      if (summaryAchievement !== null) totalAchievement = summaryAchievement;
       if (totalAchievementInput) totalAchievementInput.value = String(totalAchievement);
       if (grandTotalInput) grandTotalInput.value = grandTotal.toFixed(2);
       syncPaymentRemarks();
     };
 
-    const renderJeevikaBillRows = () => {
-      if (!rowsBody) return;
+    const loadBillRowsForSelection = async (selectedVrp, selectedMonth) => {
+      const key = billRowsKey(selectedVrp, selectedMonth);
+      if (billRowsCache.has(key)) return billRowsCache.get(key);
 
-      const selectedVrp = String(vrpSelect?.value || "");
-      const selectedMonth = normalizedMonth(monthSelect?.value);
-      const rows = billRows.filter((row) => {
-        const vrpMatches = String(row.vrp_id || "") === selectedVrp;
-        const monthMatches = normalizedMonth(row.month_name) === selectedMonth;
+      const inlineRows = billRows.filter((row) => {
+        const vrpMatches = String(row.vrp_id || "") === String(selectedVrp || "");
+        const monthMatches = normalizedMonth(row.month_name) === normalizedMonth(selectedMonth);
         return vrpMatches && monthMatches;
       });
+      if (inlineRows.length || !billRowsUrl) {
+        const result = { rows: inlineRows, achievementSummary, targetSummary };
+        billRowsCache.set(key, result);
+        return result;
+      }
+
+      const url = new URL(billRowsUrl, window.location.origin);
+      url.searchParams.set("vrp_id", selectedVrp);
+      url.searchParams.set("month", selectedMonth);
+      const data = await fetchJson(url.toString());
+      const result = {
+        rows: Array.isArray(data.rows) ? data.rows : [],
+        achievementSummary: data.achievement_summary || {},
+        targetSummary: data.target_summary || {}
+      };
+      billRowsCache.set(key, result);
+      return result;
+    };
+
+    const renderJeevikaBillRows = async () => {
+      if (!rowsBody) return;
+
+      const selectedVrp = selectedVrpValue();
+      const selectedMonthValue = monthSelect?.value || "";
+      const selectedMonth = normalizedMonth(selectedMonthValue);
 
       if (!selectedMonth) {
         rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">Select Bill Month to load Jeevika Jankar Name.</td></tr>`;
@@ -5487,10 +5710,31 @@ function initDeferredLayoutPage() {
       }
 
       if (!selectedVrp) {
+        if (vrpSelect) vrpSelect.selectedIndex = 0;
         rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">Select Jeevika Jankar Name to load target achievement list.</td></tr>`;
         recalculateJeevikaBill();
         return;
       }
+
+      const loadKey = billRowsKey(selectedVrp, selectedMonthValue);
+      activeBillRowsKey = loadKey;
+      rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">Loading target achievement list...</td></tr>`;
+
+      let loadedData = { rows: [] };
+      try {
+        loadedData = await loadBillRowsForSelection(selectedVrp, selectedMonthValue);
+      } catch (_error) {
+        if (activeBillRowsKey === loadKey) {
+          rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">Target achievement list load failed. Please try again.</td></tr>`;
+          recalculateJeevikaBill();
+        }
+        return;
+      }
+      if (activeBillRowsKey !== loadKey) return;
+
+      const rows = loadedData.rows || [];
+      achievementSummary = loadedData.achievementSummary || achievementSummary || {};
+      targetSummary = loadedData.targetSummary || targetSummary || {};
 
       if (!rows.length) {
         rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">No target mapping found for selected Jeevika Jankar.</td></tr>`;
@@ -5513,7 +5757,7 @@ function initDeferredLayoutPage() {
         const pendingCount = Math.max(numberValue(pendingBase) - numberValue(achievementCount), 0);
 
         return `
-          <tr data-bill-row data-row-index="${index}" data-target-quantity="${escapeHtml(row.target_quantity)}" data-assigned-count="${escapeHtml(assignedCount)}" data-achievement-count="${escapeHtml(autoAchievementCount)}" data-current-achievement="${escapeHtml(achievementCount)}" data-main-activity-type="${escapeHtml(mainActivityType)}" data-achievement-entry-mode="${escapeHtml(achievementEntryMode)}">
+          <tr data-bill-row data-row-index="${index}" data-target-mapping-id="${escapeHtml(row.target_mapping_id || row.training_session_key || index)}" data-target-quantity="${escapeHtml(row.target_quantity)}" data-assigned-count="${escapeHtml(assignedCount)}" data-achievement-count="${escapeHtml(autoAchievementCount)}" data-current-achievement="${escapeHtml(achievementCount)}" data-main-activity-type="${escapeHtml(mainActivityType)}" data-achievement-entry-mode="${escapeHtml(achievementEntryMode)}">
             <td>
               ${hiddenInput(`${inputPrefix}[target_mapping_id]`, row.target_mapping_id)}
               ${hiddenInput(`${inputPrefix}[training_session_key]`, row.training_session_key || "")}
@@ -5815,8 +6059,9 @@ function initDeferredLayoutPage() {
     const unboundSignatureShell = document.querySelector(
       "[data-agreement-signature-shell]:not([data-agreement-signature-bound])"
     );
+    const unboundLanguageButton = document.querySelector("[data-language-option]:not([data-language-bound='true'])");
 
-    if (window.__vrpLanguageSwitcherInitialized && !unboundSignatureShell) {
+    if (window.__vrpLanguageSwitcherInitialized && !unboundSignatureShell && !unboundLanguageButton) {
       const language = localStorage.getItem("vrp_language") || "en";
       if (language !== "en" && typeof window.__vrpApplyLanguage === "function") {
         window.__vrpApplyLanguage(language, document.querySelector(".app-main") || document.body);
@@ -5832,6 +6077,9 @@ function initDeferredLayoutPage() {
     const translations = {
       "Language": "भाषा",
       "Dashboard": "डैशबोर्ड",
+      "No Activity Mapping": "कुल मेप नहीं किये गये किसान",
+      "No Training Mapping": "कुल फार्मर ट्रेनिंग से मेप नहीं किये गये किसान",
+      "Training Mapped But No Entry": "कुल फार्मर ट्रेनिंग में किसान की एंट्री नहीं हुई",
       "Sign Out": "साइन आउट",
       "Training": "प्रशिक्षण",
       "Farmer Training": "किसान प्रशिक्षण",
@@ -6145,7 +6393,10 @@ function initDeferredLayoutPage() {
       "Saved main activities dekhne ke liye.": "View saved main activities.",
       "Saved sub activities dekhne ke liye.": "View saved sub activities.",
       "VRP type add karne ke liye.": "Add VRP type.",
-      "Saved access control records dekhne ke liye.": "View saved access control records."
+      "Saved access control records dekhne ke liye.": "View saved access control records.",
+      "कुल मेप नहीं किये गये किसान": "No Activity Mapping",
+      "कुल फार्मर ट्रेनिंग से मेप नहीं किये गये किसान": "No Training Mapping",
+      "कुल फार्मर ट्रेनिंग में किसान की एंट्री नहीं हुई": "Training Mapped But No Entry"
     };
 	    const englishTranslations = {
 	      ...Object.fromEntries(Object.entries(translations).map(([english, hindi]) => [hindi, english])),
@@ -6364,6 +6615,15 @@ function initDeferredLayoutPage() {
 	      const selectedTranslations = languageTranslations[language] || {};
 	      const exact = language === "en" ? englishTranslations[trimmed] : selectedTranslations[trimmed];
 	      if (exact) return preserveSpacing(text, exact);
+
+      const labelNumberMatch = trimmed.match(/^(.+?):\s*(\d+)$/);
+      if (labelNumberMatch) {
+        const translatedLabel = translatePhrase(labelNumberMatch[1], language).trim();
+        if (translatedLabel && translatedLabel !== labelNumberMatch[1]) {
+          return preserveSpacing(text, `${translatedLabel}: ${labelNumberMatch[2]}`);
+        }
+      }
+
 	      if (language === "en") return text;
 	      if (language !== "hi") return text;
 
@@ -6597,8 +6857,30 @@ function initDeferredLayoutPage() {
   initializeLanguageSwitcher();
 }
 
-document.addEventListener("turbo:load", () => {
+const bootLayoutPage = () => {
+  if (document.querySelector(".login-page")) {
+    initPasswordToggles();
+    return;
+  }
+
   initFastNavigation();
   initAflFarmerMapping();
   scheduleDeferredLayoutInit();
-});
+};
+
+const queueBootLayoutPage = () => {
+  if (window.__vrpBootQueued) return;
+
+  window.__vrpBootQueued = true;
+  window.requestAnimationFrame(() => {
+    window.__vrpBootQueued = false;
+    bootLayoutPage();
+  });
+};
+
+document.addEventListener("turbo:load", queueBootLayoutPage);
+document.addEventListener("DOMContentLoaded", queueBootLayoutPage);
+
+if (document.readyState !== "loading") {
+  queueBootLayoutPage();
+}

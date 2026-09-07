@@ -13,6 +13,8 @@
       <section class="module-card target-mapping-card"
         data-target-mapping
         data-edit-target="<%= html_escape(@edit_payload.to_json) %>"
+        data-block-fco-options="<%= html_escape(@block_fco_options.to_json) %>"
+        data-block-options-by-fco="<%= html_escape(@block_options_by_fco.to_json) %>"
         data-target-sub-activity-map="<%= html_escape(@target_sub_activity_map.to_json) %>"
         data-main-activity-type-map="<%= html_escape(@main_activity_type_map.to_json) %>"
         data-user-blocks-url="<%= user_blocks_target_mappings_path %>"
@@ -464,11 +466,16 @@
                           <div class="vrp-ics-farmer-list target-dialog-farmer-list">
                             <% target_farmer_ids.each do |farmer_id| %>
                               <% farmer = @target_farmers_by_id[farmer_id] %>
+                              <% farmer_name = farmer.is_a?(Hash) ? farmer[:farmer_name] : farmer&.farmer_name %>
+                              <% father_name = farmer.is_a?(Hash) ? farmer[:father_name] : farmer&.father_name %>
+                              <% tracenet_no = farmer.is_a?(Hash) ? farmer[:tracenet_no] : farmer&.tracenet_no %>
+                              <% mobile_no = farmer.is_a?(Hash) ? farmer[:mobile_no] : farmer&.mobile_no %>
+                              <% village_name = farmer.is_a?(Hash) ? farmer[:village_name] : farmer&.village_name %>
                               <div class="vrp-ics-farmer-item">
                                 <span aria-hidden="true">•</span>
                                 <span>
-                                  <strong><%= farmer&.farmer_name.presence || "Farmer ##{farmer_id}" %></strong>
-                                  <small><%= [farmer&.father_name.presence && "Father: #{farmer.father_name}", farmer&.tracenet_no.presence && "Tracenet: #{farmer.tracenet_no}", farmer&.mobile_no.presence && "Mobile: #{farmer.mobile_no}", farmer&.village_name.presence && "Village: #{farmer.village_name}"].compact.join(" | ") %></small>
+                                  <strong><%= farmer_name.presence || "Farmer ##{farmer_id}" %></strong>
+                                  <small><%= [father_name.presence && "Father: #{father_name}", tracenet_no.presence && "Tracenet: #{tracenet_no}", mobile_no.presence && "Mobile: #{mobile_no}", village_name.presence && "Village: #{village_name}"].compact.join(" | ") %></small>
                                 </span>
                               </div>
                             <% end %>

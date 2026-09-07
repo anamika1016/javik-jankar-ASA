@@ -41,6 +41,18 @@
   box-sizing: border-box;
 }
 
+.dashboard-section,
+.training-dashboard-section,
+.vrp-list-section,
+.approval-progress-section {
+  content-visibility: auto;
+  contain-intrinsic-size: 1px 520px;
+}
+
+.target-weekly-village-mode .target-weekly-table th:last-child {
+  display: none;
+}
+
 body {
   margin: 0;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -623,6 +635,18 @@ body {
   gap: 20px;
 }
 
+/* Keep the training dashboard sections in their reporting workflow order. */
+.dashboard-page > #dashboard_summary_boxes { order: 1; }
+.dashboard-page > .dashboard-training-primary-summaries { order: 1; }
+.dashboard-page > .training-status-panel { order: 2; }
+.dashboard-page > #demonstration_method_boxes { order: 3; }
+.dashboard-page > #dashboard_activity_overview {
+  display: none;
+}
+.dashboard-page > #dashboard_weekly_target_boxes { order: 4; }
+.dashboard-page > #dashboard_ics_farmer_report { order: 5; }
+.dashboard-page > .dashboard-training-secondary-summaries { order: 6; }
+
 .vrp-compact-summary-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
@@ -665,7 +689,7 @@ body {
 
 .vrp-work-overview-metrics {
   display: grid;
-  grid-template-columns: repeat(7, minmax(110px, 1fr));
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
   gap: 0;
   padding: 8px;
 }
@@ -709,6 +733,24 @@ body {
   color: var(--vrp-muted);
   font-size: 0.65rem;
   line-height: 1.25;
+}
+
+.activity-overview-boxes {
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+}
+
+.activity-overview-boxes .red-farmers { border-color: #dc6969; }
+.activity-overview-boxes .green-farmers { border-color: #65a85c; }
+.activity-overview-boxes .yellow-farmers,
+.activity-overview-boxes .pending-farmers,
+.activity-overview-boxes .pending-target-map { border-color: #dda23c; }
+
+@media (max-width: 1180px) {
+  .activity-overview-boxes { grid-template-columns: repeat(3, minmax(140px, 1fr)); }
+}
+
+@media (max-width: 680px) {
+  .activity-overview-boxes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 1180px) {
@@ -1068,8 +1110,8 @@ body {
 .dashboard-grid.premium .metric-card-group {
   display: flex !important;
   flex-direction: column;
-  min-height: 210px;
-  padding: 16px;
+  min-height: 140px;
+  padding: 12px;
   overflow: hidden;
   border-top: 0;
   background: #fff;
@@ -1118,13 +1160,15 @@ body {
   flex: 1;
 }
 
-.dashboard-grid.premium .metric-card-group-registration > .metric-card-group-items {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.dashboard-grid.premium .metric-card-group-registration > .metric-card-group-items,
+.dashboard-grid.premium .metric-card-group-fco > .metric-card-group-items {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 6px !important;
 }
 
 .dashboard-grid.premium .metric-card-group-billing .metric-card-group-item-level-2-users {
   grid-column: 1 / -1;
-  min-height: 62px;
+  min-height: 48px;
   background: linear-gradient(120deg, #fff8eb, #fffdf8);
   border-color: rgba(205, 145, 52, 0.3);
 }
@@ -1133,10 +1177,10 @@ body {
   position: relative;
   display: grid;
   align-content: center;
-  gap: 7px;
+  gap: 4px;
   min-width: 0;
-  min-height: 66px;
-  padding: 10px;
+  min-height: 46px;
+  padding: 6px 8px;
   border: 1px solid rgba(210, 222, 226, 0.9);
   border-radius: 8px;
   color: inherit;
@@ -1173,6 +1217,88 @@ body {
 .metric-card-group-fco .metric-card-group-item strong {
   font-size: 1.18rem;
   line-height: 1.2;
+}
+
+/* Training dashboard: the administration summaries are deliberately short,
+   two-panel rows instead of four narrow cards with unused space. */
+.dashboard-grid.premium.dashboard-training-primary-summaries,
+.dashboard-grid.premium.dashboard-training-secondary-summaries {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.dashboard-grid.premium.dashboard-training-secondary-summaries {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.dashboard-grid.premium.dashboard-training-primary-summaries .metric-card-group,
+.dashboard-grid.premium.dashboard-training-secondary-summaries .metric-card-group {
+  min-height: 140px;
+  height: 100%;
+  border: 1px solid rgba(204, 218, 222, 0.9);
+  border-radius: 12px;
+  box-shadow: 0 10px 24px rgba(23, 33, 38, 0.08);
+}
+
+.dashboard-training-primary-summaries .metric-card-group-title,
+.dashboard-training-secondary-summaries .metric-card-group-title {
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  font-size: 0.86rem;
+  letter-spacing: 0.01em;
+}
+
+.dashboard-training-primary-summaries .metric-card-group-billing > .metric-card-group-items,
+.dashboard-training-secondary-summaries .metric-card-group-billing > .metric-card-group-items,
+.dashboard-training-primary-summaries .metric-card-group-fco > .metric-card-group-items,
+.dashboard-training-secondary-summaries .metric-card-group-fco > .metric-card-group-items {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.dashboard-training-primary-summaries .metric-card-group-billing .metric-card-group-item-level-2-users,
+.dashboard-training-secondary-summaries .metric-card-group-billing .metric-card-group-item-level-2-users {
+  grid-column: auto;
+  min-height: 0;
+}
+
+.dashboard-training-primary-summaries .metric-card-group-item,
+.dashboard-training-secondary-summaries .metric-card-group-item {
+  min-height: 48px;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+.dashboard-training-primary-summaries .metric-card-group-item strong,
+.dashboard-training-secondary-summaries .metric-card-group-item strong {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.dashboard-training-secondary-summaries .metric-card-group-fco .metric-card-group-item span {
+  font-size: 0.68rem;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 760px) {
+  .dashboard-grid.premium.dashboard-training-primary-summaries,
+  .dashboard-grid.premium.dashboard-training-secondary-summaries {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .dashboard-training-primary-summaries .metric-card-group-billing > .metric-card-group-items,
+  .dashboard-training-secondary-summaries .metric-card-group-billing > .metric-card-group-items {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1180px) {
+  .dashboard-grid.premium.dashboard-training-secondary-summaries {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .upload-report-table {
@@ -1821,6 +1947,13 @@ body {
   background: linear-gradient(120deg, #f3f8f0, #fff 72%);
 }
 
+.dashboard-summary-panel > .training-participation-status-header {
+  color: #23425f;
+  border-left-color: #4f7ea8;
+  border-bottom-color: rgba(79, 126, 168, 0.22);
+  background: linear-gradient(120deg, #f1f6fb, #fff 72%);
+}
+
 .dashboard-status-panel > .training-participation-status-header h2,
 .dashboard-status-panel > .training-participation-status-header p,
 .dashboard-status-panel > .training-participation-status-header label,
@@ -1869,6 +2002,223 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
+.training-participation-boxes.dashboard-summary-boxes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+  overflow: visible;
+}
+
+.training-participation-boxes.demonstration-method-boxes {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.dashboard-summary-boxes .dashboard-summary-box {
+  min-width: 0;
+  min-height: 150px;
+  padding: 14px;
+  gap: 8px;
+  border-top-width: 0;
+  border-radius: 8px;
+  position: relative;
+  overflow: visible;
+}
+
+.dashboard-summary-boxes .dashboard-summary-box::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--summary-accent, #6b9aa4);
+}
+
+.dashboard-summary-boxes .dashboard-summary-box span {
+  min-height: 32px;
+  color: #365563;
+  font-size: 0.72rem;
+  line-height: 1.28;
+  text-transform: none;
+}
+
+.dashboard-summary-boxes .dashboard-summary-box strong {
+  color: #15262f;
+  font-size: 1.85rem;
+  letter-spacing: 0;
+}
+
+.dashboard-summary-boxes .dashboard-summary-box small {
+  color: #667984;
+  font-size: 0.74rem;
+  line-height: 1.3;
+}
+
+.dashboard-summary-boxes .dashboard-summary-box:nth-child(6n + 1) {
+  --summary-accent: #6b9aa4;
+  background: #f6fbfb;
+  border-color: rgba(107, 154, 164, 0.28);
+}
+
+.dashboard-summary-boxes .dashboard-summary-box:nth-child(6n + 2) {
+  --summary-accent: #7aa36b;
+  background: #f7fbf5;
+  border-color: rgba(122, 163, 107, 0.28);
+}
+
+.dashboard-summary-boxes .dashboard-summary-box:nth-child(6n + 3) {
+  --summary-accent: #7892bd;
+  background: #f6f8fc;
+  border-color: rgba(120, 146, 189, 0.28);
+}
+
+.dashboard-summary-boxes .dashboard-summary-box:nth-child(6n + 4) {
+  --summary-accent: #c39a57;
+  background: #fcfaf4;
+  border-color: rgba(195, 154, 87, 0.3);
+}
+
+.dashboard-summary-boxes .dashboard-summary-box:nth-child(6n + 5) {
+  --summary-accent: #8d85b4;
+  background: #f8f7fc;
+  border-color: rgba(141, 133, 180, 0.28);
+}
+
+.dashboard-summary-boxes .dashboard-summary-box:nth-child(6n) {
+  --summary-accent: #bd7b75;
+  background: #fcf7f6;
+  border-color: rgba(189, 123, 117, 0.28);
+}
+
+.dashboard-summary-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: auto;
+}
+
+.dashboard-summary-actions .table-action {
+  flex: 1;
+  min-width: 0;
+  min-height: 30px;
+  padding: 7px 10px;
+  text-align: center;
+  font-size: 0.76rem;
+  line-height: 1.2;
+  border: 1px solid rgba(95, 148, 132, 0.15);
+  border-radius: 6px;
+  background: rgba(226, 244, 239, 0.72);
+  color: #3f7f32;
+}
+
+.dashboard-summary-action-popover {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.dashboard-card-hover-popup {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 30;
+  display: none;
+  min-width: 240px;
+  max-width: 300px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  border: 1px solid rgba(68, 121, 135, 0.22);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 14px 30px rgba(31, 57, 67, 0.18);
+  color: #254654;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.dashboard-card-hover-popup span {
+  display: block;
+  min-height: 0;
+}
+
+.dashboard-card-hover-popup span + span {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(68, 121, 135, 0.12);
+}
+
+/* Red popup compact breakdown */
+.red-popup-breakdown {
+  min-width: 200px;
+  max-width: 280px;
+  max-height: 220px;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+}
+
+.red-popup-breakdown .popup-fco-header {
+  padding: 3px 0 2px;
+  border-bottom: 1px solid rgba(68, 121, 135, 0.15);
+  margin-bottom: 2px;
+}
+
+.red-popup-breakdown .popup-fco-header strong {
+  font-size: 0.85rem !important;
+  font-weight: 800;
+  color: #1e3a42;
+  line-height: 1.3;
+}
+
+.red-popup-breakdown .popup-subitem {
+  padding: 1px 0;
+  border: none !important;
+  margin: 0 !important;
+}
+
+.red-popup-breakdown .popup-sublink {
+  color: #2e6376;
+  text-decoration: none;
+  font-size: 0.88rem !important;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.6;
+}
+
+/* Force number size = label text size (block parent strong override) */
+.dashboard-card-hover-popup strong,
+.red-popup-breakdown strong {
+  font-size: 1em !important;
+  font-weight: 800;
+}
+
+.red-popup-breakdown .popup-sublink strong {
+  font-size: 1em !important;
+  font-weight: 800;
+  color: #17303a;
+  white-space: nowrap;
+}
+
+.red-popup-breakdown .popup-sublink:hover {
+  text-decoration: underline;
+  color: #135168;
+}
+
+.dashboard-summary-box:hover .dashboard-card-hover-popup,
+.dashboard-summary-action-popover:hover .dashboard-card-hover-popup,
+.dashboard-summary-action-popover:focus-within .dashboard-card-hover-popup {
+  display: block;
+}
+
+.dashboard-summary-actions .table-action.export {
+  border-color: rgba(67, 137, 150, 0.35);
+  color: #255a64;
+  background: rgba(67, 137, 150, 0.08);
+}
+
 .training-participation-boxes.compact .training-participation-box {
   min-height: 96px;
   padding: 12px 14px;
@@ -1890,11 +2240,22 @@ body {
 
 @media (max-width: 900px) {
   .vrp-compact-summary-grid { grid-template-columns: 1fr; }
+  .training-participation-boxes.dashboard-summary-boxes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .training-participation-boxes.demonstration-method-boxes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 620px) {
   .vrp-compact-metrics,
   .vrp-compact-metrics.three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .training-participation-boxes.dashboard-summary-boxes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-summary-boxes .dashboard-summary-box {
+    min-height: 140px;
+  }
+}
+
+@media (max-width: 420px) {
+  .training-participation-boxes.dashboard-summary-boxes { grid-template-columns: 1fr; }
+  .training-participation-boxes.demonstration-method-boxes { grid-template-columns: 1fr; }
 }
 
 .training-participation-box {
@@ -1949,6 +2310,11 @@ body {
 .dashboard-status-panel .training-participation-box.pending {
   border-top-color: #758891;
   background: linear-gradient(180deg, rgba(117, 136, 145, 0.08), #fff 48%);
+}
+
+.dashboard-status-panel .training-participation-box.completed {
+  border-top-color: #3f6fb5;
+  background: linear-gradient(180deg, rgba(63, 111, 181, 0.08), #fff 48%);
 }
 
 .training-participation-box:hover,
@@ -2014,6 +2380,12 @@ body {
   border-color: rgba(46, 113, 135, 0.24);
   background: rgba(46, 113, 135, 0.08);
   color: #20586a;
+}
+
+.training-participation-box.completed {
+  border-color: rgba(63, 111, 181, 0.26);
+  background: rgba(63, 111, 181, 0.10);
+  color: #254f8f;
 }
 
 .training-participation-table {
@@ -3770,8 +4142,9 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
+  min-width: 32px;
   height: 32px;
+  padding: 0 10px;
   border: 1px solid var(--vrp-line);
   border-radius: 6px;
   background: #fff;
@@ -3779,6 +4152,7 @@ body {
   font: inherit;
   cursor: pointer;
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .table-pagination button:disabled,
@@ -4395,6 +4769,12 @@ body {
   background: #f3f5f6;
 }
 
+.vrp-ics-farmer-item.already-mapped {
+  border-color: #72b783;
+  background: #e8f7ec;
+  box-shadow: inset 4px 0 0 #3f9655;
+}
+
 .vrp-ics-farmer-item.already-included {
   border-color: #78b887;
   background: #eef9f1;
@@ -4701,27 +5081,185 @@ body {
   min-width: 760px;
 }
 
+.target-weekly-table th,
+.target-weekly-table td {
+  vertical-align: middle !important;
+}
+
+.training-sub-activity-native {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.training-sub-activity-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 8px;
+  border: 1px solid #cbd8df;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.training-sub-activity-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 7px 9px 7px 12px;
+  border: 1px solid #9bc9a0;
+  border-radius: 999px;
+  background: #edf8ee;
+  color: #245d2d;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.training-sub-activity-remove {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #d9eedc;
+  color: #245d2d;
+  cursor: pointer;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.training-sub-activity-remove:hover,
+.training-sub-activity-remove:focus-visible {
+  background: #beddc2;
+  outline: 2px solid #4f914e;
+  outline-offset: 1px;
+}
+
+.training-sub-activity-empty {
+  color: var(--vrp-muted);
+  font-size: 12px;
+}
+
+.training-list-sub-activities {
+  display: grid;
+  gap: 7px;
+  min-width: 320px;
+  white-space: normal;
+}
+
+.training-list-main-activities {
+  display: grid;
+  gap: 7px;
+  min-width: 180px;
+}
+
+.training-list-main-activities > strong {
+  color: #2f7237;
+  font-size: 11px;
+}
+
+.training-list-main-activities > span {
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: #eef5f0;
+  font-weight: 700;
+}
+
+.training-list-sub-activities > strong {
+  width: fit-content;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #e5f3e7;
+  color: #2f7237;
+  font-size: 11px;
+}
+
+.training-list-sub-activities > span {
+  display: block;
+  padding: 7px 9px;
+  border-left: 3px solid #70ad72;
+  border-radius: 4px;
+  background: #f3f8f4;
+  line-height: 1.35;
+}
+
 .target-weekly-table th:first-child,
 .target-weekly-table td:first-child {
   width: 30%;
   min-width: 240px;
   white-space: normal;
   overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .target-weekly-activity {
   display: grid;
-  gap: 4px;
+  gap: 10px;
   line-height: 1.35;
+  justify-items: center;
+  text-align: center;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.target-weekly-activity strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #e7f0f4;
+  color: #143b52;
+}
+
+.target-weekly-subactivities {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.target-weekly-subactivity {
+  display: flex;
+  justify-content: center;
 }
 
 .target-weekly-activity span {
   color: var(--vrp-muted);
+  display: inline-block;
+  max-width: 100%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #f1f5f7;
 }
 
 .target-weekly-table td:not(:first-child),
 .target-weekly-table th:not(:first-child) {
   text-align: center;
+}
+
+.target-weekly-table td:not(:first-child) {
+  padding-top: 18px;
+  padding-bottom: 18px;
+}
+
+.target-weekly-cell-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  width: 100%;
 }
 
 .target-weekly-input {
@@ -4734,6 +5272,7 @@ body {
   font: inherit;
   font-weight: 800;
   text-align: center;
+  margin: 0 auto;
 }
 
 .target-weekly-input:focus {
@@ -6617,8 +7156,8 @@ body {
 
 .dashboard-filter-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
   align-items: end;
 }
 
@@ -6637,14 +7176,14 @@ body {
 
 .dashboard-filter-input,
 .dashboard-filter-select {
-  min-height: 38px;
-  padding: 6px 10px;
+  min-height: 46px;
+  padding: 9px 12px;
   border: 1px solid var(--vrp-line);
   border-radius: 6px;
   background: var(--vrp-panel-soft);
   color: var(--vrp-text);
   font: inherit;
-  font-size: 0.9rem;
+  font-size: 0.96rem;
   width: 100%;
   transition: border-color 0.18s;
 }
@@ -6748,31 +7287,24 @@ body {
   line-height: 1.35;
 }
 
-/* Keep headings and row values readable in every list/report. Tables with
-   many columns should grow horizontally inside the scrollable .table-shell,
-   instead of squeezing words, names, dates and IDs onto multiple lines. */
-.table-shell .module-table {
-  width: max-content;
-  min-width: 100%;
-  table-layout: auto;
-}
-
+/* Shared overflow protection for every report/list table. Database labels can
+   contain long comma-separated activities or unbroken identifiers; keep them
+   inside their own cell instead of allowing visible overflow into neighbours. */
 .table-shell .module-table th,
 .table-shell .module-table td {
   box-sizing: border-box;
-  max-width: none;
-  overflow-wrap: normal;
-  word-break: normal;
-  white-space: nowrap;
-  vertical-align: middle;
+  max-width: 320px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+  vertical-align: top;
 }
 
 .table-shell .module-table td > a,
 .table-shell .module-table td > span,
 .table-shell .module-table td > div {
-  max-width: none;
-  overflow-wrap: normal;
-  word-break: normal;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .table-shell .module-table input,
@@ -6786,6 +7318,21 @@ body {
 .table-shell .module-table .list-btn,
 .table-shell .module-table .grid-status,
 .table-shell .module-table .training-status-pill {
+  white-space: nowrap;
+}
+
+/* Keep list headings readable. Wide tables must use the table shell's
+   horizontal scrollbar instead of shrinking headers to one character per
+   line. Body values may still wrap inside their capped-width cells. */
+.table-shell .module-table {
+  width: max-content;
+  min-width: 100%;
+}
+
+.table-shell .module-table th {
+  max-width: none;
+  overflow-wrap: normal;
+  word-break: normal;
   white-space: nowrap;
 }
 
@@ -7017,7 +7564,7 @@ body {
 
 @media (max-width: 900px) {
   .dashboard-filter-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   }
 
   .vrp-status-grid {
@@ -7142,32 +7689,15 @@ body {
   transform: translateY(-1px);
   box-shadow: 0 4px 10px rgba(31, 55, 65, 0.16);
 }
-
-/* Final list-table guard. Keep this at the end of the stylesheet so page and
-   responsive rules cannot compress headings or values character-by-character. */
-.table-shell > table.module-table,
-.table-shell table.vrp-list-table {
-  width: max-content !important;
-  min-width: 100% !important;
-  table-layout: auto !important;
+.target-activity-grouped-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
 }
 
-.table-shell > table.module-table > thead > tr > th,
-.table-shell > table.module-table > tbody > tr > td,
-.table-shell table.vrp-list-table > thead > tr > th,
-.table-shell table.vrp-list-table > tbody > tr > td {
-  min-width: 110px;
-  max-width: none !important;
-  white-space: nowrap !important;
-  overflow-wrap: normal !important;
-  word-break: keep-all !important;
-  vertical-align: middle;
-}
-
-.table-shell > table.module-table > thead > tr > th:first-child,
-.table-shell > table.module-table > tbody > tr > td:first-child,
-.table-shell table.vrp-list-table > thead > tr > th:first-child,
-.table-shell table.vrp-list-table > tbody > tr > td:first-child {
-  min-width: 42px;
-  width: 42px;
+.target-activity-grouped-list span {
+  display: block;
+  line-height: 1.4;
+  padding: 2px 0;
 }
