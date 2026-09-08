@@ -133,6 +133,7 @@ Rails.application.routes.draw do
   resources :target_mappings, only: [:index, :create, :destroy] do
     post :delete, on: :member, action: :destroy
     get :vrp_mappings, on: :collection
+    get :saved_farmers, on: :collection
     get :user_blocks, on: :collection
   end
 
@@ -215,6 +216,7 @@ Rails.application.routes.draw do
     post :import, action: :import, on: :member
     get :export, action: :export, on: :member
     patch :bulk_update, action: :bulk_update, on: :member
+    get :jeevika_jankar_bill_target_rows, action: :jeevika_jankar_bill_target_rows, on: :member
     get :bill_target_rows, action: :jeevika_jankar_bill_target_rows, on: :member
     get :training_target_farmers, on: :member
     get :seed_target_farmers, on: :member

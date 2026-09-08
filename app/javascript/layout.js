@@ -26,6 +26,8 @@ if (!window.__vrpLayoutGlobalsReady) {
 
 const vrpUiLabel = "Jeevika Jankar";
 const replaceVrpUiText = (value) => `${value || ""}`
+  .replace(/\bactivities\b/gi, "Major Work Indicators")
+  .replace(/\bactivity\b/gi, "Major Work Indicator")
   .replace(/\bvrp\b/gi, vrpUiLabel)
   .replace(/वीआरपी/g, vrpUiLabel)
   .replace(/व्हीआरपी/g, vrpUiLabel)
@@ -172,7 +174,9 @@ const scheduleDeferredLayoutInit = () => {
     runDeferredLayoutInit();
   };
 
-  if (window.requestIdleCallback) {
+  if (document.querySelector("[data-target-mapping]")) {
+    runIfCurrent();
+  } else if (window.requestIdleCallback) {
     window.__layoutDeferredIdle = window.requestIdleCallback(runIfCurrent, { timeout: 400 });
   } else {
     window.__layoutDeferredTimer = setTimeout(runIfCurrent, 32);
@@ -262,12 +266,39 @@ function initDeferredLayoutPage() {
     if (button.dataset.savedTargetFarmersBound === "true") return;
 
     button.dataset.savedTargetFarmersBound = "true";
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       const dialog = document.getElementById(button.dataset.savedTargetFarmersOpen);
       if (!dialog) return;
-
       if (typeof dialog.showModal === "function") dialog.showModal();
       else dialog.setAttribute("open", "open");
+      if (!dialog.dataset.farmersUrl || dialog.dataset.farmersLoaded === "true" || dialog.dataset.farmersLoading === "true") return;
+      const list = dialog.querySelector(".target-dialog-farmer-list");
+      dialog.dataset.farmersLoading = "true";
+      list.textContent = "Loading farmers...";
+      try {
+        const data = await fetchJson(dialog.dataset.farmersUrl);
+        const fragment = document.createDocumentFragment();
+        (data.farmers || []).forEach((farmer) => {
+          const item = document.createElement("div");
+          item.className = "vrp-ics-farmer-item";
+          const content = document.createElement("span");
+          const name = document.createElement("strong");
+          name.textContent = farmer.farmer_name || `Farmer #${farmer.id}`;
+          const meta = document.createElement("small");
+          meta.textContent = [["Father", farmer.father_name], ["Tracenet", farmer.tracenet_no], ["Mobile", farmer.mobile_no], ["Village", farmer.village_name]]
+            .filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`).join(" | ");
+          content.append(name, meta);
+          item.append(content);
+          fragment.append(item);
+        });
+        list.replaceChildren(fragment);
+        if (!list.childElementCount) list.textContent = "No farmers found.";
+        dialog.dataset.farmersLoaded = "true";
+      } catch (_error) {
+        list.textContent = "Could not load farmers. Close and click View to retry.";
+      } finally {
+        delete dialog.dataset.farmersLoading;
+      }
     });
   });
 
@@ -2188,7 +2219,7 @@ function initDeferredLayoutPage() {
       if (trainingFarmerCache.has(key)) return trainingFarmerCache.get(key);
 
       const inlineFarmers = rows.flatMap((mapping) => mapping.farmers || []);
-      if (inlineFarmers.length || !farmersUrl) {
+      if (!farmersUrl) {
         const farmersById = new Map();
         rows.forEach((mapping) => {
           const includedFarmerIds = new Set((mapping.completed_farmer_ids || []).map(String));
@@ -2252,7 +2283,7 @@ function initDeferredLayoutPage() {
 	      const count = selectedFarmerBoxes().length;
 	      const boxes = farmerBoxes();
 	      const mappedCount = allFarmerBoxes().length;
-	      if (farmerCount) farmerCount.textContent = `${count} selected / ${mappedCount} mapped farmers`;
+	      if (farmerCount) farmerCount.textContent = `${count} selected / ${mappedCount} mapped farmers • ${farmerList.querySelectorAll(".already-included").length} completed`;
 	      if (farmerCountInput) farmerCountInput.value = String(count);
 	      if (farmerSelectAll) {
 	        farmerSelectAll.checked = boxes.length > 0 && count === boxes.length;
@@ -3343,6 +3374,32 @@ function initDeferredLayoutPage() {
     const farmerDialogSave = shell.querySelector("[data-target-dialog-save]");
     const farmerDialogSaveStatus = shell.querySelector("[data-target-dialog-save-status]");
     const form = shell.querySelector("form");
+    const validateOpgBreakdown = (strict = false) => {
+      const inputs = trainingTargetInputs().filter((input) => !input.disabled);
+      const opgInput = inputs.find((input) => input.dataset.trainingActivityName === "OPG Training");
+      const breakdownInputs = inputs.filter((input) => input !== opgInput);
+      const breakdown = breakdownInputs.reduce((sum, input) => sum + (Number(input.value) || 0), 0);
+      const opg = Number(opgInput?.value);
+      let message = opgInput?.value.trim() && (breakdown > opg || (strict && breakdown !== opg))
+        ? `General Training/Meeting, Input Demo INM, Input Demo PM aur FFS ka total (${breakdown}) OPG Training (${opg}) ke equal hona chahiye; usse zyada nahi ho sakta.` : "";
+      if (strict && opgInput && !opgInput.value.trim() && breakdown > 0) message = "Please enter OPG Training before allocating the four training targets.";
+      trainingTargetInputs().forEach((input) => input.setCustomValidity(""));
+      if (message) opgInput.setCustomValidity(message);
+      const warning = shell.querySelector("[data-opg-validation-message]");
+      if (warning) {
+        warning.textContent = message || (opgInput?.value.trim() ? `${breakdown} / ${opg} OPG Training allocated` : "");
+        warning.hidden = !warning.textContent;
+      }
+      return message;
+    };
+    trainingTargetInputs().forEach((input) => input.addEventListener("input", () => validateOpgBreakdown(false)));
+    form?.addEventListener("submit", (event) => {
+      const message = validateOpgBreakdown(true);
+      if (!message) return;
+      event.preventDefault();
+      form.reportValidity();
+    });
+
     const savedEditFarmerIds = () => {
       const ids = Array.from(shell.querySelectorAll("[data-edit-saved-target-farmer-id]"))
         .map((input) => String(input.value || ""))
@@ -4692,7 +4749,7 @@ function initDeferredLayoutPage() {
     const dataRows = rows.filter((row) => !row.dataset.emptyRow);
     const columnFilters = JSON.parse(table.dataset.columnFilters || "{}");
     const matchedRows = dataRows.filter((row) => {
-      const globalMatch = row.innerText.toLowerCase().includes(query);
+      const globalMatch = !query || row.textContent.toLowerCase().includes(query);
       if (!globalMatch) return false;
 
       return Object.entries(columnFilters).every(([columnIndex, filter]) => {

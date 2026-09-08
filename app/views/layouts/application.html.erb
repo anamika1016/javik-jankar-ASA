@@ -11,9 +11,16 @@
 
     <%= yield :head %>
 
-    <link rel="icon" href="/icon.png" type="image/png">
-    <link rel="icon" href="/icon.svg" type="image/svg+xml">
-    <link rel="apple-touch-icon" href="/icon.png">
+    <%# Favicon follows the Stakeholder Name logo when configured, else static icons. %>
+    <% if (stakeholder_favicon = app_stakeholder_logo).present? %>
+      <link rel="icon" href="<%= stakeholder_favicon %>">
+      <link rel="apple-touch-icon" href="<%= stakeholder_favicon %>">
+    <% else %>
+      <link rel="icon" href="/jj_logo.png" type="image/png">
+      <link rel="icon" href="/icon.png" type="image/png">
+      <link rel="icon" href="/favicon.ico" type="image/x-icon">
+      <link rel="apple-touch-icon" href="/jj_logo.png">
+    <% end %>
 
     <%= stylesheet_link_tag :application, "data-turbo-track": "reload" %>
     <%= javascript_importmap_tags %>

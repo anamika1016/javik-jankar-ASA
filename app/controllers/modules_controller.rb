@@ -8857,11 +8857,7 @@ class ModulesController < ApplicationController
     return [] unless ModuleRecord.table_exists?
 
     records_scope = ModuleRecord.where(module_slug: record_source_slug)
-    records = if screen_limited_module_records?
-      records_scope.order(created_at: :desc, id: :desc).limit(300).to_a
-    else
-      records_scope.to_a
-    end
+    records = records_scope.to_a
     if record_source_slug == "jeevika-jankar-bill-process"
       records = if ["jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail"].include?(@slug) && jeevika_jankar_payment_module_access?(@slug)
         records.select { |record| jeevika_bill_final_approved?(record) }
@@ -8890,6 +8886,7 @@ class ModulesController < ApplicationController
     # These entry screens include a Saved Records table.  Loading the visible
     # records here makes a just-saved entry appear immediately after redirect.
     return true if %w[training-form seed-distribution-target papl360-target other-target add-farmer-form].include?(@slug)
+    return true if %w[stakeholder-master stakeholder-role role-name parent-office-add office-category-add office-mapping-add].include?(@slug)
     return true if @slug == "lg-directory-list"
     return true if @slug == "jeevika-jankar-payment-list-detail"
     return true if @slug == "jeevika-jankar-completed-payment-list"
@@ -10570,92 +10567,68 @@ class ModulesController < ApplicationController
     @other_target_candidate_targets = targets
     @other_target_candidate_targets_by_id = targets.index_by { |target| target.id.to_s }
     farmers_by_id = jeevika_jankar_farmers_by_id(targets)
-    training_index = jeevika_jankar_training_index(targets)
+    training_index = if @bill_list_batch_totals
+      targets.group_by(&:vrp_id).each_value.each_with_object({}) do |vrp_targets, index|
+        index.merge!(jeevika_jankar_training_index(vrp_targets))
+      end
+    else
+      jeevika_jankar_training_index(targets)
+    end
     activity_settings = jeevika_jankar_main_activity_settings
     sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
     other_target_achievement_index = approved_other_target_achievement_index
 
-    rows = targets.map do |target|
+    # Use the dashboard's assignment grouping and completion calculation for both
+    # the bill totals and its detail rows. Training sessions are evidence, not targets.
+    rows = vrp_dashboard_target_progress_rows(targets, []).map do |progress|
+      target = progress[:target_record]
       activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
       main_activity_type = activity_setting&.dig(:main_activity_type).presence || "Training"
-      achievement_entry_mode = activity_setting&.dig(:achievement_entry_mode).presence || "Auto Fill"
-      farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
-      target_quantity = target.target_quantity.to_f
-      assigned_count = farmer_ids.any? ? farmer_ids.size : target.farmer_count.to_i
-      farmer_rows = farmer_ids.map do |farmer_id|
-        farmer = farmers_by_id[farmer_id]
-        training_rows = Array(training_index[[target.vrp_id.to_s, target.month_name.to_s, farmer_id]])
-        best_training = best_training_for_target(target, training_rows)
-        same_activity = training_matches_target_activity?(target, best_training)
-
+      completed_ids = Array(progress[:completed_farmer_ids]).map(&:to_s).to_set
+      farmer_rows = Array(progress[:assigned_farmer_ids]).map do |farmer_id|
+        farmer = farmers_by_id[farmer_id.to_s]
+        training_rows = Array(training_index[[target.vrp_id.to_s, target.month_name.to_s, farmer_id.to_s]])
+        training = best_training_for_target(target, training_rows)
         {
-          id: farmer_id,
+          id: farmer_id.to_s,
           name: farmer&.farmer_name.presence || "Farmer ##{farmer_id}",
           father_name: farmer&.father_name,
           mobile_no: farmer&.mobile_no,
           tracenet_no: farmer&.tracenet_no,
-          department: best_training&.dig(:department),
-          training_topic: best_training&.dig(:training_topic),
-          training_subject: best_training&.dig(:training_subject),
-          training_date: best_training&.dig(:training_date),
-          status: best_training.blank? ? "Pending" : (same_activity ? "Trained in Same Activity" : "Trained in Other Activity")
+          department: training&.dig(:department),
+          training_topic: training&.dig(:training_topic),
+          training_subject: training&.dig(:training_subject),
+          training_date: training&.dig(:training_date),
+          status: completed_ids.include?(farmer_id.to_s) ? "Completed in Target" : "Pending"
         }
       end
-
-      dashboard_completed_ids = vrp_dashboard_completed_farmer_ids_for_target(target) & farmer_ids
-      if dashboard_completed_ids.any?
-        farmer_rows.each do |row|
-          next unless dashboard_completed_ids.include?(row[:id].to_s)
-
-          row[:status] = "Completed in Target" if row[:status] == "Pending"
-        end
-      end
-
-      trained_rows = farmer_rows.reject { |row| row[:status] == "Pending" }
-      same_count = farmer_rows.count { |row| row[:status] == "Trained in Same Activity" }
-      other_count = farmer_rows.count { |row| row[:status] == "Trained in Other Activity" || row[:status] == "Completed in Target" }
-      achievement_count = trained_rows.size
-      other_target_achievement = other_target_achievement_index[target.id.to_s]
-
-      unless training_main_activity_type?(main_activity_type)
-        if other_target_achievement.present?
-          achievement_count = other_target_achievement[:achievement]
-          other_count = achievement_count
-          achievement_entry_mode = "Auto Fill"
-        else
-          achievement_count = 0
-          other_count = 0
-          achievement_entry_mode = "Self"
-        end
-      end
-      achievement_count = [achievement_count.to_f, dashboard_completed_ids.size.to_f].max if dashboard_completed_ids.any?
-      pending_base = training_main_activity_type?(main_activity_type) ? assigned_count : target_quantity
-
+      other_achievement = other_target_achievement_index[target.id.to_s]
       {
-        target_mapping_id: target.id.to_s,
+        target_mapping_id: progress[:target_mapping_id],
+        target_mapping_ids: progress[:target_mapping_ids],
         vrp_id: target.vrp_id.to_s,
         vrp_name: target.vrp&.name.presence || "VRP ##{target.vrp_id}",
-        month_name: target.month_name,
-        fco: target.fco_name.presence || target.fco_id,
-        ics: target.ics_name.presence || target.ics_id,
-        village: target.village_name.presence || target.village_id,
-        main_activity: target.main_activity_name,
+        month_name: progress[:month],
+        fco: progress[:fco],
+        ics: progress[:ics],
+        village: progress[:village],
+        main_activity: progress[:main_activity],
         main_activity_type: main_activity_type,
-        activity: target.activity_name,
-        target_quantity: target_quantity,
-        assigned_count: assigned_count,
-        achievement_count: achievement_count,
-        achievement_entry_mode: achievement_entry_mode,
-        same_activity_count: same_count,
-        other_activity_count: other_count,
-        pending_count: [pending_base - achievement_count, 0].max,
-        timesheet_dates: (other_target_achievement&.dig(:achieved_at).presence || trained_rows.filter_map { |row| row[:training_date].presence }.uniq.join(", ")),
+        activity: progress[:activity],
+        target_quantity: progress[:target],
+        assigned_count: progress[:target],
+        achievement_count: progress[:completed],
+        achievement_entry_mode: "Auto Fill",
+        same_activity_count: completed_ids.size,
+        other_activity_count: progress[:completed],
+        pending_count: progress[:pending],
+        timesheet_dates: other_achievement&.dig(:achieved_at).presence || farmer_rows.filter_map { |row| row[:training_date].presence if row[:status] != "Pending" }.uniq.join(", "),
         farmer_details: farmer_rows
       }
     end
 
     @jeevika_jankar_target_summary = jeevika_jankar_target_summary_from_rows(rows)
-    group_jeevika_jankar_training_bill_rows(rows)
+    rows
   end
 
   def jeevika_jankar_bill_selected_vrp_ids(value)
@@ -11356,6 +11329,9 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_jankar_bill_total_target(record)
+    summary = jeevika_jankar_bill_process_totals(record)
+    return summary[:target] if summary
+
     totals = jeevika_jankar_bill_item_totals(record.data["bill_items"])
     return dashboard_quantity(totals[:target]) if totals[:has_items]
 
@@ -11363,6 +11339,9 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_jankar_bill_total_achievement(record)
+    summary = jeevika_jankar_bill_process_totals(record)
+    return summary[:achievement] if summary
+
     totals = jeevika_jankar_bill_item_totals(record.data["bill_items"])
     return dashboard_quantity(totals[:achievement]) if totals[:has_items]
 
@@ -13863,4 +13842,24 @@ class ModulesController < ApplicationController
       "Submitted"
     end
   end
+  def jeevika_jankar_bill_process_totals(record)
+    vrp_id = record.data["select_vrp"].to_s
+    month = record.data["bill_month"].to_s
+    return if vrp_id.blank? || month.blank?
+
+    @jeevika_bill_process_totals ||= {}
+    key = [vrp_id, normalize_dashboard_text(month)]
+    return @jeevika_bill_process_totals[key] if @jeevika_bill_process_totals.key?(key)
+
+    previous_summary = @jeevika_jankar_target_summary
+    begin
+      jeevika_jankar_bill_rows(vrp_id: vrp_id, month_name: month)
+      ids = jeevika_jankar_bill_selected_vrp_ids(vrp_id)
+      @jeevika_bill_process_totals[key] = @jeevika_jankar_target_summary&.dig(ids.first, key.last)
+    ensure
+      @jeevika_jankar_target_summary = previous_summary
+    end
+  end
+
+
 end

@@ -27,21 +27,22 @@ class TargetMappingsController < ApplicationController
       [fco_id, office_block_options(option[:value])]
     end
     @target_mappings = dashboard_filtered_target_mappings(visible_target_mappings)
-      .includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc).limit(100)
+      .includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc)
     # The table is deliberately rendered from row hashes (it also supports
     # summary rows).  Build the normal record rows here; previously this was
     # never assigned, so a successfully saved mapping always looked empty.
     @target_mapping_rows = target_mapping_rows(@target_mappings)
-    saved_farmer_ids = @target_mapping_rows.flat_map { |row| row[:farmer_ids] }.uniq
-    @target_farmers_by_id = target_farmer_profiles_by_id(
-      Afl.where(id: saved_farmer_ids).select(:id, :farmer_name, :father_name, :tracenet_no, :mobile_no, :khasara_no, :village_name)
-    )
+    @target_farmers_by_id = {}
     @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && @admin_mapping_actions
     @edit_payload = edit_payload(@edit_target)
     @sub_activity_options = target_sub_activity_options(@edit_target&.main_activity_name)
   end
 
   def create
+    if (opg_error = training_target_opg_error)
+      redirect_to target_mappings_path, alert: opg_error
+      return
+    end
     if (plan_error = weekly_plan_error)
       redirect_to target_mappings_path, alert: plan_error
       return
@@ -117,6 +118,15 @@ class TargetMappingsController < ApplicationController
 
     farmers = external_village_farmers_for(village_value)
     render json: { farmers: farmers, count: farmers.size }
+  end
+
+  def saved_farmers
+    ids = params[:target_mapping_ids].to_s.split(",").uniq
+    targets = visible_target_mappings.where(id: ids)
+    farmer_ids = targets.pluck(:afl_ids).flat_map { |values| normalized_afl_ids(values) }.uniq
+    farmers = Afl.where(id: farmer_ids).order(:farmer_name, :id)
+      .select(:id, :farmer_name, :father_name, :tracenet_no, :mobile_no, :village_name)
+    render json: { farmers: farmers.as_json }
   end
 
   private
@@ -369,6 +379,8 @@ class TargetMappingsController < ApplicationController
       week_4_target: integer_plan_value(plan["week_4"])
     }
   end
+
+  OPG_BREAKDOWN_KEYS = %w[week_wise_opg input_demo_inm input_demo_pm ffs].freeze
 
   def weekly_plan_error
     # New Farmer Target is not activity based.  It deliberately has no weekly
@@ -1425,7 +1437,13 @@ class TargetMappingsController < ApplicationController
     return TargetMapping.all if admin_login?
     return TargetMapping.where(vrp_id: current_app_user["id"]) if non_admin_vrp_login?
 
-    TargetMapping.where(created_by_type: current_app_user["record_type"], created_by_id: current_app_user["id"])
+    # Management users oversee a set of VRPs (the same set the dashboard shows). List every
+    # mapping for those VRPs, not only the ones this user personally created, so the master
+    # list reflects all assigned targets. Global-view users (admin/CFO) see everything.
+    policy = dashboard_target_policy
+    return TargetMapping.all if policy.send(:dashboard_global_view_user?)
+
+    TargetMapping.where(vrp_id: policy.send(:dashboard_vrps).map(&:id))
   end
 
   def dashboard_filtered_target_mappings(scope)
@@ -1581,4 +1599,29 @@ class TargetMappingsController < ApplicationController
       encoded_location_value(id, label_values[index])
     end
   end
+  def training_target_opg_error
+    targets = target_mapping_params[:training_targets]
+    return unless targets.respond_to?(:[])
+
+    supplied = TRAINING_TARGET_FIELDS.keys.select { |key| targets[key].present? }
+    return "Training target values must be non-negative whole numbers." if supplied.any? { |key| integer_plan_value(targets[key]).nil? }
+    return if supplied.empty?
+    return "Please enter OPG Training before allocating the four training targets." if targets["opg_training"].blank?
+
+    opg = integer_plan_value(targets["opg_training"])
+    breakdown = OPG_BREAKDOWN_KEYS.sum { |key| integer_plan_value(targets[key]).to_i }
+    return if breakdown == opg
+
+    "General Training/Meeting, Input Demo INM, Input Demo PM aur FFS ka total (#{breakdown}) OPG Training (#{opg}) ke equal hona chahiye; usse zyada nahi ho sakta."
+  end
+
+
+  def dashboard_target_policy
+    policy = ModulesController.new
+    policy.request = request
+    policy.instance_variable_set(:@current_app_user, current_app_user)
+    policy
+  end
+
+
 end

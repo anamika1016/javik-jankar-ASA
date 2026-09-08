@@ -525,13 +525,11 @@ module ApplicationHelper
   end
 
   def app_logo_path
-    @app_logo_path ||= matching_stakeholder_record("stakeholder-master")&.data&.[]("logo_upload").presence ||
-      matching_stakeholder_record("stakeholder-profile")&.data&.[]("logo_upload").presence ||
-      current_stakeholder&.data&.[]("logo_upload").presence ||
-      current_stakeholder_profile&.data&.[]("logo_upload").presence ||
-      "/icon.svg"
+    @app_logo_path ||= app_stakeholder_logo || "/icon.svg"
   end
 
+  # The Stakeholder Name logo, or nil when none is configured. Used for the browser
+  # favicon so it can cleanly fall back to the static icons when absent.
   def active_stakeholder_records(module_slug)
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
@@ -615,4 +613,14 @@ module ApplicationHelper
   def normalize_stakeholder_name(value)
     value.to_s.downcase.gsub(/[^a-z0-9]+/, " ").squish
   end
+  def app_stakeholder_logo
+    return @app_stakeholder_logo if defined?(@app_stakeholder_logo)
+
+    @app_stakeholder_logo = matching_stakeholder_record("stakeholder-master")&.data&.[]("logo_upload").presence ||
+      matching_stakeholder_record("stakeholder-profile")&.data&.[]("logo_upload").presence ||
+      current_stakeholder&.data&.[]("logo_upload").presence ||
+      current_stakeholder_profile&.data&.[]("logo_upload").presence
+  end
+
+
 end
