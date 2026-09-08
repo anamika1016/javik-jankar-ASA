@@ -83,16 +83,18 @@ class TargetMappingsController < ApplicationController
   end
 
   def vrp_mappings
+    block_wise = target_entry_mode_block_wise?
+    village_value = target_village_param
     render json: {
-      fco_options: target_entry_mode_block_wise? ? office_fco_options : fco_options(params[:vrp_id]),
-      block_options: target_entry_mode_block_wise? ? office_block_options(params[:fco_id]) : [],
+      fco_options: block_wise ? office_fco_options : fco_options(params[:vrp_id]),
+      block_options: block_wise ? office_block_options(params[:fco_id]) : [],
       ics_options: ics_options_for(params[:fco_id], params[:vrp_id]),
-      village_options: target_entry_mode_block_wise? ? office_village_options(params[:fco_id], params[:block_id]) : village_options_for(params[:fco_id], params[:ics_id], params[:vrp_id]),
-      farmers: target_farmers_for(
+      village_options: block_wise ? office_village_options(params[:fco_id], params[:block_id]) : village_options_for(params[:fco_id], params[:ics_id], params[:vrp_id]),
+      farmers: block_wise ? external_village_farmers_for(village_value) : target_farmers_for(
         vrp_id: params[:vrp_id],
         fco_id: params[:fco_id],
         ics_id: params[:ics_id],
-        village_id: target_village_param,
+        village_id: village_value,
         month_name: params[:month_name],
         main_activity_name: params[:main_activity_name],
         activity_name: params[:activity_name],
@@ -105,7 +107,82 @@ class TargetMappingsController < ApplicationController
     render json: { options: user_block_options }
   end
 
+  def village_farmers
+    village_value = params[:village_id].presence || params[:village_ids]
+    if params[:data_type].to_s == "short"
+      render json: { farmers: [], count: external_village_farmer_count_for(village_value) }
+      return
+    end
+
+    farmers = external_village_farmers_for(village_value)
+    render json: { farmers: farmers, count: farmers.size }
+  end
+
   private
+
+  def external_village_farmers_for(village_value)
+    village_ids = parse_location_values(village_value).map(&:first).reject(&:blank?)
+    return [] if village_ids.blank?
+
+    village_ids.flat_map { |village_id| fetch_external_farmers(data_type: "detail", type: "village", id_key: "village_id", id: village_id) }
+      .uniq { |farmer| farmer[:id].to_s }
+      .sort_by { |farmer| [farmer[:farmer_name].to_s.downcase, farmer[:id].to_s] }
+  end
+
+  def external_village_farmer_count_for(village_value)
+    parse_location_values(village_value).map(&:first).reject(&:blank?).sum do |village_id|
+      fetch_external_farmer_count(village_id)
+    end
+  end
+
+  def fetch_external_farmer_count(village_id)
+    uri = URI("https://asa.ploughmanagro.com/api/farmers/get_farmers.json")
+    uri.query = URI.encode_www_form(data_type: "short", type: "village", village_id: village_id)
+    response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 3, read_timeout: 6) do |http|
+      http.get(uri.request_uri)
+    end
+    return 0 unless response.is_a?(Net::HTTPSuccess)
+
+    JSON.parse(response.body)["count"].to_i
+  rescue StandardError => error
+    Rails.logger.warn("Unable to load ASA farmer count for #{village_id}: #{error.class} - #{error.message}")
+    0
+  end
+
+  def fetch_external_farmers(data_type:, type:, id_key:, id:)
+    return [] if id.blank?
+
+    uri = URI("https://asa.ploughmanagro.com/api/farmers/get_farmers.json")
+    uri.query = URI.encode_www_form(data_type: data_type, type: type, id_key => id)
+    response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 4, read_timeout: 12) do |http|
+      http.get(uri.request_uri)
+    end
+    return [] unless response.is_a?(Net::HTTPSuccess)
+
+    payload = JSON.parse(response.body)
+    Array(payload["data"]).filter_map.with_index do |row, index|
+      farmer = row["farmer"].is_a?(Hash) ? row["farmer"] : row
+      address = row["address"].is_a?(Hash) ? row["address"] : {}
+      grouping = row["grouping"].is_a?(Hash) ? row["grouping"] : {}
+      farmer_id = farmer["farmer_unique_id"].presence || farmer["id"].presence || "#{type}-#{id}-#{index + 1}"
+      farmer_name = farmer["farmer_name"].to_s.strip
+      next if farmer_name.blank?
+
+      {
+        id: farmer_id.to_s,
+        farmer_name: farmer_name,
+        father_name: farmer["father_husband_name"].presence || farmer["father_name"].presence || "-",
+        tracenet_no: farmer["tracenet_id"].presence || farmer["tracenet_no"].presence || "-",
+        mobile_no: farmer["mobile_no"].presence || "-",
+        khasara_no: Array(row["lands"]).filter_map { |land| land["khasra_no"].presence || land["plot_no"].presence }.join(", ").presence || "-",
+        village_name: address["village"].presence || grouping["village"].presence || "-",
+        selected: false
+      }
+    end
+  rescue StandardError => error
+    Rails.logger.warn("Unable to load ASA #{type} farmers for #{id}: #{error.class} - #{error.message}")
+    []
+  end
 
   def user_block_options
     uri = URI("http://144.76.19.201:3003/api/get_user_list")
@@ -466,6 +543,8 @@ class TargetMappingsController < ApplicationController
   end
 
   def assign_target_farmers(target_mapping)
+    return assign_external_target_farmers(target_mapping) if target_entry_mode_block_wise?
+
     mapped_farmer_ids = afl_ids_for_location(
       target_mapping.fco_id,
       target_mapping.ics_id,
@@ -521,6 +600,43 @@ class TargetMappingsController < ApplicationController
     blocked_ids = (selected_ids - already_selected_ids) & assigned_farmer_ids_for(target_mapping)
     if blocked_ids.any?
       target_mapping.errors.add(:afl_ids, "#{blocked_ids.size} farmer already assigned for this activity")
+      return false
+    end
+
+    target_mapping.afl_ids = selected_ids
+    target_mapping.farmer_count = selected_ids.size
+    true
+  end
+
+  def assign_external_target_farmers(target_mapping)
+    plan = weekly_plan_for(target_mapping.main_activity_name, target_mapping.activity_name)
+    selected_ids = normalized_afl_ids(plan ? plan["afl_ids"] : target_mapping_params[:afl_ids])
+    selected_ids = submitted_farmer_ids if selected_ids.blank? && submitted_farmer_ids.present?
+    if selected_ids.present? && target_mapping.target_quantity.to_i <= 0
+      target_mapping.target_quantity = selected_ids.size
+    end
+    target_count = target_farmer_count(target_mapping)
+    return false unless target_count
+
+    target_mapping.afl_ids = selected_ids if plan
+    if training_box_activity?(target_mapping.activity_name) || new_farmer_target_mode? || village_target_mode?
+      if target_count <= 0
+        target_mapping.errors.add(training_box_activity?(target_mapping.activity_name) ? :activity_name : :target_quantity, "target must be greater than 0")
+        return false
+      end
+
+      target_mapping.afl_ids = []
+      target_mapping.farmer_count = 0
+      return true
+    end
+
+    if selected_ids.blank?
+      target_mapping.errors.add(:afl_ids, "select at least one farmer")
+      return false
+    end
+
+    if target_count != selected_ids.size
+      target_mapping.errors.add(:target_quantity, "must match selected farmers count")
       return false
     end
 
@@ -1188,8 +1304,17 @@ class TargetMappingsController < ApplicationController
   end
 
   def parse_location_value(value)
-    id, label = value.to_s.split("||", 2)
-    [id.to_s, label.to_s.presence]
+    raw_value = value.to_s.strip
+    id, label = raw_value.split("||", 2)
+    if label.blank? && raw_value.match?(/\s-\s/)
+      display_label, display_id = raw_value.rpartition(" - ").values_at(0, 2)
+      if display_id.to_s.match?(/\A\d+\z/)
+        id = display_id
+        label = display_label
+      end
+    end
+
+    [id.to_s.strip, label.to_s.strip.presence]
   end
 
   def parse_location_values(value)

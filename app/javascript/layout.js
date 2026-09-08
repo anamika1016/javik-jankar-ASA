@@ -3358,6 +3358,7 @@ function initDeferredLayoutPage() {
     let blockOptionsByFco = {};
     let targetBlockOptions = [];
     let targetLoadRequestId = 0;
+    let targetCountRequestId = 0;
     let activeFarmerDialogRowKey = "";
     const weeklyPlanValues = {};
     const weeklyPlanFarmerIds = {};
@@ -3452,7 +3453,14 @@ function initDeferredLayoutPage() {
         });
       }
     };
-    const locationValueParts = (value) => `${value || ""}`.split("||");
+    const locationValueParts = (value) => {
+      const rawValue = `${value || ""}`.trim();
+      const parts = rawValue.split("||");
+      if (parts.length > 1) return parts;
+      const displayMatch = rawValue.match(/^(.*)\s-\s(\d+)$/);
+      if (displayMatch) return [displayMatch[2], displayMatch[1]];
+      return [rawValue, ""];
+    };
     const targetOptionMatches = (optionValueText, selectedValueText) => {
       const optionParts = locationValueParts(optionValueText);
       const selectedParts = locationValueParts(selectedValueText);
@@ -3958,6 +3966,26 @@ function initDeferredLayoutPage() {
       if (farmerSearchEmpty) farmerSearchEmpty.hidden = true;
       updateTargetFarmerCount();
     };
+    const loadTargetFarmerCount = async () => {
+      if (!targetBlockWiseMode() || !shell.dataset.villageFarmersUrl) return;
+
+      const villageValues = targetSelectedValues(villageSelect);
+      if (!villageValues.length) return;
+
+      const requestId = ++targetCountRequestId;
+      if (registeredCountInput) registeredCountInput.value = "Loading...";
+      try {
+        const data = await fetchJson(shell.dataset.villageFarmersUrl, {
+          data_type: "short",
+          village_ids: JSON.stringify(villageValues)
+        });
+        if (requestId !== targetCountRequestId) return;
+        if (registeredCountInput) registeredCountInput.value = String(data.count || 0);
+      } catch (_error) {
+        if (requestId !== targetCountRequestId) return;
+        if (registeredCountInput) registeredCountInput.value = "0";
+      }
+    };
 
     const renderTargetFarmers = (farmers) => {
       if (!farmerPanel || !farmerList) return;
@@ -4012,7 +4040,7 @@ function initDeferredLayoutPage() {
       if (targetEntryModeSelect?.value) url.searchParams.set("target_entry_mode", targetEntryModeSelect.value);
       if (fcoValue) url.searchParams.set("fco_id", fcoValue);
       if (blockValue) url.searchParams.set("block_id", blockValue);
-      if (icsValue) url.searchParams.set("ics_id", icsValue);
+      if (!targetBlockWiseMode() && icsValue) url.searchParams.set("ics_id", icsValue);
       if (villageValues.length) url.searchParams.set("village_ids", JSON.stringify(villageValues));
       if (monthSelect?.value) url.searchParams.set("month_name", monthSelect.value);
       const mainActivityValues = targetSelectedValues(mainActivitySelect);
@@ -4035,7 +4063,7 @@ function initDeferredLayoutPage() {
           targetBlockOptions = Array.isArray(data.block_options) ? data.block_options : [];
           fillTargetSelect(blockSelect, targetBlockOptions, "Select Block");
         }
-        fillTargetSelect(icsSelect, data.ics_options || [], "Select ICS");
+        fillTargetSelect(icsSelect, targetBlockWiseMode() ? [] : (data.ics_options || []), "Select ICS");
         fillTargetSelect(
           villageSelect,
           data.village_options || [],
@@ -4265,6 +4293,7 @@ function initDeferredLayoutPage() {
     villageSelect?.addEventListener("change", () => {
       syncTargetVillageHidden();
       clearTargetFarmers();
+      loadTargetFarmerCount();
       loadTargetData();
     });
     vrpSelect?.addEventListener("change", loadTargetData);

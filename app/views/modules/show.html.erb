@@ -31,12 +31,6 @@
           <div>
             <%= image_tag app_logo_path, alt: app_display_name, class: "bill-print-logo" %>
           </div>
-          <div class="bill-print-stakeholder">
-            <strong><%= app_display_name %></strong>
-            <span><%= stakeholder_profile&.data&.[]("full_address").presence || "-" %></span>
-            <span>Phone: <%= stakeholder_profile&.data&.[]("phone_number").presence || "-" %></span>
-            <span>Email: <%= stakeholder_profile&.data&.[]("email").presence || "-" %></span>
-          </div>
         </div>
 
         <div class="bill-print-profile-row">
@@ -45,30 +39,28 @@
               <%= image_tag rails_blob_path(vrp_photo, only_path: true), alt: "VRP Photo", class: "bill-print-vrp-photo" %>
             <% end %>
             <p>
-              <strong><%= jeevika_jankar_display_name(detail_record.data["select_vrp_name"].presence || jeevika_jankar_vrp_label(detail_record.data["select_vrp"])).presence || "-" %></strong>(VRP)<br>
-              Block: <%= (bill_vrp&.vrp_profile&.block_id).presence || "-" %><br>
+              <strong><%= jeevika_jankar_display_name(detail_record.data["select_vrp_name"].presence || jeevika_jankar_vrp_label(detail_record.data["select_vrp"])).presence || "-" %></strong> (JJ)<br>
               Mobile No.: <%= bill_vrp&.mobile_no.presence || "-" %>
             </p>
           </div>
           <div class="bill-print-meta">
-            <p>VRP Bill ID: #<%= detail_record.id %></p>
+            <p>JJ Worksheet ID: #<%= detail_record.id %></p>
             <p>Invoice Date: <%= bill_display_date(detail_record.data["invoice_date"].presence || detail_record.created_at) %></p>
             <p>Invoice Month: <%= detail_record.data["bill_month"].presence || "-" %></p>
-            <p><%= detail_summary[:fco].presence || "-" %> - FCO, <%= detail_summary[:to].presence || "-" %> - TO</p>
-            <p>Project: <%= detail_summary[:projects].presence || "-" %></p>
+            <p>FCO: <%= detail_summary[:fco].presence || "-" %>, TO: <%= detail_summary[:to].presence || "-" %>, Block: <%= (bill_vrp&.vrp_profile&.block_id).presence || "-" %></p>
           </div>
         </div>
 
-        <h3 class="bill-print-section-title">Time Slot</h3>
+        <h3 class="bill-print-section-title">Monthly Worksheet</h3>
         <table class="bill-print-table">
           <thead>
             <tr>
               <th>#</th>
-              <th>Working Date</th>
-              <th>Village Name</th>
+              <th>Working Period</th>
+              <th>Village Visited</th>
+              <th>Major Work Indicator</th>
               <th>Activity</th>
-              <th>TCI Name</th>
-              <th>Number</th>
+              <th>Achievement</th>
             </tr>
           </thead>
           <tbody>
@@ -77,41 +69,17 @@
                 <td><%= index + 1 %></td>
                 <td><%= row[:working_date] %></td>
                 <td><%= row[:village] %></td>
-                <td><%= row[:activity] %></td>
                 <td><%= row[:tci] %></td>
+                <td><%= row[:activity] %></td>
                 <td><%= row[:number] %></td>
               </tr>
             <% end %>
           </tbody>
         </table>
 
-        <table class="bill-print-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Description</th>
-              <th>Rate</th>
-              <th>Number</th>
-              <th>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            <% jeevika_bill_description_rows(detail_record).each do |row| %>
-              <tr>
-                <td><%= row[:index] %></td>
-                <td><%= row[:description] %></td>
-                <td>Rs.<%= row[:rate] %></td>
-                <td><%= row[:number] %></td>
-                <td><%= money.call(row[:total]) %></td>
-              </tr>
-            <% end %>
-            <tr>
-              <td colspan="4" class="bill-print-total-label">Total Payment</td>
-              <td class="bill-print-total-value"><%= money.call(detail_summary[:total_amount]) %></td>
-            </tr>
-          </tbody>
-        </table>
+        <p class="bill-print-amount"><strong>Total Payment: <%= money.call(detail_summary[:total_amount]) %></strong></p>
 
+        <h3 class="bill-print-section-title">Bank Details</h3>
         <table class="bill-print-table">
           <thead>
             <tr>
@@ -136,23 +104,20 @@
         </table>
 
         <div class="bill-print-footer">
-          <div class="bill-print-prepared">
-            <% if jeevika_bill_status_label(detail_record).to_s.downcase.include?("final approved") %>
-              <span class="bill-final-approved">Final Approved</span>
-            <% end %>
-            <strong>Prepared by</strong>
-            <span><%= prepared_by[:name] %>(at: <%= prepared_by[:at] %>)</span>
-          </div>
           <div class="bill-print-approved">
-            <strong>Verified & Approved By</strong>
+            <strong>Approver and Verification Details</strong>
+            <span>Prepared by ==> <%= prepared_by[:name] %> <%= prepared_by[:at] %></span>
             <% if approved_rows.any? %>
               <% approved_rows.each do |level, approver, at, action_by| %>
-                <span><%= level %> ==> <%= action_by.presence || approver %> (<%= approver %>) <%= at %></span>
+                <span><%= level %> ==> <%= action_by.presence || approver %> <%= at %></span>
               <% end %>
             <% else %>
               <span>-</span>
             <% end %>
           </div>
+          <% if jeevika_bill_status_label(detail_record).to_s.downcase.include?("final approved") %>
+            <%= render "modules/approved_stamp" %>
+          <% end %>
         </div>
       </section>
     <% else %>

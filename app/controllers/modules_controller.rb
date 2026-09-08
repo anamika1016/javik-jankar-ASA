@@ -9008,6 +9008,64 @@ class ModulesController < ApplicationController
     end
   end
 
+  def prepare_farmer_list_data
+    @farmer_list_type = params[:type].presence_in(%w[village block fco to]) || "village"
+    @farmer_list_location_id = params[:location_id].presence || "10"
+    @farmer_list_rows = farmer_list_api_rows(@farmer_list_type, @farmer_list_location_id)
+  rescue StandardError => error
+    Rails.logger.error("Failed to fetch Farmer List: #{error.message}")
+    @farmer_list_rows = []
+  end
+
+  def farmer_list_api_rows(type, location_id)
+    return [] if location_id.blank?
+
+    uri = URI("https://asa.ploughmanagro.com/api/farmers/get_farmers.json")
+    uri.query = URI.encode_www_form(data_type: "detail", type: type, "#{type}_id" => location_id)
+    response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 4, read_timeout: 15) { |http| http.get(uri.request_uri) }
+    return [] unless response.is_a?(Net::HTTPSuccess)
+
+    payload = JSON.parse(response.body)
+    Array(payload["data"]).filter_map.with_index do |row, index|
+      farmer = row["farmer"].is_a?(Hash) ? row["farmer"] : row
+      address = row["address"].is_a?(Hash) ? row["address"] : {}
+      grouping = row["grouping"].is_a?(Hash) ? row["grouping"] : {}
+      farmer_id = farmer["farmer_unique_id"].presence || farmer["id"].presence || "#{type}-#{location_id}-#{index + 1}"
+      farmer_name = farmer["farmer_name"].to_s.strip
+      next if farmer_name.blank?
+
+      {
+        farmer_id: farmer_id,
+        farmer_name: farmer_name,
+        father_name: farmer["father_husband_name"].presence || farmer["father_name"].presence || "-",
+        gender: farmer["gender"].presence || "-",
+        mobile_no: farmer["mobile_no"].presence || "-",
+        fco: farmer["fco_name"].presence || "-",
+        team_office: farmer["team_office_name"].presence || "-",
+        ics: farmer["ics_team_name"].presence || "-",
+        state: address["state"].presence || "-",
+        district: address["district"].presence || "-",
+        block: address["block"].presence || "-",
+        gram_panchayat: address["gram_panchayat"].presence || "-",
+        village: address["village"].presence || grouping["village"].presence || "-",
+        khasra_no: Array(row["lands"]).filter_map { |land| land["khasra_no"].presence || land["plot_no"].presence }.join(", ").presence || "-",
+        status: row["status"].presence || farmer["status"].presence || "-"
+      }
+    end
+  rescue StandardError => error
+    Rails.logger.warn("Unable to load ASA farmer list for #{type} #{location_id}: #{error.class} - #{error.message}")
+    []
+  end
+
+  def farmer_list_csv(rows)
+    CSV.generate do |csv|
+      csv << ["Farmer ID", "Farmer Name", "Father/Husband Name", "Gender", "Mobile No", "FCO", "TO", "ICS", "State", "District", "Block", "Gram Panchayat", "Village", "Khasra No", "Status"]
+      Array(rows).each do |row|
+        csv << [row[:farmer_id], row[:farmer_name], row[:father_name], row[:gender], row[:mobile_no], row[:fco], row[:team_office], row[:ics], row[:state], row[:district], row[:block], row[:gram_panchayat], row[:village], row[:khasra_no], row[:status]]
+      end
+    end
+  end
+
   def prepare_lg_directory_data
     @lg_directory_filter = params[:table].presence_in(lg_directory_filter_fields) || "State Name"
     @lg_directory_query = params[:q].to_s.strip

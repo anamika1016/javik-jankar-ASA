@@ -4012,7 +4012,7 @@ function initDeferredLayoutPage() {
       if (targetEntryModeSelect?.value) url.searchParams.set("target_entry_mode", targetEntryModeSelect.value);
       if (fcoValue) url.searchParams.set("fco_id", fcoValue);
       if (blockValue) url.searchParams.set("block_id", blockValue);
-      if (icsValue) url.searchParams.set("ics_id", icsValue);
+      if (!targetBlockWiseMode() && icsValue) url.searchParams.set("ics_id", icsValue);
       if (villageValues.length) url.searchParams.set("village_ids", JSON.stringify(villageValues));
       if (monthSelect?.value) url.searchParams.set("month_name", monthSelect.value);
       const mainActivityValues = targetSelectedValues(mainActivitySelect);
@@ -4035,7 +4035,7 @@ function initDeferredLayoutPage() {
           targetBlockOptions = Array.isArray(data.block_options) ? data.block_options : [];
           fillTargetSelect(blockSelect, targetBlockOptions, "Select Block");
         }
-        fillTargetSelect(icsSelect, data.ics_options || [], "Select ICS");
+        fillTargetSelect(icsSelect, targetBlockWiseMode() ? [] : (data.ics_options || []), "Select ICS");
         fillTargetSelect(
           villageSelect,
           data.village_options || [],
