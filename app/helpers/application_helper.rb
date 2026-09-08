@@ -54,7 +54,8 @@ module ApplicationHelper
         ["Parent Office Add", :module, "parent-office-add"],
         ["Office Category Add", :module, "office-category-add"],
         ["Sub Office Add", :module, "office-mapping-add"],
-        ["Office List", :module, "office-list"]
+        ["Office List", :module, "office-list"],
+        ["ASA360 Mapping", :route, :asa360_mapping_path]
       ]
     },
     {

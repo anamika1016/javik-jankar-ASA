@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_03_114000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_08_102043) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -50,13 +50,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_03_114000) do
     t.string "dispoce"
     t.decimal "estimate_quantity", precision: 18, scale: 4
     t.decimal "estimate_quantity_admin", precision: 18, scale: 4
+    t.string "farm_id"
     t.string "farmer_name"
     t.string "father_name"
     t.string "fco"
     t.string "fco_id"
     t.string "fpo_id"
     t.string "fpo_name"
-    t.string "farm_id"
     t.string "fy"
     t.string "ginning_id"
     t.string "ics_id"
@@ -85,12 +85,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_03_114000) do
     t.string "village_id"
     t.string "village_name"
     t.index ["created_at"], name: "index_afls_on_created_at"
-    t.index ["farmer_name"], name: "index_afls_on_farmer_name"
     t.index ["farm_id"], name: "index_afls_on_farm_id"
+    t.index ["farmer_name"], name: "index_afls_on_farmer_name"
     t.index ["fco_id", "ics_id", "village_id"], name: "index_afls_on_mapping_lookup"
     t.index ["mobile_no"], name: "index_afls_on_mobile_no"
     t.index ["slip_no"], name: "index_afls_on_slip_no"
     t.index ["tracenet_no"], name: "index_afls_on_tracenet_no"
+  end
+
+  create_table "asa360_master", force: :cascade do |t|
+    t.integer "o_id"
+    t.string "o_name", limit: 200
+    t.string "o_type", limit: 50
   end
 
   create_table "contamination_control_records", force: :cascade do |t|

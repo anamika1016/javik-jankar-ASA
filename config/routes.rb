@@ -99,6 +99,8 @@ Rails.application.routes.draw do
   get    "logout", to: "sessions#destroy", as: nil
   delete "logout", to: "sessions#destroy", as: :logout
 
+  get "asa360-mapping", to: "asa360_master#index", as: :asa360_mapping
+
   root "sessions#new"
   get "dashboard", to: "modules#dashboard", as: :dashboard
   get "dashboard/vrp-list/:list_type", to: "modules#vrp_dashboard_list", as: :vrp_dashboard_list

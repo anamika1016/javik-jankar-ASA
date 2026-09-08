@@ -675,9 +675,12 @@ class ModulesController < ApplicationController
       v_scope = v_scope.select { |v| v_ids.include?(v.id) }
     end
 
-    # 2. FCO Filter. Keep every FCO visible to this login in the dropdown;
-    # activity filtering is applied only after the user selects an FCO.
-    @filter_fcoc_options = unfiltered_vrps.map(&:fcoc).uniq.compact_blank.sort
+    # 2. FCO Filter. Merge FCO names from VRPs, target mappings and AFL records.
+    vrp_fcos = unfiltered_vrps.map(&:fcoc)
+    target_fcos = unfiltered_targets.map(&:fco_name)
+    afl_fcos = ModuleRecord.where(module_slug: "add-farmer-form").pluck(Arel.sql("data::jsonb ->> 'fco_name'"))
+    all_fcos = (vrp_fcos + target_fcos + afl_fcos).compact_blank.map { |f| f.to_s.strip }.reject(&:blank?)
+    @filter_fcoc_options = all_fcos.group_by { |f| normalize_dashboard_text(f.sub(/\Afco\s*-\s*c\s+/i, "")) }.map { |_key, names| names.max_by(&:length) }.sort
     default_visible_fcoc = dashboard_default_visible_fcoc(@filter_fcoc_options)
     @dashboard_fcoc_filter_value = dashboard_filter_param(:fcoc) || default_visible_fcoc
     if @dashboard_fcoc_filter_value.present?
@@ -1455,6 +1458,7 @@ class ModulesController < ApplicationController
 
     if record.save
       sync_vrp_master_record(record)
+      sync_asa360_master(record)
       redirect_to module_path(module_redirect_slug), notice: "#{@module[:title]} saved successfully."
     else
       @records = module_records_required_for_show? ? module_records : []
@@ -1543,6 +1547,7 @@ class ModulesController < ApplicationController
     if record.update(data: next_data)
       sync_stakeholder_name_change(previous_data, next_data)
       sync_vrp_master_record(record)
+      sync_asa360_master(record)
       redirect_to module_path(module_redirect_slug), notice: "#{@module[:title]} updated successfully."
     else
       @record = record
@@ -1909,12 +1914,14 @@ class ModulesController < ApplicationController
     assigned_target_total = target_totals[:assigned]
     achieved_target_total = target_totals[:achieved]
     pending_target_total = target_totals[:pending]
+    assigned_farmer_total = @vrp_target_rows.flat_map { |row| Array(row[:assigned_farmer_ids]).map(&:to_s) }.reject(&:blank?).uniq.size
     month_caption = selected_month.presence || "selected month"
 
     @dashboard_cards = [
       dashboard_card("Mapped Villages", village_count, "Villages assigned in #{month_caption}", vrp_dashboard_list_path("mapped_villages", training_month: selected_month)),
       dashboard_card("Main Activities", main_activity_count, "Main activities mapped in #{month_caption}", vrp_dashboard_list_path("main_activities", training_month: selected_month)),
       dashboard_card("Sub Activities", sub_activity_count, "Sub activities mapped in #{month_caption}", vrp_dashboard_list_path("sub_activities", training_month: selected_month)),
+      dashboard_card("Assigned Farmer", assigned_farmer_total, "Farmers assigned in #{month_caption}", vrp_dashboard_list_path("assigned_farmers", training_month: selected_month)),
       dashboard_card("Assigned Target", dashboard_quantity(assigned_target_total), "Target quantity assigned in #{month_caption}", vrp_dashboard_list_path("assigned_target", training_month: selected_month)),
       dashboard_card("Achieved Target", dashboard_quantity(achieved_target_total), "Target completed in #{month_caption}", vrp_dashboard_list_path("achieved_target", training_month: selected_month)),
       dashboard_card("Pending Target", dashboard_quantity(pending_target_total), "Target pending in #{month_caption}", vrp_dashboard_list_path("pending_target", training_month: selected_month))
@@ -2195,8 +2202,8 @@ class ModulesController < ApplicationController
         ics: target.ics_name.presence || target.ics_id,
         village: target.village_name.presence || target.village_id,
         farmers: assigned_farmer_ids.any? ? assigned_farmer_ids.size : target.farmer_count,
-        main_activity: target.main_activity_name,
-        activity: target.activity_name,
+        main_activity: target.main_activity_name == "__common__" ? "All Activities" : target.main_activity_name,
+        activity: target.activity_name == "__common__" ? "All Activities" : target.activity_name,
         target_mapping_id: target.id.to_s,
         target_record: target,
         assigned_farmer_ids: assigned_farmer_ids,
@@ -2602,27 +2609,19 @@ class ModulesController < ApplicationController
     when "mapped_villages"
       village_rows = vrp_dashboard_village_rows(vrp, mappings, targets)
       rows = village_rows.map do |row|
-        action = if row[:mapping_id].present?
-          {
-            button: true,
-            label: "Delete",
-            path: destroy_vrp_mapped_village_path(row[:mapping_id]),
-            method: :delete,
-            class: "table-action danger",
-            confirm: "Delete this mapped village?"
-          }
-        else
-          "-"
-        end
-        [row[:fco], row[:village], dashboard_quantity(row[:farmers]), dashboard_quantity(row[:targets]), dashboard_quantity(row[:target_quantity]), action]
+        [row[:fco], row[:village], dashboard_quantity(row[:farmers]), dashboard_quantity(row[:targets]), dashboard_quantity(row[:target_quantity])]
       end
-      dashboard_detail_payload(key, "Mapped Villages", "Villages assigned for field work.", rows.size, ["FCO", "Village", "Mapped Farmers", "Targets", "Target Quantity", "Action"], rows)
+      dashboard_detail_payload(key, "Mapped Villages", "Villages assigned for field work.", rows.size, ["FCO", "Village", "Mapped Farmers", "Targets", "Target Quantity"], rows)
     when "main_activities"
       rows = vrp_dashboard_grouped_target_rows(target_rows, :main_activity)
       dashboard_detail_payload(key, "Main Activities", "Main activities mapped to your targets.", rows.size, ["Main Activity", "Targets", "Target", "Completed", "Pending", "Progress"], rows)
     when "sub_activities"
       rows = vrp_dashboard_grouped_target_rows(target_rows, :activity)
       dashboard_detail_payload(key, "Sub Activities", "Sub activities mapped to your targets.", rows.size, ["Main Activity", "Sub Activity", "Targets", "Target", "Completed", "Pending", "Progress"], rows)
+    when "assigned_farmers"
+      farmer_ids = target_rows.flat_map { |row| Array(row[:assigned_farmer_ids]).map(&:to_s) }.reject(&:blank?).uniq
+      rows = vrp_dashboard_mapped_farmer_rows(mappings, targets, include_mapping_fallback: false, farmer_ids: farmer_ids)
+      dashboard_detail_payload(key, "Assigned Farmer", "Farmers assigned to your targets.", rows.size, vrp_dashboard_farmer_list_headers, rows)
     when "achieved_target"
       total = vrp_dashboard_target_totals(target_rows)[:achieved]
       rows = target_rows.select { |row| row[:completed].to_f.positive? }
@@ -13788,6 +13787,22 @@ class ModulesController < ApplicationController
     when "add-vrp-type"
       sync_vrp_type(record)
     end
+  end
+
+  def sync_asa360_master(record)
+    return unless record.module_slug == "office-category-add"
+    return unless Asa360Master.table_exists?
+
+    o_type = record.data["parent_category"].to_s.strip
+    o_name = record.data["office_name"].to_s.strip
+    return if o_type.blank? || o_name.blank?
+
+    entry = Asa360Master.find_or_initialize_by(o_id: record.id)
+    entry.o_type = o_type
+    entry.o_name = o_name
+    entry.save!
+  rescue ActiveRecord::ActiveRecordError
+    nil
   end
 
   def sync_bank_master(record)

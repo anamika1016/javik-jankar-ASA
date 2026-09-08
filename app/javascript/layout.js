@@ -3658,6 +3658,29 @@ function initDeferredLayoutPage() {
       syncNewFarmerTargetMode();
     };
 
+    const validateOPGSubTotal = () => {
+      const allInputs = trainingTargetInputs();
+      const inputByName = (name) => allInputs.find((el) => el.dataset.trainingActivityName === name);
+      const opgInput = inputByName("OPG Training");
+      const subInputs = ["General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS"].map(inputByName).filter(Boolean);
+      const opgTotal = Number(opgInput?.value || 0);
+      if (!opgTotal || opgTotal <= 0) {
+        subInputs.forEach((input) => { input.max = ""; input.setCustomValidity(""); });
+        return;
+      }
+      const subTotal = subInputs.reduce((sum, input) => sum + Number(input.value || 0), 0);
+      if (subTotal > opgTotal) {
+        subInputs.forEach((input) => {
+          if (Number(input.value || 0) > 0) input.setCustomValidity(`Total (${subTotal}) OPG Training (${opgTotal}) se zyada hai`);
+        });
+      } else {
+        subInputs.forEach((input) => input.setCustomValidity(""));
+      }
+    };
+    trainingTargetInputs().forEach((input) => {
+      input.addEventListener("input", validateOPGSubTotal);
+    });
+
     const refreshTargetSubActivities = (resetSelection = false) => {
       if (!subActivitySelect) return;
 
@@ -4219,6 +4242,21 @@ function initDeferredLayoutPage() {
         if (invalid) {
           event.preventDefault();
           window.alert("Training target values must be whole numbers greater than 0.");
+          return;
+        }
+      }
+
+      if (trainingActivityTypeSelected()) {
+        const allInputs = trainingTargetInputs();
+        const trainingVal = (name) => {
+          const input = allInputs.find((el) => el.dataset.trainingActivityName === name);
+          return Number(input?.value || 0);
+        };
+        const opgTotal = trainingVal("OPG Training");
+        const subTotal = trainingVal("General Training/Meeting") + trainingVal("Input Demo INM") + trainingVal("Input Demo PM") + trainingVal("FFS");
+        if (opgTotal > 0 && subTotal !== opgTotal) {
+          event.preventDefault();
+          window.alert(`General Training/Meeting + Input Demo INM + Input Demo PM + FFS ka total (${subTotal}) OPG Training (${opgTotal}) ke equal hona chahiye.`);
           return;
         }
       }

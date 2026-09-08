@@ -426,15 +426,25 @@
                   <td><%= target.completion_date&.strftime("%d-%m-%Y") || "-" %></td>
                   <td class="target-activity-text">
                     <div class="target-activity-grouped-list">
-                      <% Array(row[:main_activities]).each do |main_activity| %>
-                        <span><%= main_activity %></span>
+                      <% main_acts = Array(row[:main_activities]) %>
+                      <% if main_acts.any? %>
+                        <% main_acts.each do |main_activity| %>
+                          <span><%= main_activity %></span>
+                        <% end %>
+                      <% else %>
+                        <span>All Activities</span>
                       <% end %>
                     </div>
                   </td>
                   <td class="target-activity-text">
                     <div class="target-activity-grouped-list">
-                      <% Array(row[:sub_activities]).each do |sub_activity| %>
-                        <span><%= sub_activity %></span>
+                      <% sub_acts = Array(row[:sub_activities]) %>
+                      <% if sub_acts.any? %>
+                        <% sub_acts.each do |sub_activity| %>
+                          <span><%= sub_activity %></span>
+                        <% end %>
+                      <% else %>
+                        <span>All Activities</span>
                       <% end %>
                     </div>
                   </td>

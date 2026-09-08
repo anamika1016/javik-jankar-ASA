@@ -1,0 +1,45 @@
+<% content_for :title, "ASA360 Mapping" %>
+
+<section class="module-page">
+  <div class="module-hero">
+    <div>
+      <p class="vrp-eyebrow">Office Setup</p>
+      <h1>ASA360 Mapping</h1>
+      <p>Office records mapped to ASA360 master</p>
+    </div>
+  </div>
+
+  <div class="module-section">
+    <div class="module-toolbar">
+      <span class="record-count"><%= @records.size %> records</span>
+    </div>
+    <div class="table-shell">
+      <table class="module-table" data-paginated-table data-page-size="25">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>O ID</th>
+            <th>O Type</th>
+            <th>O Name</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if @records.any? %>
+            <% @records.each_with_index do |record, idx| %>
+              <tr>
+                <td><%= idx + 1 %></td>
+                <td><%= record.o_id %></td>
+                <td><%= record.o_type.presence || "-" %></td>
+                <td><%= record.o_name.presence || "-" %></td>
+              </tr>
+            <% end %>
+          <% else %>
+            <tr>
+              <td colspan="4" style="text-align:center;">No records found</td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>

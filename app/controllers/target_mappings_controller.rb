@@ -483,9 +483,9 @@ class TargetMappingsController < ApplicationController
       [stripped]
     else
       Array(value).flat_map { |item| target_activity_values(item) }
-    end.map(&:to_s).map(&:strip).reject(&:blank?).uniq
+    end.map(&:to_s).map(&:strip).reject { |v| v.blank? || v == "__common__" }.uniq
   rescue JSON::ParserError
-    [value.to_s.strip].reject(&:blank?)
+    [value.to_s.strip].reject { |v| v.blank? || v == "__common__" }
   end
 
   def target_village_param
