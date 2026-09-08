@@ -3164,7 +3164,7 @@ body {
   justify-content: space-between;
   gap: 24px;
   border-bottom: 1px solid var(--vrp-line);
-  padding-bottom: 14px;
+  padding-bottom: 16px;
 }
 
 .bill-print-sheet {
@@ -3218,8 +3218,8 @@ body {
 }
 
 .bill-print-logo {
-  max-width: 118px;
-  max-height: 68px;
+  max-width: 132px;
+  max-height: 72px;
   object-fit: contain;
 }
 
@@ -3236,7 +3236,7 @@ body {
   grid-template-columns: 1fr 1fr;
   gap: 24px;
   align-items: end;
-  margin: 12px 0 24px;
+  margin: 14px 0 22px;
 }
 
 .bill-print-vrp-block {
@@ -3268,8 +3268,8 @@ body {
 }
 
 .bill-print-section-title {
-  margin: 0 0 8px;
-  font-size: 0.84rem;
+  margin: 22px 0 8px;
+  font-size: 0.86rem;
 }
 
 .bill-print-table {
@@ -3298,33 +3298,41 @@ body {
   text-align: right;
 }
 
+.bill-print-amount {
+  margin: 6px 0 24px;
+  text-align: right;
+  font-size: 0.74rem;
+}
+
 .bill-print-footer {
   display: grid;
-  grid-template-columns: 1fr 1.45fr;
+  grid-template-columns: 1fr auto;
   gap: 28px;
   align-items: start;
-  margin-top: 34px;
+  margin-top: 26px;
 }
 
 .bill-print-prepared,
 .bill-print-approved {
   display: grid;
   gap: 5px;
-  text-align: center;
+  text-align: left;
 }
 
 .bill-final-approved {
-  justify-self: start;
-  min-width: 124px;
-  min-height: 38px;
+  justify-self: end;
+  width: 110px;
+  height: 62px;
   display: inline-grid;
   place-items: center;
-  border: 2px solid #22a140;
-  border-radius: 4px;
-  background: rgba(34, 161, 64, 0.10);
+  border: 4px solid #15912d;
+  border-radius: 50%;
+  background: #fff;
   color: #15912d;
   font-weight: 950;
   text-transform: uppercase;
+  transform: rotate(-12deg);
+  box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 4px rgba(21, 145, 45, 0.35);
 }
 
 .icon-action {

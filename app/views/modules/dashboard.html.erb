@@ -5,7 +5,7 @@
   <section class="dashboard-page">
     <div class="dashboard-topbar">
       <div>
-        <p class="vrp-eyebrow">VRP Dashboard</p>
+        <p class="vrp-eyebrow">Jeevika Jankar Dashboard</p>
         <h1><%= @vrp&.name.presence || current_app_user["name"].presence || "Dashboard" %></h1>
         <p>Your mapped farmers, villages, assigned targets, and completed work summary.</p>
       </div>
@@ -61,7 +61,7 @@
     <% all_dashboard_summary_cards = Array(@dashboard_summary_cards) %>
     <% demonstration_method_cards = Array(@demonstration_method_cards).presence || all_dashboard_summary_cards.select { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
     <% dashboard_summary_cards = all_dashboard_summary_cards.reject { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
-    <% if dashboard_summary_cards.any? %>
+    <% if dashboard_summary_cards.any? && !@vrp_dashboard %>
       <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel" id="dashboard_summary_boxes">
         <div class="module-card-header training-participation-status-header">
           <div>
@@ -435,7 +435,7 @@
   <% all_dashboard_summary_cards = Array(@dashboard_summary_cards) %>
   <% demonstration_method_cards = Array(@demonstration_method_cards).presence || all_dashboard_summary_cards.select { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
   <% dashboard_summary_cards = all_dashboard_summary_cards.reject { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
-  <% if dashboard_summary_cards.any? %>
+  <% if dashboard_summary_cards.any? && !@vrp_dashboard %>
     <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel" id="dashboard_summary_boxes">
       <div class="module-card-header training-participation-status-header">
         <div>
@@ -475,6 +475,15 @@
   <% if farmer_activity_mode %>
     <%# ── TRAINING DASHBOARD ───────────────────────────────────────────── %>
     <%= render "farmer_training_dashboard" %>
+  <% elsif @dashboard_other_activity_totals.present? %>
+    <section class="module-card dashboard-summary-panel">
+      <div class="module-card-header"><h2><%= main_activity_filter_value.presence || "Activity" %> — <%= @dashboard_month_filter_value.presence || "All Months" %></h2></div>
+      <div class="training-participation-boxes dashboard-summary-boxes">
+        <% { target: "Total Target", completed: "Completed", pending: "Pending" }.each do |key, label| %>
+          <div class="training-participation-box total dashboard-summary-box"><span><%= label %></span><strong><%= @dashboard_other_activity_totals[key] %></strong></div>
+        <% end %>
+      </div>
+    </section>
   <% end %>
 
   <% if demonstration_method_cards.any? %>

@@ -1,78 +1,119 @@
-<% participation = local_assigns.fetch(:participation, {}) %>
-<% participation = participation.with_indifferent_access if participation.respond_to?(:with_indifferent_access) %>
-<% totals = participation[:totals] || {} %>
-<% month_options = Array(@training_month_options || []) %>
 <% sub_activity_options = Array(@training_sub_activity_options || []) %>
 <% selected_month = @training_selected_month.to_s %>
 <% selected_sub_activity = @training_selected_sub_activity.to_s %>
 <% participation_selected_month = @participation_selected_month.to_s %>
-<% participation_month_filter_value = @participation_month_filter_value.to_s %>
 <% participation_fcoc_filter_value = @participation_fcoc_filter_value.to_s %>
+<% participation_week_filter_value = @participation_week_filter_value.to_s %>
 <% filters_ready = selected_month.present? && selected_sub_activity.present? %>
-<% status_cards = Array(@training_participation_status_cards || []) %>
-<% status_total = status_cards.sum { |card| card[:value].to_i } %>
-<% total_status_path_params = { status: "total" } %>
-<% total_status_path_params[:training_month] = participation_selected_month if participation_selected_month.present? %>
-<% total_status_path_params[:training_fcoc] = participation_fcoc_filter_value if participation_fcoc_filter_value.present? %>
-<% unique_status_path_params = total_status_path_params.merge(status: "unique") %>
-<% target_status_cards = Array(@training_target_status_cards || []) %>
+<% status_cards = Array(@training_participation_status_cards || []).reject { |card| card[:status].to_s == "pending" } %>
+<% participation_path_params = { status: "total", ics: params[:ics].presence || params[:ics_name].presence }.compact_blank %>
+<% participation_path_params[:training_month] = participation_selected_month if participation_selected_month.present? %>
+<% participation_path_params[:training_fcoc] = participation_fcoc_filter_value if participation_fcoc_filter_value.present? %>
+<% participation_path_params[:week] = participation_week_filter_value if participation_week_filter_value.present? %>
+<% unique_status_path_params = participation_path_params.merge(status: "unique") %>
 
 <section class="module-card training-participation-status-card dashboard-status-panel training-status-panel">
   <div class="module-card-header training-participation-status-header">
     <div>
-      <h2>Farmer Training Participation Status (Automatic)</h2>
-      <p>Total = farmers with training records; Green = 3 or more, Yellow = 1–2, Red = no training in a closed month, Pending = training due in an open month.</p>
+      <h2>Farmer Training Participation Status</h2>
     </div>
-    <%= form_with url: dashboard_path, method: :get, local: true, html: { class: "dashboard-month-filter" } do %>
-      <%= hidden_field_tag :weekly_target_month, @weekly_target_month_filter_value if @weekly_target_month_filter_value.present? %>
-      <label class="dashboard-month-select">
-        <span>Month</span>
-        <select name="participation_month" onchange="this.form.submit()">
-          <option value="all" <%= "selected" if participation_month_filter_value == "all" %>>All</option>
-          <% month_options.each do |option| %>
-            <option value="<%= option %>" <%= "selected" if participation_selected_month == option.to_s %>><%= option %></option>
-          <% end %>
-        </select>
-      </label>
-      <label class="dashboard-month-select">
-        <span>FCOC</span>
-        <select name="participation_fcoc" onchange="this.form.submit()">
-          <option value="">All FCOC</option>
-          <% Array(@filter_fcoc_options).each do |option| %>
-            <option value="<%= option %>" <%= "selected" if participation_fcoc_filter_value == option.to_s %>><%= option %></option>
-          <% end %>
-        </select>
-      </label>
-    <% end %>
-    <%= link_to "Export Excel",
-          farmer_training_participation_path(total_status_path_params.merge(status: "total", format: :xlsx)),
-          class: "list-btn export" %>
+    <div class="dashboard-actions">
+      <%= form_with url: dashboard_path, method: :get, local: true, html: { class: "dashboard-month-filter" } do %>
+        <%= hidden_field_tag :activity, params[:activity] if params[:activity].present? %>
+        <%= hidden_field_tag :main_activity, params[:main_activity] if params[:main_activity].present? %>
+        <%= hidden_field_tag :training_sub_activity, params[:training_sub_activity] if params[:training_sub_activity].present? %>
+        <%= hidden_field_tag :sub_activity, params[:sub_activity] if params[:sub_activity].present? %>
+        <%= hidden_field_tag :fcoc, params[:fcoc] if params[:fcoc].present? %>
+        <%= hidden_field_tag :ics, params[:ics].presence || params[:ics_name].presence %>
+        <%= hidden_field_tag :month, params[:month] if params[:month].present? %>
+        <%= hidden_field_tag :vrp_id, params[:vrp_id] if params[:vrp_id].present? %>
+        <label class="dashboard-month-select">
+          <span>Week</span>
+          <select name="weekly_target_week" onchange="this.form.submit()">
+            <option value="">All Weeks</option>
+            <% 1.upto(4) do |week_number| %>
+              <option value="<%= week_number %>" <%= "selected" if participation_week_filter_value == week_number.to_s %>>W<%= week_number %></option>
+            <% end %>
+          </select>
+        </label>
+      <% end %>
+    </div>
   </div>
 
   <div class="training-participation-boxes compact">
     <% if status_cards.any? %>
-      <%= link_to farmer_training_participation_path(unique_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
-        <span>Total Unique Farmers</span>
-        <strong><%= @training_unique_farmer_count.to_i %></strong>
-        <small>Sirf wahi farmer jinki training selected month me ek hi baar hui.</small>
-        <b>View List</b>
-      <% end %>
-      <%= link_to farmer_training_participation_path(total_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
-        <span>Total Training Farmer</span>
-        <strong><%= status_total %></strong>
-        <small>Farmer Training Form ke selected farmers.</small>
-        <b>View List</b>
-      <% end %>
+      <div class="training-participation-box total dashboard-summary-box">
+        <span>Mapped Farmer</span>
+        <strong><%= @training_mapped_farmer_count.to_i %></strong>
+        <div class="dashboard-summary-actions">
+          <span class="dashboard-summary-action-popover">
+            <%= link_to "View List", farmer_training_participation_path(unique_status_path_params), class: "table-action", data: { dashboard_card: true } %>
+            <% if Array(@training_mapped_farmer_popups).any? %>
+              <span class="dashboard-card-hover-popup" role="tooltip">
+                <% Array(@training_mapped_farmer_popups).each do |item| %>
+                  <span><%= item %></span>
+                <% end %>
+              </span>
+            <% end %>
+          </span>
+        </div>
+      </div>
       <% status_cards.each do |card| %>
-        <%= link_to card[:path], class: "training-participation-box #{card[:status]}", data: { dashboard_card: true } do %>
-          <span><%= card[:status] == "pending" ? "Pending Farmer" : card[:title] %></span>
+        <div class="training-participation-box <%= card[:status] %> dashboard-summary-box">
+          <span><%= card[:title] %></span>
           <strong><%= card[:value].to_i %></strong>
-          <small><%= card[:caption] %></small>
-          <b>View List</b>
-        <% end %>
+          <div class="dashboard-summary-actions">
+            <span class="dashboard-summary-action-popover">
+              <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true } %>
+              <% if card[:status] == "red" && Array(@training_red_fco_details).any? %>
+                <span class="dashboard-card-hover-popup red-popup-breakdown" role="tooltip">
+                  <% @training_red_fco_details.each do |fco| %>
+                    <span class="popup-fco-header">
+                      <strong><%= fco[:name].upcase %>: <%= fco[:total_red] %></strong>
+                    </span>
+                    <span class="popup-subitem">
+                      <%= link_to farmer_training_participation_path(unique_status_path_params.merge(status: "no_activity", training_fcoc: fco[:fco_id])), class: "popup-sublink", data: { dashboard_card: true } do %>
+                        • No Activity Mapping: <strong><%= fco[:no_activity] %></strong>
+                      <% end %>
+                    </span>
+                    <span class="popup-subitem">
+                      <%= link_to farmer_training_participation_path(unique_status_path_params.merge(status: "no_training_mapping", training_fcoc: fco[:fco_id])), class: "popup-sublink", data: { dashboard_card: true } do %>
+                        • No Training Mapping: <strong><%= fco[:no_training] %></strong>
+                      <% end %>
+                    </span>
+                    <span class="popup-subitem">
+                      <%= link_to farmer_training_participation_path(unique_status_path_params.merge(status: "training_mapped_no_entry", training_fcoc: fco[:fco_id])), class: "popup-sublink", data: { dashboard_card: true } do %>
+                        • Training Mapped But No Entry: <strong><%= fco[:no_entry] %></strong>
+                      <% end %>
+                    </span>
+                  <% end %>
+                </span>
+              <% elsif card[:status] == "red" && Array(@training_no_training_popups).any? %>
+                <span class="dashboard-card-hover-popup" role="tooltip">
+                  <% Array(@training_no_training_popups).each do |item| %>
+                    <span><%= item %></span>
+                  <% end %>
+                </span>
+              <% elsif card[:status] == "yellow" && Array(@training_yellow_farmer_popups).any? %>
+                <span class="dashboard-card-hover-popup" role="tooltip">
+                  <% Array(@training_yellow_farmer_popups).each do |item| %>
+                    <span><%= item %></span>
+                  <% end %>
+                </span>
+              <% elsif card[:status] == "green" && Array(@training_green_farmer_popups).any? %>
+                <span class="dashboard-card-hover-popup" role="tooltip">
+                  <% Array(@training_green_farmer_popups).each do |item| %>
+                    <span><%= item %></span>
+                  <% end %>
+                </span>
+              <% end %>
+            </span>
+          </div>
+        </div>
       <% end %>
     <% else %>
       <div class="training-empty-state">No farmer training target data found.</div>
     <% end %>
   </div>
+
 </section>
