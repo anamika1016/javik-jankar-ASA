@@ -3302,12 +3302,16 @@ function initDeferredLayoutPage() {
 
     const vrpSelect = shell.querySelector("[data-target-vrp]");
     const fcoSelect = shell.querySelector("[data-target-fco]");
+    const targetEntryModeSelect = shell.querySelector("[data-target-entry-mode]");
+    const blockSelect = shell.querySelector("[data-target-block]");
     const icsSelect = shell.querySelector("[data-target-ics]");
+    const icsHidden = shell.querySelector("[data-target-ics-hidden]");
     const villageSelect = shell.querySelector("[data-target-village]");
     const villageHidden = shell.querySelector("[data-target-village-hidden]");
     const monthSelect = shell.querySelector("select[name='target_mapping[month_name]']");
     const targetTypeSelect = shell.querySelector("[data-target-type]");
     const mainActivitySelect = shell.querySelector("[data-target-main-activity]");
+    const mainActivityField = mainActivitySelect?.closest(".target-village-field");
     const subActivitySelect = shell.querySelector("[data-target-sub-activity]");
     const subActivityField = shell.querySelector("[data-target-sub-activity-field]");
     const standardQuantityFields = Array.from(shell.querySelectorAll("[data-target-standard-quantity-fields]"));
@@ -3350,7 +3354,11 @@ function initDeferredLayoutPage() {
     let editTarget = {};
     let targetSubActivityRows = [];
     let mainActivityTypeRows = [];
+    let blockFcoOptions = [];
+    let blockOptionsByFco = {};
+    let targetBlockOptions = [];
     let targetLoadRequestId = 0;
+    let targetCountRequestId = 0;
     let activeFarmerDialogRowKey = "";
     const weeklyPlanValues = {};
     const weeklyPlanFarmerIds = {};
@@ -3369,6 +3377,16 @@ function initDeferredLayoutPage() {
       mainActivityTypeRows = JSON.parse(shell.dataset.mainActivityTypeMap || "[]");
     } catch (_error) {
       mainActivityTypeRows = [];
+    }
+    try {
+      blockFcoOptions = JSON.parse(shell.dataset.blockFcoOptions || "[]");
+    } catch (_error) {
+      blockFcoOptions = [];
+    }
+    try {
+      blockOptionsByFco = JSON.parse(shell.dataset.blockOptionsByFco || "{}");
+    } catch (_error) {
+      blockOptionsByFco = {};
     }
     if (mainActivitySelect && !mainActivitySelect.dataset.originalOptions) {
       mainActivitySelect.dataset.originalOptions = JSON.stringify(Array.from(mainActivitySelect.options || []).map((option) => ({
@@ -3410,8 +3428,39 @@ function initDeferredLayoutPage() {
       targetInput.disabled = manualMode && !villageTargetMode();
       targetInput.required = !manualMode || villageTargetMode();
       targetInput.setCustomValidity("");
+
+      // A New Farmer Target is intentionally independent of activity.  Do
+      // not let browser required validation block a save for Main/Sub Activity.
+      [mainActivityField, subActivityField].forEach((field) => {
+        if (!field) return;
+        const skipActivities = manualMode && !villageTargetMode();
+        field.hidden = skipActivities;
+        field.classList.toggle("target-new-farmer-activity-hidden", skipActivities);
+        field.querySelectorAll("select, input").forEach((input) => {
+          input.disabled = skipActivities;
+          input.required = !skipActivities;
+          if (skipActivities) input.setCustomValidity?.("");
+        });
+      });
+
+      if (manualMode && !villageTargetMode()) {
+        [mainActivitySelect, subActivitySelect].forEach((select) => {
+          if (!select) return;
+          Array.from(select.options || []).forEach((option) => { option.selected = false; });
+          select.dataset.selectedValues = "[]";
+          select.dataset.selectionDirty = "true";
+          select.dispatchEvent(new Event("chip:refresh"));
+        });
+      }
     };
-    const locationValueParts = (value) => `${value || ""}`.split("||");
+    const locationValueParts = (value) => {
+      const rawValue = `${value || ""}`.trim();
+      const parts = rawValue.split("||");
+      if (parts.length > 1) return parts;
+      const displayMatch = rawValue.match(/^(.*)\s-\s(\d+)$/);
+      if (displayMatch) return [displayMatch[2], displayMatch[1]];
+      return [rawValue, ""];
+    };
     const targetOptionMatches = (optionValueText, selectedValueText) => {
       const optionParts = locationValueParts(optionValueText);
       const selectedParts = locationValueParts(selectedValueText);
@@ -3446,8 +3495,34 @@ function initDeferredLayoutPage() {
 
       villageHidden.value = JSON.stringify(targetSelectedValues(villageSelect));
     };
+    const targetBlockWiseMode = () => (targetEntryModeSelect?.value || "").trim() === "block_wise";
+    const selectedTargetFcoId = () => locationValueParts(fcoSelect?.value || fcoSelect?.dataset.selectedValue)[0];
+    const blockOptionsForSelectedFco = () => blockOptionsByFco[selectedTargetFcoId()] || [];
+    const selectedTargetIcsValue = () => targetBlockWiseMode()
+      ? (blockSelect?.value || "")
+      : (icsSelect?.value || icsSelect?.dataset.selectedValue || "");
+    const syncTargetIcsHidden = () => {
+      if (icsHidden) icsHidden.value = selectedTargetIcsValue();
+    };
+    const syncTargetEntryMode = () => {
+      const blockWise = targetBlockWiseMode();
 
-    const fillTargetSelect = (select, options, placeholder) => {
+      if (blockSelect) {
+        const hasBlocks = targetBlockOptions.length > 0 || Array.from(blockSelect.options || []).some((option) => option.value);
+        // In Block Wise mode it becomes selectable as soon as an FCO is chosen.
+        // The Office List mapping fills its options immediately after that.
+        blockSelect.disabled = !blockWise || (!selectedTargetFcoId() && !hasBlocks);
+        blockSelect.required = blockWise;
+      }
+      if (icsSelect) {
+        const hasIcs = Array.from(icsSelect.options || []).some((option) => option.value);
+        icsSelect.disabled = blockWise || !hasIcs;
+        icsSelect.required = !blockWise;
+      }
+      syncTargetIcsHidden();
+    };
+
+    const fillTargetSelect = (select, options, placeholder, emptyLabel = "") => {
       if (!select) return;
 
       const selectedValues = targetSelectedValues(select);
@@ -3455,7 +3530,7 @@ function initDeferredLayoutPage() {
 
       const blank = document.createElement("option");
       blank.value = "";
-      blank.textContent = options.length ? placeholder : `No ${placeholder.replace(/^Select\s+/i, "")} saved yet`;
+      blank.textContent = options.length ? placeholder : (emptyLabel || `No ${placeholder.replace(/^Select\s+/i, "")} saved yet`);
       select.appendChild(blank);
 
       options.forEach((optionData) => {
@@ -3470,6 +3545,7 @@ function initDeferredLayoutPage() {
       delete select.dataset.selectedValues;
       select.disabled = options.length === 0;
       select.dispatchEvent(new Event("chip:refresh"));
+      syncTargetEntryMode();
     };
     const clearTargetVillageSelection = () => {
       if (!villageSelect) return;
@@ -3500,7 +3576,8 @@ function initDeferredLayoutPage() {
       const selectedValues = resetSelection ? [] : targetSelectedValues(mainActivitySelect);
       const filteredOptions = originalMainActivityOptions.filter((option) => {
         if (!option.value) return true;
-        return !villageTargetMode() || mainActivityTypeFor(option.value) !== normalizeOption("Training");
+        const requiredType = villageTargetMode() ? "Other" : "Training";
+        return mainActivityTypeFor(option.value) === normalizeOption(requiredType);
       });
 
       mainActivitySelect.innerHTML = "";
@@ -3811,8 +3888,14 @@ function initDeferredLayoutPage() {
 
           if (dialogBox.checked) selectedIds.add(String(dialogBox.value));
           else selectedIds.delete(String(dialogBox.value));
+          // Keep the source checkbox in sync as well.  The hidden weekly
+          // inputs submit the activity-wise selection, while this source
+          // checkbox keeps the selected count and regular farmer selection
+          // state accurate for the user.
+          sourceBox.checked = dialogBox.checked;
           if (dialogBox.checked) clearNewFarmerTargetForSelection();
           weeklyPlanFarmerIdsDirty.add(activeFarmerDialogRowKey);
+          updateTargetFarmerCount();
           syncDialogFarmerTotals();
           renderTargetWeeklySummary();
         });
@@ -3873,10 +3956,35 @@ function initDeferredLayoutPage() {
       updateTargetFarmerCount();
     };
 
-    const clearTargetFarmers = (message = "Select FCO Name, ICS and Village to load farmers.") => {
-      if (farmerList) farmerList.textContent = message;
+    const clearTargetFarmers = (message = "") => {
+      const displayMessage = message || (
+        targetBlockWiseMode() && fcoSelect?.value && blockSelect?.value
+          ? "Select Village to load farmers."
+          : "Select FCO Name, ICS and Village to load farmers."
+      );
+      if (farmerList) farmerList.textContent = displayMessage;
       if (farmerSearchEmpty) farmerSearchEmpty.hidden = true;
       updateTargetFarmerCount();
+    };
+    const loadTargetFarmerCount = async () => {
+      if (!targetBlockWiseMode() || !shell.dataset.villageFarmersUrl) return;
+
+      const villageValues = targetSelectedValues(villageSelect);
+      if (!villageValues.length) return;
+
+      const requestId = ++targetCountRequestId;
+      if (registeredCountInput) registeredCountInput.value = "Loading...";
+      try {
+        const data = await fetchJson(shell.dataset.villageFarmersUrl, {
+          data_type: "short",
+          village_ids: JSON.stringify(villageValues)
+        });
+        if (requestId !== targetCountRequestId) return;
+        if (registeredCountInput) registeredCountInput.value = String(data.count || 0);
+      } catch (_error) {
+        if (requestId !== targetCountRequestId) return;
+        if (registeredCountInput) registeredCountInput.value = "0";
+      }
     };
 
     const renderTargetFarmers = (farmers) => {
@@ -3926,10 +4034,13 @@ function initDeferredLayoutPage() {
       const url = new URL(shell.dataset.mappingsUrl, window.location.origin);
       if (vrpSelect?.value) url.searchParams.set("vrp_id", vrpSelect.value);
       const fcoValue = fcoSelect?.value || fcoSelect?.dataset.selectedValue;
-      const icsValue = icsSelect?.value || icsSelect?.dataset.selectedValue;
+      const blockValue = blockSelect?.value || "";
+      const icsValue = selectedTargetIcsValue();
       const villageValues = targetSelectedValues(villageSelect);
+      if (targetEntryModeSelect?.value) url.searchParams.set("target_entry_mode", targetEntryModeSelect.value);
       if (fcoValue) url.searchParams.set("fco_id", fcoValue);
-      if (icsValue) url.searchParams.set("ics_id", icsValue);
+      if (blockValue) url.searchParams.set("block_id", blockValue);
+      if (!targetBlockWiseMode() && icsValue) url.searchParams.set("ics_id", icsValue);
       if (villageValues.length) url.searchParams.set("village_ids", JSON.stringify(villageValues));
       if (monthSelect?.value) url.searchParams.set("month_name", monthSelect.value);
       const mainActivityValues = targetSelectedValues(mainActivitySelect);
@@ -3945,10 +4056,29 @@ function initDeferredLayoutPage() {
         const data = await response.json();
         if (requestId !== targetLoadRequestId) return;
 
-        fillTargetSelect(fcoSelect, data.fco_options || [], "Select FCO Name");
-        fillTargetSelect(icsSelect, data.ics_options || [], "Select ICS");
-        fillTargetSelect(villageSelect, data.village_options || [], "Select Village");
+        // Block-wise FCOs always come from Office List.  Keep this client-side
+        // source authoritative so a late/stale AFL response cannot replace it.
+        fillTargetSelect(fcoSelect, targetBlockWiseMode() ? blockFcoOptions : (data.fco_options || []), "Select FCO Name");
+        if (targetBlockWiseMode()) {
+          targetBlockOptions = Array.isArray(data.block_options) ? data.block_options : [];
+          fillTargetSelect(blockSelect, targetBlockOptions, "Select Block");
+        }
+        fillTargetSelect(icsSelect, targetBlockWiseMode() ? [] : (data.ics_options || []), "Select ICS");
+        fillTargetSelect(
+          villageSelect,
+          data.village_options || [],
+          "Select Village",
+          targetBlockWiseMode() && blockSelect?.value ? "No villages mapped to this Block in Office List" : ""
+        );
+        if (targetBlockWiseMode() && blockSelect?.value && villageSelect) {
+          // A Block selection always unlocks Village in Block Wise mode.  If
+          // Office List has no village records for that block, its empty-state
+          // message remains visible but the control is still usable.
+          villageSelect.disabled = false;
+          villageSelect.dispatchEvent(new Event("chip:refresh"));
+        }
         syncTargetVillageHidden();
+        syncTargetEntryMode();
 
         if (targetSelectedValues(villageSelect).length) {
           renderTargetFarmers(data.farmers || []);
@@ -4009,11 +4139,16 @@ function initDeferredLayoutPage() {
       const available = availableTargetBoxes();
       const selectedIds = selectedFarmerIdsForActiveRow();
       selectedIds.clear();
+      available.forEach((checkbox) => { checkbox.checked = false; });
       available.forEach((checkbox, index) => {
-        if (!Number.isInteger(limit) || limit < 0 || index < limit) selectedIds.add(String(checkbox.value));
+        if (!Number.isInteger(limit) || limit < 0 || index < limit) {
+          selectedIds.add(String(checkbox.value));
+          checkbox.checked = true;
+        }
       });
       if (selectedIds.size) clearNewFarmerTargetForSelection();
       weeklyPlanFarmerIdsDirty.add(activeFarmerDialogRowKey);
+      updateTargetFarmerCount();
       renderTargetWeeklySummary();
       renderDialogFarmers();
       if (Number.isInteger(limit) && limit >= 0 && available.length > limit) {
@@ -4022,7 +4157,9 @@ function initDeferredLayoutPage() {
     });
     farmerDialogClear?.addEventListener("click", () => {
       selectedFarmerIdsForActiveRow().clear();
+      targetBoxes().forEach((checkbox) => { checkbox.checked = false; });
       weeklyPlanFarmerIdsDirty.add(activeFarmerDialogRowKey);
+      updateTargetFarmerCount();
       renderTargetWeeklySummary();
       renderDialogFarmers();
     });
@@ -4041,6 +4178,7 @@ function initDeferredLayoutPage() {
     newFarmerTargetInput?.addEventListener("input", () => {
       syncNewFarmerTargetMode();
       updateTargetFarmerCount();
+      renderTargetWeeklySummary();
     });
     trainingTargetInputs().forEach((input) => {
       input.addEventListener("input", renderTargetWeeklySummary);
@@ -4048,6 +4186,7 @@ function initDeferredLayoutPage() {
 
     form?.addEventListener("submit", (event) => {
       syncTargetVillageHidden();
+      syncTargetIcsHidden();
       syncNewFarmerTargetMode();
 
       const weeklyInputs = Array.from(weeklyRows?.querySelectorAll("[data-target-weekly-input]") || []);
@@ -4110,12 +4249,34 @@ function initDeferredLayoutPage() {
 
     fcoSelect?.addEventListener("change", () => {
       fcoSelect.dataset.selectedValue = "";
+      if (blockSelect) blockSelect.value = "";
       if (icsSelect) icsSelect.dataset.selectedValue = "";
       if (villageSelect) villageSelect.dataset.selectedValue = "";
       if (villageSelect) villageSelect.dataset.selectedValues = "[]";
       if (icsSelect) icsSelect.value = "";
+      if (targetBlockWiseMode()) {
+        targetBlockOptions = blockOptionsForSelectedFco();
+        fillTargetSelect(blockSelect, targetBlockOptions, "Select Block");
+      }
       clearTargetVillageSelection();
       syncTargetVillageHidden();
+      syncTargetIcsHidden();
+      clearTargetFarmers();
+      loadTargetData();
+    });
+    blockSelect?.addEventListener("change", () => {
+      if (icsSelect) icsSelect.dataset.selectedValue = "";
+      if (villageSelect) villageSelect.dataset.selectedValue = "";
+      if (villageSelect) villageSelect.dataset.selectedValues = "[]";
+      if (icsSelect) icsSelect.value = "";
+      if (targetBlockWiseMode() && blockSelect.value && villageSelect) {
+        villageSelect.innerHTML = '<option value="">Loading villages...</option>';
+        villageSelect.disabled = false;
+        villageSelect.dispatchEvent(new Event("chip:refresh"));
+      }
+      clearTargetVillageSelection();
+      syncTargetVillageHidden();
+      syncTargetIcsHidden();
       clearTargetFarmers();
       loadTargetData();
     });
@@ -4125,12 +4286,14 @@ function initDeferredLayoutPage() {
       if (villageSelect) villageSelect.dataset.selectedValues = "[]";
       clearTargetVillageSelection();
       syncTargetVillageHidden();
+      syncTargetIcsHidden();
       clearTargetFarmers();
       loadTargetData();
     });
     villageSelect?.addEventListener("change", () => {
       syncTargetVillageHidden();
       clearTargetFarmers();
+      loadTargetFarmerCount();
       loadTargetData();
     });
     vrpSelect?.addEventListener("change", loadTargetData);
@@ -4152,12 +4315,40 @@ function initDeferredLayoutPage() {
       renderTargetWeeklySummary();
       loadTargetData();
     });
+    targetEntryModeSelect?.addEventListener("change", () => {
+      if (fcoSelect) {
+        fcoSelect.value = "";
+        fcoSelect.dataset.selectedValue = "";
+      }
+      if (targetBlockWiseMode()) {
+        if (icsSelect) icsSelect.value = "";
+      } else if (blockSelect) {
+        blockSelect.value = "";
+      }
+      if (icsSelect) icsSelect.dataset.selectedValue = "";
+      if (villageSelect) {
+        villageSelect.dataset.selectedValue = "";
+        villageSelect.dataset.selectedValues = "[]";
+      }
+      if (targetBlockWiseMode()) {
+        targetBlockOptions = blockOptionsForSelectedFco();
+        fillTargetSelect(blockSelect, targetBlockOptions, "Select Block");
+        fillTargetSelect(fcoSelect, blockFcoOptions, "Select FCO Name");
+      }
+      clearTargetVillageSelection();
+      syncTargetVillageHidden();
+      syncTargetEntryMode();
+      clearTargetFarmers();
+      loadTargetData();
+    });
 
     refreshMainActivityOptionsForTargetType(false);
     refreshTargetSubActivities(false);
     syncTargetActivityMode();
     syncTargetVillageHidden();
     syncNewFarmerTargetMode();
+    syncTargetEntryMode();
+    syncTargetIcsHidden();
     renderTargetWeeklySummary();
     loadTargetData();
   });
@@ -6261,7 +6452,17 @@ function initDeferredLayoutPage() {
       "VRP type add karne ke liye.": "वीआरपी प्रकार जोड़ने के लिए।",
       "Saved access control records dekhne ke liye.": "सेव एक्सेस कंट्रोल रिकॉर्ड देखने के लिए।",
       "Live VRP, bill, payment, target, activity, aur training summary.": "वीआरपी, बिल, भुगतान, लक्ष्य, गतिविधि और प्रशिक्षण का लाइव सारांश।",
-      "Your mapped farmers, villages, assigned targets, and completed work summary.": "आपके मैप किसान, गांव, दिए गए लक्ष्य और पूर्ण कार्य का सारांश।"
+      "Your mapped farmers, villages, assigned targets, and completed work summary.": "आपके मैप किसान, गांव, दिए गए लक्ष्य और पूर्ण कार्य का सारांश।",
+      "Jeevika Jankar First Login": "जीविका जनकार पहला लॉगिन",
+      "Digital Signature": "डिजिटल हस्ताक्षर",
+      "Draw your signature before accepting.": "स्वीकार करने से पहले अपना हस्ताक्षर करें।",
+      "Clear Signature": "हस्ताक्षर मिटाएं",
+      "Decline": "अस्वीकार",
+      "Agree": "सहमत",
+      "Name": "नाम",
+      "Village": "गाँव",
+      "Mobile Number": "मोबाइल नंबर",
+      "Date": "तारीख"
     };
     const englishAliases = {
       "ट्रेनिंग प्रपत्र": "Training Form",
@@ -6354,7 +6555,17 @@ function initDeferredLayoutPage() {
 	      "Select Village Name to load mapped farmers.": "मॅप केलेले किसान लोड करण्यासाठी गाव नाव निवडा.",
 	      "Select Village Name to load target farmers.": "लक्षित किसान लोड करण्यासाठी गाव नाव निवडा.",
 	      "No mapped farmers found for selected village.": "निवडलेल्या गावासाठी कोणतेही मॅप किसान सापडले नाहीत.",
-	      "No target farmers found for selected village.": "निवडलेल्या गावासाठी कोणतेही लक्षित किसान सापडले नाहीत."
+	      "No target farmers found for selected village.": "निवडलेल्या गावासाठी कोणतेही लक्षित किसान सापडले नाहीत.",
+	      "Jeevika Jankar First Login": "जीविका जनकार पहिले लॉगिन",
+	      "Digital Signature": "डिजिटल स्वाक्षरी",
+	      "Draw your signature before accepting.": "स्वीकार करण्यापूर्वी आपली स्वाक्षरी करा.",
+	      "Clear Signature": "स्वाक्षरी पुसा",
+	      "Decline": "नकार",
+	      "Agree": "सहमत",
+	      "Name": "नाव",
+	      "Village": "गाव",
+	      "Mobile Number": "मोबाईल नंबर",
+	      "Date": "तारीख"
 	    };
 	    const odiaTranslations = {
 	      "Language": "ଭାଷା",
@@ -6425,7 +6636,17 @@ function initDeferredLayoutPage() {
 	      "Select Village Name to load mapped farmers.": "ମ୍ୟାପ୍ ହୋଇଥିବା କୃଷକ ଲୋଡ୍ କରିବାକୁ ଗ୍ରାମ ନାମ ବାଛନ୍ତୁ.",
 	      "Select Village Name to load target farmers.": "ଲକ୍ଷ୍ୟ କୃଷକ ଲୋଡ୍ କରିବାକୁ ଗ୍ରାମ ନାମ ବାଛନ୍ତୁ.",
 	      "No mapped farmers found for selected village.": "ବାଛିଥିବା ଗ୍ରାମ ପାଇଁ କୌଣସି ମ୍ୟାପ୍ କୃଷକ ମିଳିଲେ ନାହିଁ.",
-	      "No target farmers found for selected village.": "ବାଛିଥିବା ଗ୍ରାମ ପାଇଁ କୌଣସି ଲକ୍ଷ୍ୟ କୃଷକ ମିଳିଲେ ନାହିଁ."
+	      "No target farmers found for selected village.": "ବାଛିଥିବା ଗ୍ରାମ ପାଇଁ କୌଣସି ଲକ୍ଷ୍ୟ କୃଷକ ମିଳିଲେ ନାହିଁ.",
+	      "Jeevika Jankar First Login": "ଜୀବିକା ଜନକାର ପ୍ରଥମ ଲଗଇନ୍",
+	      "Digital Signature": "ଡିଜିଟାଲ୍ ସ୍ୱାକ୍ଷର",
+	      "Draw your signature before accepting.": "ଗ୍ରହଣ କରିବା ପୂର୍ବରୁ ଆପଣଙ୍କ ସ୍ୱାକ୍ଷର କରନ୍ତୁ.",
+	      "Clear Signature": "ସ୍ୱାକ୍ଷର ସଫା କରନ୍ତୁ",
+	      "Decline": "ପ୍ରତ୍ୟାଖ୍ୟାନ",
+	      "Agree": "ସହମତ",
+	      "Name": "ନାମ",
+	      "Village": "ଗ୍ରାମ",
+	      "Mobile Number": "ମୋବାଇଲ୍ ନମ୍ବର",
+	      "Date": "ତାରିଖ"
 	    };
 	    const languageTranslations = {
 	      hi: translations,
@@ -6743,6 +6964,9 @@ function initDeferredLayoutPage() {
 const bootLayoutPage = () => {
   if (document.querySelector(".login-page")) {
     initPasswordToggles();
+    if (document.querySelector(".agreement-login-page")) {
+      scheduleDeferredLayoutInit();
+    }
     return;
   }
 

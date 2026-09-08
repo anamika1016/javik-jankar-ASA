@@ -19,6 +19,11 @@
 
         <div class="list-control-actions">
           <%= form_with url: afls_path, method: :get, local: true, class: "list-search compact" do |form| %>
+            <% Array(@dashboard_afl_filter_params["fco_id"]).each do |fco_id| %>
+              <%= hidden_field_tag "fco_id[]", fco_id %>
+            <% end %>
+            <%= hidden_field_tag :fcoc, @dashboard_afl_filter_params["fcoc"] if @dashboard_afl_filter_params["fcoc"].present? %>
+            <%= hidden_field_tag :ics, @dashboard_afl_filter_params["ics"] if @dashboard_afl_filter_params["ics"].present? %>
             <span>⌕</span>
             <%= form.search_field :q, value: @query, placeholder: "Search any field", data: { table_search: "afl_list" } %>
           <% end %>
@@ -69,7 +74,7 @@
             <% if @afls.any? %>
               <% @afls.each do |afl| %>
                 <tr>
-                  <td><input type="checkbox" value="<%= afl_path(afl, q: @query.presence, page: @page) %>" data-afl-row-select></td>
+                  <td><input type="checkbox" value="<%= afl_path(afl, @dashboard_afl_filter_params.merge(q: @query.presence, page: @page)) %>" data-afl-row-select></td>
                   <td><%= afl.id %></td>
                   <td><%= afl.fco_id %></td>
                   <td><%= afl.fco %></td>
@@ -106,13 +111,13 @@
         <% end_count = [@page * @page_size, @total_afls].min %>
         <span><%= start_count %> to <%= end_count %> of <%= @total_afls %></span>
         <% if @page > 1 %>
-          <%= link_to "‹", afls_path(q: @query.presence, page: @page - 1), class: "page-link" %>
+          <%= link_to "‹", afls_path(@dashboard_afl_filter_params.merge(q: @query.presence, page: @page - 1)), class: "page-link" %>
         <% else %>
           <span class="page-link disabled">‹</span>
         <% end %>
         <strong>Page <%= @page %> of <%= @total_pages %></strong>
         <% if @page < @total_pages %>
-          <%= link_to "›", afls_path(q: @query.presence, page: @page + 1), class: "page-link" %>
+          <%= link_to "›", afls_path(@dashboard_afl_filter_params.merge(q: @query.presence, page: @page + 1)), class: "page-link" %>
         <% else %>
           <span class="page-link disabled">›</span>
         <% end %>

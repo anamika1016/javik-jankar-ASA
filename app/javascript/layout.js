@@ -6452,7 +6452,17 @@ function initDeferredLayoutPage() {
       "VRP type add karne ke liye.": "वीआरपी प्रकार जोड़ने के लिए।",
       "Saved access control records dekhne ke liye.": "सेव एक्सेस कंट्रोल रिकॉर्ड देखने के लिए।",
       "Live VRP, bill, payment, target, activity, aur training summary.": "वीआरपी, बिल, भुगतान, लक्ष्य, गतिविधि और प्रशिक्षण का लाइव सारांश।",
-      "Your mapped farmers, villages, assigned targets, and completed work summary.": "आपके मैप किसान, गांव, दिए गए लक्ष्य और पूर्ण कार्य का सारांश।"
+      "Your mapped farmers, villages, assigned targets, and completed work summary.": "आपके मैप किसान, गांव, दिए गए लक्ष्य और पूर्ण कार्य का सारांश।",
+      "Jeevika Jankar First Login": "जीविका जनकार पहला लॉगिन",
+      "Digital Signature": "डिजिटल हस्ताक्षर",
+      "Draw your signature before accepting.": "स्वीकार करने से पहले अपना हस्ताक्षर करें।",
+      "Clear Signature": "हस्ताक्षर मिटाएं",
+      "Decline": "अस्वीकार",
+      "Agree": "सहमत",
+      "Name": "नाम",
+      "Village": "गाँव",
+      "Mobile Number": "मोबाइल नंबर",
+      "Date": "तारीख"
     };
     const englishAliases = {
       "ट्रेनिंग प्रपत्र": "Training Form",
@@ -6545,7 +6555,17 @@ function initDeferredLayoutPage() {
 	      "Select Village Name to load mapped farmers.": "मॅप केलेले किसान लोड करण्यासाठी गाव नाव निवडा.",
 	      "Select Village Name to load target farmers.": "लक्षित किसान लोड करण्यासाठी गाव नाव निवडा.",
 	      "No mapped farmers found for selected village.": "निवडलेल्या गावासाठी कोणतेही मॅप किसान सापडले नाहीत.",
-	      "No target farmers found for selected village.": "निवडलेल्या गावासाठी कोणतेही लक्षित किसान सापडले नाहीत."
+	      "No target farmers found for selected village.": "निवडलेल्या गावासाठी कोणतेही लक्षित किसान सापडले नाहीत.",
+	      "Jeevika Jankar First Login": "जीविका जनकार पहिले लॉगिन",
+	      "Digital Signature": "डिजिटल स्वाक्षरी",
+	      "Draw your signature before accepting.": "स्वीकार करण्यापूर्वी आपली स्वाक्षरी करा.",
+	      "Clear Signature": "स्वाक्षरी पुसा",
+	      "Decline": "नकार",
+	      "Agree": "सहमत",
+	      "Name": "नाव",
+	      "Village": "गाव",
+	      "Mobile Number": "मोबाईल नंबर",
+	      "Date": "तारीख"
 	    };
 	    const odiaTranslations = {
 	      "Language": "ଭାଷା",
@@ -6616,7 +6636,17 @@ function initDeferredLayoutPage() {
 	      "Select Village Name to load mapped farmers.": "ମ୍ୟାପ୍ ହୋଇଥିବା କୃଷକ ଲୋଡ୍ କରିବାକୁ ଗ୍ରାମ ନାମ ବାଛନ୍ତୁ.",
 	      "Select Village Name to load target farmers.": "ଲକ୍ଷ୍ୟ କୃଷକ ଲୋଡ୍ କରିବାକୁ ଗ୍ରାମ ନାମ ବାଛନ୍ତୁ.",
 	      "No mapped farmers found for selected village.": "ବାଛିଥିବା ଗ୍ରାମ ପାଇଁ କୌଣସି ମ୍ୟାପ୍ କୃଷକ ମିଳିଲେ ନାହିଁ.",
-	      "No target farmers found for selected village.": "ବାଛିଥିବା ଗ୍ରାମ ପାଇଁ କୌଣସି ଲକ୍ଷ୍ୟ କୃଷକ ମିଳିଲେ ନାହିଁ."
+	      "No target farmers found for selected village.": "ବାଛିଥିବା ଗ୍ରାମ ପାଇଁ କୌଣସି ଲକ୍ଷ୍ୟ କୃଷକ ମିଳିଲେ ନାହିଁ.",
+	      "Jeevika Jankar First Login": "ଜୀବିକା ଜନକାର ପ୍ରଥମ ଲଗଇନ୍",
+	      "Digital Signature": "ଡିଜିଟାଲ୍ ସ୍ୱାକ୍ଷର",
+	      "Draw your signature before accepting.": "ଗ୍ରହଣ କରିବା ପୂର୍ବରୁ ଆପଣଙ୍କ ସ୍ୱାକ୍ଷର କରନ୍ତୁ.",
+	      "Clear Signature": "ସ୍ୱାକ୍ଷର ସଫା କରନ୍ତୁ",
+	      "Decline": "ପ୍ରତ୍ୟାଖ୍ୟାନ",
+	      "Agree": "ସହମତ",
+	      "Name": "ନାମ",
+	      "Village": "ଗ୍ରାମ",
+	      "Mobile Number": "ମୋବାଇଲ୍ ନମ୍ବର",
+	      "Date": "ତାରିଖ"
 	    };
 	    const languageTranslations = {
 	      hi: translations,
@@ -6934,6 +6964,9 @@ function initDeferredLayoutPage() {
 const bootLayoutPage = () => {
   if (document.querySelector(".login-page")) {
     initPasswordToggles();
+    if (document.querySelector(".agreement-login-page")) {
+      scheduleDeferredLayoutInit();
+    }
     return;
   }
 

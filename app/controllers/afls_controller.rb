@@ -10,10 +10,11 @@ class AflsController < ApplicationController
 
   def index
     @query = params[:q].to_s.strip
+    @dashboard_afl_filter_params = params.permit(:fcoc, :ics, fco_id: []).to_h
     @page = [params[:page].to_i, 1].max
     @page_size = PAGE_SIZE
 
-    scoped_afls = Afl.search(@query)
+    scoped_afls = dashboard_filtered_afls(Afl.search(@query))
     @total_afls = scoped_afls.count
     @total_pages = [(@total_afls.to_f / @page_size).ceil, 1].max
     @page = [@page, @total_pages].min
@@ -70,6 +71,30 @@ class AflsController < ApplicationController
 
   def set_afl
     @afl = Afl.find(params[:id])
+  end
+
+  def dashboard_filtered_afls(scope)
+    fco_ids = Array(params[:fco_id]).flatten.map(&:to_s).map(&:strip).reject(&:blank?).uniq
+    fcoc = params[:fcoc].to_s.strip
+    ics = params[:ics].to_s.strip
+
+    scope = scope.where("LOWER(BTRIM(COALESCE(fco_id, ''))) IN (:fco_ids)", fco_ids: fco_ids.map(&:downcase)) if fco_ids.any?
+    if fcoc.present?
+      normalized_fcoc = fcoc.downcase
+      short_fcoc = normalized_fcoc.sub(/\Afco\s*-\s*c\s+/, "").strip
+      scope = scope.where(
+        "LOWER(BTRIM(COALESCE(fco, ''))) IN (:fcocs) OR LOWER(BTRIM(COALESCE(fco_id, ''))) IN (:fcocs)",
+        fcocs: [normalized_fcoc, short_fcoc].uniq
+      )
+    end
+    if ics.present?
+      normalized_ics = ics.downcase
+      scope = scope.where(
+        "LOWER(BTRIM(COALESCE(ics_name, ''))) = :ics OR LOWER(BTRIM(COALESCE(ics_id, ''))) = :ics",
+        ics: normalized_ics
+      )
+    end
+    scope
   end
 
   def write_import_report(skipped_rows)

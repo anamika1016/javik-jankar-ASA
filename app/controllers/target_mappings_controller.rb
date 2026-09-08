@@ -26,7 +26,8 @@ class TargetMappingsController < ApplicationController
       fco_id, = parse_location_value(option[:value])
       [fco_id, office_block_options(option[:value])]
     end
-    @target_mappings = visible_target_mappings.includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc).limit(100)
+    @target_mappings = dashboard_filtered_target_mappings(visible_target_mappings)
+      .includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc).limit(100)
     # The table is deliberately rendered from row hashes (it also supports
     # summary rows).  Build the normal record rows here; previously this was
     # never assigned, so a successfully saved mapping always looked empty.
@@ -1425,6 +1426,37 @@ class TargetMappingsController < ApplicationController
     return TargetMapping.where(vrp_id: current_app_user["id"]) if non_admin_vrp_login?
 
     TargetMapping.where(created_by_type: current_app_user["record_type"], created_by_id: current_app_user["id"])
+  end
+
+  def dashboard_filtered_target_mappings(scope)
+    fco_ids = Array(params[:fco_id]).flatten.map(&:to_s).map(&:strip).reject(&:blank?).uniq
+    fcoc = params[:fcoc].to_s.strip
+    ics = params[:ics].to_s.strip
+    month = params[:month].to_s.strip
+    main_activity = params[:main_activity].to_s.strip
+    sub_activity = params[:sub_activity].to_s.strip
+    vrp_id = params[:vrp_id].to_s.strip
+
+    scope = scope.where("LOWER(BTRIM(COALESCE(fco_id, ''))) IN (:fco_ids)", fco_ids: fco_ids.map(&:downcase)) if fco_ids.any?
+    if fcoc.present?
+      normalized_fcoc = fcoc.downcase
+      short_fcoc = normalized_fcoc.sub(/\Afco\s*-\s*c\s+/, "").strip
+      scope = scope.where(
+        "LOWER(BTRIM(COALESCE(fco_name, ''))) IN (:fcocs) OR LOWER(BTRIM(COALESCE(fco_id, ''))) IN (:fcocs)",
+        fcocs: [normalized_fcoc, short_fcoc].uniq
+      )
+    end
+    if ics.present?
+      scope = scope.where(
+        "LOWER(BTRIM(COALESCE(ics_name, ''))) = :ics OR LOWER(BTRIM(COALESCE(ics_id, ''))) = :ics",
+        ics: ics.downcase
+      )
+    end
+    scope = scope.where("LOWER(BTRIM(month_name)) = ?", month.downcase) if month.present?
+    scope = scope.where("LOWER(BTRIM(main_activity_name)) = ?", main_activity.downcase) if main_activity.present?
+    scope = scope.where("LOWER(BTRIM(activity_name)) = ?", sub_activity.downcase) if sub_activity.present?
+    scope = scope.where(vrp_id: vrp_id) if vrp_id.present?
+    scope
   end
 
   def target_mapping_rows(target_mappings)

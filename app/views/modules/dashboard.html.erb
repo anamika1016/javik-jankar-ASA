@@ -382,6 +382,17 @@
               id: "dash_fcoc", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
       </div>
 
+      <div class="dashboard-filter-field">
+        <label for="dash_cluster_incharge">Cluster Coordinator</label>
+        <%= f.select :cluster_incharge,
+              options_for_select(
+                [["All Cluster Coordinators", ""]] + Array(@filter_cluster_incharge_options).map { |v| [v, v] },
+                params[:cluster_incharge]
+              ),
+              {},
+              id: "dash_cluster_incharge", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
+      </div>
+
       <%# ICS Name (cascades from the selected activity, FCO and Cluster Incharge) %>
       <div class="dashboard-filter-field">
         <label for="dash_ics">ICS Name</label>
@@ -404,6 +415,22 @@
               ),
               {},
               id: "dash_month", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
+      </div>
+
+      <div class="dashboard-filter-field">
+        <label for="dash_post">Role</label>
+        <%= f.select :post,
+              options_for_select([["All Roles", ""]] + Array(@filter_post_options).map { |v| [v, v] }, params[:post]),
+              {},
+              id: "dash_post", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
+      </div>
+
+      <div class="dashboard-filter-field">
+        <label for="dash_vrp_id">Jeevika Jankar</label>
+        <%= f.select :vrp_id,
+              options_for_select([["All Jeevika Jankars", ""]] + Array(@filter_vrp_options), params[:vrp_id]),
+              {},
+              id: "dash_vrp_id", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
       </div>
 
       <div class="dashboard-filter-actions">

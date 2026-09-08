@@ -675,8 +675,9 @@ class ModulesController < ApplicationController
       v_scope = v_scope.select { |v| v_ids.include?(v.id) }
     end
 
-    # 2. FCO Filter (depends on selected Activity)
-    @filter_fcoc_options = v_scope.map(&:fcoc).uniq.compact_blank.sort
+    # 2. FCO Filter. Keep every FCO visible to this login in the dropdown;
+    # activity filtering is applied only after the user selects an FCO.
+    @filter_fcoc_options = unfiltered_vrps.map(&:fcoc).uniq.compact_blank.sort
     default_visible_fcoc = dashboard_default_visible_fcoc(@filter_fcoc_options)
     @dashboard_fcoc_filter_value = dashboard_filter_param(:fcoc) || default_visible_fcoc
     if @dashboard_fcoc_filter_value.present?
@@ -684,7 +685,7 @@ class ModulesController < ApplicationController
       v_scope = v_scope.select { |v| normalize_dashboard_text(v.fcoc) == f }
       v_ids = v_scope.map(&:id).to_set
       t_scope = t_scope.select { |t| t.vrp_id.present? && v_ids.include?(t.vrp_id) }
-    else
+    elsif !dashboard_global_view_user?
       default_fco_values = dashboard_summary_fco_filter_values
       v_scope = v_scope.select { |v| (training_fcoc_filter_values(v.fcoc) & default_fco_values).any? }
       t_scope = t_scope.select do |t|
@@ -711,7 +712,8 @@ class ModulesController < ApplicationController
     end
 
     # 4. ICS Filter
-    @filter_ics_options = t_scope.map { |t| t.ics_name.presence || t.ics_id }.uniq.compact_blank.sort
+    ics_option_scope = dashboard_global_view_user? && selected_cluster_incharge.blank? && @dashboard_fcoc_filter_value.blank? ? unfiltered_targets : t_scope
+    @filter_ics_options = ics_option_scope.map { |t| t.ics_name.presence || t.ics_id }.uniq.compact_blank.sort
     selected_ics_filter = dashboard_filter_param(:ics)
     if selected_ics_filter.present?
       selected_ics = selected_ics_filter.to_s
@@ -3271,7 +3273,7 @@ class ModulesController < ApplicationController
       ], style: "registration"),
       dashboard_group_card("Jeevika Jankar Billing", billing_items, style: "billing")
     ]
-    fco_names = %w[Sausar Turekela]
+    fco_names = (Array(@filter_fcoc_options).presence || active_vrps.map(&:fcoc)).compact_blank.uniq.sort
     gender_items = fco_names.flat_map do |fco_name|
       fco_vrps = active_vrps.select { |vrp| training_fcoc_text_matches?(vrp.fcoc, fco_name) }
       [
@@ -3414,8 +3416,10 @@ class ModulesController < ApplicationController
 
     fcoc_value = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
     fco_values = dashboard_summary_fco_filter_values(fcoc_value)
-    conditions << "(LOWER(BTRIM(t.fco_name)) IN (:summary_fco_values) OR LOWER(BTRIM(t.fco_id)) IN (:summary_fco_values) OR LOWER(BTRIM(v.fcoc)) IN (:summary_fco_values))"
-    binds[:summary_fco_values] = fco_values
+    if fco_values.any?
+      conditions << "(LOWER(BTRIM(t.fco_name)) IN (:summary_fco_values) OR LOWER(BTRIM(t.fco_id)) IN (:summary_fco_values) OR LOWER(BTRIM(v.fcoc)) IN (:summary_fco_values))"
+      binds[:summary_fco_values] = fco_values
+    end
 
     ics_value = dashboard_filter_param(:ics, :ics_name)
     if ics_value.present?
@@ -3712,6 +3716,7 @@ class ModulesController < ApplicationController
     scope = Afl.where.not(id: nil)
     fcoc_value = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
     fco_values = dashboard_summary_fco_filter_values(fcoc_value)
+    return scope if fco_values.blank?
 
     # Extract only the numeric-style fco_id values (e.g., '1004', '1006')
     fco_id_values = fco_values.select { |v| v.match?(/\A\d+\z/) }
@@ -3742,10 +3747,12 @@ class ModulesController < ApplicationController
     scope = Afl.where.not(id: nil)
     fcoc_value = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
     fco_values = dashboard_summary_fco_filter_values(fcoc_value)
-    scope = scope.where(
-      "LOWER(BTRIM(COALESCE(fco, ''))) IN (:fco_values) OR LOWER(BTRIM(COALESCE(fco_id, ''))) IN (:fco_values)",
-      fco_values: fco_values
-    )
+    if fco_values.any?
+      scope = scope.where(
+        "LOWER(BTRIM(COALESCE(fco, ''))) IN (:fco_values) OR LOWER(BTRIM(COALESCE(fco_id, ''))) IN (:fco_values)",
+        fco_values: fco_values
+      )
+    end
 
     ics_value = dashboard_filter_param(:ics, :ics_name)
     if ics_value.present?
@@ -3763,8 +3770,43 @@ class ModulesController < ApplicationController
     fcoc_value = nil if normalize_dashboard_text(fcoc_value) == "all fco"
     selected_values = training_fcoc_filter_values(fcoc_value)
     return selected_values if selected_values.any?
+    return [] if dashboard_global_view_user?
 
-    training_fcoc_filter_values("1004", "1006", "Sausar", "Turekela", "FCO-C Sausar", "FCO-C Turekela")
+    dashboard_visible_fco_filter_values
+  end
+
+  # Build this from the currently logged-in user's visible JJ/cluster scope.
+  # The old implementation permanently limited non-admin dashboards to Sausar
+  # and Turekela, which also leaked into counts, exports and list links.
+  def dashboard_visible_fco_filter_values
+    return [] if dashboard_global_view_user?
+
+    @dashboard_visible_fco_filter_values ||= begin
+      values = dashboard_vrps.flat_map { |vrp| [vrp.fcoc] }
+      values.concat(dashboard_target_mappings.flat_map { |target| [target.fco_id, target.fco_name, target.vrp&.fcoc] })
+      training_fcoc_filter_values(values)
+    end
+  end
+
+  def dashboard_visible_fco_ids
+    return [] if dashboard_global_view_user?
+
+    @dashboard_visible_fco_ids ||= begin
+      ids = dashboard_target_mappings.filter_map do |target|
+        value = target.fco_id.to_s.strip
+        value if value.match?(/\A\d+\z/)
+      end
+      names = dashboard_visible_fco_filter_values.reject { |value| value.match?(/\A\d+\z/) }
+      if model_ready?(:Afl) && names.any?
+        ids.concat(
+          Afl.where("LOWER(BTRIM(COALESCE(fco, ''))) IN (:names)", names: names)
+             .where.not(fco_id: [nil, ""])
+             .distinct
+             .pluck(:fco_id)
+        )
+      end
+      ids.map { |value| value.to_s.strip.downcase }.reject(&:blank?).uniq
+    end
   end
 
   def dashboard_fco_active_vrp_count(fco_name_or_id, month_name = "August", vrps = nil)
@@ -4020,7 +4062,7 @@ class ModulesController < ApplicationController
         "fcoc" => @dashboard_fcoc_filter_value
       )
       .compact_blank
-      target_params["fco_id"] = %w[1004 1006] if target_params["fcoc"].blank?
+      target_params["fco_id"] = dashboard_visible_fco_ids if target_params["fcoc"].blank? && !dashboard_global_view_user? && dashboard_visible_fco_ids.any?
       target_params
     end
   end
@@ -4034,7 +4076,7 @@ class ModulesController < ApplicationController
       training_sub_activity: dashboard_filter_param(:sub_activity),
       format: format
     }.compact_blank
-    params_hash[:fco_id] = %w[1004 1006] if params_hash[:training_fcoc].blank?
+    params_hash[:fco_id] = dashboard_visible_fco_ids if params_hash[:training_fcoc].blank? && !dashboard_global_view_user? && dashboard_visible_fco_ids.any?
     params_hash
   end
 
@@ -4043,8 +4085,8 @@ class ModulesController < ApplicationController
     fcoc_value = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
     if fcoc_value.present?
       params_hash[:fcoc] = fcoc_value
-    else
-      params_hash[:fco_id] = %w[1004 1006]
+    elsif !dashboard_global_view_user? && dashboard_visible_fco_ids.any?
+      params_hash[:fco_id] = dashboard_visible_fco_ids
     end
     params_hash[:ics] = dashboard_filter_param(:ics, :ics_name) if dashboard_filter_param(:ics, :ics_name).present?
     params_hash
@@ -4314,7 +4356,7 @@ class ModulesController < ApplicationController
       post: params[:post].presence,
       vrp_id: params[:vrp_id].presence
     }.compact_blank
-    params_hash[:fco_id] = %w[1004 1006] if params_hash[:training_fcoc].blank?
+    params_hash[:fco_id] = dashboard_visible_fco_ids if params_hash[:training_fcoc].blank? && !dashboard_global_view_user? && dashboard_visible_fco_ids.any?
     params_hash
   end
 
@@ -5231,23 +5273,27 @@ class ModulesController < ApplicationController
 
   def training_fcoc_ids_from_param(fcoc_name)
     raw_values = Array(fcoc_name).flatten.map(&:to_s).reject(&:blank?)
-    return %w[1004 1006] if raw_values.blank?
+    return dashboard_global_fco_ids if raw_values.blank? && dashboard_global_view_user?
+    return dashboard_visible_fco_ids if raw_values.blank?
 
-    ids = []
-    raw_values.each do |val|
-      normalized = val.to_s.downcase.strip
-      if normalized.include?("1004") || normalized.include?("sausar")
-        ids << "1004"
-      end
-      if normalized.include?("1006") || normalized.include?("turekela")
-        ids << "1006"
-      end
-      if normalized.match?(/\A\d+\z/)
-        ids << normalized
-      end
+    normalized_values = training_fcoc_filter_values(raw_values)
+    ids = normalized_values.select { |value| value.match?(/\A\d+\z/) }
+    if model_ready?(:Afl) && normalized_values.any?
+      ids.concat(
+        Afl.where(
+          "LOWER(BTRIM(COALESCE(fco_id, ''))) IN (:values) OR LOWER(BTRIM(COALESCE(fco, ''))) IN (:values)",
+          values: normalized_values
+        ).where.not(fco_id: [nil, ""]).distinct.pluck(:fco_id)
+      )
     end
-    ids = ids.uniq
-    ids.presence || %w[1004 1006]
+    ids.map { |value| value.to_s.strip.downcase }.reject(&:blank?).uniq
+  end
+
+  def dashboard_global_fco_ids
+    return [] unless model_ready?(:Afl)
+
+    @dashboard_global_fco_ids ||= Afl.where.not(fco_id: [nil, ""]).distinct.pluck(:fco_id)
+      .map { |value| value.to_s.strip.downcase }.reject(&:blank?).uniq
   end
 
   def farmer_training_mapped_farmer_count_and_popups(month_name:, fcoc_name:)
