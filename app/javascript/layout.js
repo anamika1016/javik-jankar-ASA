@@ -1741,11 +1741,11 @@ function initDeferredLayoutPage() {
     "village": ["state", "district", "block", "gram-panchayat"]
   };
   const locationAliasKeys = {
-    state: ["state", "state_id", "state_code"],
-    district: ["district", "district_id", "district_code"],
-    block: ["block", "block_id", "block_code"],
-    gram_panchayat: ["gram_panchayat", "gram_panchayat_id", "gram_panchayat_code", "gp_code", "gram_code", "gp_name", "gram_name"],
-    village: ["village", "village_id", "village_code"]
+    state: ["state", "state_name", "state_id", "state_code"],
+    district: ["district", "district_name", "district_id", "district_code"],
+    block: ["block", "block_name", "cd_block_name", "block_id", "block_code", "cd_block_code"],
+    gram_panchayat: ["gram_panchayat", "gram_panchayat_name", "gram_panchayat_id", "gram_panchayat_code", "gp_code", "gram_code", "gp_name", "gram_name"],
+    village: ["village", "village_name", "village_id", "village_code"]
   };
 
   const locationSelectedValuesFromDataset = (select) => {
@@ -1798,7 +1798,7 @@ function initDeferredLayoutPage() {
     const key = locationKeys[level];
     return [row.id].concat(locationRowValues(row, key)).some((value) => {
       return normalizeOption(value) === normalizeOption(option.value) ||
-        normalizeOption(value) === normalizeOption(option.textContent);
+        normalizeOption(value) === normalizeOption(option.label || option.textContent);
     });
   };
 
@@ -1810,6 +1810,13 @@ function initDeferredLayoutPage() {
     const filteredOptions = originalOptions.filter((option) => {
       if (option.value === "") return false;
       return allowedRows.some((row) => optionMatchesLocationRow(option, row, level));
+    });
+
+    // Directory rows can contain locations absent from the separate master options.
+    allowedRows.forEach((row) => {
+      const label = row[locationKeys[level]];
+      if (!label || filteredOptions.some((option) => optionMatchesLocationRow(option, row, level))) return;
+      filteredOptions.push({ value: label, label });
     });
 
     const parentSelected = (locationParents[level] || []).every((parentLevel) => {

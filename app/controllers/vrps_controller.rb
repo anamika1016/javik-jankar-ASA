@@ -1899,7 +1899,7 @@ class VrpsController < ApplicationController
   end
 
   def location_block_options
-    distinct_lg_directory_values("cd_block_name", "block").map { |label| [label, label] }
+    distinct_lg_directory_values("cd_block_name", "block", "block_name").map { |label| [label, label] }
   end
 
   def location_option_labels(level, params)
@@ -1913,11 +1913,11 @@ class VrpsController < ApplicationController
     when "block"
       return [] if params[:state].blank? || params[:district].blank?
 
-      distinct_lg_directory_values("cd_block_name", "block", state: params[:state], district: params[:district])
+      distinct_lg_directory_values("cd_block_name", "block", "block_name", state: params[:state], district: params[:district])
     when "gram-panchayat"
       return [] if params[:state].blank? || params[:district].blank? || params[:block].blank?
 
-      distinct_lg_directory_values("gram_panchayat", "gram_panchayat_name", state: params[:state], district: params[:district], block: params[:block])
+      distinct_lg_directory_values("gram_panchayat_name", "gram_panchayat", "gp_name", "gram_name", "gp_code", "gram_code", state: params[:state], district: params[:district], block: params[:block])
     when "village"
       return [] if params[:state].blank? || params[:district].blank? || params[:block].blank? || params[:gram_panchayat].blank?
 
@@ -1926,7 +1926,18 @@ class VrpsController < ApplicationController
   end
 
   def distinct_lg_directory_values(*value_keys, **filters)
-    scope = ModuleRecord.where(module_slug: "lg-directory-list")
+    master_slug = case value_keys.first
+    when "state_name" then "state-master"
+    when "district_name" then "district-master"
+    when "cd_block_name" then "block-master"
+    when "gram_panchayat_name" then "gram-panchayat-master"
+    when "village_name" then "village-master"
+    end
+    scope = ModuleRecord.where(module_slug: ["lg-directory-list", "village-master", master_slug].compact.uniq)
+    scope = scope.where("LOWER(TRIM(COALESCE(data::jsonb ->> 'status', ''))) IN ('', 'active')")
+    %w[deleted is_deleted discarded].each do |flag|
+      scope = scope.where("LOWER(TRIM(COALESCE(data::jsonb ->> '#{flag}', ''))) NOT IN ('1', 'true', 'yes', 'deleted')")
+    end
     filters.each do |name, selected|
       values = location_filter_values(selected)
       next if values.blank?
@@ -1936,12 +1947,17 @@ class VrpsController < ApplicationController
       scope = scope.where("(#{clauses})", *Array.new(keys.length, values))
     end
 
-    expressions = value_keys.map { |key| "NULLIF(TRIM(data::jsonb ->> #{ActiveRecord::Base.connection.quote(key)}), '')" }
+    # Some imported directories have the GP name and code columns swapped.
+    # Skip code-only candidates before COALESCE so the next name alias can be used.
+    expressions = value_keys.map do |key|
+      value = "NULLIF(TRIM(data::jsonb ->> #{ActiveRecord::Base.connection.quote(key)}), '')"
+      "CASE WHEN #{value} !~ '^[0-9[:space:]./-]+$' THEN #{value} END"
+    end
     scope
       .pluck(Arel.sql("DISTINCT COALESCE(#{expressions.join(', ')})"))
       .compact_blank
       .reject { |value| code_like_location_value?(value) }
-      .uniq { |value| normalize_hierarchy_label(value) }
+      .uniq { |value| value.to_s.strip.downcase }
       .sort_by { |value| value.to_s.downcase }
   end
 
@@ -1950,7 +1966,7 @@ class VrpsController < ApplicationController
       state: ["state_name", "state", "state_code"],
       district: ["district_name", "district", "district_code"],
       block: ["cd_block_name", "block", "block_name", "cd_block_code", "block_code"],
-      gram_panchayat: ["gram_panchayat", "gram_panchayat_name", "gp_code", "gram_code"]
+      gram_panchayat: ["gram_panchayat", "gram_panchayat_name", "gp_name", "gram_name", "gp_code", "gram_code"]
     }[name.to_sym] || [name.to_s]
   end
 
@@ -1979,7 +1995,7 @@ class VrpsController < ApplicationController
   end
 
   def location_gram_panchayat_options
-    distinct_lg_directory_values("gram_panchayat", "gram_panchayat_name").map { |label| [label, label] }
+    distinct_lg_directory_values("gram_panchayat_name", "gram_panchayat", "gp_name", "gram_name", "gp_code", "gram_code").map { |label| [label, label] }
   end
 
   def location_village_options

@@ -84,6 +84,47 @@ class VrpsControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "swapped imported panchayat codes and names expose every matching village" do
+    admin = create_admin_user(user_name: "swapped_location_admin", password: "secret")
+    post login_path, params: { login: admin.user_name, password: "secret" }
+    base = { "state_name" => "MADHYA PRADESH", "district_name" => "Pandhurna",
+             "cd_block_name" => "Pandhurna", "gram_panchayat" => "03658",
+             "gp_code" => "Pandhurna", "status" => "Active" }
+    3.times do |index|
+      ModuleRecord.create!(module_slug: "lg-directory-list",
+                           data: base.merge("village_name" => "Village #{index}"))
+    end
+    ModuleRecord.create!(module_slug: "lg-directory-list",
+                         data: base.merge("cd_block_name" => "Sausar", "village_name" => "Other block village"))
+    filters = { state: "MADHYA PRADESH", district: "Pandhurna", block: "Pandhurna" }
+    get location_options_vrps_path, params: filters.merge(level: "gram-panchayat")
+    assert_response :success
+    assert_equal [{ "value" => "Pandhurna", "label" => "Pandhurna" }], response.parsed_body.fetch("options")
+
+    get location_options_vrps_path, params: filters.merge(level: "village", gram_panchayat: ["Pandhurna"].to_json)
+    assert_response :success
+    assert_equal ["Village 0", "Village 1", "Village 2"], response.parsed_body.fetch("options").map { |option| option.fetch("value") }
+  end
+
+  test "location options include master-only villages and preserve distinct Hindi names" do
+    admin = create_admin_user(user_name: "master_location_admin", password: "secret")
+    post login_path, params: { login: admin.user_name, password: "secret" }
+    base = { "state" => "Test State", "district" => "Test District", "block_name" => "Test Block",
+             "gram_panchayat_name" => "Test GP", "status" => "Active" }
+    ["गाँव एक", "गाँव दो"].each do |name|
+      ModuleRecord.create!(module_slug: "village-master", data: base.merge("village_name" => name))
+    end
+    ModuleRecord.create!(module_slug: "village-master", data: base.merge("village_name" => "Inactive village", "status" => "Inactive"))
+    ModuleRecord.create!(module_slug: "village-master", data: base.merge("village_name" => "Deleted village", "is_deleted" => true))
+    filters = { state: "Test State", district: "Test District", block: "Test Block" }
+    get location_options_vrps_path, params: filters.merge(level: "gram-panchayat")
+    assert_response :success
+    assert_equal ["Test GP"], response.parsed_body.fetch("options").map { |option| option.fetch("value") }
+    get location_options_vrps_path, params: filters.merge(level: "village", gram_panchayat: "Test GP")
+    assert_response :success
+    assert_equal ["गाँव एक", "गाँव दो"].sort, response.parsed_body.fetch("options").map { |option| option.fetch("value") }.sort
+  end
+
   private
 
   def create_user(attributes = {})

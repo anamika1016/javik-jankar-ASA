@@ -1741,11 +1741,11 @@ function initDeferredLayoutPage() {
     "village": ["state", "district", "block", "gram-panchayat"]
   };
   const locationAliasKeys = {
-    state: ["state", "state_id", "state_code"],
-    district: ["district", "district_id", "district_code"],
-    block: ["block", "block_id", "block_code"],
-    gram_panchayat: ["gram_panchayat", "gram_panchayat_id", "gram_panchayat_code", "gp_code", "gram_code", "gp_name", "gram_name"],
-    village: ["village", "village_id", "village_code"]
+    state: ["state", "state_name", "state_id", "state_code"],
+    district: ["district", "district_name", "district_id", "district_code"],
+    block: ["block", "block_name", "cd_block_name", "block_id", "block_code", "cd_block_code"],
+    gram_panchayat: ["gram_panchayat", "gram_panchayat_name", "gram_panchayat_id", "gram_panchayat_code", "gp_code", "gram_code", "gp_name", "gram_name"],
+    village: ["village", "village_name", "village_id", "village_code"]
   };
 
   const locationSelectedValuesFromDataset = (select) => {
@@ -1798,7 +1798,7 @@ function initDeferredLayoutPage() {
     const key = locationKeys[level];
     return [row.id].concat(locationRowValues(row, key)).some((value) => {
       return normalizeOption(value) === normalizeOption(option.value) ||
-        normalizeOption(value) === normalizeOption(option.textContent);
+        normalizeOption(value) === normalizeOption(option.label || option.textContent);
     });
   };
 
@@ -1810,6 +1810,13 @@ function initDeferredLayoutPage() {
     const filteredOptions = originalOptions.filter((option) => {
       if (option.value === "") return false;
       return allowedRows.some((row) => optionMatchesLocationRow(option, row, level));
+    });
+
+    // Directory rows can contain locations absent from the separate master options.
+    allowedRows.forEach((row) => {
+      const label = row[locationKeys[level]];
+      if (!label || filteredOptions.some((option) => optionMatchesLocationRow(option, row, level))) return;
+      filteredOptions.push({ value: label, label });
     });
 
     const parentSelected = (locationParents[level] || []).every((parentLevel) => {
@@ -1870,6 +1877,76 @@ function initDeferredLayoutPage() {
     const syncLocationPrimaries = () => {
       Object.keys(selects).forEach(syncLocationPrimary);
     };
+
+    // JJ registration loads its hierarchy on demand instead of embedding the directory.
+    if (formShell.dataset.locationOptionsUrl) {
+      let revision = 0;
+      const fillOptions = (level, options, selected = [], promptText = null) => {
+        const select = selects[level];
+        if (!select) return;
+        select.replaceChildren();
+        const prompt = document.createElement("option");
+        prompt.value = "";
+        prompt.textContent = promptText || originalOptions[level].find((option) => !option.value)?.label || `Select ${level}`;
+        select.appendChild(prompt);
+        options.forEach(({ value, label }) => {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = label;
+          option.selected = selected.some((item) => normalizeOption(item) === normalizeOption(value));
+          select.appendChild(option);
+        });
+        select.dispatchEvent(new Event("chip:refresh"));
+        syncLocationPrimary(level);
+      };
+
+      const loadChildren = async (parent, preserve = false) => {
+        const requestRevision = ++revision;
+        const children = locationLevels.slice(locationLevels.indexOf(parent) + 1);
+        const saved = {};
+        children.forEach((level) => {
+          if (!selects[level]) return;
+          saved[level] = preserve
+            ? uniquePresent(locationSelectedValuesFromDataset(selects[level]).concat(selectedLocationValues(selects[level])))
+            : [];
+          delete selects[level].dataset.selectedValue;
+          delete selects[level].dataset.selectedValues;
+          fillOptions(level, []);
+        });
+        for (const level of children) {
+          if (!selects[level]) continue;
+          const parents = locationParents[level] || [];
+          if (parents.some((key) => selectedLocationValues(selects[key]).length === 0)) break;
+          const url = new URL(formShell.dataset.locationOptionsUrl, window.location.origin);
+          url.searchParams.set("level", level);
+          parents.forEach((key) => {
+            url.searchParams.set(locationKeys[key], JSON.stringify(selectedLocationValues(selects[key])));
+          });
+          fillOptions(level, [], [], "Loading...");
+          try {
+            const response = await fetch(url, { headers: { Accept: "application/json" } });
+            if (!response.ok) throw new Error("Location options request failed");
+            const payload = await response.json();
+            if (requestRevision !== revision) return;
+            fillOptions(level, payload.options || [], saved[level]);
+          } catch (_error) {
+            if (requestRevision !== revision) return;
+            fillOptions(level, [], [], "Unable to load. Reselect parent to retry.");
+            break;
+          }
+        }
+      };
+
+      locationLevels.forEach((level) => {
+        selects[level]?.addEventListener("change", () => {
+          syncLocationPrimary(level);
+          loadChildren(level);
+        });
+      });
+      loadChildren("state", true);
+      syncLocationPrimaries();
+      return;
+    }
 
     const refreshLocationLevel = (level) => {
       if (!selects[level]) return;
@@ -2143,9 +2220,9 @@ function initDeferredLayoutPage() {
     const mappedMonthOptions = () => uniqueOptions(
       monthOptions.concat(mappings.map((mapping) => mapping.month)).map((month) => makeOption(month, month))
     ).map(optionValue);
-    const mappedIcsOptions = () => uniqueOptions(targetRowsForSelection().map((mapping) => makeOption(mapping.ics, mapping.ics))).map(optionValue);
+    const mappedIcsOptions = () => uniqueOptions(mappings.filter((mapping) => !monthSelect?.value || normalizeOption(mapping.month) === normalizeOption(monthSelect.value)).map((mapping) => makeOption(mapping.ics, mapping.ics))).map(optionValue);
     const mappedMainActivityOptions = () => uniqueOptions(
-      targetRowsForSelection({ requireVillage: true, includeMainActivity: false })
+      targetRowsForSelection({ requireVillage: true, includeMainActivity: false, includeSubActivity: false })
         .map((mapping) => makeOption(mapping.main_activity, mapping.main_activity))
     ).map(optionValue);
     const mappedSubActivityOptions = () => {
@@ -2153,7 +2230,7 @@ function initDeferredLayoutPage() {
       const selectedMainActivities = selectedMainActivityValues().map(normalizeOption);
       const configured = activityMappings
         .filter((mapping) => selectedMainActivities.includes(normalizeOption(mapping.main_activity)))
-        .flatMap((mapping) => Array(mapping.sub_activities || []));
+        .flatMap((mapping) => mapping.sub_activities || []);
       const values = rows.flatMap((mapping) => {
         const rawValue = String(mapping.sub_activity || "").trim();
         const matchingConfigured = configured.filter((subActivity) => {
@@ -2167,7 +2244,7 @@ function initDeferredLayoutPage() {
       return uniqueOptions(values.map((value) => makeOption(value, value))).map(optionValue);
     };
 	    const mappedVillageOptions = () => {
-	      const rows = targetRowsForSelection();
+	      const rows = mappings.filter((mapping) => (!monthSelect?.value || normalizeOption(mapping.month) === normalizeOption(monthSelect.value)) && (!icsSelect.value || normalizeOption(mapping.ics) === normalizeOption(icsSelect.value)));
 
 	      return uniqueOptions(rows.map((mapping) => makeOption(mapping.village, mapping.village))).map(optionValue);
 	    };
@@ -2213,7 +2290,7 @@ function initDeferredLayoutPage() {
     const mappedFarmers = async () => {
       let rows = selectedTrainingTargetRows();
       if (!rows.length) {
-        const savedMappingIds = Array.from(formShell.querySelectorAll("input[name=module_record[target_mapping_ids][]], input[name=module_record[target_mapping_id]]"))
+        const savedMappingIds = Array.from(formShell.querySelectorAll('input[name="module_record[target_mapping_ids][]"], input[name="module_record[target_mapping_id]"]'))
           .map((input) => String(input.value || "").trim()).filter(Boolean);
         rows = mappings.filter((mapping) => savedMappingIds.includes(String(mapping.target_mapping_id || "")));
       }
@@ -2224,7 +2301,7 @@ function initDeferredLayoutPage() {
       if (trainingFarmerCache.has(key)) return trainingFarmerCache.get(key);
 
       const inlineFarmers = rows.flatMap((mapping) => mapping.farmers || []);
-      if (!farmersUrl) {
+      if (inlineFarmers.length || !farmersUrl) {
         const farmersById = new Map();
         rows.forEach((mapping) => {
           const includedFarmerIds = new Set((mapping.completed_farmer_ids || []).map(String));
@@ -2245,7 +2322,7 @@ function initDeferredLayoutPage() {
 
       const url = new URL(farmersUrl, window.location.origin);
       url.searchParams.set("target_mapping_ids", key);
-      if (selectedFarmerIds.size) url.searchParams.set("existing_farmer_ids", Array.from(selectedFarmerIds).join(","));
+      if (formShell.dataset.trainingRecordId) url.searchParams.set("record_id", formShell.dataset.trainingRecordId);
       const data = await fetchJson(url.toString());
       const farmers = Array.isArray(data.farmers) ? data.farmers : [];
       trainingFarmerCache.set(key, farmers);
@@ -3387,7 +3464,7 @@ function initDeferredLayoutPage() {
       const breakdown = breakdownInputs.reduce((sum, input) => sum + (Number(input.value) || 0), 0);
       const opg = Number(opgInput?.value);
       let message = opgInput?.value.trim() && (breakdown > opg || (strict && breakdown !== opg))
-        ? `General Training/Meeting, Input Demo INM, Input Demo PM aur FFS ka total (${breakdown}) OPG Training (${opg}) ke equal hona chahiye; usse zyada nahi ho sakta.` : "";
+        ? `General Training/Meeting, Input Demo INM, Input Demo PM aur Exposer ka total (${breakdown}) OPG Training (${opg}) ke equal hona chahiye; usse zyada nahi ho sakta.` : "";
       if (strict && opgInput && !opgInput.value.trim() && breakdown > 0) message = "Please enter OPG Training before allocating the four training targets.";
       trainingTargetInputs().forEach((input) => input.setCustomValidity(""));
       if (message) opgInput.setCustomValidity(message);
@@ -4319,7 +4396,7 @@ function initDeferredLayoutPage() {
         const subTotal = trainingVal("General Training/Meeting") + trainingVal("Input Demo INM") + trainingVal("Input Demo PM") + trainingVal("FFS");
         if (opgTotal > 0 && subTotal !== opgTotal) {
           event.preventDefault();
-          window.alert(`General Training/Meeting + Input Demo INM + Input Demo PM + FFS ka total (${subTotal}) OPG Training (${opgTotal}) ke equal hona chahiye.`);
+          window.alert(`General Training/Meeting + Input Demo INM + Input Demo PM + Exposer ka total (${subTotal}) OPG Training (${opgTotal}) ke equal hona chahiye.`);
           return;
         }
       }

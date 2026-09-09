@@ -9033,7 +9033,7 @@ class ModulesController < ApplicationController
       vrp = target_record_vrp_for_visibility(record)
       return false unless vrp
       return true if module_cluster_vrp_visible?(vrp)
-      return true if jeevika_bill_vrp_registered_by_current_user?(vrp)
+      return true if training_supervised_vrp_ids.include?(vrp.id.to_s)
 
       return false
     end
@@ -9060,6 +9060,27 @@ class ModulesController < ApplicationController
         revision.data["record_id"].to_s if (aliases & approvers).any?
       end.to_set
     end
+  end
+
+  def training_supervised_vrp_ids
+    return @training_supervised_vrp_ids if defined?(@training_supervised_vrp_ids)
+    return @training_supervised_vrp_ids = Set.new unless model_ready?(:Vrp)
+
+    labels = current_dashboard_user_labels
+    return @training_supervised_vrp_ids = Set.new if labels.blank?
+
+    supervised_cc_names = ModuleRecord.where(module_slug: "approval-master").filter_map { |step|
+      next unless step.data["status"] == "Active"
+      approver = step.data["approver_approved_by"].to_s
+      next unless dashboard_user_label_matches?(approver, labels)
+      step.data["user_name"].to_s.strip
+    }.compact_blank.uniq
+
+    return @training_supervised_vrp_ids = Set.new if supervised_cc_names.blank?
+
+    @training_supervised_vrp_ids = Vrp.where.not(cluster_incharge: [nil, ""]).select { |vrp|
+      supervised_cc_names.any? { |cc| cluster_label_matches?(cc, vrp.cluster_incharge) }
+    }.map { |vrp| vrp.id.to_s }.to_set
   end
 
   def target_record_vrp_for_visibility(record)
@@ -13467,30 +13488,30 @@ class ModulesController < ApplicationController
 
     districts = active_records_for_location("district-master").map do |record|
       location_row(record,
-        state: first_present_data(record, "state"),
+        state: first_present_data(record, "state_name", "state", "state_code"),
         district: first_present_data(record, "district_name"))
     end
 
     blocks = active_records_for_location("block-master").map do |record|
       location_row(record,
-        state: first_present_data(record, "state"),
-        district: first_present_data(record, "district"),
+        state: first_present_data(record, "state_name", "state", "state_code"),
+        district: first_present_data(record, "district_name", "district", "district_code"),
         block: first_present_data(record, "block_name"))
     end
 
     gram_panchayats = active_records_for_location("gram-panchayat-master").map do |record|
       location_row(record,
-        state: first_present_data(record, "state"),
-        district: first_present_data(record, "district"),
-        block: first_present_data(record, "block"),
+        state: first_present_data(record, "state_name", "state", "state_code"),
+        district: first_present_data(record, "district_name", "district", "district_code"),
+        block: first_present_data(record, "block_name", "cd_block_name", "block", "block_code"),
         gram_panchayat: gram_panchayat_name_from_record(record))
     end
 
     villages = active_records_for_location("village-master").map do |record|
       location_row(record,
-        state: first_present_data(record, "state"),
-        district: first_present_data(record, "district"),
-        block: first_present_data(record, "block"),
+        state: first_present_data(record, "state_name", "state", "state_code"),
+        district: first_present_data(record, "district_name", "district", "district_code"),
+        block: first_present_data(record, "block_name", "cd_block_name", "block", "block_code"),
         gram_panchayat: gram_panchayat_name_from_record(record),
         village: first_present_data(record, "village_name", "village", "name"))
     end
@@ -13516,6 +13537,13 @@ class ModulesController < ApplicationController
 
   def location_row(record, values)
     row = { id: record.id.to_s }
+    # Keep imported names and codes available when a parent select stores either.
+    %w[state_name state_id state_code district_name district_id district_code
+       block_name cd_block_name block_id block_code cd_block_code
+       gram_panchayat_name gram_panchayat_id gram_panchayat_code gp_code gram_code
+       gp_name gram_name village_name village_id village_code].each do |key|
+      row[key.to_sym] = record.data[key].to_s.strip if record.data[key].present?
+    end
     values.each { |key, value| row[key] = value.to_s.strip if value.present? }
     row
   end

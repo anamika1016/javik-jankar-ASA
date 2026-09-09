@@ -97,7 +97,7 @@ class UsersController < ApplicationController
 
     version = ModuleRecord.where(module_slug: FORM_OPTION_SLUGS)
       .pick(Arel.sql("COUNT(*)"), Arel.sql("MAX(updated_at)"))
-    cache_key = ["users/form-options", version.first, version.last&.utc&.iso8601(6)]
+    cache_key = ["users/form-options-v2", version.first, version.last&.utc&.iso8601(6)]
 
     Rails.cache.fetch(cache_key, expires_in: 1.hour) { build_user_form_options_payload }
   end
@@ -377,30 +377,30 @@ class UsersController < ApplicationController
 
     districts = active_records_for_location("district-master").map do |record|
       location_row(record,
-        state: first_present_data(record, "state"),
+        state: first_present_data(record, "state_name", "state", "state_code"),
         district: first_present_data(record, "district_name"))
     end
 
     blocks = active_records_for_location("block-master").map do |record|
       location_row(record,
-        state: first_present_data(record, "state"),
-        district: first_present_data(record, "district"),
+        state: first_present_data(record, "state_name", "state", "state_code"),
+        district: first_present_data(record, "district_name", "district", "district_code"),
         block: first_present_data(record, "block_name"))
     end
 
     gram_panchayats = active_records_for_location("gram-panchayat-master").map do |record|
       location_row(record,
-        state: first_present_data(record, "state"),
-        district: first_present_data(record, "district"),
-        block: first_present_data(record, "block"),
+        state: first_present_data(record, "state_name", "state", "state_code"),
+        district: first_present_data(record, "district_name", "district", "district_code"),
+        block: first_present_data(record, "block_name", "cd_block_name", "block", "block_code"),
         gram_panchayat: gram_panchayat_name_from_record(record))
     end
 
     villages = active_records_for_location("village-master").map do |record|
       location_row(record,
-        state: first_present_data(record, "state"),
-        district: first_present_data(record, "district"),
-        block: first_present_data(record, "block"),
+        state: first_present_data(record, "state_name", "state", "state_code"),
+        district: first_present_data(record, "district_name", "district", "district_code"),
+        block: first_present_data(record, "block_name", "cd_block_name", "block", "block_code"),
         gram_panchayat: gram_panchayat_name_from_record(record),
         village: first_present_data(record, "village_name", "village", "name"))
     end
@@ -431,6 +431,13 @@ class UsersController < ApplicationController
 
   def location_row(record, values)
     row = { id: record.id.to_s }
+    # Keep imported names and codes available when a parent select stores either.
+    %w[state_name state_id state_code district_name district_id district_code
+       block_name cd_block_name block_id block_code cd_block_code
+       gram_panchayat_name gram_panchayat_id gram_panchayat_code gp_code gram_code
+       gp_name gram_name village_name village_id village_code].each do |key|
+      row[key.to_sym] = record.data[key].to_s.strip if record.data[key].present?
+    end
     values.each { |key, value| row[key] = value.to_s.strip if value.present? }
     row
   end
