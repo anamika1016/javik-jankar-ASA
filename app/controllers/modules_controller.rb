@@ -6,6 +6,7 @@ require "net/http"
 require "uri"
 
 class ModulesController < ApplicationController
+  before_action :authorize_farmer_target_access
   before_action :authorize_jeevika_payment_module_access
 
   helper_method :module_field_options, :module_select_field?, :static_field_options, :role_management_mappings,
@@ -36,7 +37,7 @@ class ModulesController < ApplicationController
                 :training_trainee_department_default, :seed_distribution_target_mappings,
                 :seed_distribution_target_month_options, :current_seed_target_vrp_option,
                 :add_farmer_form_mappings, :dashboard_vrp_previous_status, :dashboard_vrp_status_label,
-                :dashboard_weekly_report_filter_params
+                :training_edit_revision_for, :dashboard_weekly_report_filter_params
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
   OTHER_TARGET_MODULE_SLUGS = ["seed-distribution-target", "papl360-target", "other-target"].freeze
@@ -763,6 +764,34 @@ class ModulesController < ApplicationController
 
     @filtered_vrps = v_scope
     @filtered_targets = t_scope
+    @demonstration_method_report = DemonstrationMethodReport.new(targets: t_scope, month: @dashboard_month_filter_value)
+    if params[:demonstration_list] == "true"
+      @demonstration_method_rows = @demonstration_method_report.rows
+      respond_to do |format|
+        format.html { render :demonstration_method_list }
+        format.json { render json: { success: true, records: @demonstration_method_rows, count: @demonstration_method_rows.size } }
+        format.xlsx do
+          send_xlsx(headers: DemonstrationMethodReport::HEADERS,
+            rows: @demonstration_method_rows.map { |row| DemonstrationMethodReport::HEADERS.map { |key| row[key] } },
+            filename: "demonstration-method.xlsx", sheet_name: "Demonstration Method")
+        end
+      end
+      return
+    end
+    @cc_jj_work_status_report = CcJjWorkStatusReport.new(calculator: self)
+    if params[:work_status_list] == "true"
+      @work_status_rows = @cc_jj_work_status_report.rows
+      respond_to do |format|
+        format.html { render :cc_jj_work_status_list }
+        format.json { render json: { success: true, records: @work_status_rows, count: @work_status_rows.size } }
+        format.xlsx do
+          send_xlsx(headers: CcJjWorkStatusReport::HEADERS,
+            rows: @work_status_rows.map { |row| CcJjWorkStatusReport::HEADERS.map { |key| row[key] } },
+            filename: "cc-jj-work-status.xlsx", sheet_name: "CC and JJ Work Status")
+        end
+      end
+      return
+    end
     preload_dashboard_vrp_identity_records!(@filtered_vrps)
 
     # ─── BILL FILTERING ───
@@ -938,7 +967,7 @@ class ModulesController < ApplicationController
     )
     summary_targets = training_participation_active_vrp_targets(t_scope)
     @dashboard_summary_cards = dashboard_summary_cards(summary_targets)
-    @demonstration_method_cards = demonstration_method_cards
+    @demonstration_method_cards = @dashboard_farmer_activity_mode ? demonstration_method_cards : []
     @dashboard_cards = dashboard_cards
     @dashboard_generated_at = Time.current
 
@@ -1423,6 +1452,7 @@ class ModulesController < ApplicationController
     prepare_approval_channel_form(@record) if record_source_slug == "approval-master"
     prepare_vrp_bill_data if @slug == "vrp-bill-add"
     prepare_jeevika_jankar_bill_data if @slug == "jeevika-jankar-bill-process"
+    @training_edit_revision = training_edit_revision_for(@record) if @slug == "training-form"
     render :show
   end
 
@@ -1521,9 +1551,11 @@ class ModulesController < ApplicationController
       return
     end
 
-    previous_data = record.data.dup
+    @record = record
+    previous_data = record.data.deep_dup
 
     next_data = record.data.merge(normalized_module_data)
+    next_data = preserve_training_uploads(record.data, next_data) if record_source_slug == "training-form"
 
     data_errors = module_data_error_messages(next_data)
     if data_errors.any?
@@ -1541,6 +1573,16 @@ class ModulesController < ApplicationController
       prepare_jeevika_jankar_bill_data if @slug == "jeevika-jankar-bill-process"
       flash.now[:alert] = "Access control for this stakeholder and role already exists."
       render :show, status: :unprocessable_entity
+      return
+    end
+
+    if record_source_slug == "training-form"
+      begin
+        revision = TrainingEditApproval.submit!(record: record, proposed: next_data, actor: current_app_user)
+        redirect_to module_path("training-form-list"), notice: "Training changes submitted for approval. #{TrainingEditApproval.status_label(revision)}."
+      rescue TrainingEditApproval::InvalidTransition => error
+        redirect_to module_path("training-form-list"), alert: error.message
+      end
       return
     end
 
@@ -1700,9 +1742,16 @@ class ModulesController < ApplicationController
       .uniq
     return render json: { farmers: [] } if ids.blank? || !model_ready?(:TargetMapping)
 
-    targets = training_target_scope.where(id: ids).includes(:vrp).to_a
-    targets = TargetMapping.where(id: ids).includes(:vrp).to_a if targets.blank?
+    load_module!
+    if params[:record_id].present?
+      @record = ModuleRecord.where(module_slug: "training-form").find(params[:record_id])
+      return head :forbidden unless module_record_visible_for_current_context?(@record)
+    end
+    saved_ids = @record ? Array(@record.data["target_mapping_ids"].presence || @record.data["target_mapping_id"]) : []
+    targets = training_target_scope.or(TargetMapping.where(id: saved_ids)).where(id: ids).includes(:vrp).to_a
     farmer_ids = targets.flat_map { |target| target_farmer_ids(target) }.map(&:to_s).reject(&:blank?).uniq
+    existing_ids = @record ? training_record_selected_farmer_ids(@record) : []
+    farmer_ids = (farmer_ids + existing_ids).uniq
     completed_ids = targets.flat_map { |target| completed_training_farmer_ids_for(target, target_farmer_ids(target)) }.map(&:to_s).uniq
     completed_lookup = completed_ids.index_with(true)
 
@@ -3489,22 +3538,16 @@ class ModulesController < ApplicationController
   end
 
   def demonstration_method_cards
-    training_method_counts = dashboard_training_method_counts
-    participation_params = dashboard_summary_participation_params(status: "training_unique").merge(main_activity: "Farmers' Training")
-    participation_export_params = dashboard_summary_participation_params(status: "training_unique", format: :xlsx).merge(main_activity: "Farmers' Training")
-
-    targets = @filtered_targets || dashboard_target_mappings
-    opg_target_total = Array(targets).sum { |target| target.opg_training_target.to_f }
-    opg_achievement_total = dashboard_opg_achievement_count
-
-    [
-      dashboard_summary_card("OPG Training Target", dashboard_quantity(opg_target_total), "Total OPG target assigned in target mapping", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
-      dashboard_summary_card("OPG Training Achievement", opg_achievement_total, "Total OPG training reports submitted", farmer_training_participation_path(participation_params.merge(training_method: "OPG")), farmer_training_participation_path(participation_export_params.merge(training_method: "OPG"))),
-      dashboard_summary_card("General Training/Meeting", training_method_counts["General Training/Meeting"].to_i, "Distinct mapped farmers with General Training/Meeting", farmer_training_participation_path(participation_params.merge(training_method: "General Training/Meeting")), farmer_training_participation_path(participation_export_params.merge(training_method: "General Training/Meeting"))),
-      dashboard_summary_card("Input Demo INM", training_method_counts["Input Demo INM"].to_i, "Distinct mapped farmers with Input Demo INM", farmer_training_participation_path(participation_params.merge(training_method: "Input Demo INM")), farmer_training_participation_path(participation_export_params.merge(training_method: "Input Demo INM"))),
-      dashboard_summary_card("FFS", training_method_counts["FFS"].to_i, "Distinct mapped farmers with FFS", farmer_training_participation_path(participation_params.merge(training_method: "FFS")), farmer_training_participation_path(participation_export_params.merge(training_method: "FFS"))),
-      dashboard_summary_card("Input Demo PM", training_method_counts["Input Demo PM"].to_i, "Distinct mapped farmers with Input Demo PM", farmer_training_participation_path(participation_params.merge(training_method: "Input Demo PM")), farmer_training_participation_path(participation_export_params.merge(training_method: "Input Demo PM")))
-    ]
+    report = @demonstration_method_report || DemonstrationMethodReport.new(
+      targets: @filtered_targets || dashboard_target_mappings,
+      month: params.key?(:month) ? dashboard_filter_param(:month) : Date.current.prev_month.strftime("%B"))
+    cards = DemonstrationMethodReport::METRICS.map do |metric|
+      dashboard_summary_card({ "OPG Target" => "OPG Training Target", "FFS" => "Exposer" }.fetch(metric, metric),
+        dashboard_quantity(report.summary.sum { |row| row[metric] }), "Training method entries",
+        demonstration_method_list_path(request.query_parameters),
+        demonstration_method_list_path(request.query_parameters.merge(format: :xlsx)))
+    end
+    cards
   end
 
   def dashboard_opg_achievement_count
@@ -8144,6 +8187,28 @@ class ModulesController < ApplicationController
     @dashboard_own_vrps_list ||= dashboard_own_vrps.to_a
   end
 
+  def dashboard_visible_vrp_ids
+    @dashboard_visible_vrp_ids ||= dashboard_vrps.map(&:id)
+  end
+
+  def dashboard_visible_target_scope
+    TargetMapping.where(id: dashboard_target_mappings.map(&:id))
+  end
+
+  def dashboard_visible_farmer_scope
+    return Afl.all if dashboard_global_view_user?
+
+    target_sql = dashboard_visible_target_scope.select(:afl_ids).to_sql
+    Afl.where("afls.id::text IN (SELECT jsonb_array_elements_text(CASE WHEN jsonb_typeof(visible_targets.afl_ids::jsonb) = 'array' THEN visible_targets.afl_ids::jsonb ELSE '[]'::jsonb END) FROM (#{target_sql}) visible_targets)")
+  end
+
+  def dashboard_scoped_training_sql(sql)
+    return sql if dashboard_global_view_user?
+
+    sql.gsub("public.target_mappings", "(#{dashboard_visible_target_scope.to_sql})")
+      .gsub("public.afls", "(#{dashboard_visible_farmer_scope.to_sql})")
+  end
+
   def dashboard_target_mappings
     return @dashboard_target_mappings if defined?(@dashboard_target_mappings)
     return @dashboard_target_mappings = [] unless model_ready?(:TargetMapping)
@@ -8843,6 +8908,34 @@ class ModulesController < ApplicationController
     "#{((value.to_f / total) * 100).round}%"
   end
 
+  def authorize_farmer_target_access
+    return if admin_dashboard_user?
+    slug = current_slug.to_s
+    source = RECORD_SOURCE_SLUGS.fetch(slug, slug)
+    report = action_name == "farmer_participation_report"
+    return unless %w[training-form other-target seed-distribution-target papl360-target add-farmer-form].include?(source) || report
+    return head :forbidden if %w[destroy toggle_status set_status import].include?(action_name)
+    keys = view_context.allowed_sidebar_keys || []
+    requested = report ? "farmer-participation-report" : slug
+    requested = "#{source}-list" if %w[edit update selected_farmers training_target_farmers].include?(action_name)
+    head :forbidden unless keys.include?(requested)
+  end
+
+  def training_edit_revision_for(record)
+    return unless record&.module_slug == "training-form"
+    @training_edit_revisions_by_record ||= ModuleRecord.where(module_slug: TrainingEditApproval::SLUG).order(id: :desc).to_a.each_with_object({}) { |revision, index| index[revision.data["record_id"].to_s] ||= revision }
+    revision = @training_edit_revisions_by_record[record.id.to_s]
+    revision && TrainingEditApproval.assign_configured_channel!(revision)
+  end
+
+  def preserve_training_uploads(previous_data, next_data)
+    TrainingEditApproval::IMAGE_KEYS.each do |key|
+      next if next_data[key].blank?
+      next_data[key] = (Array(previous_data[key]) + Array(next_data[key])).compact_blank.uniq
+    end
+    next_data
+  end
+
   def load_module!
     @slug = current_slug
     @module = MODULES[@slug]
@@ -8867,7 +8960,13 @@ class ModulesController < ApplicationController
       @jeevika_bill_visible_record_ids = records.map { |record| record.id.to_s }
     end
     records = records.select { |record| target_record_visible?(record) } if target_record_source?
-    return records.sort_by { |record| [record.created_at || Time.at(0), record.id.to_i] }.reverse if @slug == "training-form-list"
+    if @slug == "training-form-list"
+      return records.sort_by { |record|
+        revision = training_edit_revision_for(record)
+        pending = revision && revision.data["status"] == "Pending" ? 0 : 1
+        [pending, -(record.created_at || Time.at(0)).to_i, -record.id.to_i]
+      }
+    end
     return records.sort_by { |record| jeevika_bill_list_sort_value(record) } if @slug == "jeevika-jankar-bill-list"
 
     records.sort_by { |record| module_record_sort_value(record) }
@@ -8928,6 +9027,17 @@ class ModulesController < ApplicationController
       return target_record_matches_vrp?(record, current_vrp_record)
     end
 
+    if record.module_slug == "training-form"
+      return true if training_approver_record_ids.include?(record.id.to_s)
+
+      vrp = target_record_vrp_for_visibility(record)
+      return false unless vrp
+      return true if module_cluster_vrp_visible?(vrp)
+      return true if jeevika_bill_vrp_registered_by_current_user?(vrp)
+
+      return false
+    end
+
     return true if target_record_created_by_current_user?(record)
 
     vrp = target_record_vrp_for_visibility(record)
@@ -8942,10 +9052,21 @@ class ModulesController < ApplicationController
     module_cluster_visible_vrps.any? { |visible_vrp| target_record_matches_vrp?(record, visible_vrp) }
   end
 
+  def training_approver_record_ids
+    @training_approver_record_ids ||= begin
+      aliases = TrainingEditApproval.actor_usernames(current_app_user || {})
+      ModuleRecord.where(module_slug: TrainingEditApproval::SLUG).filter_map do |revision|
+        approvers = Array(revision.data["approvers"]).map { |label| TrainingEditApproval.username(label) }
+        revision.data["record_id"].to_s if (aliases & approvers).any?
+      end.to_set
+    end
+  end
+
   def target_record_vrp_for_visibility(record)
     return unless model_ready?(:Vrp)
 
     vrp_id = record.data["jeevika_jankar_id"].presence || record.data["vrp_id"].presence || record.data["select_vrp"].presence
+    vrp_id ||= record.data["created_by_id"] if record.data["created_by_record_type"] == "Vrp"
     return cached_vrp_lookup(vrp_id) if vrp_id.present?
 
     cached_vrps_by_id.values.find { |vrp| target_record_matches_vrp?(record, vrp) }
@@ -10187,7 +10308,7 @@ class ModulesController < ApplicationController
     labels = current_cluster_incharge_labels.compact_blank.uniq
     return false if labels.blank?
 
-    labels.any? { |label| cluster_label_matches?(label, vrp.cluster_incharge) }
+    labels.any? { |label| (cluster_label_match_values(label) & cluster_label_match_values(vrp.cluster_incharge)).any? }
   end
 
   def module_mapped_vrp_scope_active?
@@ -10879,7 +11000,10 @@ class ModulesController < ApplicationController
       normalized_months = target_months.map { |month| normalize_dashboard_text(month) }.uniq
       records = records.where("LOWER(BTRIM(data::jsonb ->> 'month')) IN (?)", normalized_months)
     end
+    blocked_ids = TrainingEditApproval.unapproved_record_ids
     records.each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |record, index|
+      next if blocked_ids.include?(record.id.to_s)
+
       farmer_ids = Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?) & target_farmer_ids
       next if farmer_ids.blank?
 
@@ -11708,8 +11832,8 @@ class ModulesController < ApplicationController
   end
 
   def normalize_training_form_data(data)
-    stamp_target_record_creator!(data)
-    trainer_name, trainer_contact = training_trainer_defaults
+    stamp_target_record_creator!(data) unless @record&.persisted?
+    trainer_name, trainer_contact = @record&.persisted? ? [nil, nil] : training_trainer_defaults
     data["trainer_name"] = trainer_name if trainer_name.present?
     data["trainer_contact"] = trainer_contact if trainer_contact.present?
     data["fco_name"] = data["fco_name"].presence || data["trainee_department"].presence || training_trainee_department_default
@@ -12688,22 +12812,25 @@ class ModulesController < ApplicationController
     activity_settings = jeevika_jankar_main_activity_settings
     sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
 
-    targets = training_target_scope
+    saved_target_ids = @record&.module_slug == "training-form" ? Array(@record.data["target_mapping_ids"].presence || @record.data["target_mapping_id"]).map(&:to_s) : []
+    targets = training_target_scope.or(TargetMapping.where(id: saved_target_ids))
       .includes(:vrp)
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
       .to_a
       .select do |target|
         activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
-        activity_setting.present? && training_main_activity_type?(activity_setting[:main_activity_type])
+        saved_target_ids.include?(target.id.to_s) || (activity_setting.present? && training_main_activity_type?(activity_setting[:main_activity_type]))
       end
     include_completed_state = @record.present?
 
-    all_farmer_ids = targets.flat_map { |target| Array(target.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
+    saved_farmer_ids = @record&.module_slug == "training-form" ? training_record_selected_farmer_ids(@record) : []
+    all_farmer_ids = (targets.flat_map { |target| Array(target.afl_ids).map(&:to_s) } + saved_farmer_ids).reject(&:blank?).uniq
     farmers_lookup = training_farmers_for_ids(all_farmer_ids).index_by { |farmer| farmer[:id].to_s }
 
     targets
       .map do |target|
         farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
+        farmer_ids |= saved_farmer_ids if saved_target_ids.include?(target.id.to_s)
         {
           target_mapping_id: target.id.to_s,
           vrp_id: target.vrp_id.to_s,
@@ -12874,6 +13001,10 @@ class ModulesController < ApplicationController
 
   def training_target_scope
     scope = TargetMapping.all
+    if %w[training-form training-form-list].include?(current_slug.to_s) && !admin_dashboard_user? && !vrp_login_user?
+      ids = Vrp.where.not(cluster_incharge: [nil, ""]).select { |vrp| module_cluster_vrp_visible?(vrp) }.map(&:id)
+      return scope.where(vrp_id: ids)
+    end
     scope = scope.where(vrp_id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
     scope = scope.where(vrp_id: module_cluster_visible_vrp_ids) if module_mapped_vrp_scope_active?
     scope
@@ -12903,6 +13034,9 @@ class ModulesController < ApplicationController
   end
 
   def training_record_countable?(record)
+    @unapproved_training_record_ids ||= TrainingEditApproval.unapproved_record_ids.to_set
+    return false if @unapproved_training_record_ids.include?(record.id.to_s)
+
     statuses = [
       record.data["status"],
       record.data["approval_status"],
@@ -13419,7 +13553,7 @@ class ModulesController < ApplicationController
       "Achievement Fill" => ["Auto Fill", "Self"],
       "Office Level" => ["State", "District", "Block", "Gram Panchayat", "Village"],
       "Parent Office Type" => ["Parent Office", "Sub Parent Office"],
-      "Module Name" => ["Jeevika Jankar Registration", "Jeevika Jankar Bill"],
+      "Module Name" => ["Jeevika Jankar Registration", "Jeevika Jankar Bill", "Training Form Edit"],
       "VRP Name" => vrp_name_options,
       "Sub Module Name" => sidebar_submodule_names
     }[field] || []

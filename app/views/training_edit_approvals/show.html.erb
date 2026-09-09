@@ -1,0 +1,30 @@
+<section class="dashboard-page">
+  <div class="dashboard-topbar"><h1>Training Form Edit Request #<%= @revision.id %></h1><%= link_to "Back to Approval List", training_edit_approvals_path %></div>
+  <section class="module-card">
+    <p>Status: <%= @revision.data["status"] %></p>
+    <p>Approval channel: <%= Array(@revision.data["approvers"]).join(" → ").presence || "Awaiting channel configuration" %></p>
+    <table class="module-table"><thead><tr><th>Field</th><th>Current / Original</th><th>Requested Change</th></tr></thead><tbody>
+      <% (@revision.data["before"].keys | @revision.data["proposed"].keys).each do |key| %>
+        <% before = @revision.data["before"][key]; proposed = @revision.data["proposed"][key] %>
+        <% next if before == proposed %>
+        <tr><th><%= key.humanize %></th><% [before, proposed].each do |value| %><td>
+          <% if TrainingEditApproval::IMAGE_KEYS.include?(key) %>
+            <% Array(value).each do |url| %><%= link_to File.basename(url.to_s), url, target: "_blank", rel: "noopener" if url.to_s.start_with?("/uploads/module_records/") %><br><% end %>
+          <% else %><%= value.is_a?(Array) || value.is_a?(Hash) ? value.to_json : value %><% end %>
+        </td><% end %></tr>
+      <% end %>
+    </tbody></table>
+    <% if TrainingEditApproval.can_decide?(@revision, current_app_user) %>
+      <%= form_with url: training_edit_approval_path(@revision), method: :patch do |form| %>
+        <%= form.label :remarks %><%= form.text_area :remarks, required: true %>
+        <%= form.button "Approve", name: "decision", value: "approve", class: "list-btn active" %>
+        <%= form.button "Return", name: "decision", value: "reject", class: "list-btn delete" %>
+      <% end %>
+    <% elsif admin_access_user? && @revision.data["status"] == "Pending" && Array(@revision.data["approvers"]).empty? %>
+      <p>Configure “Training Form Edit” in Jeevika Jankar Approval Form for the requesting CC, then route this request.</p>
+      <%= link_to "Configure Channel", module_path("approval-master") %>
+      <%= button_to "Route to Configured Channel", training_edit_approval_path(@revision), method: :patch, params: { decision: "route" } %>
+    <% end %>
+    <% Array(@revision.data["history"]).each do |entry| %><p><%= entry["at"] %> · <%= entry["action"] %> · <%= entry["actor"] %> · <%= entry["remarks"] %></p><% end %>
+  </section>
+</section>

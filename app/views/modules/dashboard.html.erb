@@ -57,7 +57,7 @@
       </div>
     <% end %>
 
-  <% demonstration_method_titles = ["OPG Training Target", "OPG Training Achievement", "General Training/Meeting", "Input Demo INM", "FFS", "Input Demo PM"] %>
+  <% demonstration_method_titles = ["OPG Training Target", "General Training/Meeting", "Input Demo INM", "Exposer", "Input Demo PM"] %>
     <% all_dashboard_summary_cards = Array(@dashboard_summary_cards) %>
     <% demonstration_method_cards = Array(@demonstration_method_cards).presence || all_dashboard_summary_cards.select { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
     <% dashboard_summary_cards = all_dashboard_summary_cards.reject { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
@@ -171,7 +171,7 @@
               <th>General Training/Meeting</th>
               <th>Input Demo INM</th>
               <th>Input Demo PM</th>
-              <th>FFS</th>
+              <th>Exposer</th>
               <th>Completed</th>
               <th>Pending</th>
               <th>Progress</th>
@@ -431,7 +431,7 @@
     </div>
   <% end %>
 
-  <% demonstration_method_titles = ["OPG Training Target", "OPG Training Achievement", "General Training/Meeting", "Input Demo INM", "FFS", "Input Demo PM"] %>
+  <% demonstration_method_titles = ["OPG Training Target", "General Training/Meeting", "Input Demo INM", "Exposer", "Input Demo PM"] %>
   <% all_dashboard_summary_cards = Array(@dashboard_summary_cards) %>
   <% demonstration_method_cards = Array(@demonstration_method_cards).presence || all_dashboard_summary_cards.select { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
   <% dashboard_summary_cards = all_dashboard_summary_cards.reject { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
@@ -486,22 +486,17 @@
     </section>
   <% end %>
 
-  <% if demonstration_method_cards.any? %>
+  <% if farmer_activity_mode %>
     <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel demonstration-method-panel" id="demonstration_method_boxes">
       <div class="module-card-header training-participation-status-header">
-        <div>
-          <h2>Demonstration Method</h2>
-        </div>
+        <h2>Demonstration Method</h2>
+        <%= link_to "View List", demonstration_method_list_path(request.query_parameters), class: "table-action demonstration-common-list" %>
       </div>
-
       <div class="training-participation-boxes dashboard-summary-boxes demonstration-method-boxes">
         <% demonstration_method_cards.each do |card| %>
           <div class="training-participation-box total dashboard-summary-box">
             <span><%= card[:title] %></span>
             <strong><%= card[:value] %></strong>
-            <div class="dashboard-summary-actions">
-              <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true } %>
-            </div>
           </div>
         <% end %>
       </div>
@@ -509,23 +504,70 @@
   <% end %>
 
   <% if farmer_activity_mode %>
-    <div class="dashboard-grid premium dashboard-training-secondary-summaries">
+    <% summary_bar_colors = { "FCO-wise JJ Requirement" => "#8b5fcf", "Jeevika Jankar Billing" => "#d49428", "Gender Count" => "#6b8e3a", "CC and JJ Work Status" => "#5a8c3a" } %>
+    <div class="dashboard-summary-bars">
       <% Array(@dashboard_cards).sort_by { |card| ["FCO-wise JJ Requirement", "Jeevika Jankar Billing", "Gender Count"].index(card[:title]) || 99 }.each do |card| %>
         <% next if card.blank? %>
         <% next unless ["FCO-wise JJ Requirement", "Jeevika Jankar Billing", "Gender Count"].include?(card[:title]) %>
         <% next unless card.is_a?(Hash) && card[:items].present? %>
-        <article class="metric-card metric-card-group metric-card-group-<%= card[:style] %>">
-          <span class="metric-card-group-title"><%= card[:title] %></span>
-          <div class="metric-card-group-items">
+        <% popup_id = "popup-#{card[:title].parameterize}" %>
+        <div class="summary-bar" style="background:<%= summary_bar_colors[card[:title]] %>;">
+          <span class="summary-bar-label"><%= card[:title] %></span>
+          <button type="button" class="summary-bar-icon" onclick="document.getElementById('<%= popup_id %>').showModal()">&#8599;</button>
+        </div>
+        <dialog class="summary-popup" id="<%= popup_id %>">
+          <div class="summary-popup-header" style="background:<%= summary_bar_colors[card[:title]] %>;">
+            <h3><%= card[:title] %></h3>
+            <button type="button" class="summary-popup-close" onclick="this.closest('dialog').close()">&times;</button>
+          </div>
+          <div class="summary-popup-body">
             <% card[:items].each do |item| %>
-              <%= link_to item[:path], class: "metric-card-group-item metric-card-group-item-#{item[:title].to_s.parameterize}", data: { dashboard_card: true } do %>
-                <span><%= item[:title] %></span>
-                <strong><%= item[:value] %></strong>
+              <%= link_to item[:path], class: "summary-popup-item", data: { dashboard_card: true } do %>
+                <span class="summary-popup-label"><%= item[:title] %></span>
+                <span class="summary-popup-value"><%= item[:value] %></span>
               <% end %>
             <% end %>
           </div>
-        </article>
+        </dialog>
       <% end %>
+
+      <% cc_jj_popup_id = "popup-cc-jj-work-status" %>
+      <div class="summary-bar" style="background:<%= summary_bar_colors["CC and JJ Work Status"] %>;">
+        <span class="summary-bar-label">CC and JJ Work Status</span>
+        <button type="button" class="summary-bar-icon" onclick="document.getElementById('<%= cc_jj_popup_id %>').showModal()">&#8599;</button>
+      </div>
+      <dialog class="summary-popup summary-popup-wide" id="<%= cc_jj_popup_id %>">
+        <div class="summary-popup-header" style="background:<%= summary_bar_colors["CC and JJ Work Status"] %>;">
+          <h3>CC and JJ Work Status</h3>
+          <button type="button" class="summary-popup-close" onclick="this.closest('dialog').close()">&times;</button>
+        </div>
+        <div class="summary-popup-body">
+          <% summary_by_fco = @cc_jj_work_status_report.summary.group_by { |row| row["fco_id"] } %>
+          <% summary_by_fco.keys.sort.each do |fco_id| %>
+            <% fco_name = fco_id.to_s.presence || "FCO" %>
+            <div class="cc-jj-fco-block">
+              <div class="cc-jj-fco-name"><%= fco_name %></div>
+              <div class="cc-jj-fco-statuses">
+                <% ["Red", "Completed"].each do |status| %>
+                  <% row = (summary_by_fco[fco_id] || []).find { |item| item["status"].to_s.casecmp(status).zero? } %>
+                  <div class="cc-jj-status-card <%= status.downcase %>">
+                    <div class="cc-jj-status-label"><%= status %></div>
+                    <div class="cc-jj-status-values">
+                      <% { "toatl_cc" => "CC", "toatl_jj" => "JJ" }.each do |key, label| %>
+                        <%= link_to cc_jj_work_status_list_path(request.query_parameters), class: "cc-jj-value-item" do %>
+                          <span><%= label %></span>
+                          <strong><%= row ? row[key] : 0 %></strong>
+                        <% end %>
+                      <% end %>
+                    </div>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+          <%= link_to "View Full List →", cc_jj_work_status_list_path(request.query_parameters), class: "cc-jj-view-list-btn" %>
+        </div>
+      </dialog>
     </div>
   <% end %>
 

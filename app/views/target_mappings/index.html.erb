@@ -158,7 +158,7 @@
                 ["FFS", "ffs"]
               ].each do |label, key| %>
                 <label>
-                  <span><%= label %></span>
+                  <span><%= label == "FFS" ? "Exposer" : label %></span>
                   <input type="number"
                          name="target_mapping[training_targets][<%= key %>]"
                          min="1"
@@ -385,7 +385,7 @@
                 <th class="target-training-column">General Training/<wbr>Meeting</th>
                 <th class="target-training-column">Input Demo INM</th>
                 <th class="target-training-column">Input Demo PM</th>
-                <th class="target-training-column">FFS</th>
+                <th class="target-training-column">Exposer</th>
                 <th class="target-count-column">Farmer Target</th>
                 <th class="target-count-column">Week 1</th>
                 <th class="target-count-column">Week 2</th>

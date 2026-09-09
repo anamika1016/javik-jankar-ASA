@@ -7945,20 +7945,3 @@ body {
   line-height: 1.4;
   padding: 2px 0;
 }
-
-/* Approval labels must wrap within their own column. */
-.table-shell .module-table td.training-approval-cell {
-  min-width: 220px;
-  width: 260px;
-  max-width: 260px;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-.training-approval-link {
-  display: block;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  color: var(--vrp-primary-dark);
-  font-weight: 700;
-  text-decoration: underline;
-}

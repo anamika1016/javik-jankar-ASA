@@ -148,17 +148,17 @@
     <% profile = t.object %>
     <div class="col-md-3 mb-3">
     <label class="form-label required">State</label>
-    <%= t.select :state_id, options_for_select(@state_options || [], profile&.state_id), { prompt: 'Select State', required: true }, class: 'form-select fstates ofs', label: false, data: { location_level: "state", selected_value: profile&.state_id }, onchange: 'handleDropdownChange("vrp_profile_attributes", this.value)' %>
+    <%= t.select :state_id, options_for_select(@state_options || [], profile&.state_id), { prompt: 'Select State', required: true }, class: 'form-select fstates ofs', label: false, data: { location_level: "state", selected_value: profile&.state_id } %>
     </div>
 
     <div class="col-md-3 mb-3">
     <label class="form-label required">District</label>
-    <%= t.select :district_id, options_for_select(@district_options || [], profile&.district_id), { prompt: 'Select District' }, { class: 'form-select fdistricts ofs', label: false, data: { location_level: "district", selected_value: profile&.district_id }, onchange: 'handleDropdownChange("vrp_profile_attributes", this.value)' } %>
+    <%= t.select :district_id, options_for_select(@district_options || [], profile&.district_id), { prompt: 'Select District' }, { class: 'form-select fdistricts ofs', label: false, data: { location_level: "district", selected_value: profile&.district_id } } %>
     </div>
 
     <div class="col-md-3 mb-3">
     <label class="form-label required">Block</label>
-    <%= t.select :block_id, options_for_select(@block_options || [], profile&.block_id), { prompt: 'Select Block ' }, class: 'form-select fblocks ofs', label: false, data: { location_level: "block", selected_value: profile&.block_id }, onchange: 'handleDropdownChange("vrp_profile_attributes", this.value)' %>
+    <%= t.select :block_id, options_for_select(@block_options || [], profile&.block_id), { prompt: 'Select Block ' }, class: 'form-select fblocks ofs', label: false, data: { location_level: "block", selected_value: profile&.block_id } %>
     </div>
 
     <div class="col-md-3 mb-3">

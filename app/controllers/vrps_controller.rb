@@ -1932,7 +1932,7 @@ class VrpsController < ApplicationController
       next if values.blank?
 
       keys = location_filter_keys(name)
-      clauses = keys.map { |key| "LOWER(data::jsonb ->> #{ActiveRecord::Base.connection.quote(key)}) IN (?)" }.join(" OR ")
+      clauses = keys.map { |key| "LOWER(TRIM(data::jsonb ->> #{ActiveRecord::Base.connection.quote(key)})) IN (?)" }.join(" OR ")
       scope = scope.where("(#{clauses})", *Array.new(keys.length, values))
     end
 
@@ -1963,11 +1963,11 @@ class VrpsController < ApplicationController
 
     values
       .flat_map { |value| value.to_s.split(",") }
-      .map { |value| normalize_hierarchy_label(value) }
+      .map { |value| value.to_s.strip.downcase }
       .compact_blank
       .uniq
   rescue JSON::ParserError
-    [normalize_hierarchy_label(selected)].compact_blank
+    [selected.to_s.strip.downcase].compact_blank
   end
 
   def location_state_options

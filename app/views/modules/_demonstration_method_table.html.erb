@@ -1,0 +1,11 @@
+<div class="table-shell">
+  <table class="module-table compact-table">
+    <thead><tr><% headers.each do |header| %><th><%= header == "FFS" ? "Exposer" : header %></th><% end %></tr></thead>
+    <tbody>
+      <% rows.each do |row| %>
+        <tr><% headers.each do |header| %><td><%= row[header] %></td><% end %></tr>
+      <% end %>
+      <% if rows.empty? %><tr><td colspan="<%= headers.size %>">No demonstration method records found.</td></tr><% end %>
+    </tbody>
+  </table>
+</div>

@@ -63,6 +63,27 @@ class VrpsControllerTest < ActionDispatch::IntegrationTest
     assert_select ".table-shell.mt-4 tbody td", text: "Patavaler"
   end
 
+  test "location options cascade through names with punctuation and multiple panchayats" do
+    admin = create_admin_user(user_name: "location_admin", password: "secret")
+    post login_path, params: { login: admin.user_name, password: "secret" }
+    ["First GP", "Second GP"].each_with_index do |gp, index|
+      ModuleRecord.create!(module_slug: "lg-directory-list", data: {
+        "state_name" => " Test State ", "district_name" => "Test-District",
+        "cd_block_name" => "Test Block", "gram_panchayat" => gp,
+        "village_name" => "Test Village #{index}"
+      })
+    end
+    filters = { state: "Test State", district: "Test-District", block: "Test Block",
+                gram_panchayat: ["First GP", "Second GP"].to_json }
+    { "district" => ["Test-District"], "block" => ["Test Block"],
+      "gram-panchayat" => ["First GP", "Second GP"],
+      "village" => ["Test Village 0", "Test Village 1"] }.each do |level, expected|
+      get location_options_vrps_path, params: filters.merge(level: level)
+      assert_response :success
+      assert_equal expected, response.parsed_body.fetch("options").map { |option| option.fetch("value") }
+    end
+  end
+
   private
 
   def create_user(attributes = {})

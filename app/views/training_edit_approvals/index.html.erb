@@ -1,0 +1,15 @@
+<section class="dashboard-page">
+  <div class="dashboard-topbar"><h1>Training Form Edit Approval List</h1>
+    <% if admin_access_user? %><%= link_to "Configure Approval Channel", module_path("approval-master"), class: "list-btn" %><% end %>
+  </div>
+  <section class="module-card"><table class="module-table">
+    <thead><tr><th>Request</th><th>Training Record</th><th>Requested By</th><th>Status</th><th>Pending At</th><th>Review</th></tr></thead>
+    <tbody><% @revisions.each do |revision| %><tr>
+      <td><%= revision.id %></td><td><%= revision.data["record_id"] %></td>
+      <td><%= revision.data.dig("requester", "name").presence || revision.data.dig("requester", "username") %></td>
+      <td><%= revision.data["status"] %></td>
+      <td><%= revision.data["status"] == "Pending" ? (Array(revision.data["approvers"])[revision.data["step"].to_i].presence || "Awaiting channel configuration") : "—" %></td>
+      <td><%= link_to "Review", training_edit_approval_path(revision) %></td>
+    </tr><% end %></tbody>
+  </table></section>
+</section>

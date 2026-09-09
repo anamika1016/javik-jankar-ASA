@@ -26,6 +26,8 @@ if (!window.__vrpLayoutGlobalsReady) {
 
 const vrpUiLabel = "Jeevika Jankar";
 const replaceVrpUiText = (value) => `${value || ""}`
+  .replace(/\bactivities\b/gi, "Major Work Indicators")
+  .replace(/\bactivity\b/gi, "Major Work Indicator")
   .replace(/\bvrp\b/gi, vrpUiLabel)
   .replace(/वीआरपी/g, vrpUiLabel)
   .replace(/व्हीआरपी/g, vrpUiLabel)
@@ -172,7 +174,9 @@ const scheduleDeferredLayoutInit = () => {
     runDeferredLayoutInit();
   };
 
-  if (window.requestIdleCallback) {
+  if (document.querySelector("[data-target-mapping]")) {
+    runIfCurrent();
+  } else if (window.requestIdleCallback) {
     window.__layoutDeferredIdle = window.requestIdleCallback(runIfCurrent, { timeout: 400 });
   } else {
     window.__layoutDeferredTimer = setTimeout(runIfCurrent, 32);
@@ -262,12 +266,39 @@ function initDeferredLayoutPage() {
     if (button.dataset.savedTargetFarmersBound === "true") return;
 
     button.dataset.savedTargetFarmersBound = "true";
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       const dialog = document.getElementById(button.dataset.savedTargetFarmersOpen);
       if (!dialog) return;
-
       if (typeof dialog.showModal === "function") dialog.showModal();
       else dialog.setAttribute("open", "open");
+      if (!dialog.dataset.farmersUrl || dialog.dataset.farmersLoaded === "true" || dialog.dataset.farmersLoading === "true") return;
+      const list = dialog.querySelector(".target-dialog-farmer-list");
+      dialog.dataset.farmersLoading = "true";
+      list.textContent = "Loading farmers...";
+      try {
+        const data = await fetchJson(dialog.dataset.farmersUrl);
+        const fragment = document.createDocumentFragment();
+        (data.farmers || []).forEach((farmer) => {
+          const item = document.createElement("div");
+          item.className = "vrp-ics-farmer-item";
+          const content = document.createElement("span");
+          const name = document.createElement("strong");
+          name.textContent = farmer.farmer_name || `Farmer #${farmer.id}`;
+          const meta = document.createElement("small");
+          meta.textContent = [["Father", farmer.father_name], ["Tracenet", farmer.tracenet_no], ["Mobile", farmer.mobile_no], ["Village", farmer.village_name]]
+            .filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`).join(" | ");
+          content.append(name, meta);
+          item.append(content);
+          fragment.append(item);
+        });
+        list.replaceChildren(fragment);
+        if (!list.childElementCount) list.textContent = "No farmers found.";
+        dialog.dataset.farmersLoaded = "true";
+      } catch (_error) {
+        list.textContent = "Could not load farmers. Close and click View to retry.";
+      } finally {
+        delete dialog.dataset.farmersLoading;
+      }
     });
   });
 
@@ -1840,6 +1871,76 @@ function initDeferredLayoutPage() {
       Object.keys(selects).forEach(syncLocationPrimary);
     };
 
+    // JJ registration loads its hierarchy on demand instead of embedding the directory.
+    if (formShell.dataset.locationOptionsUrl) {
+      let revision = 0;
+      const fillOptions = (level, options, selected = [], promptText = null) => {
+        const select = selects[level];
+        if (!select) return;
+        select.replaceChildren();
+        const prompt = document.createElement("option");
+        prompt.value = "";
+        prompt.textContent = promptText || originalOptions[level].find((option) => !option.value)?.label || `Select ${level}`;
+        select.appendChild(prompt);
+        options.forEach(({ value, label }) => {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = label;
+          option.selected = selected.some((item) => normalizeOption(item) === normalizeOption(value));
+          select.appendChild(option);
+        });
+        select.dispatchEvent(new Event("chip:refresh"));
+        syncLocationPrimary(level);
+      };
+
+      const loadChildren = async (parent, preserve = false) => {
+        const requestRevision = ++revision;
+        const children = locationLevels.slice(locationLevels.indexOf(parent) + 1);
+        const saved = {};
+        children.forEach((level) => {
+          if (!selects[level]) return;
+          saved[level] = preserve
+            ? uniquePresent(locationSelectedValuesFromDataset(selects[level]).concat(selectedLocationValues(selects[level])))
+            : [];
+          delete selects[level].dataset.selectedValue;
+          delete selects[level].dataset.selectedValues;
+          fillOptions(level, []);
+        });
+        for (const level of children) {
+          if (!selects[level]) continue;
+          const parents = locationParents[level] || [];
+          if (parents.some((key) => selectedLocationValues(selects[key]).length === 0)) break;
+          const url = new URL(formShell.dataset.locationOptionsUrl, window.location.origin);
+          url.searchParams.set("level", level);
+          parents.forEach((key) => {
+            url.searchParams.set(locationKeys[key], JSON.stringify(selectedLocationValues(selects[key])));
+          });
+          fillOptions(level, [], [], "Loading...");
+          try {
+            const response = await fetch(url, { headers: { Accept: "application/json" } });
+            if (!response.ok) throw new Error("Location options request failed");
+            const payload = await response.json();
+            if (requestRevision !== revision) return;
+            fillOptions(level, payload.options || [], saved[level]);
+          } catch (_error) {
+            if (requestRevision !== revision) return;
+            fillOptions(level, [], [], "Unable to load. Reselect parent to retry.");
+            break;
+          }
+        }
+      };
+
+      locationLevels.forEach((level) => {
+        selects[level]?.addEventListener("change", () => {
+          syncLocationPrimary(level);
+          loadChildren(level);
+        });
+      });
+      loadChildren("state", true);
+      syncLocationPrimaries();
+      return;
+    }
+
     const refreshLocationLevel = (level) => {
       if (!selects[level]) return;
 
@@ -2112,9 +2213,9 @@ function initDeferredLayoutPage() {
     const mappedMonthOptions = () => uniqueOptions(
       monthOptions.concat(mappings.map((mapping) => mapping.month)).map((month) => makeOption(month, month))
     ).map(optionValue);
-    const mappedIcsOptions = () => uniqueOptions(targetRowsForSelection().map((mapping) => makeOption(mapping.ics, mapping.ics))).map(optionValue);
+    const mappedIcsOptions = () => uniqueOptions(mappings.filter((mapping) => !monthSelect?.value || normalizeOption(mapping.month) === normalizeOption(monthSelect.value)).map((mapping) => makeOption(mapping.ics, mapping.ics))).map(optionValue);
     const mappedMainActivityOptions = () => uniqueOptions(
-      targetRowsForSelection({ requireVillage: true, includeMainActivity: false })
+      targetRowsForSelection({ requireVillage: true, includeMainActivity: false, includeSubActivity: false })
         .map((mapping) => makeOption(mapping.main_activity, mapping.main_activity))
     ).map(optionValue);
     const mappedSubActivityOptions = () => {
@@ -2122,7 +2223,7 @@ function initDeferredLayoutPage() {
       const selectedMainActivities = selectedMainActivityValues().map(normalizeOption);
       const configured = activityMappings
         .filter((mapping) => selectedMainActivities.includes(normalizeOption(mapping.main_activity)))
-        .flatMap((mapping) => Array(mapping.sub_activities || []));
+        .flatMap((mapping) => mapping.sub_activities || []);
       const values = rows.flatMap((mapping) => {
         const rawValue = String(mapping.sub_activity || "").trim();
         const matchingConfigured = configured.filter((subActivity) => {
@@ -2136,7 +2237,7 @@ function initDeferredLayoutPage() {
       return uniqueOptions(values.map((value) => makeOption(value, value))).map(optionValue);
     };
 	    const mappedVillageOptions = () => {
-	      const rows = targetRowsForSelection();
+	      const rows = mappings.filter((mapping) => (!monthSelect?.value || normalizeOption(mapping.month) === normalizeOption(monthSelect.value)) && (!icsSelect.value || normalizeOption(mapping.ics) === normalizeOption(icsSelect.value)));
 
 	      return uniqueOptions(rows.map((mapping) => makeOption(mapping.village, mapping.village))).map(optionValue);
 	    };
@@ -2180,7 +2281,12 @@ function initDeferredLayoutPage() {
       .join(",");
 
     const mappedFarmers = async () => {
-      const rows = selectedTrainingTargetRows();
+      let rows = selectedTrainingTargetRows();
+      if (!rows.length) {
+        const savedMappingIds = Array.from(formShell.querySelectorAll('input[name="module_record[target_mapping_ids][]"], input[name="module_record[target_mapping_id]"]'))
+          .map((input) => String(input.value || "").trim()).filter(Boolean);
+        rows = mappings.filter((mapping) => savedMappingIds.includes(String(mapping.target_mapping_id || "")));
+      }
       if (!rows.length) return [];
 
       const key = targetRowsKey(rows);
@@ -2209,6 +2315,7 @@ function initDeferredLayoutPage() {
 
       const url = new URL(farmersUrl, window.location.origin);
       url.searchParams.set("target_mapping_ids", key);
+      if (formShell.dataset.trainingRecordId) url.searchParams.set("record_id", formShell.dataset.trainingRecordId);
       const data = await fetchJson(url.toString());
       const farmers = Array.isArray(data.farmers) ? data.farmers : [];
       trainingFarmerCache.set(key, farmers);
@@ -2252,7 +2359,7 @@ function initDeferredLayoutPage() {
 	      const count = selectedFarmerBoxes().length;
 	      const boxes = farmerBoxes();
 	      const mappedCount = allFarmerBoxes().length;
-	      if (farmerCount) farmerCount.textContent = `${count} selected / ${mappedCount} mapped farmers`;
+	      if (farmerCount) farmerCount.textContent = `${count} selected / ${mappedCount} mapped farmers • ${farmerList.querySelectorAll(".already-included").length} completed`;
 	      if (farmerCountInput) farmerCountInput.value = String(count);
 	      if (farmerSelectAll) {
 	        farmerSelectAll.checked = boxes.length > 0 && count === boxes.length;
@@ -3343,6 +3450,32 @@ function initDeferredLayoutPage() {
     const farmerDialogSave = shell.querySelector("[data-target-dialog-save]");
     const farmerDialogSaveStatus = shell.querySelector("[data-target-dialog-save-status]");
     const form = shell.querySelector("form");
+    const validateOpgBreakdown = (strict = false) => {
+      const inputs = trainingTargetInputs().filter((input) => !input.disabled);
+      const opgInput = inputs.find((input) => input.dataset.trainingActivityName === "OPG Training");
+      const breakdownInputs = inputs.filter((input) => input !== opgInput);
+      const breakdown = breakdownInputs.reduce((sum, input) => sum + (Number(input.value) || 0), 0);
+      const opg = Number(opgInput?.value);
+      let message = opgInput?.value.trim() && (breakdown > opg || (strict && breakdown !== opg))
+        ? `General Training/Meeting, Input Demo INM, Input Demo PM aur Exposer ka total (${breakdown}) OPG Training (${opg}) ke equal hona chahiye; usse zyada nahi ho sakta.` : "";
+      if (strict && opgInput && !opgInput.value.trim() && breakdown > 0) message = "Please enter OPG Training before allocating the four training targets.";
+      trainingTargetInputs().forEach((input) => input.setCustomValidity(""));
+      if (message) opgInput.setCustomValidity(message);
+      const warning = shell.querySelector("[data-opg-validation-message]");
+      if (warning) {
+        warning.textContent = message || (opgInput?.value.trim() ? `${breakdown} / ${opg} OPG Training allocated` : "");
+        warning.hidden = !warning.textContent;
+      }
+      return message;
+    };
+    trainingTargetInputs().forEach((input) => input.addEventListener("input", () => validateOpgBreakdown(false)));
+    form?.addEventListener("submit", (event) => {
+      const message = validateOpgBreakdown(true);
+      if (!message) return;
+      event.preventDefault();
+      form.reportValidity();
+    });
+
     const savedEditFarmerIds = () => {
       const ids = Array.from(shell.querySelectorAll("[data-edit-saved-target-farmer-id]"))
         .map((input) => String(input.value || ""))
@@ -3657,6 +3790,29 @@ function initDeferredLayoutPage() {
 
       syncNewFarmerTargetMode();
     };
+
+    const validateOPGSubTotal = () => {
+      const allInputs = trainingTargetInputs();
+      const inputByName = (name) => allInputs.find((el) => el.dataset.trainingActivityName === name);
+      const opgInput = inputByName("OPG Training");
+      const subInputs = ["General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS"].map(inputByName).filter(Boolean);
+      const opgTotal = Number(opgInput?.value || 0);
+      if (!opgTotal || opgTotal <= 0) {
+        subInputs.forEach((input) => { input.max = ""; input.setCustomValidity(""); });
+        return;
+      }
+      const subTotal = subInputs.reduce((sum, input) => sum + Number(input.value || 0), 0);
+      if (subTotal > opgTotal) {
+        subInputs.forEach((input) => {
+          if (Number(input.value || 0) > 0) input.setCustomValidity(`Total (${subTotal}) OPG Training (${opgTotal}) se zyada hai`);
+        });
+      } else {
+        subInputs.forEach((input) => input.setCustomValidity(""));
+      }
+    };
+    trainingTargetInputs().forEach((input) => {
+      input.addEventListener("input", validateOPGSubTotal);
+    });
 
     const refreshTargetSubActivities = (resetSelection = false) => {
       if (!subActivitySelect) return;
@@ -4223,6 +4379,21 @@ function initDeferredLayoutPage() {
         }
       }
 
+      if (trainingActivityTypeSelected()) {
+        const allInputs = trainingTargetInputs();
+        const trainingVal = (name) => {
+          const input = allInputs.find((el) => el.dataset.trainingActivityName === name);
+          return Number(input?.value || 0);
+        };
+        const opgTotal = trainingVal("OPG Training");
+        const subTotal = trainingVal("General Training/Meeting") + trainingVal("Input Demo INM") + trainingVal("Input Demo PM") + trainingVal("FFS");
+        if (opgTotal > 0 && subTotal !== opgTotal) {
+          event.preventDefault();
+          window.alert(`General Training/Meeting + Input Demo INM + Input Demo PM + Exposer ka total (${subTotal}) OPG Training (${opgTotal}) ke equal hona chahiye.`);
+          return;
+        }
+      }
+
       if (newFarmerTargetMode()) {
         const manualTargetCount = Number(newFarmerTargetInput.value || 0);
         if (!Number.isInteger(manualTargetCount) || manualTargetCount <= 0) {
@@ -4654,7 +4825,7 @@ function initDeferredLayoutPage() {
     const dataRows = rows.filter((row) => !row.dataset.emptyRow);
     const columnFilters = JSON.parse(table.dataset.columnFilters || "{}");
     const matchedRows = dataRows.filter((row) => {
-      const globalMatch = row.innerText.toLowerCase().includes(query);
+      const globalMatch = !query || row.textContent.toLowerCase().includes(query);
       if (!globalMatch) return false;
 
       return Object.entries(columnFilters).every(([columnIndex, filter]) => {

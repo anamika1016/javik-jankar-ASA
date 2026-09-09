@@ -8,6 +8,9 @@
         <p class="vrp-eyebrow"><%= @module[:group] %></p>
         <h1><%= @slug == "new-user" ? "Registration" : @module[:title] %></h1>
         <p><%= @module[:purpose] %></p>
+        <% if @slug == "training-form-list" %>
+          <%= link_to "Training Edit Approvals", training_edit_approvals_path, class: "list-btn" %>
+        <% end %>
       </div>
     </div>
   <% end %>
@@ -384,7 +387,7 @@
             <select name="module_record[module_name]" required>
               <option value="">Select Module</option>
               <% module_options.each do |option| %>
-                <option value="<%= option %>" <%= "selected" if option == selected_module_name %>><%= option %></option>
+                <option value="<%= option %>" <%= "selected" if option == selected_module_name %>><%= option == "FFS" ? "Exposer" : option %></option>
               <% end %>
             </select>
           </label>
@@ -394,7 +397,7 @@
             <select name="module_record[stakeholder_name]" required data-role-stakeholder-select>
               <option value="">Select Stakeholder Category</option>
               <% stakeholder_options.each do |option| %>
-                <option value="<%= option %>" <%= "selected" if option == selected_stakeholder_name %>><%= option %></option>
+                <option value="<%= option %>" <%= "selected" if option == selected_stakeholder_name %>><%= option == "FFS" ? "Exposer" : option %></option>
               <% end %>
             </select>
           </label>
@@ -404,7 +407,7 @@
             <select name="module_record[user_name]" required data-office-user-select>
               <option value="">Select User Name</option>
               <% approver_options.each do |option| %>
-                <option value="<%= option %>" <%= "selected" if option == selected_user_name %>><%= option %></option>
+                <option value="<%= option %>" <%= "selected" if option == selected_user_name %>><%= option == "FFS" ? "Exposer" : option %></option>
               <% end %>
             </select>
           </label>
@@ -431,7 +434,7 @@
                 <select name="module_record[approval_steps][<%= row[:row_key] %>][approver_approved_by]">
                   <option value="">Select approval user</option>
                   <% approver_options.each do |option| %>
-                    <option value="<%= option %>" <%= "selected" if option == row[:approver] %>><%= option %></option>
+                    <option value="<%= option %>" <%= "selected" if option == row[:approver] %>><%= option == "FFS" ? "Exposer" : option %></option>
                   <% end %>
                 </select>
                 <small>Select the user responsible at this approval stage.</small>
@@ -491,7 +494,7 @@
               <select name="module_record[stakeholder_category]">
                 <option value=""><%= stakeholder_options.any? ? "Select Stakeholder Category" : "No Stakeholder Category saved yet" %></option>
                 <% stakeholder_options.each do |option| %>
-                  <option value="<%= option %>" <%= "selected" if option == selected_stakeholder %>><%= option %></option>
+                  <option value="<%= option %>" <%= "selected" if option == selected_stakeholder %>><%= option == "FFS" ? "Exposer" : option %></option>
                 <% end %>
               </select>
             </label>
@@ -501,7 +504,7 @@
               <select name="module_record[level_1_user]">
                 <option value=""><%= user_options.any? ? "Select Head" : "No user saved yet" %></option>
                 <% user_options.each do |option| %>
-                  <option value="<%= option %>" <%= "selected" if option == selected_level_1 %>><%= option %></option>
+                  <option value="<%= option %>" <%= "selected" if option == selected_level_1 %>><%= option == "FFS" ? "Exposer" : option %></option>
                 <% end %>
               </select>
             </label>
@@ -536,7 +539,7 @@
                   <select name="module_record[level_2_mappings][<%= row_number %>][level_2_user]">
                     <option value=""><%= user_options.any? ? "Select Subordinates" : "No user saved yet" %></option>
                     <% user_options.each do |option| %>
-                      <option value="<%= option %>" <%= "selected" if option == selected_level_2_user %>><%= option %></option>
+                      <option value="<%= option %>" <%= "selected" if option == selected_level_2_user %>><%= option == "FFS" ? "Exposer" : option %></option>
                     <% end %>
                   </select>
                 </div>
@@ -741,7 +744,7 @@
                 <select name="module_record[<%= field_key %>]" <%= "required" if field == "Stakeholder" %> <%= role_dependency_attr&.html_safe %>>
                   <option value="">Select <%= resource_person_label(field) %></option>
                   <% options.each do |option| %>
-                    <option value="<%= option %>" <%= "selected" if option == field_value %>><%= option %></option>
+                    <option value="<%= option %>" <%= "selected" if option == field_value %>><%= option == "FFS" ? "Exposer" : option %></option>
                   <% end %>
                 </select>
               <% else %>
@@ -813,7 +816,7 @@
             <select name="module_record[bill_month]" data-jeevika-month-select required>
               <option value="">Select Month</option>
               <% @jeevika_jankar_month_options.each do |option| %>
-                <option value="<%= option %>" <%= "selected" if @record&.data&.[]("bill_month").to_s == option.to_s %>><%= option %></option>
+                <option value="<%= option %>" <%= "selected" if @record&.data&.[]("bill_month").to_s == option.to_s %>><%= option == "FFS" ? "Exposer" : option %></option>
               <% end %>
             </select>
           </label>
@@ -833,7 +836,7 @@
             <select name="module_record[financial_year]">
               <option value="">Select Financial Year</option>
               <% @jeevika_jankar_financial_year_options.each do |option| %>
-                <option value="<%= option %>" <%= "selected" if @record&.data&.[]("financial_year").to_s == option.to_s %>><%= option %></option>
+                <option value="<%= option %>" <%= "selected" if @record&.data&.[]("financial_year").to_s == option.to_s %>><%= option == "FFS" ? "Exposer" : option %></option>
               <% end %>
             </select>
           </label>
@@ -925,7 +928,7 @@
             <select name="module_record[select_financial_year]" required>
               <option value="">Select Financial Year</option>
               <% @bill_financial_year_options.each do |option| %>
-                <option value="<%= option %>" <%= "selected" if @record&.data&.[]("select_financial_year").to_s == option.to_s %>><%= option %></option>
+                <option value="<%= option %>" <%= "selected" if @record&.data&.[]("select_financial_year").to_s == option.to_s %>><%= option == "FFS" ? "Exposer" : option %></option>
               <% end %>
             </select>
           </label>
@@ -935,7 +938,7 @@
             <select name="module_record[select_bill_month]" required>
               <option value="">Select Month</option>
               <% @bill_month_options.each do |option| %>
-                <option value="<%= option %>" <%= "selected" if @record&.data&.[]("select_bill_month").to_s == option.to_s %>><%= option %></option>
+                <option value="<%= option %>" <%= "selected" if @record&.data&.[]("select_bill_month").to_s == option.to_s %>><%= option == "FFS" ? "Exposer" : option %></option>
               <% end %>
             </select>
           </label>
@@ -945,7 +948,7 @@
             <select name="module_record[select_ics][]" data-bill-ics-select required>
               <option value="">Select ICS</option>
               <% @bill_project_options.each do |option| %>
-                <option value="<%= option %>" <%= "selected" if selected_ics.include?(option) %>><%= option %></option>
+                <option value="<%= option %>" <%= "selected" if selected_ics.include?(option) %>><%= option == "FFS" ? "Exposer" : option %></option>
               <% end %>
             </select>
           </label>
@@ -955,7 +958,7 @@
             <select name="module_record[select_activity_group][]" data-bill-activity-group required>
               <option value="">Select Main Activity</option>
               <% @bill_activity_group_options.each do |option| %>
-                <option value="<%= option %>" <%= "selected" if selected_activity_groups.include?(option) %>><%= option %></option>
+                <option value="<%= option %>" <%= "selected" if selected_activity_groups.include?(option) %>><%= option == "FFS" ? "Exposer" : option %></option>
               <% end %>
             </select>
           </label>
@@ -1863,6 +1866,7 @@
           <thead>
             <tr>
               <th><input type="checkbox" data-module-select-all></th>
+              <% if @slug == "training-form-list" %><th>Approval Status</th><% end %>
               <% @module[:fields].each do |field| %>
                 <th><%= resource_person_label(field) %></th>
               <% end %>
@@ -1893,13 +1897,30 @@
                   raw_sub_activities = item.data["sub_activities"].presence || item.data["sub_activity"].presence || item.data["training_subject"]
                   raw_sub_activities.is_a?(Array) ? raw_sub_activities : raw_sub_activities.to_s.split(/,\s*(?=\d+\.\s*)/)
                 end.map(&:to_s).map(&:strip).reject(&:blank?).uniq %>
+                <% training_edit_revision = training_edit_revision_for(record) if @slug == "training-form-list" %>
                 <tr>
                   <% edit_slug = { "approval-list" => "approval-master", "access-control-list" => "access-control", "vrp-bill-list" => "vrp-bill-add", "jeevika-jankar-bill-list" => "jeevika-jankar-bill-process", "training-form-list" => "training-form", "seed-distribution-target-list" => "seed-distribution-target", "papl360-target-list" => "papl360-target", "other-target-list" => "other-target" }.fetch(@slug, @slug) %>
                   <td>
                     <input type="checkbox"
                       value="<%= edit_module_record_path(edit_slug, record) %>"
                       data-module-row-select>
+                    <% if @slug == "training-form-list" %>
+                      <%= link_to "👁", edit_module_record_path("training-form", record), class: "table-action", title: "View Training Form", style: "margin-left:4px;text-decoration:none;" %>
+                    <% end %>
                   </td>
+                  <% if @slug == "training-form-list" %>
+                    <td class="training-approval-cell">
+                      <% if training_edit_revision && TrainingEditApproval.can_decide?(training_edit_revision, current_app_user) %>
+                        <%= form_with url: training_edit_approval_path(training_edit_revision), method: :patch, class: "table-actions" do |form| %>
+                          <%= form.button "Approve", name: "decision", value: "approve", class: "list-btn active" %>
+                          <%= form.button "Return", name: "decision", value: "reject", class: "list-btn delete" %>
+                          <%= form.hidden_field :return_to, value: "training_form_list" %>
+                        <% end %>
+                      <% else %>
+                        <% if training_edit_revision %><%= link_to TrainingEditApproval.status_label(training_edit_revision), training_edit_approval_path(training_edit_revision), class: "training-approval-link" %><% else %>No pending edit<% end %>
+                      <% end %>
+                    </td>
+                  <% end %>
                   <% @module[:fields].each do |field| %>
                     <% field_key = field.parameterize(separator: "_") %>
                     <% value = module_record_field_value(record, field).presence || record.data[field_key].presence %>
@@ -1912,7 +1933,7 @@
                     <% if @slug == "training-form-list" %>
                       <% value = grouped_main_activities.join(" • ") if field == "Main Activity" %>
                       <% value = grouped_sub_activities.join("\n") if field == "Sub Activity" %>
-                      <% value = grouped_training_methods.join(" • ") if field == "Training Method" %>
+                      <% value = grouped_training_methods.map { |method| method == "FFS" ? "Exposer" : method }.join(" • ") if field == "Training Method" %>
                       <% value = grouped_farmer_ids.size if ["Farmer Count", "Total Farmer Count"].include?(field) %>
                     <% end %>
                     <% if @slug == "access-control-list" && field == "Module Name" %>
@@ -2040,15 +2061,28 @@
     <% other_target_form = ["seed-distribution-target", "papl360-target", "other-target"].include?(@slug) %>
     <% add_farmer_form = @slug == "add-farmer-form" %>
     <% seed_target_form = @slug == "seed-distribution-target" %>
-    <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if @slug == "parent-office-add" %>data-parent-office-form data-parent-office-map="<%= json_escape(parent_office_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_setup_mappings.to_json) %>" data-training-month-options="<%= json_escape(training_target_month_options.to_json) %>" data-training-farmers-url="<%= training_target_farmers_module_path(@slug) %>"<% end %> <% if other_target_form %>data-seed-target-form data-seed-target-map="<%= json_escape(seed_distribution_target_mappings.to_json) %>" data-seed-month-options="<%= json_escape(seed_distribution_target_month_options.to_json) %>" data-seed-current-vrp-option="<%= json_escape(current_seed_target_vrp_option.to_json) %>" data-seed-farmers-url="<%= seed_target_farmers_module_path(@slug) %>"<% end %> <% if add_farmer_form %>data-add-farmer-form data-add-farmer-map="<%= json_escape(add_farmer_form_mappings.to_json) %>"<% end %>>
-      <div class="module-card-header">
+    <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if @slug == "parent-office-add" %>data-parent-office-form data-parent-office-map="<%= json_escape(parent_office_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-record-id="<%= @record&.id %>" data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_setup_mappings.to_json) %>" data-training-month-options="<%= json_escape(training_target_month_options.to_json) %>" data-training-farmers-url="<%= training_target_farmers_module_path(@slug) %>"<% end %> <% if other_target_form %>data-seed-target-form data-seed-target-map="<%= json_escape(seed_distribution_target_mappings.to_json) %>" data-seed-month-options="<%= json_escape(seed_distribution_target_month_options.to_json) %>" data-seed-current-vrp-option="<%= json_escape(current_seed_target_vrp_option.to_json) %>" data-seed-farmers-url="<%= seed_target_farmers_module_path(@slug) %>"<% end %> <% if add_farmer_form %>data-add-farmer-form data-add-farmer-map="<%= json_escape(add_farmer_form_mappings.to_json) %>"<% end %>>
+      <div class="module-card-header" style="display:flex;justify-content:space-between;align-items:center;">
         <h2><%= @slug == "new-user" ? "Registration" : (@record.present? ? "Edit Record" : "Fields") %></h2>
+        <% if @slug == "training-form" && @record.present? && @training_edit_revision && TrainingEditApproval.can_decide?(@training_edit_revision, current_app_user) %>
+          <%= form_with url: training_edit_approval_path(@training_edit_revision), method: :patch, style: "display:flex;gap:8px;align-items:center;" do |form| %>
+            <%= form.hidden_field :return_to, value: "training_form_edit" %>
+            <%= form.hidden_field :remarks, value: "Decided from Training Form view." %>
+            <%= form.button "Approve", name: "decision", value: "approve", class: "list-btn active", style: "margin:0;" %>
+            <%= form.button "Return", name: "decision", value: "reject", class: "list-btn delete", style: "margin:0;" %>
+          <% end %>
+        <% elsif @slug == "training-form" && @record.present? && @training_edit_revision %>
+          <span class="status-pill <%= @training_edit_revision.data['status'] == 'Approved' ? 'active' : 'inactive' %>"><%= TrainingEditApproval.status_label(@training_edit_revision) %></span>
+        <% end %>
       </div>
       <% form_url = @record.present? ? module_record_path(@slug, @record) : records_module_path(@slug) %>
       <% form_method = @record.present? ? :patch : :post %>
       <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form", multipart: true } do %>
         <% if @slug == "training-form" %>
           <input type="hidden" name="module_record[main_activity_type]" value="Training" data-training-main-activity-type>
+          <% Array(@record&.data&.[]("target_mapping_ids").presence || @record&.data&.[]("target_mapping_id")).compact_blank.each do |tmid| %>
+            <input type="hidden" name="module_record[target_mapping_ids][]" value="<%= tmid %>">
+          <% end %>
         <% end %>
         <% if other_target_form %>
           <input type="hidden" name="module_record[main_activity_type]" value="Other">
@@ -2066,6 +2100,12 @@
             <% raw_field_value = @record&.data&.[](field_key) %>
             <% field_value = raw_field_value.is_a?(Array) ? raw_field_value.join(", ") : raw_field_value.to_s %>
             <% field_value = module_record_field_value(@record, field).to_s if @record.present? && field_value.blank? %>
+            <% if @slug == "training-form" && @record.present? && field_value.blank? %>
+              <% field_value = @record.data["ics"].presence || @record.data["ics_name"].presence if ["ICS / Block", "ICS Name"].include?(field) %>
+              <% field_value = @record.data["village"].presence || @record.data["village_name"].presence if ["Gram Name", "Village"].include?(field) %>
+              <% field_value = Array(@record.data["main_activities"]).join(", ") if field == "Main Activity" %>
+              <% field_value = Array(@record.data["sub_activities"]).join(", ") if field == "Sub Activity" %>
+            <% end %>
             <% if @slug == "training-form" && field_value.blank? %>
               <% field_value = @record&.data&.[]("trainee_department").to_s if field == "FCO Name" %>
               <% field_value = @record&.data&.[]("internal_trainer_name_1").to_s if field == "Cluster Coordinator Name" %>
@@ -2108,7 +2148,7 @@
             <label>
               <span>
                 <%= field_label %>
-                <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
+                <% if @slug == "training-form" && ["Training Photo Upload with Geo Tag", "Training Register Upload"].include?(field) %>
                   <small class="field-hint inline-upload-hint">Select multiple photos · max 5 MB each</small>
                 <% end %>
               </span>
@@ -2132,7 +2172,7 @@
                 <% upload_accept = field == "Excel Upload" ? "accept=\".csv,.xlsx,.xls\"" : nil %>
                 <% multiple_photo_upload = @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
                 <% multiple_attachment_upload = @slug == "other-target" && ["Attachment Upload", "Field Photo"].include?(field) %>
-                <% upload_accept = "accept=\"image/*\" data-max-size-mb=\"5\"" if multiple_photo_upload %>
+                <% upload_accept = "accept=\"image/*\" data-max-size-mb=\"5\"" if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
                 <% upload_accept = "accept=\"image/*\" data-max-size-mb=\"5\"" if field == "Field Photo" %>
                 <input name="module_record[<%= field_key %>]<%= "[]" if multiple_photo_upload || multiple_attachment_upload %>" type="file" <%= "multiple" if multiple_photo_upload || multiple_attachment_upload %> <%= upload_accept&.html_safe %> <%= "required" if form_required && field_value.blank? && !other_target_form %>>
                 <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
@@ -2140,7 +2180,14 @@
                   <input type="hidden" name="module_record[geo_longitude]" data-training-geo-longitude value="<%= @record&.data&.[]("geo_longitude") %>">
                 <% end %>
                 <% if field_value.present? %>
-                  <small class="field-hint">Current: <%= field_value %></small>
+                  <% if @slug == "training-form" && TrainingEditApproval::IMAGE_KEYS.include?(field_key) %>
+                    <small class="field-hint">Saved uploads (new files will be added):</small>
+                    <% Array(raw_field_value).compact_blank.each do |url| %>
+                      <%= link_to File.basename(url.to_s), url, target: "_blank", rel: "noopener" if url.to_s.start_with?("/uploads/module_records/") %>
+                    <% end %>
+                  <% else %>
+                    <small class="field-hint">Current: <%= field_value %></small>
+                  <% end %>
                 <% end %>
               <% elsif @slug == "training-topic-mapping" && field == "Department" %>
                 <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>">
@@ -2164,9 +2211,9 @@
                   when "Month"
                     "data-training-target-month data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
                   when "ICS / Block"
-                    "data-training-target-ics data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                    "data-training-target-ics data-selected-value=\"#{ERB::Util.html_escape(@record&.data&.[]("ics_block").presence || @record&.data&.[]("ics_name").presence || field_value)}\""
                   when "Gram Name"
-                    "data-training-target-village data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                    "data-training-target-village data-selected-value=\"#{ERB::Util.html_escape(@record&.data&.[]("gram_name").presence || @record&.data&.[]("village_name").presence || field_value)}\""
                   when "Main Activity Type"
                     "data-training-main-activity-type data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
                   when "Main Activity"
@@ -2207,7 +2254,7 @@
                 <select name="module_record[<%= field_key %>]<%= "[]" if @slug == "training-form" && ["Main Activity", "Sub Activity"].include?(field) %>" <%= role_dependency_attr&.html_safe %> <%= location_dependency_attr&.html_safe %> <%= training_target_attr&.html_safe %> <%= seed_target_attr&.html_safe %> <%= parent_office_dependency_attr&.html_safe %> <%= required_attr %>>
                   <option value=""><%= options.any? ? "Select #{field_label}" : "No #{field_label} saved yet" %></option>
                   <% options.each do |option| %>
-                    <option value="<%= option %>" <%= "selected" if option == field_value %>><%= option %></option>
+                    <option value="<%= option %>" <%= "selected" if option == field_value %>><%= option == "FFS" ? "Exposer" : option %></option>
                   <% end %>
                 </select>
               <% elsif field.downcase.include?("remarks") || field.downcase.include?("address") %>

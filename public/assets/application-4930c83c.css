@@ -646,6 +646,7 @@ body {
 .dashboard-page > #dashboard_weekly_target_boxes { order: 4; }
 .dashboard-page > #dashboard_ics_farmer_report { order: 5; }
 .dashboard-page > .dashboard-training-secondary-summaries { order: 6; }
+.dashboard-page > .dashboard-summary-bars { order: 99; }
 
 .vrp-compact-summary-grid {
   display: grid;
@@ -1299,6 +1300,241 @@ body {
   .dashboard-grid.premium.dashboard-training-secondary-summaries {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* Summary bars — single-row colored bars with popup icon */
+.dashboard-summary-bars {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 4px;
+}
+@media (max-width: 900px) {
+  .dashboard-summary-bars {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 500px) {
+  .dashboard-summary-bars {
+    grid-template-columns: 1fr;
+  }
+}
+.summary-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 10px 10px 16px;
+  border-radius: 8px;
+  color: #fff;
+  min-height: 42px;
+}
+.summary-bar-label {
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.summary-bar-icon {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  margin-left: 8px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.22);
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.summary-bar-icon:hover {
+  background: rgba(255,255,255,0.38);
+}
+
+/* Popup dialog */
+.summary-popup {
+  border: none;
+  border-radius: 14px;
+  padding: 0;
+  max-width: 420px;
+  width: 92vw;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.22);
+  overflow: hidden;
+}
+.summary-popup-wide {
+  max-width: 540px;
+}
+.summary-popup::backdrop {
+  background: rgba(20, 28, 36, 0.45);
+}
+.summary-popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  color: #fff;
+}
+.summary-popup-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+}
+.summary-popup-close {
+  background: rgba(255,255,255,0.2);
+  border: none;
+  color: #fff;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.summary-popup-close:hover {
+  background: rgba(255,255,255,0.35);
+}
+.summary-popup-body {
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.summary-popup-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f5f7fa;
+  border: 1px solid #e2e8ee;
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.15s, border-color 0.15s;
+}
+.summary-popup-item:hover {
+  background: #e8eef5;
+  border-color: #b0c0d0;
+}
+.summary-popup-label {
+  font-size: 0.74rem;
+  color: #5e6d78;
+  font-weight: 600;
+}
+.summary-popup-value {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: #1a2530;
+}
+
+/* CC JJ Work Status popup */
+.cc-jj-fco-block {
+  grid-column: 1 / -1;
+  padding: 12px;
+  border-radius: 10px;
+  background: #f5f7fa;
+  border: 1px solid #e2e8ee;
+}
+.cc-jj-fco-name {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #2a3642;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid #e2e8ee;
+}
+.cc-jj-fco-statuses {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.cc-jj-status-card {
+  border-radius: 10px;
+  padding: 10px;
+  border: 1px solid;
+}
+.cc-jj-status-card.red {
+  background: #fef2f2;
+  border-color: #f5a3a3;
+}
+.cc-jj-status-card.completed {
+  background: #ecfdf5;
+  border-color: #86efac;
+}
+.cc-jj-status-label {
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+  padding: 3px 10px;
+  border-radius: 5px;
+  display: inline-block;
+}
+.cc-jj-status-card.red .cc-jj-status-label {
+  color: #fff;
+  background: #ef4444;
+}
+.cc-jj-status-card.completed .cc-jj-status-label {
+  color: #fff;
+  background: #22c55e;
+}
+.cc-jj-status-values {
+  display: flex;
+  gap: 8px;
+}
+.cc-jj-value-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.08);
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.15s;
+}
+.cc-jj-value-item:hover {
+  background: #f0f4f8;
+}
+.cc-jj-value-item span {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #6b7a85;
+  text-transform: uppercase;
+}
+.cc-jj-value-item strong {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #1a2530;
+}
+.cc-jj-view-list-btn {
+  grid-column: 1 / -1;
+  display: block;
+  text-align: center;
+  padding: 10px;
+  border-radius: 8px;
+  background: #4a5a9b;
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+.cc-jj-view-list-btn:hover {
+  opacity: 0.88;
 }
 
 .upload-report-table {
@@ -7708,4 +7944,21 @@ body {
   display: block;
   line-height: 1.4;
   padding: 2px 0;
+}
+
+/* Approval labels must wrap within their own column. */
+.table-shell .module-table td.training-approval-cell {
+  min-width: 220px;
+  width: 260px;
+  max-width: 260px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.training-approval-link {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  color: var(--vrp-primary-dark);
+  font-weight: 700;
+  text-decoration: underline;
 }
