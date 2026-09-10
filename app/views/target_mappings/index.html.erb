@@ -18,6 +18,7 @@
         data-target-sub-activity-map="<%= html_escape(@target_sub_activity_map.to_json) %>"
         data-main-activity-type-map="<%= html_escape(@main_activity_type_map.to_json) %>"
         data-user-blocks-url="<%= user_blocks_target_mappings_path %>"
+        data-village-farmers-url="<%= village_farmers_target_mappings_path %>"
         data-mappings-url="<%= vrp_mappings_target_mappings_path %>">
         <%= form_with url: target_mappings_path, method: :post, local: true, data: { turbo: false }, html: { class: "module-entry-form" } do %>
           <% if @edit_target %>
@@ -161,7 +162,7 @@
                   <span><%= label == "FFS" ? "Exposer" : label %></span>
                   <input type="number"
                          name="target_mapping[training_targets][<%= key %>]"
-                         min="1"
+                         min="0"
                          step="1"
                          placeholder="Enter target"
                          value="<%= @edit_payload.dig(:training_targets, key.to_sym) || @edit_payload.dig(:training_targets, key) %>"
@@ -173,7 +174,7 @@
           </div>
 
         <%# Farmer List panel is kept hidden as the data source for the Activity Wise Plan dialog. %>
-        <div class="target-farmer-panel" data-target-farmer-panel hidden>
+        <div class="target-farmer-panel" data-target-farmer-panel hidden style="display:none">
             <div class="target-mapping-toolbar">
               <strong>Farmer List</strong>
               <div class="list-search compact target-farmer-search">

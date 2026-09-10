@@ -21,7 +21,7 @@ class TargetMappingsController < ApplicationController
     @main_activity_options = module_options("add-activity-group", "main_activity_name", "activity_group_name")
     @main_activity_type_map = main_activity_type_map
     @target_sub_activity_map = target_sub_activity_map
-    @block_fco_options = office_fco_options
+    @block_fco_options = filtered_office_fco_options
     @block_options_by_fco = @block_fco_options.to_h do |option|
       fco_id, = parse_location_value(option[:value])
       [fco_id, office_block_options(option[:value])]
@@ -112,7 +112,12 @@ class TargetMappingsController < ApplicationController
   def village_farmers
     village_value = params[:village_id].presence || params[:village_ids]
     if params[:data_type].to_s == "short"
-      render json: { farmers: [], count: external_village_farmer_count_for(village_value) }
+      count = external_village_farmer_count_for(village_value)
+      if count.nil?
+        render json: { error: "Farmer count unavailable" }, status: :service_unavailable
+      else
+        render json: { farmers: [], count: count }
+      end
       return
     end
 
@@ -135,15 +140,42 @@ class TargetMappingsController < ApplicationController
     village_ids = parse_location_values(village_value).map(&:first).reject(&:blank?)
     return [] if village_ids.blank?
 
-    village_ids.flat_map { |village_id| fetch_external_farmers(data_type: "detail", type: "village", id_key: "village_id", id: village_id) }
+    village_ids.uniq.each_slice(6).flat_map do |batch|
+      batch.map do |village_id|
+        Thread.new do
+          Rails.application.executor.wrap do
+            Rails.cache.fetch(["asa-village-farmer-list", village_id], expires_in: 1.minute, skip_nil: true) do
+              fetch_external_farmers(data_type: "detail", type: "village", id_key: "village_id", id: village_id)
+            end
+          end
+        end
+      end.then do |threads|
+        ActiveSupport::Dependencies.interlock.permit_concurrent_loads do
+          threads.flat_map { |thread| thread.value || raise("Farmer list unavailable; please retry") }
+        end
+      end
+    end
       .uniq { |farmer| farmer[:id].to_s }
       .sort_by { |farmer| [farmer[:farmer_name].to_s.downcase, farmer[:id].to_s] }
   end
 
   def external_village_farmer_count_for(village_value)
-    parse_location_values(village_value).map(&:first).reject(&:blank?).sum do |village_id|
-      fetch_external_farmer_count(village_id)
+    village_ids = parse_location_values(village_value).map(&:first).reject(&:blank?).uniq
+    # Bound concurrency so large village selections do not create one thread per village.
+    counts = village_ids.each_slice(6).flat_map do |batch|
+      batch.map do |village_id|
+        Thread.new do
+          Rails.application.executor.wrap do
+            Rails.cache.fetch(["asa-village-farmer-count", village_id], expires_in: 1.minute, skip_nil: true) do
+              fetch_external_farmer_count(village_id)
+            end
+          end
+        end
+      end.then do |threads|
+        ActiveSupport::Dependencies.interlock.permit_concurrent_loads { threads.map(&:value) }
+      end
     end
+    counts.any?(&:nil?) ? nil : counts.sum
   end
 
   def fetch_external_farmer_count(village_id)
@@ -152,12 +184,15 @@ class TargetMappingsController < ApplicationController
     response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 3, read_timeout: 6) do |http|
       http.get(uri.request_uri)
     end
-    return 0 unless response.is_a?(Net::HTTPSuccess)
+    return nil unless response.is_a?(Net::HTTPSuccess)
 
-    JSON.parse(response.body)["count"].to_i
+    payload = JSON.parse(response.body)
+    return nil if payload["success"] == false
+
+    Integer(payload.fetch("count"))
   rescue StandardError => error
     Rails.logger.warn("Unable to load ASA farmer count for #{village_id}: #{error.class} - #{error.message}")
-    0
+    nil
   end
 
   def fetch_external_farmers(data_type:, type:, id_key:, id:)
@@ -168,9 +203,10 @@ class TargetMappingsController < ApplicationController
     response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 4, read_timeout: 12) do |http|
       http.get(uri.request_uri)
     end
-    return [] unless response.is_a?(Net::HTTPSuccess)
+    return nil unless response.is_a?(Net::HTTPSuccess)
 
     payload = JSON.parse(response.body)
+    return nil if payload["success"] == false
     Array(payload["data"]).filter_map.with_index do |row, index|
       farmer = row["farmer"].is_a?(Hash) ? row["farmer"] : row
       address = row["address"].is_a?(Hash) ? row["address"] : {}
@@ -192,7 +228,7 @@ class TargetMappingsController < ApplicationController
     end
   rescue StandardError => error
     Rails.logger.warn("Unable to load ASA #{type} farmers for #{id}: #{error.class} - #{error.message}")
-    []
+    nil
   end
 
   def user_block_options
@@ -232,6 +268,7 @@ class TargetMappingsController < ApplicationController
       :activity_name,
       :target_quantity,
       :target_entry_mode,
+      :target_type,
       :new_farmer_target_quantity,
       main_activity_names: [],
       activity_names: [],
@@ -256,6 +293,7 @@ class TargetMappingsController < ApplicationController
       :activity_names,
       :afl_ids,
       :target_entry_mode,
+      :target_type,
       :new_farmer_target_quantity,
       :training_targets,
       :weekly_plan
@@ -308,6 +346,9 @@ class TargetMappingsController < ApplicationController
 
       quantity = value.to_s.strip
       next if quantity.blank?
+      # Skip zero-value entries — entering 0 means "not applicable" for
+      # that training type; no mapping row should be created.
+      next if quantity == "0" || quantity == "0.0"
 
       [activity_name, quantity]
     end
@@ -450,7 +491,13 @@ class TargetMappingsController < ApplicationController
   end
 
   def target_activity_combinations
-    return [["New Farmer Target", "New Farmer Target"]] if new_farmer_target_mode?
+    if new_farmer_target_mode?
+      selected = selected_target_activity_combinations
+      return selected if selected.any?
+      return [] if selected_main_activity_names.any? || selected_sub_activity_names.any?
+
+      return [["New Farmer Target", "New Farmer Target"]]
+    end
 
     selected_combinations = selected_target_activity_combinations
     return selected_combinations if selected_combinations.any?
@@ -598,7 +645,7 @@ class TargetMappingsController < ApplicationController
       return false
     end
 
-    if selected_ids.size > mapped_farmer_ids.size
+    if selected_ids.size > mapped_farmer_ids.size && mapped_farmer_ids.any?
       target_mapping.errors.add(:target_quantity, "cannot be greater than registered farmers")
       return false
     end
@@ -788,8 +835,60 @@ class TargetMappingsController < ApplicationController
   end
 
   # Block-wise targets are assigned to offices, rather than to an AFL FCO.
-  # Office List is supplied by the office-detail API; its `name` is the office
-  # name and `office_name.name` is the office category.
+  def filtered_office_fco_options
+    all_options = office_fco_options
+    return all_options if admin_login?
+
+    fco_id = user_mapped_office_fco_id
+    return all_options if fco_id.nil?
+
+    matched = all_options.select { |opt| parse_location_value(opt[:value]).first == fco_id }
+    matched.any? ? matched : all_options
+  end
+
+  def user_mapped_office_fco_id
+    items = office_list_items
+    return nil if items.blank?
+
+    fco_ids = Set.new
+    fco_by_id = {}
+    items.each do |o|
+      next unless o.dig("office_name", "name").to_s.strip.casecmp("fco").zero?
+      fco_ids << o["id"].to_s
+      fco_by_id[o["id"].to_s] = o
+    end
+
+    keywords = [
+      current_app_user["block"],
+      current_app_user["district"],
+      current_app_user["sub_office_name"]&.gsub(/\ATO\s*[-]\s*/i, ""),
+      current_app_user["office_name"]&.gsub(/\AFCO[-\s]*C?\s*/i, "")
+    ].map { |v| v.to_s.strip.downcase }.reject(&:blank?).uniq
+
+    return nil if keywords.blank?
+
+    items.each do |o|
+      parent_id = o.dig("parent", "id").to_s
+      next unless fco_ids.include?(parent_id)
+
+      child_name = o["name"].to_s.strip.downcase
+        .gsub(/[-\s]*(to|fpc|ics|fpo)\s*\z/i, "").strip
+      keywords.each do |kw|
+        return parent_id if child_name.present? && (child_name.include?(kw) || kw.include?(child_name))
+      end
+    end
+
+    keywords.each do |kw|
+      fco_by_id.each do |id, fco|
+        fco_name = fco["name"].to_s.strip.downcase
+          .gsub(/[-\s]*(papl|fco)\s*\z/i, "").strip
+        return id if fco_name.present? && (fco_name.include?(kw) || kw.include?(fco_name))
+      end
+    end
+
+    nil
+  end
+
   def office_fco_options
     api_options = office_list_fco_options
     return api_options if api_options.any?
@@ -946,7 +1045,8 @@ class TargetMappingsController < ApplicationController
   end
 
   def target_entry_mode_block_wise?
-    params[:target_entry_mode].to_s == "block_wise"
+    params[:target_entry_mode].to_s == "block_wise" ||
+      (params[:target_mapping].respond_to?(:[]) && params[:target_mapping][:target_entry_mode].to_s == "block_wise")
   end
 
   def ics_options_for(fco_value, vrp_id = nil)

@@ -3569,29 +3569,22 @@ function initDeferredLayoutPage() {
       targetInput.required = !manualMode || villageTargetMode();
       targetInput.setCustomValidity("");
 
-      // A New Farmer Target is intentionally independent of activity.  Do
-      // not let browser required validation block a save for Main/Sub Activity.
+      // Manual quantity does not require activities, but keeps any chosen activities usable.
       [mainActivityField, subActivityField].forEach((field) => {
         if (!field) return;
         const skipActivities = manualMode && !villageTargetMode();
-        field.hidden = skipActivities;
-        field.classList.toggle("target-new-farmer-activity-hidden", skipActivities);
+        field.hidden = false;
+        field.classList.remove("target-new-farmer-activity-hidden");
         field.querySelectorAll("select, input").forEach((input) => {
-          input.disabled = skipActivities;
-          input.required = !skipActivities;
+          input.disabled = false;
+          input.required = !skipActivities && input.tagName === "SELECT";
           if (skipActivities) input.setCustomValidity?.("");
         });
       });
 
-      if (manualMode && !villageTargetMode()) {
-        [mainActivitySelect, subActivitySelect].forEach((select) => {
-          if (!select) return;
-          Array.from(select.options || []).forEach((option) => { option.selected = false; });
-          select.dataset.selectedValues = "[]";
-          select.dataset.selectionDirty = "true";
-          select.dispatchEvent(new Event("chip:refresh"));
-        });
-      }
+      [mainActivitySelect, subActivitySelect].forEach((select) => {
+        select?.dispatchEvent(new Event("chip:refresh"));
+      });
     };
     const locationValueParts = (value) => {
       const rawValue = `${value || ""}`.trim();
@@ -3760,10 +3753,11 @@ function initDeferredLayoutPage() {
         // Keep enabled unless options are empty — refreshTargetSubActivities manages that.
       }
 
-      // Keep the source farmer list hidden in the form. Its checkboxes feed the
-      // Activity Wise Plan farmer dialog and are still submitted with the form.
       if (farmerPanel) {
+        // The farmer panel is an internal data source for the Activity Wise Plan
+        // dialog — it should never be visible on the page directly.
         farmerPanel.hidden = true;
+        farmerPanel.style.display = "none";
       }
 
       standardQuantityFields.forEach((field) => {
@@ -3948,7 +3942,7 @@ function initDeferredLayoutPage() {
     const renderTargetWeeklySummary = () => {
       if (!weeklySummary || !weeklyRows) return;
 
-      const rows = targetActivitySummaryRows();
+      const rows = newFarmerTargetMode() && !villageTargetMode() ? [] : targetActivitySummaryRows();
       restoreEditFarmerSelections(rows);
       const monthlyCount = selectedFarmerMonthlyCount();
       const selectedLabel = `${totalActivityFarmerSelections()} total farmer selections`;
@@ -4089,7 +4083,7 @@ function initDeferredLayoutPage() {
       const availableCount = availableBoxes.length;
       const visibleSelectedCount = availableBoxes.filter((checkbox) => checkbox.checked).length;
       if (farmerCountLabel) farmerCountLabel.textContent = `${selectedCount} farmer selected`;
-      if (registeredCountInput) registeredCountInput.value = String(totalCount);
+      if (registeredCountInput && !targetBlockWiseMode()) registeredCountInput.value = String(totalCount);
       if (targetInput) targetInput.value = villageTargetMode() ? String(totalCount) : String(selectedCount);
       if (targetInput) targetInput.max = String(availableTargetBoxes().length || selectedCount || totalCount || 1);
       syncNewFarmerTargetMode();
@@ -4129,13 +4123,22 @@ function initDeferredLayoutPage() {
       if (farmerSearchEmpty) farmerSearchEmpty.hidden = true;
       updateTargetFarmerCount();
     };
+    const targetFarmerCountCache = new Map();
     const loadTargetFarmerCount = async () => {
+      const requestId = ++targetCountRequestId;
       if (!targetBlockWiseMode() || !shell.dataset.villageFarmersUrl) return;
 
       const villageValues = targetSelectedValues(villageSelect);
-      if (!villageValues.length) return;
-
-      const requestId = ++targetCountRequestId;
+      if (!villageValues.length) {
+        if (registeredCountInput) registeredCountInput.value = "0";
+        return;
+      }
+      const cacheKey = JSON.stringify([...villageValues].sort());
+      const cached = targetFarmerCountCache.get(cacheKey);
+      if (cached && Date.now() - cached.at < 60000) {
+        if (registeredCountInput) registeredCountInput.value = String(cached.count);
+        return;
+      }
       if (registeredCountInput) registeredCountInput.value = "Loading...";
       try {
         const data = await fetchJson(shell.dataset.villageFarmersUrl, {
@@ -4143,10 +4146,11 @@ function initDeferredLayoutPage() {
           village_ids: JSON.stringify(villageValues)
         });
         if (requestId !== targetCountRequestId) return;
+        targetFarmerCountCache.set(cacheKey, { count: data.count || 0, at: Date.now() });
         if (registeredCountInput) registeredCountInput.value = String(data.count || 0);
       } catch (_error) {
         if (requestId !== targetCountRequestId) return;
-        if (registeredCountInput) registeredCountInput.value = "0";
+        if (registeredCountInput) registeredCountInput.value = "Unavailable";
       }
     };
 
@@ -4193,6 +4197,7 @@ function initDeferredLayoutPage() {
     };
 
     const loadTargetData = async () => {
+      loadTargetFarmerCount();
       const requestId = ++targetLoadRequestId;
       const url = new URL(shell.dataset.mappingsUrl, window.location.origin);
       if (vrpSelect?.value) url.searchParams.set("vrp_id", vrpSelect.value);
@@ -4375,13 +4380,16 @@ function initDeferredLayoutPage() {
 
       if (trainingActivityTypeSelected() && !villageTargetMode()) {
         const filled = filledTrainingTargets();
+        const opgInput = trainingTargetInputs().find((input) => input.dataset.trainingActivityName === "OPG Training");
         const invalid = filled.find((input) => {
           const value = Number(input.value || 0);
-          return !Number.isInteger(value) || value <= 0;
+          // OPG Training itself must be > 0; the 4 sub-boxes can be 0
+          if (input === opgInput) return !Number.isInteger(value) || value <= 0;
+          return !Number.isInteger(value) || value < 0;
         });
         if (invalid) {
           event.preventDefault();
-          window.alert("Training target values must be whole numbers greater than 0.");
+          window.alert("Training target values must be whole numbers. OPG Training must be greater than 0; the 4 sub-boxes can be 0.");
           return;
         }
       }
@@ -4471,27 +4479,26 @@ function initDeferredLayoutPage() {
     villageSelect?.addEventListener("change", () => {
       syncTargetVillageHidden();
       clearTargetFarmers();
-      loadTargetFarmerCount();
       loadTargetData();
     });
     vrpSelect?.addEventListener("change", loadTargetData);
-    monthSelect?.addEventListener("change", loadTargetData);
+    monthSelect?.addEventListener("change", () => { if (!targetBlockWiseMode()) loadTargetData(); });
     mainActivitySelect?.addEventListener("change", () => {
-      refreshTargetSubActivities(true);
+      refreshTargetSubActivities(false);
       syncTargetActivityMode();
       renderTargetWeeklySummary();
-      loadTargetData();
+      if (!targetBlockWiseMode()) loadTargetData();
     });
     subActivitySelect?.addEventListener("change", () => {
       renderTargetWeeklySummary();
-      loadTargetData();
+      if (!targetBlockWiseMode()) loadTargetData();
     });
     targetTypeSelect?.addEventListener("change", () => {
-      refreshMainActivityOptionsForTargetType(true);
-      refreshTargetSubActivities(true);
+      refreshMainActivityOptionsForTargetType(false);
+      refreshTargetSubActivities(false);
       syncTargetActivityMode();
       renderTargetWeeklySummary();
-      loadTargetData();
+      if (!targetBlockWiseMode()) loadTargetData();
     });
     targetEntryModeSelect?.addEventListener("change", () => {
       if (fcoSelect) {
@@ -5301,8 +5308,7 @@ function initDeferredLayoutPage() {
       control.click();
     });
 
-    select.addEventListener("change", render);
-    select.addEventListener("chip:refresh", render);
+    select.addEventListener("change", () => render());
 
     render();
   });

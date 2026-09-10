@@ -135,6 +135,7 @@ Rails.application.routes.draw do
 
   resources :target_mappings, only: [:index, :create, :destroy] do
     post :delete, on: :member, action: :destroy
+    get :village_farmers, on: :collection
     get :vrp_mappings, on: :collection
     get :saved_farmers, on: :collection
     get :user_blocks, on: :collection
