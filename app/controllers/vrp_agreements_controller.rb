@@ -20,7 +20,7 @@ class VrpAgreementsController < ApplicationController
           agreement[:fcoc],
           agreement[:mobile_no],
           agreement[:accepted_at].presence || "-",
-          agreement[:signature_present] ? "Signed" : "Pending"
+          agreement[:signature_present] ? "Signed" : "Signature missing"
         ]
       end,
       filename: "accepted-agreements-jeevika-jankar-#{Time.zone.today}.xlsx",
@@ -58,7 +58,6 @@ class VrpAgreementsController < ApplicationController
       .includes(:vrp_profile)
       .select(:id, :name, :user_name, :mobile_no, :fcoc, :agreement_accepted_at, :agreement_signature_data, :village_ids)
       .where.not(agreement_accepted_at: nil)
-      .where.not(agreement_signature_data: [nil, ""])
       .order(agreement_accepted_at: :desc)
 
     scope.map do |vrp|
@@ -98,7 +97,7 @@ class VrpAgreementsController < ApplicationController
   end
 
   def agreement_admin_user?
-    current_app_user&.dig("user_type").to_s.casecmp("admin").zero?
+    current_app_user&.dig("user_type").to_s.strip.casecmp("admin").zero?
   end
 
   # Office and role edits must apply immediately, even with an existing login.

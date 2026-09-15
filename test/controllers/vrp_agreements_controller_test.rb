@@ -90,7 +90,7 @@ class VrpAgreementsControllerTest < ActionDispatch::IntegrationTest
     first = create_vrp(name: "First Mapped JJ", user_name: "first_mapping", fcoc: "FCO-C Betul", cluster_incharge: "Vikas Meena (CC)",
       agreement_accepted_at: Time.current, agreement_signature_data: "data:image/png;base64,signature")
     second = create_vrp(name: "Second Mapped JJ", user_name: "second_mapping", fcoc: "FCO-C Betul", cluster_incharge: "Different CC",
-      agreement_accepted_at: Time.current, agreement_signature_data: "data:image/png;base64,signature")
+      agreement_accepted_at: Time.current, agreement_signature_data: nil)
     outside = create_vrp(name: "Outside Mapped JJ", user_name: "outside_mapping", fcoc: "FCO-C Other", cluster_incharge: "Different CC",
       agreement_accepted_at: Time.current, agreement_signature_data: "data:image/png;base64,signature")
     unsigned = create_vrp(name: "Unsigned Mapped JJ", user_name: "unsigned_mapping", fcoc: "FCO-C Betul", cluster_incharge: "Vikas Meena")
@@ -137,6 +137,22 @@ class VrpAgreementsControllerTest < ActionDispatch::IntegrationTest
     TargetMapping.ignored_columns = previous_ignored_columns if previous_ignored_columns
     Rails.cache.delete("office-list-api-items-v1")
     Rails.cache.delete("office-list-api-items-v2")
+  end
+
+  test "admin archive and acceptance report include all 105 accepted records" do
+    admin = User.create!(user_name: "full_archive_admin", password: "secret", first_name: "Archive Admin", user_type: "admin", status: "Active")
+    105.times do |index|
+      create_vrp(name: "Archive JJ #{index}", user_name: "archive_jj_#{index}", agreement_accepted_at: Time.current,
+        agreement_signature_data: index.even? ? "data:image/png;base64,signature" : nil)
+    end
+    post login_path, params: { login: admin.user_name, password: "secret" }
+    get vrp_agreements_path
+    assert_response :success
+    assert_select ".agreement-archive-table tbody tr", count: 105
+    assert_select ".agreement-archive-table[data-page-size='105']"
+    assert_includes response.body, "Signature missing"
+    report = ModulesController.new.send(:vrp_declaration_acceptance_report)
+    assert_equal 105, report[:rows].size
   end
 
   private

@@ -8061,7 +8061,6 @@ class ModulesController < ApplicationController
     rows = if model_ready?(:Vrp) && Vrp.column_names.include?("agreement_accepted_at")
       Vrp.where.not(agreement_accepted_at: nil)
         .order(agreement_accepted_at: :desc)
-        .limit(50)
         .map do |vrp|
           [
             vrp.name.presence || "-",
