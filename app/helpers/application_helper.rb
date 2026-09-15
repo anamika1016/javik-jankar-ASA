@@ -144,11 +144,6 @@ module ApplicationHelper
         ["Other Target", :module, "other-target"],
         ["Other Target List", :module, "other-target-list"],
         ["Farmer Participation Report", :route, :farmer_participation_report_path],
-        ["Seed Distribution Target", :module, "seed-distribution-target"],
-        ["Seed Distribution Target List", :module, "seed-distribution-target-list"],
-        ["ASA360 Target", :module, "papl360-target"],
-        ["ASA360 Target List", :module, "papl360-target-list"],
-        ["Add Farmer Form", :module, "add-farmer-form"]
       ]
     },
     # {
@@ -473,11 +468,6 @@ module ApplicationHelper
         ["Other Target", :module, "other-target"],
         ["Other Target List", :module, "other-target-list"],
         ["Farmer Participation Report", :route, :farmer_participation_report_path],
-        ["Seed Distribution Target", :module, "seed-distribution-target"],
-        ["Seed Distribution Target List", :module, "seed-distribution-target-list"],
-        ["ASA360 Target", :module, "papl360-target"],
-        ["ASA360 Target List", :module, "papl360-target-list"],
-        ["Add Farmer Form", :module, "add-farmer-form"]
         ]
       },
       {

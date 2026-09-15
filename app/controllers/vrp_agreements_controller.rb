@@ -85,13 +85,7 @@ class VrpAgreementsController < ApplicationController
   end
 
   def agreement_village_name(vrp)
-    village_id = agreement_primary_village_id(vrp)
-    return "-" if village_id.blank?
-
-    village_name = agreement_village_label(village_id)
-    return village_name if village_name.present?
-
-    village_id.to_s
+    AgreementVillageName.call(vrp)
   end
 
   def vrp_agreement_enabled?
@@ -100,61 +94,6 @@ class VrpAgreementsController < ApplicationController
 
   def agreement_layout
     action_name == "show" ? "agreement_pdf" : "application"
-  end
-
-  def agreement_primary_village_id(vrp)
-    return vrp.vrp_profile.village_id if vrp.respond_to?(:vrp_profile) && vrp.vrp_profile&.village_id.present?
-
-    Array(vrp.village_ids).map(&:to_s).reject(&:blank?).first
-  end
-
-  def agreement_village_label(village_id)
-    @agreement_village_label_cache ||= {}
-    cached_label = @agreement_village_label_cache[village_id.to_s]
-    return cached_label if @agreement_village_label_cache.key?(village_id.to_s)
-
-    @agreement_village_label_cache[village_id.to_s] = [
-      agreement_village_name_from_module_records(village_id),
-      agreement_village_name_from_target_mapping(village_id),
-      agreement_village_name_from_vrp_ics_mapping(village_id),
-      agreement_village_name_from_afl(village_id)
-    ].compact_blank.first.to_s
-  end
-
-  def agreement_village_name_from_afl(village_id)
-    return unless defined?(Afl) && Afl.table_exists?
-
-    Afl.where(village_id: village_id.to_s).order(:village_name, :id).limit(1).pick(:village_name).presence
-  end
-
-  def agreement_village_name_from_target_mapping(village_id)
-    return unless defined?(TargetMapping) && TargetMapping.table_exists?
-
-    TargetMapping.where(village_id: village_id.to_s).order(:village_name, :id).limit(1).pick(:village_name).presence
-  end
-
-  def agreement_village_name_from_vrp_ics_mapping(village_id)
-    return unless defined?(VrpIcsMapping) && VrpIcsMapping.table_exists?
-
-    VrpIcsMapping.where(village_id: village_id.to_s).order(:village_name, :id).limit(1).pick(:village_name).presence
-  end
-
-  def agreement_village_name_from_module_records(village_id)
-    return unless defined?(ModuleRecord) && ModuleRecord.table_exists?
-
-    record = ModuleRecord.find_by(id: village_id) ||
-      ModuleRecord.where(id: village_id).find_by(module_slug: "village-master") ||
-      ModuleRecord.where(id: village_id).find_by(module_slug: "lg-directory-list")
-    return unless record
-
-    if record.respond_to?(:data)
-      [
-        record.data["village_name"],
-        record.data["village"],
-        record.data["name"],
-        record.data["title"]
-      ].compact_blank.first.presence
-    end
   end
 
   def agreement_admin_user?
@@ -173,7 +112,7 @@ class VrpAgreementsController < ApplicationController
       user = User.find_by(user_name: username)
       ids << user.id if user
     end
-    ids.compact!.uniq!
+    ids = ids.compact.uniq
 
     scope = Vrp.none
     if ids.any?

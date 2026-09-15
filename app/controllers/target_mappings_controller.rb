@@ -993,10 +993,8 @@ class TargetMappingsController < ApplicationController
     return @office_list_items if defined?(@office_list_items)
 
     @office_list_items = Rails.cache.fetch("office-list-api-items-v1", expires_in: 10.minutes) do
-      office_list_api_urls.each do |url|
-        items = fetch_office_list_items(url)
-        break items if items.any?
-      end || []
+      office_list_api_urls.lazy.map { |url| fetch_office_list_items(url) }
+        .find(&:present?) || []
     end
   end
 
