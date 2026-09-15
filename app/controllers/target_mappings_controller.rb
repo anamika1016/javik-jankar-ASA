@@ -992,7 +992,7 @@ class TargetMappingsController < ApplicationController
   def office_list_items
     return @office_list_items if defined?(@office_list_items)
 
-    @office_list_items = Rails.cache.fetch("office-list-api-items-v1", expires_in: 10.minutes) do
+    @office_list_items = Rails.cache.fetch("office-list-api-items-v2", expires_in: 10.minutes) do
       office_list_api_urls.lazy.map { |url| fetch_office_list_items(url) }
         .find(&:present?) || []
     end
@@ -1005,7 +1005,7 @@ class TargetMappingsController < ApplicationController
     end
     return [] unless response.is_a?(Net::HTTPSuccess)
 
-    Array(JSON.parse(response.body)["result"])
+    Array(JSON.parse(response.body)["result"]).select { |item| item.is_a?(Hash) }
   rescue StandardError => error
     Rails.logger.warn("Unable to load Office List from #{url}: #{error.message}")
     []
@@ -1667,7 +1667,7 @@ class TargetMappingsController < ApplicationController
       target_quantity: target_number_value(target.target_quantity),
       new_farmer_target_quantity: Array(target.afl_ids).blank? && !training_mode ? target_number_value(target.target_quantity) : "",
       training_targets: (TRAINING_TARGET_FIELDS.keys + ["cc"]).index_with do |key|
-        target_number_value(target.public_send("#{key}_target"))
+        target_number_value(target.public_send("#{key}_target")) if target.has_attribute?("#{key}_target")
       end,
       afl_ids: Array(target.afl_ids).map(&:to_s)
     }

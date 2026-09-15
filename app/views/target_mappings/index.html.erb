@@ -463,7 +463,7 @@
                   <td><%= number_with_precision(target.input_demo_inm_target, precision: 4, strip_insignificant_zeros: true) if target.input_demo_inm_target.present? %></td>
                   <td><%= number_with_precision(target.input_demo_pm_target, precision: 4, strip_insignificant_zeros: true) if target.input_demo_pm_target.present? %></td>
                   <td><%= number_with_precision(target.ffs_target, precision: 4, strip_insignificant_zeros: true) if target.ffs_target.present? %></td>
-                  <td><%= number_with_precision(target.cc_target, precision: 4, strip_insignificant_zeros: true) if target.cc_target.present? %></td>
+                  <td><%= number_with_precision(target.cc_target, precision: 4, strip_insignificant_zeros: true) if target.has_attribute?(:cc_target) && target.cc_target.present? %></td>
                   <td class="target-count-cell"><%= number_with_precision(row[:target_quantity], precision: 4, strip_insignificant_zeros: true) %></td>
                   <% week_targets = Array(row[:weekly_values]).presence || target.weekly_target_values %>
                   <td class="target-count-cell"><%= week_targets[0] %></td>

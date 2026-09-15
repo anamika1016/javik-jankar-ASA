@@ -66,6 +66,48 @@ class VrpAgreementsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to vrp_agreement_path
   end
 
+  test "FCOC and CC see assigned signed agreements created by other users" do
+    assigned = create_vrp(name: "Assigned JJ", user_name: "assigned_jj", fcoc: "FCO Betul", cluster_incharge: "Cluster Reviewer", created_by_id: 999999,
+      agreement_accepted_at: Time.current, agreement_signature_data: "signed")
+    unrelated = create_vrp(name: "Unrelated JJ", user_name: "unrelated_jj", fcoc: "FCO Other", cluster_incharge: "Other Reviewer", created_by_id: 999999,
+      agreement_accepted_at: Time.current, agreement_signature_data: "signed")
+    [
+      { "id" => 888888, "record_type" => "User", "username" => "fco_reviewer", "name" => "FCO Reviewer", "office_name" => "FCO Betul" },
+      { "id" => 888889, "record_type" => "User", "username" => "cc_reviewer", "name" => "Cluster Reviewer", "role" => "Cluster Incharge" }
+    ].each do |user|
+      controller = VrpAgreementsController.new
+      controller.request = ActionDispatch::TestRequest.create
+      controller.instance_variable_set(:@current_app_user, user)
+      rows = controller.send(:accepted_agreement_rows)
+      assert_includes rows.map { |row| row[:id] }, assigned.id
+      refute_includes rows.map { |row| row[:id] }, unrelated.id
+    end
+  end
+
+  test "admin target mapping renders saved targets despite old failed office cache" do
+    user = User.create!(user_name: "mapping_regression_admin", password: "secret", first_name: "Admin", user_type: "admin", status: "Active")
+    vrp = create_vrp(user_name: "mapping_regression_jj")
+    TargetMapping.create!(vrp: vrp, fco_id: "F1", ics_id: "I1", village_id: "V1", month_name: "July", main_activity_name: "Training", activity_name: "OPG Training", target_quantity: 4)
+    Rails.cache.write("office-list-api-items-v1", ["https://example.test/offices"])
+    Rails.cache.write("office-list-api-items-v2", [])
+    post login_path, params: { login: user.user_name, password: "secret" }
+    get target_mappings_path
+    assert_response :success
+    assert_includes response.body, "OPG Training"
+
+    # Simulate a running server whose schema does not yet expose the CC column.
+    previous_ignored_columns = TargetMapping.ignored_columns
+    TargetMapping.ignored_columns = previous_ignored_columns + ["cc_target"]
+    get target_mappings_path
+    assert_response :success
+    get target_mappings_path, params: { edit_id: TargetMapping.last.id }
+    assert_response :success
+  ensure
+    TargetMapping.ignored_columns = previous_ignored_columns if previous_ignored_columns
+    Rails.cache.delete("office-list-api-items-v1")
+    Rails.cache.delete("office-list-api-items-v2")
+  end
+
   private
 
   def create_vrp(attributes = {})

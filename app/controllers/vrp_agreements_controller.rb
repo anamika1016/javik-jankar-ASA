@@ -28,7 +28,7 @@ class VrpAgreementsController < ApplicationController
   end
 
   def show
-    @vrp = Vrp.find_by(id: params[:id])
+    @vrp = agreement_visible_vrps.find_by(id: params[:id])
     unless @vrp&.agreement_accepted?
       redirect_to vrp_agreements_path, alert: "Signed agreement not found."
       return
@@ -38,7 +38,7 @@ class VrpAgreementsController < ApplicationController
   end
 
   def destroy
-    @vrp = Vrp.find_by(id: params[:id])
+    @vrp = agreement_visible_vrps.find_by(id: params[:id])
     unless @vrp
       redirect_to vrp_agreements_path, alert: "Agreement not found."
       return
@@ -103,32 +103,13 @@ class VrpAgreementsController < ApplicationController
   def agreement_visible_vrps
     return Vrp.all if current_app_user.blank? || agreement_admin_user?
 
-    user_id = current_app_user&.dig("id")
-    username = current_app_user&.dig("username").to_s
-    email = current_app_user&.dig("email").to_s.downcase.presence
-
-    ids = [user_id].compact
-    if username.present? && defined?(User) && User.table_exists?
-      user = User.find_by(user_name: username)
-      ids << user.id if user
-    end
-    ids = ids.compact.uniq
-
-    scope = Vrp.none
-    if ids.any?
-      scope = scope.or(Vrp.where(created_by_id: ids))
-      scope = scope.or(Vrp.where(user_id: ids)) if Vrp.column_names.include?("user_id")
+    if current_app_user["record_type"].to_s == "Vrp"
+      return Vrp.where(id: current_app_user["id"])
     end
 
-    if email.present?
-      unassigned = Vrp.where(created_by_id: nil).where("LOWER(email) = ?", email)
-      unassigned = unassigned.where(user_id: nil) if Vrp.column_names.include?("user_id")
-      scope = scope.or(unassigned)
-    end
-
-    vrp_record = Vrp.find_by(user_name: username) if username.present?
-    scope = scope.or(Vrp.where(id: vrp_record.id)) if vrp_record
-
-    scope
+    policy = ModulesController.new
+    policy.request = request
+    policy.instance_variable_set(:@current_app_user, current_app_user)
+    Vrp.where(id: policy.send(:dashboard_vrps).map(&:id))
   end
 end
