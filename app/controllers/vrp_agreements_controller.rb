@@ -1,6 +1,7 @@
 require "csv"
 
 class VrpAgreementsController < ApplicationController
+  before_action :refresh_agreement_user_mapping
   layout :agreement_layout
   helper_method :agreement_admin_user?
 
@@ -100,6 +101,12 @@ class VrpAgreementsController < ApplicationController
     current_app_user&.dig("user_type").to_s.casecmp("admin").zero?
   end
 
+  # Office and role edits must apply immediately, even with an existing login.
+  def refresh_agreement_user_mapping
+    user = find_current_session_user(current_app_user) if current_app_user.present?
+    refresh_app_user_session!(user) if user
+  end
+
   def agreement_visible_vrps
     return Vrp.all if current_app_user.blank? || agreement_admin_user?
 
@@ -110,6 +117,8 @@ class VrpAgreementsController < ApplicationController
     policy = ModulesController.new
     policy.request = request
     policy.instance_variable_set(:@current_app_user, current_app_user)
-    Vrp.where(id: policy.send(:dashboard_vrps).map(&:id))
+    mapping = AgreementVrpScope.new(current_app_user, policy: policy)
+    mapping.resolve
+
   end
 end

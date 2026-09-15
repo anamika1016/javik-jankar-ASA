@@ -84,6 +84,37 @@ class VrpAgreementsControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "FCOC sees every signed JJ in the office and CC only its assigned JJs after login" do
+    user = User.create!(user_name: "agreement_fco", password: "secret", first_name: "Binit", last_name: "Kumar",
+      role: "FCOC", office_name: "Betul-FCO", user_type: "User", status: "Active")
+    first = create_vrp(name: "First Mapped JJ", user_name: "first_mapping", fcoc: "FCO-C Betul", cluster_incharge: "Vikas Meena (CC)",
+      agreement_accepted_at: Time.current, agreement_signature_data: "signed")
+    second = create_vrp(name: "Second Mapped JJ", user_name: "second_mapping", fcoc: "FCO-C Betul", cluster_incharge: "Different CC",
+      agreement_accepted_at: Time.current, agreement_signature_data: "signed")
+    outside = create_vrp(name: "Outside Mapped JJ", user_name: "outside_mapping", fcoc: "FCO-C Other", cluster_incharge: "Different CC",
+      agreement_accepted_at: Time.current, agreement_signature_data: "signed")
+    unsigned = create_vrp(name: "Unsigned Mapped JJ", user_name: "unsigned_mapping", fcoc: "FCO-C Betul", cluster_incharge: "Vikas Meena")
+    post login_path, params: { login: user.user_name, password: "secret" }
+    get vrp_agreements_path
+    assert_response :success
+    assert_includes response.body, first.name
+    assert_includes response.body, second.name
+    refute_includes response.body, outside.name
+    refute_includes response.body, unsigned.name
+
+    # A role/mapping update takes effect without requiring logout.
+    user.update!(first_name: "Vikas", last_name: "Meena", role: "CC")
+    get vrp_agreements_path
+    assert_response :success
+    assert_includes response.body, first.name
+    refute_includes response.body, second.name
+    refute_includes response.body, outside.name
+    get vrp_agreement_record_path(first)
+    assert_response :success
+    get vrp_agreement_record_path(second)
+    assert_redirected_to vrp_agreements_path
+  end
+
   test "admin target mapping renders saved targets despite old failed office cache" do
     user = User.create!(user_name: "mapping_regression_admin", password: "secret", first_name: "Admin", user_type: "admin", status: "Active")
     vrp = create_vrp(user_name: "mapping_regression_jj")
