@@ -3330,6 +3330,7 @@ class ModulesController < ApplicationController
       ]
     end
     cards << dashboard_group_card("Gender Count", gender_items, style: "registration")
+    preload_dashboard_fco_active_vrp_counts(fco_names, params[:month].presence || "August")
     cards << dashboard_group_card("FCO-wise JJ Requirement", fco_names.flat_map { |fco_name| dashboard_jj_requirement_items(fco_name, vrps, defined?(@filtered_targets) ? @filtered_targets : nil) }, style: "fco")
 
     cards
@@ -3854,33 +3855,9 @@ class ModulesController < ApplicationController
   def dashboard_fco_active_vrp_count(fco_name_or_id, month_name = "August", vrps = nil)
     return 0 if fco_name_or_id.blank?
 
-    normalized = normalize_dashboard_text(fco_name_or_id)
-    fco_conditions = if normalized.include?("1004") || normalized.include?("sausar")
-                       "(LOWER(TRIM(t.fco_id)) IN ('1004', 'sausar') OR LOWER(TRIM(t.fco_name)) LIKE '%sausar%')"
-                     elsif normalized.include?("1006") || normalized.include?("turekela")
-                       "(LOWER(TRIM(t.fco_id)) IN ('1006', 'turekela') OR LOWER(TRIM(t.fco_name)) LIKE '%turekela%')"
-                     else
-                       "(LOWER(TRIM(t.fco_id)) = :norm OR LOWER(TRIM(t.fco_name)) = :norm)"
-                     end
-
-    sql = <<~SQL.squish
-      SELECT COUNT(DISTINCT t.vrp_id) AS active_vrp_count
-      FROM public.target_mappings t
-      WHERE #{fco_conditions}
-        AND LOWER(TRIM(t.month_name)) = LOWER(:month_name)
-        AND t.vrp_id IS NOT NULL;
-    SQL
-
-    # This is the dashboard equivalent of:
-    # SELECT DISTINCT vrp_id FROM public.target_mappings
-    # WHERE month_name = 'August' AND fco_id IN ('1004', '1006');
-    # It is called per FCO so Sausar (1004) and Turekela (1006) show their
-    # own active JJ count.
-    binds = { norm: normalized, month_name: month_name.presence || "August" }
-    res = ActiveRecord::Base.connection.exec_query(
-      ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
-    ).first
-    count = res ? res["active_vrp_count"].to_i : 0
+    key = [dashboard_fco_count_key(fco_name_or_id), month_name.presence || "August"]
+    preload_dashboard_fco_active_vrp_counts([fco_name_or_id], key.last) unless @dashboard_fco_active_counts&.key?(key)
+    count = @dashboard_fco_active_counts.fetch(key)
 
     return count if count > 0
 
@@ -3906,6 +3883,42 @@ class ModulesController < ApplicationController
     else
       0
     end
+  end
+
+  def dashboard_fco_count_key(value)
+    normalized = normalize_dashboard_text(value)
+    return "1004" if normalized.include?("1004") || normalized.include?("sausar")
+    return "1006" if normalized.include?("1006") || normalized.include?("turekela")
+
+    normalized
+  end
+
+  def preload_dashboard_fco_active_vrp_counts(fco_names, month_name)
+    @dashboard_fco_active_counts ||= {}
+    keys = fco_names.compact_blank.map { |name| dashboard_fco_count_key(name) }.uniq
+      .reject { |key| @dashboard_fco_active_counts.key?([key, month_name]) }
+    return if keys.empty?
+
+    connection = ActiveRecord::Base.connection
+    counts = keys.each_with_index.map do |key, index|
+      condition = case key
+      when "1004"
+        "LOWER(TRIM(t.fco_id)) IN ('1004', 'sausar') OR LOWER(TRIM(t.fco_name)) LIKE '%sausar%'"
+      when "1006"
+        "LOWER(TRIM(t.fco_id)) IN ('1006', 'turekela') OR LOWER(TRIM(t.fco_name)) LIKE '%turekela%'"
+      else
+        "LOWER(TRIM(t.fco_id)) = #{connection.quote(key)} OR LOWER(TRIM(t.fco_name)) = #{connection.quote(key)}"
+      end
+      "COUNT(DISTINCT t.vrp_id) FILTER (WHERE #{condition}) AS fco_#{index}"
+    end
+    result = connection.select_one(<<~SQL)
+      SELECT #{counts.join(', ')} FROM public.target_mappings t
+      WHERE LOWER(TRIM(t.month_name)) = LOWER(#{connection.quote(month_name)}) AND t.vrp_id IS NOT NULL
+    SQL
+    keys.each_with_index { |key, index| @dashboard_fco_active_counts[[key, month_name]] = result["fco_#{index}"].to_i }
+  rescue ActiveRecord::ActiveRecordError => e
+    # Let the existing per-FCO fallback handle unavailable target data.
+    Rails.logger.warn("Dashboard FCO count preload failed: #{e.message}")
   end
 
   def dashboard_jj_requirement_items(fco_name, vrps, targets = nil)
@@ -9384,7 +9397,19 @@ class ModulesController < ApplicationController
   end
 
   def compact_lg_directory_rows(rows)
-    rows.reject { |row| lg_directory_prefix_covered?(row, rows) }
+    levels = [:state, :district, :sub_district, :block, :gram_panchayat, :village]
+    covered_prefixes = Set.new
+    normalized_rows = rows.map do |row|
+      last_present_index = levels.rindex { |key| row[key].present? }
+      # String#casecmp folds ASCII case, not Unicode case.
+      values = levels.map { |key| row[key].to_s.strip.downcase(:ascii) }
+      last_present_index.to_i.times { |index| covered_prefixes.add(values.first(index + 1)) }
+      [row, last_present_index, values]
+    end
+
+    normalized_rows.filter_map do |row, last_present_index, values|
+      row unless last_present_index && covered_prefixes.include?(values.first(last_present_index + 1))
+    end
   end
 
   def lg_directory_prefix_covered?(row, rows)
@@ -13845,11 +13870,8 @@ class ModulesController < ApplicationController
       "#{key.delete_prefix('select_')}_name"
     ].uniq
 
-    @generic_field_options_cache[cache_key] = active_module_records_scope_for_all_modules
-      .where.not(module_slug: @slug || current_slug)
-      .order(created_at: :desc)
-      .flat_map { |record| candidate_keys.filter_map { |candidate| record.data[candidate].presence } }
-      .uniq
+    scope = active_module_records_scope_for_all_modules.where.not(module_slug: @slug || current_slug)
+    @generic_field_options_cache[cache_key] = projected_module_field_values(scope, candidate_keys)
   end
 
   def values_from_module(module_slug, field_key)
@@ -13875,9 +13897,19 @@ class ModulesController < ApplicationController
     field_keys << "vrp_type_name" if module_slug == "add-vrp-type" && field_key == "jeevika_jankar_type_name"
     field_keys << "jeevika_jankar_type_name" if module_slug == "add-vrp-type" && field_key == "vrp_type_name"
 
-    @values_from_module_cache[cache_key] = active_module_records_scope(module_slug)
+    @values_from_module_cache[cache_key] = projected_module_field_values(active_module_records_scope(module_slug), field_keys)
+  end
+
+  def projected_module_field_values(scope, field_keys)
+    connection = ModuleRecord.connection
+    quoted_keys = field_keys.map { |key| connection.quote(key.to_s) }
+    # Keep JSON types, record order, key order and Ruby presence/uniq semantics.
+    # Do not instantiate records (including their unrelated uploads/large arrays)
+    # merely to read a handful of dropdown values.
+    scope.where("data::jsonb ?| ARRAY[#{quoted_keys.join(', ')}]::text[]")
       .order(created_at: :desc)
-      .flat_map { |record| field_keys.filter_map { |key| record.data[key].presence } }
+      .pluck(Arel.sql("json_build_array(#{quoted_keys.map { |key| "data::json -> #{key}" }.join(', ')})"))
+      .flat_map { |values| values.filter_map(&:presence) }
       .uniq
   end
 

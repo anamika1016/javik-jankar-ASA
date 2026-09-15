@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_08_102043) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_15_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -260,6 +260,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_08_102043) do
     t.string "module_slug", null: false
     t.datetime "updated_at", null: false
     t.index "(((data)::jsonb ->> 'mobile_no'::text))", name: "index_module_records_new_users_on_mobile_no", where: "((module_slug)::text = 'new-user'::text)"
+    t.index "((data)::jsonb)", name: "index_module_records_on_json_data", using: :gin
     t.index "lower(((data)::jsonb ->> 'email'::text))", name: "index_module_records_new_users_on_lower_email", where: "((module_slug)::text = 'new-user'::text)"
     t.index "lower(((data)::jsonb ->> 'user_name'::text))", name: "index_module_records_new_users_on_lower_user_name", where: "((module_slug)::text = 'new-user'::text)"
     t.index ["module_slug", "created_at"], name: "index_module_records_on_slug_and_created_at", order: { created_at: :desc }
@@ -398,6 +399,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_08_102043) do
     t.integer "week_3_target"
     t.integer "week_4_target"
     t.decimal "week_wise_opg_target", precision: 18, scale: 4
+    t.index "lower(btrim((month_name)::text))", name: "index_target_mappings_on_normalized_month"
     t.index ["created_by_type", "created_by_id", "updated_at"], name: "index_target_mappings_on_creator_and_updated_at", order: { updated_at: :desc }
     t.index ["created_by_type", "created_by_id"], name: "index_target_mappings_on_creator"
     t.index ["fco_id", "ics_id", "village_id", "main_activity_name", "activity_name"], name: "index_target_mappings_on_activity_scope"
@@ -546,6 +548,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_08_102043) do
     t.index ["created_by_type", "created_by_id"], name: "index_vrps_on_created_by_type_and_created_by_id"
     t.index ["email"], name: "index_vrps_on_email"
     t.index ["mobile_no"], name: "index_vrps_on_mobile_no"
+    t.index ["status"], name: "index_vrps_on_status"
     t.index ["user_id"], name: "index_vrps_on_user_id"
     t.index ["user_name"], name: "index_vrps_on_user_name"
     t.index ["vrp_bank_master_id"], name: "index_vrps_on_vrp_bank_master_id"

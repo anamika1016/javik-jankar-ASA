@@ -47,8 +47,12 @@ module Api
         targets = TargetMapping.includes(:vrp).order(updated_at: :desc).to_a
         filter_options = admin_filter_options(vrps, targets)
         vrps = filter_admin_vrps(vrps)
-        targets = targets.select { |target| vrps.any? { |vrp| vrp.id == target.vrp_id } } if admin_vrp_filters_present?
+        if admin_vrp_filters_present?
+          visible_vrp_ids = vrps.map(&:id).to_set
+          targets = targets.select { |target| visible_vrp_ids.include?(target.vrp_id) }
+        end
         filtered_targets = filter_admin_targets(targets)
+        preload_dashboard_mappings(filtered_targets)
         selected_month = params[:month].presence
         progress = filtered_targets.map { |target| progress_payload(target) }
         assigned = progress.sum { |row| row[:assigned].to_f }
@@ -256,8 +260,11 @@ module Api
       end
 
       def target_achievement(target)
-        records = ModuleRecord.where(module_slug: %w[training-form seed-distribution-target papl360-target add-farmer-form])
-          .select { |record| record.data["target_mapping_id"].to_s == target.id.to_s && active_record?(record) }
+        @achievement_records_by_target ||= ModuleRecord
+          .where(module_slug: %w[training-form seed-distribution-target papl360-target add-farmer-form])
+          .select { |record| active_record?(record) }
+          .group_by { |record| record.data["target_mapping_id"].to_s }
+        records = @achievement_records_by_target.fetch(target.id.to_s, [])
         training_ids = records.select { |record| record.module_slug == "training-form" }
           .flat_map { |record| Array(record.data["selected_farmer_ids"]).map(&:to_s) }.reject(&:blank?).uniq
         other = records.reject { |record| record.module_slug == "training-form" }.sum do |record|
@@ -270,11 +277,21 @@ module Api
         ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
         return ids if ids.any?
 
-        VrpIcsMapping.where(vrp_id: target.vrp_id).select do |mapping|
+        @dashboard_mappings_by_vrp ||= {}
+        mappings = @dashboard_mappings_by_vrp[target.vrp_id] ||= VrpIcsMapping.where(vrp_id: target.vrp_id).to_a
+        mappings.select do |mapping|
           location_match?(mapping.fco_id, mapping.fco_name, target.fco_id, target.fco_name) &&
             location_match?(mapping.ics_id, mapping.ics_name, target.ics_id, target.ics_name) &&
             location_match?(mapping.village_id, mapping.village_name, target.village_id, target.village_name)
         end.flat_map { |mapping| Array(mapping.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
+      end
+
+      def preload_dashboard_mappings(targets)
+        vrp_ids = targets.select { |target| Array(target.afl_ids).map(&:to_s).reject(&:blank?).empty? }.map(&:vrp_id).uniq
+        @dashboard_mappings_by_vrp = vrp_ids.index_with { [] }
+        return if vrp_ids.empty?
+
+        @dashboard_mappings_by_vrp.merge!(VrpIcsMapping.where(vrp_id: vrp_ids).group_by(&:vrp_id))
       end
 
       def location_match?(left_id, left_name, right_id, right_name)

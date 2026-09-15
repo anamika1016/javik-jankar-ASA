@@ -1807,16 +1807,20 @@ function initDeferredLayoutPage() {
 
     const selectedValues = uniquePresent(locationSelectedValuesFromDataset(select).concat(selectedLocationValues(select)));
     const blankOption = originalOptions.find((option) => option.value === "") || { value: "", label: `Select ${level}` };
+    const rowValues = allowedRows.map((row) => [row.id].concat(locationRowValues(row, locationKeys[level])).map(normalizeOption));
+    const allowedValues = new Set(rowValues.flat());
     const filteredOptions = originalOptions.filter((option) => {
       if (option.value === "") return false;
-      return allowedRows.some((row) => optionMatchesLocationRow(option, row, level));
+      return allowedValues.has(normalizeOption(option.value)) || allowedValues.has(normalizeOption(option.label || option.textContent));
     });
+    const matchedValues = new Set(filteredOptions.flatMap((option) => [normalizeOption(option.value), normalizeOption(option.label || option.textContent)]));
 
     // Directory rows can contain locations absent from the separate master options.
-    allowedRows.forEach((row) => {
+    allowedRows.forEach((row, index) => {
       const label = row[locationKeys[level]];
-      if (!label || filteredOptions.some((option) => optionMatchesLocationRow(option, row, level))) return;
+      if (!label || rowValues[index].some((value) => matchedValues.has(value))) return;
       filteredOptions.push({ value: label, label });
+      matchedValues.add(normalizeOption(label));
     });
 
     const parentSelected = (locationParents[level] || []).every((parentLevel) => {

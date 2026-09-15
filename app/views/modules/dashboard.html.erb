@@ -138,6 +138,7 @@
       <div class="vrp-work-overview-metrics">
         <% ["Mapped Villages", "Main Activities", "Sub Activities", "Assigned Target", "Assigned Farmers", "Achieved Target", "Pending Target"].each do |title| %>
           <% card = dashboard_cards_by_title[title] %>
+          <% next if card.blank? %>
           <%= link_to card[:path], class: "#{title.parameterize}", title: card[:caption], data: { dashboard_card: true } do %>
             <span><%= title %></span>
             <strong><%= card[:value] %></strong>
