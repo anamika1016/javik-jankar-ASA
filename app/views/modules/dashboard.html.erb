@@ -57,7 +57,7 @@
       </div>
     <% end %>
 
-  <% demonstration_method_titles = ["OPG Training Target", "General Training/Meeting", "Input Demo INM", "Exposer", "Input Demo PM"] %>
+  <% demonstration_method_titles = ["OPG Training Target", "OPG Training Achievement", "General Training/Meeting", "Input Demo INM", "FFS", "Input Demo PM", "Exposure", "FFS Exposure"] %>
     <% all_dashboard_summary_cards = Array(@dashboard_summary_cards) %>
     <% demonstration_method_cards = Array(@demonstration_method_cards).presence || all_dashboard_summary_cards.select { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
     <% dashboard_summary_cards = all_dashboard_summary_cards.reject { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
@@ -136,7 +136,7 @@
         </div>
       </div>
       <div class="vrp-work-overview-metrics">
-        <% ["Mapped Villages", "Main Activities", "Sub Activities", "Assigned Farmer", "Assigned Target", "Achieved Target", "Pending Target"].each do |title| %>
+        <% ["Mapped Villages", "Main Activities", "Sub Activities", "Assigned Target", "Assigned Farmers", "Achieved Target", "Pending Target"].each do |title| %>
           <% card = dashboard_cards_by_title[title] %>
           <%= link_to card[:path], class: "#{title.parameterize}", title: card[:caption], data: { dashboard_card: true } do %>
             <span><%= title %></span>
@@ -171,7 +171,7 @@
               <th>General Training/Meeting</th>
               <th>Input Demo INM</th>
               <th>Input Demo PM</th>
-              <th>Exposer</th>
+              <th>FFS Exposure</th>
               <th>Completed</th>
               <th>Pending</th>
               <th>Progress</th>
@@ -238,6 +238,11 @@
         </div>
         <div class="dashboard-actions">
           <%= form_with url: dashboard_path, method: :get, local: true, class: "weekly-plan-filter" do |form| %>
+            <% request.query_parameters.except("target_week", "page").each do |key, value| %>
+              <% Array(value).each do |item| %>
+                <%= hidden_field_tag(value.is_a?(Array) ? "#{key}[]" : key, item) %>
+              <% end %>
+            <% end %>
             <%= form.label :target_week, "Week" %>
             <%= form.select :target_week, options_for_select(target_week_options, selected_target_week), {}, onchange: "this.form.submit()" %>
           <% end %>
@@ -258,6 +263,7 @@
               <% else %>
                 <th><%= target_week_options.to_h.key(selected_target_week) %> Plan</th>
                 <th><%= target_week_options.to_h.key(selected_target_week) %> Achieved</th>
+                <th><%= target_week_options.to_h.key(selected_target_week) %> Pending</th>
               <% end %>
               <th>Overall Completed</th>
               <th>Overall Pending</th>
@@ -292,6 +298,7 @@
                   <% else %>
                     <td><%= quantity.call(row[selected_target_week.to_sym]) %></td>
                     <td><%= quantity.call(row["#{selected_target_week}_achieved".to_sym]) %></td>
+                    <td><%= quantity.call([row[selected_target_week.to_sym].to_f - row["#{selected_target_week}_achieved".to_sym].to_f, 0].max) %></td>
                   <% end %>
                   <td><%= quantity.call(row[:completed]) %></td>
                   <td><%= quantity.call(row[:pending]) %></td>
@@ -300,7 +307,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="<%= selected_target_week == 'all' ? 12 : 10 %>">No weekly target plan has been assigned yet.</td>
+                <td colspan="<%= selected_target_week == 'all' ? 12 : 11 %>">No weekly target plan has been assigned yet.</td>
               </tr>
             <% end %>
           </tbody>
@@ -359,6 +366,17 @@
     <% end %>
     <div class="dashboard-filter-grid">
 
+      <%# Month (shown first) %>
+      <div class="dashboard-filter-field">
+        <label for="dash_month">Month</label>
+        <%= f.select :month,
+              options_for_select(
+                [["All Months", ""]] + (@filter_month_options || []).map { |v| [v, v] },
+                @dashboard_month_filter_value
+              ),
+              {},
+              id: "dash_month", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
+      </div>
 
       <div class="dashboard-filter-field">
         <label for="dash_main_activity">Main Activity</label>
@@ -382,7 +400,7 @@
               id: "dash_fcoc", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
       </div>
 
-      <%# ICS Name %>
+      <%# ICS Name (cascades from the selected activity, FCO and Cluster Incharge) %>
       <div class="dashboard-filter-field">
         <label for="dash_ics">ICS Name</label>
         <%= f.select :ics,
@@ -392,18 +410,6 @@
               ),
               {},
               id: "dash_ics", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
-      </div>
-
-      <%# Month %>
-      <div class="dashboard-filter-field">
-        <label for="dash_month">Month</label>
-        <%= f.select :month,
-              options_for_select(
-                [["All Months", ""]] + (@filter_month_options || []).map { |v| [v, v] },
-                @dashboard_month_filter_value
-              ),
-              {},
-              id: "dash_month", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
       </div>
 
       <div class="dashboard-filter-actions">
@@ -431,7 +437,7 @@
     </div>
   <% end %>
 
-  <% demonstration_method_titles = ["OPG Training Target", "General Training/Meeting", "Input Demo INM", "Exposer", "Input Demo PM"] %>
+  <% demonstration_method_titles = ["OPG Training Target", "OPG Training Achievement", "General Training/Meeting", "Input Demo INM", "FFS", "Input Demo PM", "Exposure", "FFS Exposure"] %>
   <% all_dashboard_summary_cards = Array(@dashboard_summary_cards) %>
   <% demonstration_method_cards = Array(@demonstration_method_cards).presence || all_dashboard_summary_cards.select { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
   <% dashboard_summary_cards = all_dashboard_summary_cards.reject { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
@@ -490,13 +496,14 @@
     <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel demonstration-method-panel" id="demonstration_method_boxes">
       <div class="module-card-header training-participation-status-header">
         <h2>Demonstration Method</h2>
-        <%= link_to "View List", demonstration_method_list_path(request.query_parameters), class: "table-action demonstration-common-list" %>
+        <%= link_to "viwe list", demonstration_method_list_path(request.query_parameters), class: "table-action demonstration-common-list" %>
       </div>
       <div class="training-participation-boxes dashboard-summary-boxes demonstration-method-boxes">
         <% demonstration_method_cards.each do |card| %>
           <div class="training-participation-box total dashboard-summary-box">
             <span><%= card[:title] %></span>
             <strong><%= card[:value] %></strong>
+
           </div>
         <% end %>
       </div>
@@ -504,59 +511,41 @@
   <% end %>
 
   <% if farmer_activity_mode %>
-    <% summary_bar_colors = { "FCO-wise JJ Requirement" => "#8b5fcf", "Jeevika Jankar Billing" => "#d49428", "Gender Count" => "#6b8e3a", "CC and JJ Work Status" => "#5a8c3a" } %>
-    <div class="dashboard-summary-bars">
+    <div class="dashboard-grid premium dashboard-training-secondary-summaries">
       <% Array(@dashboard_cards).sort_by { |card| ["FCO-wise JJ Requirement", "Jeevika Jankar Billing", "Gender Count"].index(card[:title]) || 99 }.each do |card| %>
         <% next if card.blank? %>
         <% next unless ["FCO-wise JJ Requirement", "Jeevika Jankar Billing", "Gender Count"].include?(card[:title]) %>
         <% next unless card.is_a?(Hash) && card[:items].present? %>
-        <% popup_id = "popup-#{card[:title].parameterize}" %>
-        <div class="summary-bar" style="background:<%= summary_bar_colors[card[:title]] %>;">
-          <span class="summary-bar-label"><%= card[:title] %></span>
-          <button type="button" class="summary-bar-icon" onclick="document.getElementById('<%= popup_id %>').showModal()">&#8599;</button>
-        </div>
-        <dialog class="summary-popup" id="<%= popup_id %>">
-          <div class="summary-popup-header" style="background:<%= summary_bar_colors[card[:title]] %>;">
-            <h3><%= card[:title] %></h3>
-            <button type="button" class="summary-popup-close" onclick="this.closest('dialog').close()">&times;</button>
-          </div>
-          <div class="summary-popup-body">
+        <article class="metric-card metric-card-group metric-card-group-<%= card[:style] %>">
+          <span class="metric-card-group-title"><%= card[:title] %></span>
+          <button type="button" class="metric-card-popup-trigger" data-card-popup-trigger title="Open in popup" aria-label="Open <%= card[:title] %> details"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9"/><path d="M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></svg></button>
+          <div class="metric-card-group-items">
             <% card[:items].each do |item| %>
-              <%= link_to item[:path], class: "summary-popup-item", data: { dashboard_card: true } do %>
-                <span class="summary-popup-label"><%= item[:title] %></span>
-                <span class="summary-popup-value"><%= item[:value] %></span>
+              <%= link_to item[:path], class: "metric-card-group-item metric-card-group-item-#{item[:title].to_s.parameterize}", data: { dashboard_card: true } do %>
+                <span><%= item[:title] %></span>
+                <strong><%= item[:value] %></strong>
               <% end %>
             <% end %>
           </div>
-        </dialog>
+        </article>
       <% end %>
-
-      <% cc_jj_popup_id = "popup-cc-jj-work-status" %>
-      <div class="summary-bar" style="background:<%= summary_bar_colors["CC and JJ Work Status"] %>;">
-        <span class="summary-bar-label">CC and JJ Work Status</span>
-        <button type="button" class="summary-bar-icon" onclick="document.getElementById('<%= cc_jj_popup_id %>').showModal()">&#8599;</button>
-      </div>
-      <dialog class="summary-popup summary-popup-wide" id="<%= cc_jj_popup_id %>">
-        <div class="summary-popup-header" style="background:<%= summary_bar_colors["CC and JJ Work Status"] %>;">
-          <h3>CC and JJ Work Status</h3>
-          <button type="button" class="summary-popup-close" onclick="this.closest('dialog').close()">&times;</button>
-        </div>
-        <div class="summary-popup-body">
+      <article class="metric-card metric-card-group metric-card-group-registration cc-jj-work-status">
+        <span class="metric-card-group-title">CC and JJ Work Status</span>
+        <button type="button" class="metric-card-popup-trigger" data-card-popup-trigger title="Open in popup" aria-label="Open CC and JJ Work Status details"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9"/><path d="M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></svg></button>
+        <div class="cc-jj-status-groups">
           <% summary_by_fco = @cc_jj_work_status_report.summary.group_by { |row| row["fco_id"] } %>
-          <% summary_by_fco.keys.sort.each do |fco_id| %>
-            <% fco_name = fco_id.to_s.presence || "FCO" %>
-            <div class="cc-jj-fco-block">
-              <div class="cc-jj-fco-name"><%= fco_name %></div>
-              <div class="cc-jj-fco-statuses">
+          <% { "1004" => "Sausar", "1006" => "Turekela" }.each do |fco_id, fco_name| %>
+            <div class="cc-jj-status-fco-row">
+              <strong class="cc-jj-status-fco-name"><%= fco_name %></strong>
+              <div class="cc-jj-status-fco-groups">
                 <% ["Red", "Completed"].each do |status| %>
-                  <% row = (summary_by_fco[fco_id] || []).find { |item| item["status"].to_s.casecmp(status).zero? } %>
-                  <div class="cc-jj-status-card <%= status.downcase %>">
-                    <div class="cc-jj-status-label"><%= status %></div>
-                    <div class="cc-jj-status-values">
+                  <% row = (summary_by_fco[fco_id] || []).find { |r| r["status"].to_s.casecmp(status).zero? } %>
+                  <div class="cc-jj-status-group cc-jj-status-<%= status.downcase %>">
+                    <strong><%= status %></strong>
+                    <div class="metric-card-group-items">
                       <% { "toatl_cc" => "CC", "toatl_jj" => "JJ" }.each do |key, label| %>
-                        <%= link_to cc_jj_work_status_list_path(request.query_parameters), class: "cc-jj-value-item" do %>
-                          <span><%= label %></span>
-                          <strong><%= row ? row[key] : 0 %></strong>
+                        <%= link_to cc_jj_work_status_list_path(request.query_parameters), class: "metric-card-group-item" do %>
+                          <span><%= label %></span><strong><%= row ? row[key] : 0 %></strong>
                         <% end %>
                       <% end %>
                     </div>
@@ -565,8 +554,16 @@
               </div>
             </div>
           <% end %>
-          <%= link_to "View Full List →", cc_jj_work_status_list_path(request.query_parameters), class: "cc-jj-view-list-btn" %>
         </div>
+        <%= link_to "View List", cc_jj_work_status_list_path(request.query_parameters), class: "table-action" %>
+      </article>
+
+      <dialog class="metric-card-popup" data-card-popup>
+        <div class="metric-card-popup-head">
+          <strong data-card-popup-title></strong>
+          <button type="button" class="metric-card-popup-close" data-card-popup-close aria-label="Close">×</button>
+        </div>
+        <div class="metric-card-popup-body" data-card-popup-body></div>
       </dialog>
     </div>
   <% end %>

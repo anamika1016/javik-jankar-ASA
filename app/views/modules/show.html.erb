@@ -16,7 +16,7 @@
   <% end %>
 
   <% list_only_slugs = ["activity-group-list", "vrp-activity-list", "task-completion-indicator-list", "approval-list", "access-control-list", "vrp-bill-list", "jeevika-jankar-bill-list", "jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail", "jeevika-jankar-completed-payment-list", "training-form-list", "seed-distribution-target-list", "papl360-target-list", "other-target-list"] %>
-  <% entry_only_slugs = ["add-activity-group", "add-vrp-activity", "task-completion-indicator", "approval-master", "access-control", "vrp-bill-add", "jeevika-jankar-bill-process", "training-form"] %>
+  <% entry_only_slugs = ["approval-master", "access-control", "vrp-bill-add", "jeevika-jankar-bill-process", "training-form"] %>
 
   <% if @slug == "jeevika-jankar-bill-list" && (@bill_print_mode || @bill_detail_record.present?) %>
     <% detail_record = @record || @bill_detail_record %>
