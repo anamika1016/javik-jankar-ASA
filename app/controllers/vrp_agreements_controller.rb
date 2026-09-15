@@ -119,6 +119,5 @@ class VrpAgreementsController < ApplicationController
     policy.instance_variable_set(:@current_app_user, current_app_user)
     mapping = AgreementVrpScope.new(current_app_user, policy: policy)
     mapping.resolve
-
   end
 end

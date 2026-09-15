@@ -68,9 +68,9 @@ class VrpAgreementsControllerTest < ActionDispatch::IntegrationTest
 
   test "FCOC and CC see assigned signed agreements created by other users" do
     assigned = create_vrp(name: "Assigned JJ", user_name: "assigned_jj", fcoc: "FCO Betul", cluster_incharge: "Cluster Reviewer", created_by_id: 999999,
-      agreement_accepted_at: Time.current, agreement_signature_data: "signed")
+      agreement_accepted_at: Time.current, agreement_signature_data: "data:image/png;base64,signature")
     unrelated = create_vrp(name: "Unrelated JJ", user_name: "unrelated_jj", fcoc: "FCO Other", cluster_incharge: "Other Reviewer", created_by_id: 999999,
-      agreement_accepted_at: Time.current, agreement_signature_data: "signed")
+      agreement_accepted_at: Time.current, agreement_signature_data: "data:image/png;base64,signature")
     [
       { "id" => 888888, "record_type" => "User", "username" => "fco_reviewer", "name" => "FCO Reviewer", "office_name" => "FCO Betul" },
       { "id" => 888889, "record_type" => "User", "username" => "cc_reviewer", "name" => "Cluster Reviewer", "role" => "Cluster Incharge" }
@@ -88,11 +88,11 @@ class VrpAgreementsControllerTest < ActionDispatch::IntegrationTest
     user = User.create!(user_name: "agreement_fco", password: "secret", first_name: "Binit", last_name: "Kumar",
       role: "FCOC", office_name: "Betul-FCO", user_type: "User", status: "Active")
     first = create_vrp(name: "First Mapped JJ", user_name: "first_mapping", fcoc: "FCO-C Betul", cluster_incharge: "Vikas Meena (CC)",
-      agreement_accepted_at: Time.current, agreement_signature_data: "signed")
+      agreement_accepted_at: Time.current, agreement_signature_data: "data:image/png;base64,signature")
     second = create_vrp(name: "Second Mapped JJ", user_name: "second_mapping", fcoc: "FCO-C Betul", cluster_incharge: "Different CC",
-      agreement_accepted_at: Time.current, agreement_signature_data: "signed")
+      agreement_accepted_at: Time.current, agreement_signature_data: "data:image/png;base64,signature")
     outside = create_vrp(name: "Outside Mapped JJ", user_name: "outside_mapping", fcoc: "FCO-C Other", cluster_incharge: "Different CC",
-      agreement_accepted_at: Time.current, agreement_signature_data: "signed")
+      agreement_accepted_at: Time.current, agreement_signature_data: "data:image/png;base64,signature")
     unsigned = create_vrp(name: "Unsigned Mapped JJ", user_name: "unsigned_mapping", fcoc: "FCO-C Betul", cluster_incharge: "Vikas Meena")
     post login_path, params: { login: user.user_name, password: "secret" }
     get vrp_agreements_path
