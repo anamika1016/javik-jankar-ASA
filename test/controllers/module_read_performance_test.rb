@@ -40,6 +40,13 @@ class ModuleReadPerformanceTest < ActiveSupport::TestCase
     assert_equal ["Sub", "Activity", "Legacy"], @controller.send(:values_from_module, "add-vrp-activity", "sub_activity_name")
   end
 
+  test "ordinary static options never load the JJ dropdown" do
+    @controller.define_singleton_method(:vrp_name_options) { raise "Unexpected JJ loading" }
+    assert_equal Date::MONTHNAMES.compact, @controller.send(:static_field_options, "Month Name")
+    assert_equal [], @controller.send(:static_field_options, "State Name")
+    assert_equal ["High", "Medium", "Low"], @controller.send(:static_field_options, "Priority")
+  end
+
   test "directory compaction matches existing prefix rules including Unicode and missing levels" do
     random = Random.new(42)
     levels = %i[state district sub_district block gram_panchayat village]
@@ -53,6 +60,10 @@ class ModuleReadPerformanceTest < ActiveSupport::TestCase
 
   test "dashboard batches FCO counts while preserving aliases, distinct JJ and month matching" do
     vrp = Vrp.new(name: "Performance JJ")
+    vrp.assign_attributes(aadhar_no: "123456789012", account_no: "123", address: "Test", branch: "Test",
+      date_of_birth: Date.new(1990, 1, 1), date_of_joining: Date.current, email: "performance@example.test",
+      experience_in_years: 0, father_husband_name: "Test", gender: 1, ifsc_code: "TEST0123456",
+      mobile_no: "9876543210", office_detail_id: 0, to_office_detail_id: 0)
     vrp.save!(validate: false)
     [["1004", "Sausar", "August"], ["1004", "Sausar", " AUGUST "],
      ["1006", "Turekela", "August"], ["Other", "Other", "August"],

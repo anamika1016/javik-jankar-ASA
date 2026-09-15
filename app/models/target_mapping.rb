@@ -17,6 +17,8 @@ class TargetMapping < ApplicationRecord
             presence: true
 
   validates :target_quantity, numericality: { greater_than_or_equal_to: 0 }
+  validates :cc_target, numericality: { only_integer: true, greater_than_or_equal_to: 0 }, allow_nil: true
+  validate :cc_target_within_opg_training
 
   def weekly_target_values
     saved = [week_1_target, week_2_target, week_3_target, week_4_target]
@@ -28,6 +30,14 @@ class TargetMapping < ApplicationRecord
   end
 
   private
+
+  def cc_target_within_opg_training
+    return if cc_target.nil?
+
+    if opg_training_target.nil? || cc_target > opg_training_target
+      errors.add(:cc_target, "cannot exceed OPG Training target")
+    end
+  end
 
   def clean_afl_ids
     self.afl_ids = Array(afl_ids).map(&:to_s).reject(&:blank?).uniq

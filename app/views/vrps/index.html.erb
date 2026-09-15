@@ -14,7 +14,9 @@
       <button type="button" class="list-btn active" data-vrp-active-selected="true">Active</button>
       <button type="button" class="list-btn deactive" data-vrp-active-selected="false">Deactive</button>
       <button type="button" class="list-btn edit" data-vrp-edit-selected>Edit</button>
-      <button type="button" class="list-btn delete" data-vrp-delete-selected>Delete</button>
+      <% if admin_user? %>
+        <button type="button" class="list-btn delete" data-vrp-delete-selected>Delete</button>
+      <% end %>
     </div>
 
     <div class="vrp-list-card">
@@ -55,6 +57,7 @@
               <th>Email</th>
               <th>FCO Name</th>
               <th>TO Name</th>
+              <th>Active Status</th>
               <th>Registered By</th>
               <th>Mapped Cluster Name</th>
             </tr>
@@ -87,13 +90,14 @@
                   <td><%= vrp[:email] %></td>
                   <td><%= vrp[:fcoc].presence || "-" %></td>
                   <td><%= vrp[:to_name].presence || "-" %></td>
+                  <td><span class="grid-status <%= vrp[:is_active] ? 'approved' : 'rejected' %>"><%= vrp[:is_active] ? 'Active' : 'Inactive' %></span></td>
                   <td><%= vrp[:registered_by] %></td>
                   <td><%= vrp[:mapped_cluster_name] %></td>
                 </tr>
               <% end %>
             <% else %>
               <tr>
-                <td colspan="21">No Jeevika Jankar records saved yet.</td>
+                <td colspan="22">No Jeevika Jankar records saved yet.</td>
               </tr>
             <% end %>
           </tbody>

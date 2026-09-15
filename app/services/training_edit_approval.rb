@@ -3,7 +3,13 @@ require "base64"
 # Revisions remain separate from live training data until the complete channel approves.
 class TrainingEditApproval
   SLUG = "training-form-edit-request".freeze
-  IMAGE_KEYS = %w[training_register_upload training_photo_upload_with_geo_tag].freeze
+  PHOTO_VIEW_FIELDS = {
+    "photo_front_view" => "Photo Front View",
+    "photo_back_view" => "Photo Back View",
+    "photo_close_up_view" => "Photo Close-up View",
+    "photo_long_shot" => "Photo Long Shot"
+  }.freeze
+  IMAGE_KEYS = (%w[training_register_upload training_photo_upload_with_geo_tag] + PHOTO_VIEW_FIELDS.keys).freeze
   class InvalidTransition < StandardError; end
 
   # Only the latest revision controls billing; untouched records remain eligible.

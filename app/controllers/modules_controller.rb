@@ -138,7 +138,7 @@ class ModulesController < ApplicationController
         "Total Farmer Count",
         "Next Farmer Training Date",
         "Training Register Upload",
-        "Training Photo Upload with Geo Tag"
+        *TrainingEditApproval::PHOTO_VIEW_FIELDS.values
       ]
     },
     "training-form-list" => {
@@ -1458,6 +1458,7 @@ class ModulesController < ApplicationController
 
   def create
     load_module!
+    return if reject_invalid_training_view_uploads
 
     if record_source_slug == "approval-master" && approval_channel_params?
       create_approval_channel
@@ -1553,6 +1554,7 @@ class ModulesController < ApplicationController
 
     @record = record
     previous_data = record.data.deep_dup
+    return if reject_invalid_training_view_uploads
 
     next_data = record.data.merge(normalized_module_data)
     next_data = preserve_training_uploads(record.data, next_data) if record_source_slug == "training-form"
@@ -11369,18 +11371,21 @@ class ModulesController < ApplicationController
     block = normalize_dashboard_text(first_present_data(record, "block", "block_name", "cd_block_name"))
     return "" if state.blank? || district.blank? || block.blank?
 
-    gram_panchayat_location_records.find do |candidate|
-        code_matches = %w[gp_code gram_code gram_panchayat_code gram_panchayat_id gram_panchayat gram_panchayat_name gp_name gram_name name].any? do |key|
-          normalize_dashboard_text(candidate.data[key]) == normalized_code
-        end
+    @gram_panchayat_names_by_location ||= gram_panchayat_location_records.each_with_object({}) do |candidate, lookup|
+      label = gram_panchayat_name_from_record(candidate)
+      next if code_like_location_value?(label)
 
-        code_matches &&
-        normalize_dashboard_text(first_present_data(candidate, "state", "state_name")) == state &&
-          normalize_dashboard_text(first_present_data(candidate, "district", "district_name")) == district &&
-          normalize_dashboard_text(first_present_data(candidate, "block", "block_name", "cd_block_name")) == block &&
-          !code_like_location_value?(gram_panchayat_name_from_record(candidate))
+      location = [
+        normalize_dashboard_text(first_present_data(candidate, "state", "state_name")),
+        normalize_dashboard_text(first_present_data(candidate, "district", "district_name")),
+        normalize_dashboard_text(first_present_data(candidate, "block", "block_name", "cd_block_name"))
+      ]
+      %w[gp_code gram_code gram_panchayat_code gram_panchayat_id gram_panchayat gram_panchayat_name gp_name gram_name name].each do |key|
+        lookup_key = [*location, normalize_dashboard_text(candidate.data[key])]
+        lookup[lookup_key] = label unless lookup.key?(lookup_key)
       end
-      &.then { |candidate| gram_panchayat_name_from_record(candidate) }
+    end
+    @gram_panchayat_names_by_location[[state, district, block, normalized_code]]
   end
 
   def module_field_aliases(field)
@@ -11416,6 +11421,13 @@ class ModulesController < ApplicationController
   def normalized_module_data
     data = module_record_params.to_h.transform_values { |value| normalize_module_param_value(value) }
 
+    if record_source_slug == "training-form"
+      photos = TrainingEditApproval::PHOTO_VIEW_FIELDS.keys.flat_map { |key| Array(data[key]) }.compact_blank
+      if photos.any?
+        data["training_photo_upload_with_geo_tag"] = (Array(data["training_photo_upload_with_geo_tag"]) + photos).compact_blank.uniq
+      end
+    end
+
     if record_source_slug == "access-control"
       data["module_names"] ||= []
       data["sub_module_names"] ||= []
@@ -11447,6 +11459,27 @@ class ModulesController < ApplicationController
     data = normalize_jeevika_jankar_bill_data(data) if record_source_slug == "jeevika-jankar-bill-process"
 
     data
+  end
+
+  def reject_invalid_training_view_uploads
+    return false unless record_source_slug == "training-form"
+
+    errors = TrainingEditApproval::PHOTO_VIEW_FIELDS.flat_map do |key, label|
+      Array(module_record_params[key]).filter_map do |upload|
+        next unless upload.respond_to?(:original_filename)
+        if upload.size > 5.megabytes
+          "#{label}: maximum file size is 5 MB."
+        elsif !FarmerTargetApi::TRAINING_PHOTO_CONTENT_TYPES.include?(upload.content_type.to_s.downcase)
+          "#{label}: select an image (JPEG, PNG, WebP, HEIC or HEIF)."
+        end
+      end
+    end
+    return false if errors.empty?
+
+    @records = module_records_required_for_show? ? module_records : []
+    flash.now[:alert] = errors.to_sentence
+    render :show, status: :unprocessable_entity
+    true
   end
 
   def normalize_module_param_value(value)
@@ -13589,6 +13622,9 @@ class ModulesController < ApplicationController
   end
 
   def static_field_options(field)
+    return vrp_name_options if field == "VRP Name"
+    return sidebar_submodule_names if field == "Sub Module Name"
+
     {
       "Month Name" => Date::MONTHNAMES.compact,
       "Financial Year" => financial_year_options,
@@ -13609,8 +13645,6 @@ class ModulesController < ApplicationController
       "Office Level" => ["State", "District", "Block", "Gram Panchayat", "Village"],
       "Parent Office Type" => ["Parent Office", "Sub Parent Office"],
       "Module Name" => ["Jeevika Jankar Registration", "Jeevika Jankar Bill", "Training Form Edit"],
-      "VRP Name" => vrp_name_options,
-      "Sub Module Name" => sidebar_submodule_names
     }[field] || []
   end
 
@@ -13740,7 +13774,8 @@ class ModulesController < ApplicationController
   def vrp_name_options
     return [] unless model_ready?(:Vrp)
 
-    Vrp.order(:name, :id).filter_map { |vrp| vrp_approval_label(vrp) }.uniq
+    @vrp_name_options ||= Vrp.order(:name, :id).pluck(:name, :mobile_no)
+      .filter_map { |name, mobile| [name.presence, mobile.presence].compact.join(" - ").presence }.uniq
   end
 
   def vrp_approval_label(vrp)

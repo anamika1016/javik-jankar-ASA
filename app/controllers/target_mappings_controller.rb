@@ -273,7 +273,7 @@ class TargetMappingsController < ApplicationController
       main_activity_names: [],
       activity_names: [],
       afl_ids: [],
-      training_targets: TRAINING_TARGET_FIELDS.keys,
+      training_targets: TRAINING_TARGET_FIELDS.keys + ["cc"],
       weekly_plan: [
         :main_activity,
         :sub_activity,
@@ -357,7 +357,7 @@ class TargetMappingsController < ApplicationController
   def training_target_attributes
     submitted_targets = target_mapping_params[:training_targets]
 
-    TRAINING_TARGET_FIELDS.keys.index_with do |key|
+    (TRAINING_TARGET_FIELDS.keys + ["cc"]).index_with do |key|
       submitted_targets.respond_to?(:[]) ? submitted_targets[key].to_s.strip.presence : nil
     end.transform_keys { |key| "#{key}_target" }
   end
@@ -1668,7 +1668,7 @@ class TargetMappingsController < ApplicationController
       activity_names: [target.activity_name.to_s].reject(&:blank?),
       target_quantity: target_number_value(target.target_quantity),
       new_farmer_target_quantity: Array(target.afl_ids).blank? && !training_mode ? target_number_value(target.target_quantity) : "",
-      training_targets: TRAINING_TARGET_FIELDS.keys.index_with do |key|
+      training_targets: (TRAINING_TARGET_FIELDS.keys + ["cc"]).index_with do |key|
         target_number_value(target.public_send("#{key}_target"))
       end,
       afl_ids: Array(target.afl_ids).map(&:to_s)
@@ -1716,6 +1716,11 @@ class TargetMappingsController < ApplicationController
     return "Please enter OPG Training before allocating the four training targets." if targets["opg_training"].blank?
 
     opg = integer_plan_value(targets["opg_training"])
+    if targets["cc"].present?
+      cc = integer_plan_value(targets["cc"])
+      return "CC Target must be a non-negative whole number." if cc.nil?
+      return "CC Target cannot exceed OPG Training (#{opg})." if cc > opg
+    end
     breakdown = OPG_BREAKDOWN_KEYS.sum { |key| integer_plan_value(targets[key]).to_i }
     return if breakdown == opg
 

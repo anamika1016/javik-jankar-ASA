@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_15_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_15_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -373,6 +373,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_15_100000) do
   create_table "target_mappings", force: :cascade do |t|
     t.string "activity_name", null: false
     t.text "afl_ids", default: "[]", null: false
+    t.decimal "cc_target", precision: 18, scale: 4
     t.date "completion_date"
     t.datetime "created_at", null: false
     t.bigint "created_by_id"

@@ -49,4 +49,11 @@ class TrainingEditApprovalTest < ActiveSupport::TestCase
     retry_revision = TrainingEditApproval.submit!(record: @record, actor: @actor, proposed: @record.data)
     assert_equal "Pending", retry_revision.data["status"]
   end
+
+  test "named photo view updates preserve previous uploads through approval" do
+    @record.update!(data: @record.data.merge("photo_front_view" => "/uploads/module_records/old-front.png"))
+    revision = TrainingEditApproval.submit!(record: @record, actor: @actor, proposed: @record.data.merge("photo_front_view" => "/uploads/module_records/new-front.png"))
+    assert_equal "/uploads/module_records/old-front.png", @record.reload.data["photo_front_view"]
+    assert_equal ["/uploads/module_records/old-front.png", "/uploads/module_records/new-front.png"], revision.data["proposed"]["photo_front_view"]
+  end
 end

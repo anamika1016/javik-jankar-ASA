@@ -3461,6 +3461,21 @@ function initDeferredLayoutPage() {
     const farmerDialogSave = shell.querySelector("[data-target-dialog-save]");
     const farmerDialogSaveStatus = shell.querySelector("[data-target-dialog-save-status]");
     const form = shell.querySelector("form");
+    const ccTargetInput = shell.querySelector("[data-cc-target-input]");
+    const validateCcTarget = () => {
+      if (!ccTargetInput) return "";
+      ccTargetInput.setCustomValidity("");
+      if (ccTargetInput.disabled) return "";
+      const opgInput = trainingTargetInputs().find((input) => input.dataset.trainingActivityName === "OPG Training");
+      ccTargetInput.max = opgInput?.value.trim() || "0";
+      if (!ccTargetInput.value.trim()) return "";
+      const value = Number(ccTargetInput.value);
+      const message = !Number.isInteger(value) || value < 0
+        ? "CC Target must be a non-negative whole number."
+        : (!opgInput?.value.trim() || value > Number(opgInput.value) ? "CC Target cannot exceed OPG Training." : "");
+      ccTargetInput.setCustomValidity(message);
+      return message;
+    };
     const validateOpgBreakdown = (strict = false) => {
       const inputs = trainingTargetInputs().filter((input) => !input.disabled);
       const opgInput = inputs.find((input) => input.dataset.trainingActivityName === "OPG Training");
@@ -3477,8 +3492,9 @@ function initDeferredLayoutPage() {
         warning.textContent = message || (opgInput?.value.trim() ? `${breakdown} / ${opg} OPG Training allocated` : "");
         warning.hidden = !warning.textContent;
       }
-      return message;
+      return message || validateCcTarget();
     };
+    ccTargetInput?.addEventListener("input", validateCcTarget);
     trainingTargetInputs().forEach((input) => input.addEventListener("input", () => validateOpgBreakdown(false)));
     form?.addEventListener("submit", (event) => {
       const message = validateOpgBreakdown(true);
@@ -3793,6 +3809,12 @@ function initDeferredLayoutPage() {
         input.required = trainingMode && !villageMode;
         if ((!trainingMode || villageMode) && !editTarget.id) input.value = "";
       });
+
+      if (ccTargetInput) {
+        ccTargetInput.disabled = !trainingMode || villageMode;
+        if (ccTargetInput.disabled && !editTarget.id) ccTargetInput.value = "";
+        validateCcTarget();
+      }
 
       syncNewFarmerTargetMode();
     };

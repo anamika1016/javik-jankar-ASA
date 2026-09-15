@@ -2141,7 +2141,7 @@
             <% if other_target_form && @record.blank? && field == "Completion Date" && field_value.blank? %>
               <% field_value = Date.current.to_s %>
             <% end %>
-            <% optional_training_fields = ["Cluster Coordinator Name", "Agronomist Name", "PAPL Staff Name", "External Input"] %>
+            <% optional_training_fields = ["Cluster Coordinator Name", "Agronomist Name", "PAPL Staff Name", "External Input"] + TrainingEditApproval::PHOTO_VIEW_FIELDS.values %>
             <% form_required = (@slug == "training-form" && !optional_training_fields.include?(field)) || other_target_form || add_farmer_form %>
             <% required_attr = form_required ? "required" : nil %>
             <% field_label = other_target_form && field == "Department" ? "FCO Name" : resource_person_label(field) %>
@@ -2152,7 +2152,21 @@
                   <small class="field-hint inline-upload-hint">Select multiple photos · max 5 MB each</small>
                 <% end %>
               </span>
-              <% if add_farmer_form && field == "Mapped Village" %>
+              <% if @slug == "training-form" && TrainingEditApproval::PHOTO_VIEW_FIELDS.key?(field_key) %>
+                <small class="field-hint">Max 5 MB · image</small>
+                <input name="module_record[<%= field_key %>]" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" data-max-size-mb="5">
+                <% Array(raw_field_value).compact_blank.each do |url| %>
+                  <small class="field-hint">Current: <%= link_to File.basename(url.to_s), url, target: "_blank", rel: "noopener" if url.to_s.start_with?("/uploads/module_records/") %></small>
+                <% end %>
+                <% if field_key == "photo_front_view" %>
+                  <input type="hidden" name="module_record[geo_latitude]" data-training-geo-latitude value="<%= @record&.data&.[]('geo_latitude') %>">
+                  <input type="hidden" name="module_record[geo_longitude]" data-training-geo-longitude value="<%= @record&.data&.[]('geo_longitude') %>">
+                  <% legacy_photos = Array(@record&.data&.[]('training_photo_upload_with_geo_tag')) - TrainingEditApproval::PHOTO_VIEW_FIELDS.keys.flat_map { |key| Array(@record&.data&.[](key)) } %>
+                  <% legacy_photos.compact_blank.each do |url| %>
+                    <small class="field-hint">Previously uploaded: <%= link_to File.basename(url.to_s), url, target: "_blank", rel: "noopener" if url.to_s.start_with?("/uploads/module_records/") %></small>
+                  <% end %>
+                <% end %>
+              <% elsif add_farmer_form && field == "Mapped Village" %>
                 <select name="module_record[target_mapping_id]" data-add-farmer-village data-selected-value="<%= ERB::Util.html_escape(@record&.data&.[]("target_mapping_id").to_s) %>" required>
                   <option value="">Select Mapped Village</option>
                   <% add_farmer_form_mappings.each do |mapping| %>

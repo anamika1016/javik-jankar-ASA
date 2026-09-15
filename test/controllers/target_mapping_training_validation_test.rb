@@ -39,4 +39,16 @@ class TargetMappingTrainingValidationTest < Minitest::Test
     refute_nil controller_for(valid_targets.merge("ffs" => "-1")).send(:training_target_opg_error)
     refute_nil controller_for(valid_targets.merge("ffs" => "1")).send(:training_target_opg_error)
   end
+
+  def test_cc_is_independent_of_breakdown_and_cannot_exceed_opg
+    %w[0 1 2].each do |value|
+      assert_nil controller_for(valid_targets.merge("cc" => value)).send(:training_target_opg_error)
+    end
+    %w[3 -1 0.5 nope].each do |value|
+      assert_match "CC Target", controller_for(valid_targets.merge("cc" => value)).send(:training_target_opg_error)
+    end
+    controller = controller_for(valid_targets.merge("cc" => "2"))
+    assert_equal "2", controller.send(:training_target_attributes)["cc_target"]
+    refute controller.send(:selected_training_targets).any? { |name, _| name == "CC Target" }
+  end
 end

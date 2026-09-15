@@ -1,7 +1,8 @@
 class VrpsController < ApplicationController
   helper_method :blank_display, :module_record_label, :module_record_labels, :vrp_detail_hierarchy_label,
                 :vrp_detail_location_label, :vrp_type_labels,
-                :approval_step_closed?, :closing_approval_history, :mapped_office_name?
+                :approval_step_closed?, :closing_approval_history, :mapped_office_name?,
+                :admin_user?
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
 
@@ -50,7 +51,8 @@ class VrpsController < ApplicationController
         to_name: vrp.to_name,
         registered_by: registered_by_name(vrp),
         mapped_cluster_name: vrp.cluster_incharge.presence || "-",
-        status_label: vrp_status_label(vrp)
+        status_label: vrp_status_label(vrp),
+        is_active: vrp.is_active
       }
     end
   end
@@ -135,6 +137,16 @@ class VrpsController < ApplicationController
     active = ActiveModel::Type::Boolean.new.cast(params[:active])
     @vrp.update_columns(is_active: active, updated_at: Time.current)
     redirect_to vrps_path, notice: "Jeevika JankaR marked #{active ? "active" : "inactive"}."
+  end
+
+  def bulk_set_active
+    ids = Array(params[:ids]).map(&:to_i).reject(&:zero?)
+    active = ActiveModel::Type::Boolean.new.cast(params[:active])
+
+    vrps = own_vrps.where(id: ids)
+    vrps.update_all(is_active: active, updated_at: Time.current)
+
+    render json: { success: true, updated: vrps.count }
   end
 
   def approvals

@@ -5,6 +5,23 @@ const vm = require('node:vm');
 const source = fs.readFileSync('app/javascript/layout.js', 'utf8');
 const extract = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 
+test('CC target accepts equality, rejects excess and does not join the OPG breakdown', () => {
+  const cc = { value: '2', setCustomValidity(value) { this.error = value; } };
+  const opg = { value: '2', dataset: { trainingActivityName: 'OPG Training' } };
+  const context = vm.createContext({ ccTargetInput: cc, trainingTargetInputs: () => [opg] });
+  vm.runInContext(extract('    const validateCcTarget =', '    const validateOpgBreakdown =') + '\nthis.validate = validateCcTarget;', context);
+  assert.equal(context.validate(), '');
+  assert.equal(cc.max, '2');
+  cc.value = '3';
+  assert.match(context.validate(), /cannot exceed/);
+  cc.value = '0';
+  assert.equal(context.validate(), '');
+  cc.value = '0.5';
+  assert.match(context.validate(), /whole number/);
+  cc.disabled = true;
+  assert.equal(context.validate(), '');
+});
+
 test('only activity selects are required and manual mode preserves their selections', () => {
   let manual = false;
   const select = { tagName: 'SELECT', options: [{ selected: true }], dispatchEvent() {}, setCustomValidity() {} };

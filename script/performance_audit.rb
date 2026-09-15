@@ -44,6 +44,14 @@ ActiveRecord::Base.transaction do
   stats, compacted = measure_read { controller.send(:compact_lg_directory_rows, directory) }
   raise "Directory output changed" unless compacted == directory.last(2_000)
   report[:benchmarks][:directory_4000_rows] = stats.merge(rows: compacted.size)
+  attributes = { aadhar_no: "123456789012", account_no: "123", address: "Test", branch: "Test",
+    date_of_birth: Date.new(1990, 1, 1), date_of_joining: Date.current, email: "audit@example.test",
+    experience_in_years: 0, father_husband_name: "Test", gender: 1, ifsc_code: "TEST0123456",
+    mobile_no: "9876543210", office_detail_id: 0, to_office_detail_id: 0, created_at: now, updated_at: now,
+    agreement_signature_data: "x" * 4096 }
+  Vrp.insert_all!(500.times.map { |index| attributes.merge(name: "Audit JJ #{index}") })
+  stats, = measure_read { 10.times { controller.send(:static_field_options, "Month Name") } }
+  report[:benchmarks][:ordinary_options_with_500_jjs] = stats
   raise ActiveRecord::Rollback
 end
 

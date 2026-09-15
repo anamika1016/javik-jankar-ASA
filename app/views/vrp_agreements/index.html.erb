@@ -25,11 +25,14 @@
           <tr>
             <th>Name</th>
             <th>Village</th>
+            <th>FCO Name</th>
             <th>Mobile Number</th>
             <th>Accepted At</th>
             <th>Signature</th>
             <th>View</th>
-            <th>Action</th>
+            <% if agreement_admin_user? %>
+              <th>Action</th>
+            <% end %>
           </tr>
         </thead>
         <tbody>
@@ -38,16 +41,19 @@
               <tr>
                 <td><%= agreement[:name] %></td>
                 <td><%= agreement[:village] %></td>
+                <td><%= agreement[:fcoc] %></td>
                 <td><%= agreement[:mobile_no] %></td>
                 <td><%= agreement[:accepted_at].presence || "-" %></td>
                 <td><%= agreement[:signature_present] ? "Signed" : "Pending" %></td>
                 <td><%= link_to "Open", vrp_agreement_record_path(agreement[:id]), class: "table-action", target: "_blank", rel: "noopener" %></td>
-                <td><%= button_to "Delete", reset_vrp_agreement_path(agreement[:id]), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this agreement and require signature again?" } } %></td>
+                <% if agreement_admin_user? %>
+                  <td><%= button_to "Delete", reset_vrp_agreement_path(agreement[:id]), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this agreement and require signature again?" } } %></td>
+                <% end %>
               </tr>
             <% end %>
           <% else %>
             <tr>
-              <td colspan="7">No signed agreements found yet.</td>
+              <td colspan="8">No signed agreements found yet.</td>
             </tr>
           <% end %>
         </tbody>

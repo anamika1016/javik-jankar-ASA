@@ -244,6 +244,7 @@ Rails.application.routes.draw do
     collection do
       get :approvals
       get :location_options
+      patch :bulk_set_active
     end
 
     member do
