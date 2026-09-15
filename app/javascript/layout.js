@@ -3786,6 +3786,7 @@ function initDeferredLayoutPage() {
 
       trainingTargetInputs().forEach((input) => {
         input.disabled = !trainingMode || villageMode;
+        input.required = trainingMode && !villageMode;
         if ((!trainingMode || villageMode) && !editTarget.id) input.value = "";
       });
 
@@ -4379,6 +4380,13 @@ function initDeferredLayoutPage() {
       }
 
       if (trainingActivityTypeSelected() && !villageTargetMode()) {
+        const missing = trainingTargetInputs().find((input) => !input.value.trim());
+        if (missing) {
+          event.preventDefault();
+          missing.focus();
+          window.alert("Please fill all five Training Monthly Target fields. Enter 0 for sub-targets with no allocation.");
+          return;
+        }
         const filled = filledTrainingTargets();
         const opgInput = trainingTargetInputs().find((input) => input.dataset.trainingActivityName === "OPG Training");
         const invalid = filled.find((input) => {

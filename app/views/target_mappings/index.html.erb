@@ -159,7 +159,7 @@
                 ["FFS", "ffs"]
               ].each do |label, key| %>
                 <label>
-                  <span><%= label == "FFS" ? "Exposer" : label %></span>
+                  <span><%= label == "FFS" ? "Exposer" : label %> *</span>
                   <input type="number"
                          name="target_mapping[training_targets][<%= key %>]"
                          min="0"

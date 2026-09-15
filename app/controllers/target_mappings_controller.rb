@@ -1701,6 +1701,13 @@ class TargetMappingsController < ApplicationController
   end
   def training_target_opg_error
     targets = target_mapping_params[:training_targets]
+    if training_target_mode? && !village_target_mode?
+      missing = TRAINING_TARGET_FIELDS.keys.select { |key| !targets.respond_to?(:[]) || targets[key].blank? }
+      if missing.any?
+        labels = missing.map { |key| key == "ffs" ? "Exposer" : TRAINING_TARGET_FIELDS[key] }
+        return "Please fill #{labels.join(', ')}. Enter 0 for sub-targets with no allocation."
+      end
+    end
     return unless targets.respond_to?(:[])
 
     supplied = TRAINING_TARGET_FIELDS.keys.select { |key| targets[key].present? }
