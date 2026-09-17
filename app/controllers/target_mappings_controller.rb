@@ -356,10 +356,11 @@ class TargetMappingsController < ApplicationController
 
   def training_target_attributes
     submitted_targets = target_mapping_params[:training_targets]
+    valid_columns = TargetMapping.column_names
 
     (TRAINING_TARGET_FIELDS.keys + ["cc"]).index_with do |key|
       submitted_targets.respond_to?(:[]) ? submitted_targets[key].to_s.strip.presence : nil
-    end.transform_keys { |key| "#{key}_target" }
+    end.transform_keys { |key| "#{key}_target" }.select { |col, _| valid_columns.include?(col) }
   end
 
   def weekly_plan_rows
