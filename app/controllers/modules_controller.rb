@@ -136,6 +136,7 @@ class ModulesController < ApplicationController
         "Male Count",
         "Female Count",
         "Total Farmer Count",
+        "Other Farmer Count",
         "Next Farmer Training Date",
         "Training Register Upload",
         *TrainingEditApproval::PHOTO_VIEW_FIELDS.values

@@ -3978,7 +3978,7 @@ function initDeferredLayoutPage() {
       const totalHeader = weeklyHeaderRow?.querySelector("th:nth-last-child(2)");
       if (totalHeader) totalHeader.hidden = villageTargetMode();
 
-      weeklySummary.hidden = rows.length === 0;
+      weeklySummary.hidden = villageTargetMode();
       weeklySummary.classList.toggle("target-weekly-village-mode", villageTargetMode());
       if (!rows.length) {
         weeklyRows.innerHTML = `<tr><td colspan="${villageTargetMode() ? 6 : 8}">Select Main Activity to view weekly plan.</td></tr>`;
@@ -5904,10 +5904,11 @@ function initDeferredLayoutPage() {
 
     const hiddenInput = (name, value) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`;
 
+    const JEEVIKA_BILL_FIXED_TOTAL = 5000;
+
     const recalculateJeevikaBill = () => {
       let totalTarget = 0;
       let totalAchievement = 0;
-      let grandTotal = 0;
       const totalsByTarget = new Map();
       rowInputs().forEach((row) => {
         const target = numberValue(row.dataset.targetQuantity);
@@ -5917,9 +5918,6 @@ function initDeferredLayoutPage() {
         const achievement = manualAchievement ? numberValue(achievementInput?.value) : numberValue(row.dataset.achievementCount);
         const pendingBase = row.dataset.mainActivityType === "other" ? target : (assigned > 0 ? assigned : target);
         const pending = Math.max(pendingBase - achievement, 0);
-        const rate = numberValue(row.querySelector("[data-jeevika-rate]")?.value);
-        const amount = achievement * rate;
-        const amountInput = row.querySelector("[data-jeevika-amount]");
         const achievementDisplay = row.querySelector("[data-jeevika-achievement-display]");
         const pendingDisplay = row.querySelector("[data-jeevika-pending-display]");
         const pendingInput = row.querySelector("[data-jeevika-pending-input]");
@@ -5930,13 +5928,11 @@ function initDeferredLayoutPage() {
         groupedTotal.target = Math.max(groupedTotal.target, pendingBase);
         groupedTotal.achievement += achievement;
         totalsByTarget.set(targetKey, groupedTotal);
-        grandTotal += amount;
         row.dataset.currentAchievement = String(achievement);
         if (achievementDisplay) achievementDisplay.textContent = String(achievement);
         if (pendingDisplay) pendingDisplay.textContent = String(pending);
         if (pendingInput) pendingInput.value = String(pending);
         if (farmerSummaryCount) farmerSummaryCount.textContent = String(achievement);
-        if (amountInput) amountInput.value = amount.toFixed(2);
       });
 
       totalsByTarget.forEach((groupedTotal) => {
@@ -5956,7 +5952,7 @@ function initDeferredLayoutPage() {
 
       if (totalTargetInput) totalTargetInput.value = String(totalTarget);
       if (totalAchievementInput) totalAchievementInput.value = String(totalAchievement);
-      if (grandTotalInput) grandTotalInput.value = grandTotal.toFixed(2);
+      if (grandTotalInput && !grandTotalInput.dataset.userEdited) grandTotalInput.value = JEEVIKA_BILL_FIXED_TOTAL.toFixed(2);
       syncPaymentRemarks();
     };
 
@@ -5996,28 +5992,28 @@ function initDeferredLayoutPage() {
       const selectedMonth = normalizedMonth(selectedMonthValue);
 
       if (!selectedMonth) {
-        rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">Select Bill Month to load Jeevika Jankar Name.</td></tr>`;
+        rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="7">Select Bill Month to load Jeevika Jankar Name.</td></tr>`;
         recalculateJeevikaBill();
         return;
       }
 
       if (!selectedVrp) {
         if (vrpSelect) vrpSelect.selectedIndex = 0;
-        rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">Select Jeevika Jankar Name to load target achievement list.</td></tr>`;
+        rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="7">Select Jeevika Jankar Name to load target achievement list.</td></tr>`;
         recalculateJeevikaBill();
         return;
       }
 
       const loadKey = billRowsKey(selectedVrp, selectedMonthValue);
       activeBillRowsKey = loadKey;
-      rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">Loading target achievement list...</td></tr>`;
+      rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="7">Loading target achievement list...</td></tr>`;
 
       let loadedData = { rows: [] };
       try {
         loadedData = await loadBillRowsForSelection(selectedVrp, selectedMonthValue);
       } catch (_error) {
         if (activeBillRowsKey === loadKey) {
-          rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">Target achievement list load failed. Please try again.</td></tr>`;
+          rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="7">Target achievement list load failed. Please try again.</td></tr>`;
           recalculateJeevikaBill();
         }
         return;
@@ -6029,7 +6025,7 @@ function initDeferredLayoutPage() {
       targetSummary = loadedData.targetSummary || targetSummary || {};
 
       if (!rows.length) {
-        rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">No target mapping found for selected Jeevika Jankar.</td></tr>`;
+        rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="7">No target mapping found for selected Jeevika Jankar.</td></tr>`;
         recalculateJeevikaBill();
         return;
       }
@@ -6083,11 +6079,11 @@ function initDeferredLayoutPage() {
                 : `<span data-jeevika-achievement-display>${escapeHtml(achievementCount)}</span>`}
             </td>
             <td><span data-jeevika-pending-display>${escapeHtml(pendingCount)}</span></td>
-            <td><input type="number" min="0" step="0.01" name="${inputPrefix}[rate]" value="${escapeHtml(rate)}" data-jeevika-rate></td>
-            <td><input type="number" min="0" step="0.01" name="${inputPrefix}[amount]" value="${escapeHtml(savedItem.amount || "0.00")}" data-jeevika-amount readonly></td>
+            ${hiddenInput(`${inputPrefix}[rate]`, rate)}
+            ${hiddenInput(`${inputPrefix}[amount]`, savedItem.amount || "0.00")}
           </tr>
           <tr class="jeevika-farmer-row">
-            <td colspan="9">
+            <td colspan="7">
               <details class="jeevika-farmer-details">
                 <summary data-jeevika-farmer-summary="${index}">Farmer List <span data-jeevika-farmer-achievement>${escapeHtml(achievementCount)}</span> / ${escapeHtml(assignedCount)}</summary>
                 ${farmerDetailsHtml(row.farmer_details || [])}
@@ -6101,9 +6097,12 @@ function initDeferredLayoutPage() {
     };
 
     rowsBody?.addEventListener("input", (event) => {
-      if (event.target.matches("[data-jeevika-rate], [data-jeevika-achievement]")) recalculateJeevikaBill();
+      if (event.target.matches("[data-jeevika-achievement]")) recalculateJeevikaBill();
     });
-    grandTotalInput?.addEventListener("input", syncPaymentRemarks);
+    grandTotalInput?.addEventListener("input", () => {
+      grandTotalInput.dataset.userEdited = "true";
+      syncPaymentRemarks();
+    });
     billForm.querySelector("form")?.addEventListener("submit", (event) => {
       if (rowInputs().length > 0) return;
 

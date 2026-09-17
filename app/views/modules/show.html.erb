@@ -864,13 +864,11 @@
                 <th>Target</th>
                 <th>Achievement</th>
                 <th>Pending</th>
-                <th>Rate</th>
-                <th>Amount</th>
               </tr>
             </thead>
             <tbody data-jeevika-bill-rows>
               <tr data-empty-bill-row>
-                <td colspan="9">Select Jeevika Jankar Name to load all mapped target achievement list.</td>
+                <td colspan="7">Select Jeevika Jankar Name to load all mapped target achievement list.</td>
               </tr>
             </tbody>
           </table>
@@ -880,6 +878,7 @@
           <label>
             <span>Total Payment</span>
             <input name="module_record[grand_total]" type="number" min="0.01"
+              max="<%= ModulesController::JEEVIKA_JANKAR_BILL_FIXED_TOTAL.to_i %>"
               step="0.01"
               value="<%= @record&.data&.[]("grand_total").presence || format("%.2f", ModulesController::JEEVIKA_JANKAR_BILL_FIXED_TOTAL) %>"
               data-jeevika-grand-total required>
@@ -2094,8 +2093,37 @@
         <% end %>
         <% selected_training_farmer_ids = Array(@record&.data&.[]("selected_farmer_ids")).map(&:to_s) if @slug == "training-form" %>
         <% selected_seed_target_farmer_ids = Array(@record&.data&.[]("selected_farmer_ids")).map(&:to_s) if other_target_form %>
-        <div class="module-form-grid <%= "user-registration-grid" if @slug == "new-user" || (@slug == "all-user" && @record.present?) %>">
+        <% training_form_sections = {
+          "Month" => { number: "01", title: "Location & reporting period", desc: "Choose the month and location for this session." },
+          "Trainer Name" => { number: "02", title: "Trainer & resource persons", desc: "Contact details and staff involved in the training." },
+          "Training Date" => { number: "03", title: "Training details", desc: "Record the Major Work Indicator, method and session description." },
+          "Farmer Count" => { number: "04", title: "Farmer participation", desc: "Participant counts and the next training date." },
+          "Training Register Upload" => { number: "05", title: "Photos & documentation", desc: "Training major work indicator photos · Up to 5 per field · Max 5 MB per image." }
+        } if @slug == "training-form" %>
+        <% training_form_labels = {
+          "ICS / Block" => "ICS Name",
+          "Gram Name" => "Village Name",
+          "External Input" => "Internal Inspector Name",
+          "Main Activity" => "Main Major Work Indicator",
+          "Sub Activity" => "Sub Major Work Indicator",
+          "Photo Front View" => "Opening/Introduction Photo — Trainer",
+          "Photo Back View" => "Training Major Work Indicator Photo — Trainer",
+          "Photo Close-up View" => "Farmer Interaction Photo",
+          "Photo Long Shot" => "Wide Group Photo",
+          "Training Register Upload" => "Evidence/Documentation Photo"
+        } if @slug == "training-form" %>
+        <div class="module-form-grid <%= "user-registration-grid" if @slug == "new-user" || (@slug == "all-user" && @record.present?) %> <%= "training-form-grid" if @slug == "training-form" %>">
           <% @module[:fields].each do |field| %>
+            <% if @slug == "training-form" && training_form_sections&.key?(field) %>
+              <% sec = training_form_sections[field] %>
+              <div class="training-section-header">
+                <span class="training-section-number"><%= sec[:number] %></span>
+                <div>
+                  <h3 class="training-section-title"><%= sec[:title] %></h3>
+                  <p class="training-section-desc"><%= sec[:desc] %></p>
+                </div>
+              </div>
+            <% end %>
             <% field_key = field.parameterize(separator: "_") %>
             <% raw_field_value = @record&.data&.[](field_key) %>
             <% field_value = raw_field_value.is_a?(Array) ? raw_field_value.join(", ") : raw_field_value.to_s %>
@@ -2144,7 +2172,13 @@
             <% optional_training_fields = ["Cluster Coordinator Name", "Agronomist Name", "PAPL Staff Name", "External Input"] + TrainingEditApproval::PHOTO_VIEW_FIELDS.values %>
             <% form_required = (@slug == "training-form" && !optional_training_fields.include?(field)) || other_target_form || add_farmer_form %>
             <% required_attr = form_required ? "required" : nil %>
-            <% field_label = other_target_form && field == "Department" ? "FCO Name" : resource_person_label(field) %>
+            <% field_label = if @slug == "training-form" && training_form_labels&.key?(field)
+                              training_form_labels[field]
+                            elsif other_target_form && field == "Department"
+                              "FCO Name"
+                            else
+                              resource_person_label(field)
+                            end %>
             <label>
               <span>
                 <%= field_label %>
@@ -2152,13 +2186,14 @@
                   <small class="field-hint inline-upload-hint">Select multiple photos · max 5 MB each</small>
                 <% end %>
               </span>
-              <% if @slug == "training-form" && TrainingEditApproval::PHOTO_VIEW_FIELDS.key?(field_key) %>
+              <% photo_view_key = field_key.tr("-", "_") %>
+              <% if @slug == "training-form" && TrainingEditApproval::PHOTO_VIEW_FIELDS.key?(photo_view_key) %>
                 <small class="field-hint">Max 5 MB · image</small>
-                <input name="module_record[<%= field_key %>]" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" data-max-size-mb="5">
+                <input name="module_record[<%= photo_view_key %>]" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" data-max-size-mb="5">
                 <% Array(raw_field_value).compact_blank.each do |url| %>
                   <small class="field-hint">Current: <%= link_to File.basename(url.to_s), url, target: "_blank", rel: "noopener" if url.to_s.start_with?("/uploads/module_records/") %></small>
                 <% end %>
-                <% if field_key == "photo_front_view" %>
+                <% if photo_view_key == "photo_front_view" %>
                   <input type="hidden" name="module_record[geo_latitude]" data-training-geo-latitude value="<%= @record&.data&.[]('geo_latitude') %>">
                   <input type="hidden" name="module_record[geo_longitude]" data-training-geo-longitude value="<%= @record&.data&.[]('geo_longitude') %>">
                   <% legacy_photos = Array(@record&.data&.[]('training_photo_upload_with_geo_tag')) - TrainingEditApproval::PHOTO_VIEW_FIELDS.keys.flat_map { |key| Array(@record&.data&.[](key)) } %>
@@ -2277,7 +2312,7 @@
                 <input name="module_record[<%= field_key %>]" type="password" placeholder="Enter <%= field %>" value="<%= field_value %>" <%= required_attr %>>
               <% elsif field.downcase.include?("date") %>
                 <input name="module_record[<%= field_key %>]" type="date" value="<%= field_value %>" <%= required_attr %>>
-              <% elsif @slug == "training-form" && ["Farmer Count", "Male Count", "Female Count", "Total Farmer Count"].include?(field) %>
+              <% elsif @slug == "training-form" && ["Farmer Count", "Male Count", "Female Count", "Total Farmer Count", "Other Farmer Count"].include?(field) %>
                 <% training_count_attr =
                   case field
                   when "Farmer Count"
@@ -2300,19 +2335,26 @@
                 <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= field_label %>" value="<%= field_value %>" <%= "readonly" if @slug == "training-form" && ["FCO Name", "Trainee Department", "Trainer Name", "Trainer Contact"].include?(field) && current_app_user&.dig("record_type").to_s == "Vrp" %> <%= "data-user-management-role-input" if @slug == "role-management" && field == "User Management Role" %> <%= required_attr %>>
               <% end %>
             </label>
-            <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
+            <% if @slug == "training-form" && field == "Photo Long Shot" %>
+              <div class="training-section-header">
+                <span class="training-section-number">06</span>
+                <div>
+                  <h3 class="training-section-title">Select target farmers</h3>
+                  <p class="training-section-desc">Search the mapped farmers and select participants for this session.</p>
+                </div>
+              </div>
               <div class="training-farmer-panel" data-training-farmer-panel data-selected-farmer-ids="<%= json_escape((selected_training_farmer_ids || []).to_json) %>">
                 <div class="target-mapping-toolbar">
                   <strong>Target Farmers</strong>
                   <button type="button" class="list-btn active training-select-all-button" data-training-farmer-select-all-button>Select all</button>
-                  <span data-training-farmer-count>0 farmer selected</span>
+                  <span data-training-farmer-count>0 selected / 0 mapped farmers</span>
                 </div>
                 <div class="target-mapping-toolbar farmer-search-toolbar">
                   <input type="search" placeholder="Search target farmers" data-training-farmer-search>
                 </div>
               <div class="training-empty-state" data-training-farmer-search-empty hidden>No target farmers matched your search.</div>
               <div class="vrp-ics-farmer-list" data-training-farmer-list>
-                Select Village Name to load target farmers.
+                Select Month to load target farmers.
               </div>
               <script>
                 (() => {

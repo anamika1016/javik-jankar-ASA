@@ -1807,16 +1807,20 @@ function initDeferredLayoutPage() {
 
     const selectedValues = uniquePresent(locationSelectedValuesFromDataset(select).concat(selectedLocationValues(select)));
     const blankOption = originalOptions.find((option) => option.value === "") || { value: "", label: `Select ${level}` };
+    const rowValues = allowedRows.map((row) => [row.id].concat(locationRowValues(row, locationKeys[level])).map(normalizeOption));
+    const allowedValues = new Set(rowValues.flat());
     const filteredOptions = originalOptions.filter((option) => {
       if (option.value === "") return false;
-      return allowedRows.some((row) => optionMatchesLocationRow(option, row, level));
+      return allowedValues.has(normalizeOption(option.value)) || allowedValues.has(normalizeOption(option.label || option.textContent));
     });
+    const matchedValues = new Set(filteredOptions.flatMap((option) => [normalizeOption(option.value), normalizeOption(option.label || option.textContent)]));
 
     // Directory rows can contain locations absent from the separate master options.
-    allowedRows.forEach((row) => {
+    allowedRows.forEach((row, index) => {
       const label = row[locationKeys[level]];
-      if (!label || filteredOptions.some((option) => optionMatchesLocationRow(option, row, level))) return;
+      if (!label || rowValues[index].some((value) => matchedValues.has(value))) return;
       filteredOptions.push({ value: label, label });
+      matchedValues.add(normalizeOption(label));
     });
 
     const parentSelected = (locationParents[level] || []).every((parentLevel) => {
@@ -3457,6 +3461,21 @@ function initDeferredLayoutPage() {
     const farmerDialogSave = shell.querySelector("[data-target-dialog-save]");
     const farmerDialogSaveStatus = shell.querySelector("[data-target-dialog-save-status]");
     const form = shell.querySelector("form");
+    const ccTargetInput = shell.querySelector("[data-cc-target-input]");
+    const validateCcTarget = () => {
+      if (!ccTargetInput) return "";
+      ccTargetInput.setCustomValidity("");
+      if (ccTargetInput.disabled) return "";
+      const opgInput = trainingTargetInputs().find((input) => input.dataset.trainingActivityName === "OPG Training");
+      ccTargetInput.max = opgInput?.value.trim() || "0";
+      if (!ccTargetInput.value.trim()) return "";
+      const value = Number(ccTargetInput.value);
+      const message = !Number.isInteger(value) || value < 0
+        ? "CC Target must be a non-negative whole number."
+        : (!opgInput?.value.trim() || value > Number(opgInput.value) ? "CC Target cannot exceed OPG Training." : "");
+      ccTargetInput.setCustomValidity(message);
+      return message;
+    };
     const validateOpgBreakdown = (strict = false) => {
       const inputs = trainingTargetInputs().filter((input) => !input.disabled);
       const opgInput = inputs.find((input) => input.dataset.trainingActivityName === "OPG Training");
@@ -3473,8 +3492,9 @@ function initDeferredLayoutPage() {
         warning.textContent = message || (opgInput?.value.trim() ? `${breakdown} / ${opg} OPG Training allocated` : "");
         warning.hidden = !warning.textContent;
       }
-      return message;
+      return message || validateCcTarget();
     };
+    ccTargetInput?.addEventListener("input", validateCcTarget);
     trainingTargetInputs().forEach((input) => input.addEventListener("input", () => validateOpgBreakdown(false)));
     form?.addEventListener("submit", (event) => {
       const message = validateOpgBreakdown(true);
@@ -3786,8 +3806,15 @@ function initDeferredLayoutPage() {
 
       trainingTargetInputs().forEach((input) => {
         input.disabled = !trainingMode || villageMode;
+        input.required = trainingMode && !villageMode;
         if ((!trainingMode || villageMode) && !editTarget.id) input.value = "";
       });
+
+      if (ccTargetInput) {
+        ccTargetInput.disabled = !trainingMode || villageMode;
+        if (ccTargetInput.disabled && !editTarget.id) ccTargetInput.value = "";
+        validateCcTarget();
+      }
 
       syncNewFarmerTargetMode();
     };
@@ -4379,6 +4406,13 @@ function initDeferredLayoutPage() {
       }
 
       if (trainingActivityTypeSelected() && !villageTargetMode()) {
+        const missing = trainingTargetInputs().find((input) => !input.value.trim());
+        if (missing) {
+          event.preventDefault();
+          missing.focus();
+          window.alert("Please fill all five Training Monthly Target fields. Enter 0 for sub-targets with no allocation.");
+          return;
+        }
         const filled = filledTrainingTargets();
         const opgInput = trainingTargetInputs().find((input) => input.dataset.trainingActivityName === "OPG Training");
         const invalid = filled.find((input) => {
@@ -5870,10 +5904,11 @@ function initDeferredLayoutPage() {
 
     const hiddenInput = (name, value) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`;
 
+    const JEEVIKA_BILL_FIXED_TOTAL = 5000;
+
     const recalculateJeevikaBill = () => {
       let totalTarget = 0;
       let totalAchievement = 0;
-      let grandTotal = 0;
       const totalsByTarget = new Map();
       rowInputs().forEach((row) => {
         const target = numberValue(row.dataset.targetQuantity);
@@ -5883,9 +5918,6 @@ function initDeferredLayoutPage() {
         const achievement = manualAchievement ? numberValue(achievementInput?.value) : numberValue(row.dataset.achievementCount);
         const pendingBase = row.dataset.mainActivityType === "other" ? target : (assigned > 0 ? assigned : target);
         const pending = Math.max(pendingBase - achievement, 0);
-        const rate = numberValue(row.querySelector("[data-jeevika-rate]")?.value);
-        const amount = achievement * rate;
-        const amountInput = row.querySelector("[data-jeevika-amount]");
         const achievementDisplay = row.querySelector("[data-jeevika-achievement-display]");
         const pendingDisplay = row.querySelector("[data-jeevika-pending-display]");
         const pendingInput = row.querySelector("[data-jeevika-pending-input]");
@@ -5896,13 +5928,11 @@ function initDeferredLayoutPage() {
         groupedTotal.target = Math.max(groupedTotal.target, pendingBase);
         groupedTotal.achievement += achievement;
         totalsByTarget.set(targetKey, groupedTotal);
-        grandTotal += amount;
         row.dataset.currentAchievement = String(achievement);
         if (achievementDisplay) achievementDisplay.textContent = String(achievement);
         if (pendingDisplay) pendingDisplay.textContent = String(pending);
         if (pendingInput) pendingInput.value = String(pending);
         if (farmerSummaryCount) farmerSummaryCount.textContent = String(achievement);
-        if (amountInput) amountInput.value = amount.toFixed(2);
       });
 
       totalsByTarget.forEach((groupedTotal) => {
@@ -5922,7 +5952,7 @@ function initDeferredLayoutPage() {
 
       if (totalTargetInput) totalTargetInput.value = String(totalTarget);
       if (totalAchievementInput) totalAchievementInput.value = String(totalAchievement);
-      if (grandTotalInput) grandTotalInput.value = grandTotal.toFixed(2);
+      if (grandTotalInput && !grandTotalInput.dataset.userEdited) grandTotalInput.value = JEEVIKA_BILL_FIXED_TOTAL.toFixed(2);
       syncPaymentRemarks();
     };
 
@@ -6049,11 +6079,11 @@ function initDeferredLayoutPage() {
                 : `<span data-jeevika-achievement-display>${escapeHtml(achievementCount)}</span>`}
             </td>
             <td><span data-jeevika-pending-display>${escapeHtml(pendingCount)}</span></td>
-            <td><input type="number" min="0" step="0.01" name="${inputPrefix}[rate]" value="${escapeHtml(rate)}" data-jeevika-rate></td>
-            <td><input type="number" min="0" step="0.01" name="${inputPrefix}[amount]" value="${escapeHtml(savedItem.amount || "0.00")}" data-jeevika-amount readonly></td>
+            ${hiddenInput(`${inputPrefix}[rate]`, rate)}
+            ${hiddenInput(`${inputPrefix}[amount]`, savedItem.amount || "0.00")}
           </tr>
           <tr class="jeevika-farmer-row">
-            <td colspan="9">
+            <td colspan="7">
               <details class="jeevika-farmer-details">
                 <summary data-jeevika-farmer-summary="${index}">Farmer List <span data-jeevika-farmer-achievement>${escapeHtml(achievementCount)}</span> / ${escapeHtml(assignedCount)}</summary>
                 ${farmerDetailsHtml(row.farmer_details || [])}
@@ -6067,9 +6097,12 @@ function initDeferredLayoutPage() {
     };
 
     rowsBody?.addEventListener("input", (event) => {
-      if (event.target.matches("[data-jeevika-rate], [data-jeevika-achievement]")) recalculateJeevikaBill();
+      if (event.target.matches("[data-jeevika-achievement]")) recalculateJeevikaBill();
     });
-    grandTotalInput?.addEventListener("input", syncPaymentRemarks);
+    grandTotalInput?.addEventListener("input", () => {
+      grandTotalInput.dataset.userEdited = "true";
+      syncPaymentRemarks();
+    });
     billForm.querySelector("form")?.addEventListener("submit", (event) => {
       if (rowInputs().length > 0) return;
 

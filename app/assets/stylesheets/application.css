@@ -3975,6 +3975,58 @@ body {
   resize: vertical;
 }
 
+/* Training Form — sectioned layout */
+.module-form-grid.training-form-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.training-section-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px 20px;
+  margin-top: 8px;
+  background: linear-gradient(135deg, #f0faf0 0%, #e8f5e9 100%);
+  border: 1px solid #c8e6c9;
+  border-radius: 12px;
+}
+
+.training-section-header:first-child {
+  margin-top: 0;
+}
+
+.training-section-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #4caf50;
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.training-section-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #2b373d;
+  line-height: 1.3;
+}
+
+.training-section-desc {
+  margin: 3px 0 0;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: #6b7b82;
+  line-height: 1.4;
+}
+
 .approval-channel-card {
   padding: 18px;
 }
@@ -7047,6 +7099,7 @@ body {
 
   .module-form-grid,
   .module-form-grid.user-registration-grid,
+  .module-form-grid.training-form-grid,
   .vrp-form-grid,
   .access-top-grid,
   .lg-directory-filter,
