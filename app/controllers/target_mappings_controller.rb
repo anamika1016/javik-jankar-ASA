@@ -36,6 +36,11 @@ class TargetMappingsController < ApplicationController
     @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && @admin_mapping_actions
     @edit_payload = edit_payload(@edit_target)
     @sub_activity_options = target_sub_activity_options(@edit_target&.main_activity_name)
+
+    respond_to do |format|
+      format.html
+      format.xlsx { send_target_mappings_xlsx }
+    end
   end
 
   def create
@@ -1587,6 +1592,50 @@ class TargetMappingsController < ApplicationController
         farmer_ids: normalized_afl_ids(target.afl_ids)
       }
     end
+  end
+
+  def send_target_mappings_xlsx
+    has_cc = TargetMapping.column_names.include?("cc_target")
+    headers = [
+      "Jeevika Jankar", "FCO", "ICS", "Village", "Month", "Completion Date",
+      "Main Activity", "Sub Activity",
+      "OPG Training", "General Training/Meeting", "Input Demo INM", "Input Demo PM", "Exposer",
+      *(has_cc ? ["CC Target"] : []),
+      "Farmer Target", "Week 1", "Week 2", "Week 3", "Week 4", "Farmer Count"
+    ]
+
+    rows = @target_mapping_rows.map do |row|
+      target = row[:target]
+      week_vals = Array(row[:weekly_values]).presence || target.weekly_target_values
+      farmer_count = Array(row[:farmer_ids]).reject(&:blank?).size
+
+      [
+        target.vrp&.name,
+        target.fco_name.presence || target.fco_id,
+        target.ics_name.presence || target.ics_id,
+        target.village_name.presence || target.village_id,
+        target.month_name,
+        target.completion_date&.strftime("%d-%m-%Y"),
+        Array(row[:main_activities]).join(", "),
+        Array(row[:sub_activities]).join(", "),
+        target.opg_training_target,
+        target.week_wise_opg_target,
+        target.input_demo_inm_target,
+        target.input_demo_pm_target,
+        target.ffs_target,
+        *(has_cc ? [target.cc_target] : []),
+        row[:target_quantity],
+        week_vals[0], week_vals[1], week_vals[2], week_vals[3],
+        farmer_count
+      ]
+    end
+
+    send_xlsx(
+      headers: headers,
+      rows: rows,
+      filename: "target-mappings-#{Time.current.strftime('%Y%m%d%H%M')}.xlsx",
+      sheet_name: "Target Mappings"
+    )
   end
 
   def visible_vrp_ics_mappings

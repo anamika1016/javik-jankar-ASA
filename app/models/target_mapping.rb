@@ -17,8 +17,10 @@ class TargetMapping < ApplicationRecord
             presence: true
 
   validates :target_quantity, numericality: { greater_than_or_equal_to: 0 }
-  validates :cc_target, numericality: { only_integer: true, greater_than_or_equal_to: 0 }, allow_nil: true
-  validate :cc_target_within_opg_training
+  if column_names.include?("cc_target")
+    validates :cc_target, numericality: { only_integer: true, greater_than_or_equal_to: 0 }, allow_nil: true
+    validate :cc_target_within_opg_training
+  end
 
   def weekly_target_values
     saved = [week_1_target, week_2_target, week_3_target, week_4_target]
@@ -32,6 +34,7 @@ class TargetMapping < ApplicationRecord
   private
 
   def cc_target_within_opg_training
+    return unless has_attribute?(:cc_target)
     return if cc_target.nil?
 
     if opg_training_target.nil? || cc_target > opg_training_target
