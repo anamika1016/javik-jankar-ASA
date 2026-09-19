@@ -11,7 +11,7 @@ class JjQuizzesController < ApplicationController
     @questions = @quiz.questions.ordered
     @attempts = @quiz.attempts.includes(:vrp, :answers).recent.limit(10)
     @exam_start_url = start_jj_exam_url(@quiz)
-    @exam_start_qr_svg = SimpleQrCode.svg(@exam_start_url, size: 220) if @quiz.active_for_exam?
+    @exam_start_qr_svg = SimpleQrCode.svg(@exam_start_url, size: 220) if @quiz.shareable_for_exam?
     @exam_share_text = "Jeevika Jankar Exam: #{@quiz.title}\nScan this QR/link, login with JJ User ID and password, then start the exam:\n#{@exam_start_url}"
     @whatsapp_share_url = "https://wa.me/?text=#{ERB::Util.url_encode(@exam_share_text)}"
   end

@@ -14,7 +14,27 @@ class JjQuizzesControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert_includes response.body, "Share Exam QR"
-    assert_includes response.body, "Share on WhatsApp"
+    assert_includes response.body, "Share Link on WhatsApp"
+    assert_includes response.body, start_jj_exam_url(quiz)
+  end
+
+  test "show renders direct link and qr for scheduled exam without bypassing schedule" do
+    admin = create_admin_user
+    quiz = create_quiz(title: "Future JJ Exam", starts_at: 1.day.from_now, ends_at: 2.days.from_now)
+    create_question(quiz)
+
+    post login_path, params: { login: admin.user_name, password: "secret" }
+    get jj_quiz_path(quiz)
+
+    assert_response :success
+    assert_includes response.body, "Share Exam QR / Link"
+    assert_includes response.body, "Open Exam Link"
+    assert_includes response.body, "Share Link on WhatsApp"
+    assert_includes response.body, "Copy Link"
+    assert_includes response.body, "Scheduled"
+    assert_includes response.body, "se start hoga."
+    assert_not_includes response.body, "Activate Exam Now"
+    assert_includes response.body, "jj-qr-svg"
     assert_includes response.body, start_jj_exam_url(quiz)
   end
 

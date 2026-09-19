@@ -14,10 +14,31 @@ class JjQuiz < ApplicationRecord
   scope :published, -> { where(status: "published") }
 
   def active_for_exam?
-    published? &&
+    shareable_for_exam? &&
       (starts_at.blank? || starts_at <= Time.current) &&
-      (ends_at.blank? || ends_at >= Time.current) &&
+      (ends_at.blank? || ends_at >= Time.current)
+  end
+
+  def shareable_for_exam?
+    published? &&
       active_questions.exists?
+  end
+
+  def inactive_for_exam_reason
+    return "Exam draft/archived hai. Publish ya activate karein." unless published?
+    return "Kam se kam ek active question add karein." unless active_questions.exists?
+    return "Exam #{starts_at.strftime('%d/%m/%Y %I:%M %p')} se start hoga." if starts_at.present? && starts_at > Time.current
+    return "Exam #{ends_at.strftime('%d/%m/%Y %I:%M %p')} par end ho chuka hai." if ends_at.present? && ends_at < Time.current
+
+    nil
+  end
+
+  def exam_window_label
+    return "Not Ready" unless shareable_for_exam?
+    return "Scheduled" if starts_at.present? && starts_at > Time.current
+    return "Ended" if ends_at.present? && ends_at < Time.current
+
+    "Active"
   end
 
   def published?
