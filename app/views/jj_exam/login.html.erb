@@ -236,6 +236,15 @@
         <strong>Scan QR to start exam</strong>
         <small>Admin ke QR code scan karne ke baad hi Jeevika Jankar login form open hoga.</small>
       </div>
+    <% elsif @exam_blocked_reason.present? %>
+      <div class="jj-selected-exam">
+        <small>Exam</small>
+        <strong><%= selected_quiz.title.presence || "Jeevika Jankar Exam" %></strong>
+      </div>
+      <div class="jj-empty-exam compact">
+        <strong><%= selected_quiz.exam_window_label %></strong>
+        <small><%= @exam_blocked_reason %></small>
+      </div>
     <% elsif @quizzes.blank? %>
       <div class="jj-empty-exam compact">
         <strong>No active exam</strong>

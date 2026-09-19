@@ -151,6 +151,29 @@ const initPasswordToggles = () => {
   });
 };
 
+const initClipboardButtons = () => {
+  document.querySelectorAll("[data-copy-to-clipboard]").forEach((button) => {
+    if (button.dataset.copyBound === "true") return;
+
+    button.dataset.copyBound = "true";
+    button.addEventListener("click", async () => {
+      const text = button.dataset.copyToClipboard || "";
+      if (!text) return;
+
+      const originalText = button.textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        button.textContent = "Copied";
+        window.setTimeout(() => {
+          button.textContent = originalText;
+        }, 1600);
+      } catch (_error) {
+        window.prompt("Copy exam link", text);
+      }
+    });
+  });
+};
+
 const runDeferredLayoutInit = () => {
   if (!window.__layoutVisitId) return;
   initDeferredLayoutPage();
@@ -7189,6 +7212,7 @@ const bootLayoutPage = () => {
 
   initFastNavigation();
   initAflFarmerMapping();
+  initClipboardButtons();
   scheduleDeferredLayoutInit();
 };
 

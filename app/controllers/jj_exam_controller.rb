@@ -5,17 +5,24 @@ class JjExamController < ApplicationController
   before_action :set_attempt, only: %i[qr take submit result]
 
   def login
-    @quizzes = active_quizzes
-    @fixed_quiz = selected_active_quiz
-    @quizzes = [@fixed_quiz] if @fixed_quiz
+    @fixed_quiz = selected_shareable_quiz
+    @quizzes = @fixed_quiz ? [@fixed_quiz] : active_quizzes
+    @exam_blocked_reason = @fixed_quiz.inactive_for_exam_reason if @fixed_quiz && !@fixed_quiz.active_for_exam?
   end
 
   def create_session
-    @quizzes = active_quizzes
-    @quiz = selected_active_quiz
+    @quiz = selected_shareable_quiz
     @fixed_quiz = @quiz
+    @quizzes = @fixed_quiz ? [@fixed_quiz] : active_quizzes
     unless @quiz
       flash.now[:alert] = "Please select an active exam."
+      render :login, status: :unprocessable_entity
+      return
+    end
+
+    unless @quiz.active_for_exam?
+      @exam_blocked_reason = @quiz.inactive_for_exam_reason || "This exam is not active right now."
+      flash.now[:alert] = @exam_blocked_reason
       render :login, status: :unprocessable_entity
       return
     end
@@ -50,7 +57,7 @@ class JjExamController < ApplicationController
   def take
     redirect_to jj_exam_result_path(@attempt.access_token) and return if @attempt.submitted?
     unless @attempt.quiz.active_for_exam?
-      redirect_to jj_exam_login_path, alert: "This exam is not active right now."
+      redirect_to start_jj_exam_path(@attempt.quiz), alert: @attempt.quiz.inactive_for_exam_reason || "This exam is not active right now."
       return
     end
 
@@ -67,6 +74,17 @@ class JjExamController < ApplicationController
 
   def submit
     redirect_to jj_exam_result_path(@attempt.access_token) and return if @attempt.submitted?
+
+    if @attempt.expired_now?
+      @attempt.grade!(answers_param, final_status: "expired")
+      redirect_to jj_exam_result_path(@attempt.access_token), alert: "Time is over. Your exam was submitted automatically."
+      return
+    end
+
+    unless @attempt.quiz.active_for_exam?
+      redirect_to start_jj_exam_path(@attempt.quiz), alert: @attempt.quiz.inactive_for_exam_reason || "This exam is not active right now."
+      return
+    end
 
     @attempt.start!
     if @attempt.expired_now?
@@ -89,11 +107,12 @@ class JjExamController < ApplicationController
     JjQuiz.published.recent.select(&:active_for_exam?)
   end
 
-  def selected_active_quiz
+  def selected_shareable_quiz
     quiz_id = params[:quiz_token].presence || params[:quiz_id].presence || params[:jj_quiz_id].presence
     return if quiz_id.blank?
 
-    active_quizzes.find { |quiz| quiz.id.to_s == quiz_id.to_s }
+    quiz = JjQuiz.find_by(id: quiz_id)
+    quiz if quiz&.shareable_for_exam?
   end
 
   def set_attempt

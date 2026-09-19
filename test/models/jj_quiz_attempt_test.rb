@@ -36,6 +36,17 @@ class JjQuizAttemptTest < ActiveSupport::TestCase
     assert attempt.passed?
   end
 
+  test "attempt expiry respects quiz end time before duration" do
+    quiz = create_quiz(duration_minutes: 60, ends_at: 10.minutes.from_now)
+    create_question(quiz)
+    attempt = quiz.attempts.create!(vrp: create_vrp)
+
+    attempt.start!
+
+    assert_in_delta quiz.ends_at.to_f, attempt.reload.expires_at.to_f, 1
+    assert_in_delta 10.minutes.to_i, attempt.remaining_seconds, 2
+  end
+
   private
 
   def create_quiz(attributes = {})

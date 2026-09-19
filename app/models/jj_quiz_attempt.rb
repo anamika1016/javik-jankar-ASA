@@ -21,21 +21,23 @@ class JjQuizAttempt < ApplicationRecord
     return if submitted?
 
     now = Time.current
+    duration_expires_at = now + quiz.duration_minutes.minutes
+    allowed_expires_at = [expires_at, duration_expires_at, quiz.ends_at].compact.min
     update!(
       started_at: started_at || now,
-      expires_at: expires_at || (now + quiz.duration_minutes.minutes),
+      expires_at: allowed_expires_at,
       status: "in_progress"
     )
   end
 
   def expired_now?
-    expires_at.present? && Time.current > expires_at
+    expiry_time.present? && Time.current > expiry_time
   end
 
   def remaining_seconds
-    return 0 if expires_at.blank?
+    return 0 if expiry_time.blank?
 
-    [expires_at.to_i - Time.current.to_i, 0].max
+    [expiry_time.to_i - Time.current.to_i, 0].max
   end
 
   def correct_answers_count
@@ -133,5 +135,9 @@ class JjQuizAttempt < ApplicationRecord
 
   def answer_records
     answers.loaded? ? answers.target : (@answer_records ||= answers.to_a)
+  end
+
+  def expiry_time
+    [expires_at, quiz.ends_at].compact.min
   end
 end
