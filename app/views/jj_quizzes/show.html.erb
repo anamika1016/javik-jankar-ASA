@@ -120,9 +120,9 @@
         </thead>
         <tbody>
           <% if @questions.any? %>
-            <% @questions.each do |question| %>
+            <% @questions.each.with_index(1) do |question, serial_number| %>
               <tr>
-                <td><%= question.position %></td>
+                <td><%= serial_number %></td>
                 <td><%= question.question_text %></td>
                 <td>
                   <small>A. <%= question.option_a %></small><br>

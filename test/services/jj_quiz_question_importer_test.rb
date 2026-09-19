@@ -22,6 +22,22 @@ class JjQuizQuestionImporterTest < ActiveSupport::TestCase
     file&.close!
   end
 
+  test "assigns sequential positions for imported questions" do
+    quiz = JjQuiz.create!(title: "Position Import Quiz", duration_minutes: 20)
+    file = build_xlsx_upload([
+      ["First question?", "A", "B", "C", "D", "A"],
+      ["Second question?", "A", "B", "C", "D", "B"],
+      ["Third question?", "A", "B", "C", "D", "C"]
+    ])
+
+    result = JjQuizQuestionImporter.import(file: file, quiz: quiz)
+
+    assert_equal 3, result[:imported]
+    assert_equal [1, 2, 3], quiz.questions.order(:id).pluck(:position)
+  ensure
+    file&.close!
+  end
+
   test "question template only exposes question fields" do
     assert_equal ["Question", "Option A", "Option B", "Option C", "Option D", "Correct Option"], JjQuizQuestion.template_headers
     assert_not_includes JjQuizQuestion.template_headers, "Marks"

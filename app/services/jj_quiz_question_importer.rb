@@ -28,6 +28,7 @@ class JjQuizQuestionImporter
   def initialize(file:, quiz:)
     @file = file
     @quiz = quiz
+    @next_position = @quiz.questions.maximum(:position).to_i + 1
   end
 
   def import
@@ -49,9 +50,11 @@ class JjQuizQuestionImporter
       next if attrs.values.all?(&:blank?)
 
       attrs[:correct_option] = normalize_correct_option(attrs)
+      attrs[:position] = @next_position
       question = @quiz.questions.new(attrs)
       if question.save
         imported += 1
+        @next_position += 1
       else
         skipped << "Row #{index + 2}: #{question.errors.full_messages.to_sentence}"
       end
