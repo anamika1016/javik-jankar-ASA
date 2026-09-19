@@ -1,0 +1,27 @@
+<% content_for :title, "Scan Exam QR" %>
+
+<main class="jj-exam-shell">
+  <section class="jj-qr-panel">
+    <div class="jj-qr-copy">
+      <p class="vrp-eyebrow">QR Ready</p>
+      <h1><%= @attempt.quiz.title %></h1>
+      <p><strong><%= @attempt.vrp.user_name %></strong> - <%= @attempt.vrp.name %></p>
+      <div class="jj-exam-steps compact">
+        <span>Duration: <%= @attempt.quiz.duration_minutes %> min</span>
+        <span>Questions: <%= @attempt.quiz.active_questions.count %></span>
+        <span>Total Marks: <%= @attempt.quiz.total_marks.to_s("F") %></span>
+      </div>
+    </div>
+
+    <div class="jj-qr-card">
+      <% if @qr_svg.present? %>
+        <%= raw @qr_svg %>
+      <% else %>
+        <div class="jj-qr-fallback">QR data is too long. Use the exam link below.</div>
+      <% end %>
+      <p>Mobile se QR scan karein. Agar same device par exam dena hai to button use karein.</p>
+      <%= link_to "Open Exam", @take_url, class: "jj-exam-primary" %>
+      <small><%= @take_url %></small>
+    </div>
+  </section>
+</main>

@@ -1,0 +1,41 @@
+<% content_for :title, "Exam Result" %>
+
+<main class="jj-exam-shell jj-result-shell">
+  <section class="jj-result-card">
+    <div class="jj-result-score <%= @attempt.passed? ? "passed" : "review" %>">
+      <span><%= @attempt.status == "expired" ? "Time Over" : "Submitted" %></span>
+      <strong><%= @attempt.score.to_s("F") %>/<%= @attempt.total_marks.to_s("F") %></strong>
+      <small><%= @attempt.percentage.to_s("F") %>%</small>
+    </div>
+
+    <div class="jj-result-detail">
+      <div class="jj-result-title-row">
+        <div>
+          <p class="vrp-eyebrow">Result</p>
+          <h1><%= @attempt.quiz.title %></h1>
+        </div>
+        <span class="status-pill <%= @attempt.passed? ? "active" : "inactive" %>"><%= @attempt.passed? ? "Pass" : "Needs Review" %></span>
+      </div>
+
+      <div class="jj-result-grid">
+        <span><strong>JJ User ID</strong><%= @attempt.vrp.user_name %></span>
+        <span><strong>JJ Name</strong><%= @attempt.vrp.name %></span>
+        <span><strong>JJ Record ID</strong><%= @attempt.vrp_id %></span>
+        <span><strong>Mobile</strong><%= @attempt.vrp.mobile_no.presence || "-" %></span>
+        <span><strong>Started</strong><%= @attempt.started_at&.strftime("%d/%m/%Y %I:%M %p").presence || "-" %></span>
+        <span><strong>Submitted</strong><%= @attempt.submitted_at&.strftime("%d/%m/%Y %I:%M %p").presence || "-" %></span>
+        <span><strong>Time Taken</strong><%= @attempt.time_taken_label %></span>
+        <span><strong>Status</strong><%= @attempt.status.titleize %></span>
+      </div>
+
+      <div class="jj-result-counts">
+        <span><strong><%= @attempt.correct_answers_count %></strong><small>Correct</small></span>
+        <span><strong><%= @attempt.wrong_answers_count %></strong><small>Wrong</small></span>
+        <span><strong><%= @attempt.skipped_answers_count %></strong><small>Skipped</small></span>
+        <span><strong><%= @attempt.total_questions_count %></strong><small>Questions</small></span>
+      </div>
+
+      <%= link_to "Back to Login", jj_exam_login_path, class: "jj-exam-primary secondary" %>
+    </div>
+  </section>
+</main>

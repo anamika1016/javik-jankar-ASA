@@ -1,0 +1,271 @@
+<% content_for :title, "JJ Exam Login" %>
+<% selected_quiz = @fixed_quiz %>
+
+<style>
+  body.jj-exam-public-body {
+    display: grid;
+    min-height: 100vh;
+    place-items: center;
+    padding: clamp(18px, 4vw, 42px);
+    background:
+      linear-gradient(90deg, rgba(20, 75, 87, 0.045) 1px, transparent 1px),
+      linear-gradient(0deg, rgba(20, 75, 87, 0.045) 1px, transparent 1px),
+      linear-gradient(135deg, #e9f7ef 0%, #f7fbff 52%, #fff7ec 100%);
+    background-size: 44px 44px, 44px 44px, auto;
+  }
+
+  body.jj-exam-public-body .jj-login-compact-shell {
+    display: block;
+    width: min(100%, 460px) !important;
+    min-height: auto !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+  }
+
+  body.jj-exam-public-body .jj-login-compact-card {
+    display: grid;
+    gap: 20px;
+    width: 100%;
+    padding: clamp(22px, 4vw, 34px);
+    border: 1px solid rgba(25, 83, 90, 0.14);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 28px 80px rgba(24, 64, 78, 0.18);
+  }
+
+  body.jj-exam-public-body .jj-login-compact-brand {
+    display: grid;
+    justify-items: center;
+    gap: 10px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid #e2edf0;
+    text-align: center;
+  }
+
+  body.jj-exam-public-body .jj-brand-logo {
+    display: inline-flex;
+    width: 72px;
+    height: 72px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #e2edf0;
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 14px 32px rgba(24, 64, 78, 0.12);
+    overflow: hidden;
+  }
+
+  body.jj-exam-public-body .jj-brand-logo img {
+    max-width: 62px;
+    max-height: 62px;
+    object-fit: contain;
+  }
+
+  body.jj-exam-public-body .jj-login-compact-brand small {
+    display: block;
+    color: #20744c;
+    font-size: 0.76rem;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  body.jj-exam-public-body .jj-login-compact-brand h1 {
+    margin: 4px 0 0;
+    color: #143747;
+    font-size: clamp(1.55rem, 5vw, 2rem);
+    line-height: 1.08;
+  }
+
+  body.jj-exam-public-body .jj-credential-form,
+  body.jj-exam-public-body .jj-field-group {
+    display: grid;
+  }
+
+  body.jj-exam-public-body .jj-credential-form {
+    gap: 16px;
+  }
+
+  body.jj-exam-public-body .jj-field-group {
+    gap: 7px;
+  }
+
+  body.jj-exam-public-body .form-label,
+  body.jj-exam-public-body .jj-selected-exam small {
+    color: #244654;
+    font-size: 0.83rem;
+    font-weight: 900;
+  }
+
+  body.jj-exam-public-body .jj-selected-exam {
+    display: grid;
+    gap: 4px;
+    padding: 12px 14px;
+    border: 1px solid #b7e4cb;
+    border-radius: 8px;
+    background: #edf8f1;
+  }
+
+  body.jj-exam-public-body .jj-selected-exam strong {
+    color: #143747;
+    font-size: 0.98rem;
+  }
+
+  body.jj-exam-public-body .form-control,
+  body.jj-exam-public-body input.form-control,
+  body.jj-exam-public-body select.form-control {
+    width: 100% !important;
+    height: 52px;
+    min-height: 52px;
+    padding: 0 14px;
+    border: 1px solid #bdd2d7;
+    border-radius: 8px;
+    outline: none;
+    background: #f9fcfc;
+    color: #172b36;
+    box-shadow: none;
+    font: inherit;
+    font-size: 0.96rem;
+  }
+
+  body.jj-exam-public-body .form-control:focus {
+    border-color: #0f766e;
+    background: #ffffff;
+    box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.13);
+  }
+
+  body.jj-exam-public-body .login-password-field {
+    position: relative;
+    width: 100%;
+  }
+
+  body.jj-exam-public-body .login-password-field .form-control {
+    padding-right: 48px;
+  }
+
+  body.jj-exam-public-body .password-eye-btn {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    display: inline-grid;
+    width: 36px;
+    height: 36px;
+    place-items: center;
+    border: 0;
+    border-radius: 8px;
+    transform: translateY(-50%);
+    background: transparent;
+    color: #526a75;
+    cursor: pointer;
+  }
+
+  body.jj-exam-public-body .password-eye-btn:hover,
+  body.jj-exam-public-body .password-eye-btn:focus {
+    background: #e8f3ff;
+    color: #175a91;
+  }
+
+  body.jj-exam-public-body .jj-generate-btn {
+    display: inline-flex;
+    width: 100%;
+    height: 54px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 4px;
+    border: 0;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #0f766e 0%, #1f8f55 100%);
+    color: #ffffff;
+    box-shadow: 0 16px 34px rgba(15, 118, 110, 0.28);
+    font: inherit;
+    font-weight: 950;
+    cursor: pointer;
+  }
+
+  body.jj-exam-public-body .jj-generate-btn:disabled {
+    background: #b7c9cf;
+    color: #eef5f7;
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+
+  body.jj-exam-public-body .jj-empty-exam.compact {
+    justify-items: center;
+    padding: 12px 14px;
+    text-align: center;
+  }
+
+  body.jj-exam-public-body .jj-scan-required {
+    display: grid;
+    gap: 8px;
+    padding: 18px;
+    border: 1px solid #bdd2d7;
+    border-radius: 8px;
+    background: #f6faf9;
+    text-align: center;
+  }
+
+  body.jj-exam-public-body .jj-scan-required strong {
+    color: #143747;
+    font-size: 1.05rem;
+  }
+
+  body.jj-exam-public-body .jj-scan-required small {
+    color: #526a75;
+    line-height: 1.5;
+  }
+
+  @media (max-width: 520px) {
+    body.jj-exam-public-body {
+      padding: 12px;
+    }
+  }
+</style>
+
+<main class="jj-exam-shell jj-login-compact-shell">
+  <section class="jj-login-compact-card" aria-label="JJ Exam Login">
+    <div class="jj-login-compact-brand">
+      <span class="jj-brand-logo"><%= image_tag app_logo_path, alt: app_display_name %></span>
+      <div>
+        <small>Jeevika Jankar Exam</small>
+        <h1>Jeevika Jankar Login</h1>
+      </div>
+    </div>
+
+    <% if selected_quiz.blank? %>
+      <div class="jj-scan-required">
+        <strong>Scan QR to start exam</strong>
+        <small>Admin ke QR code scan karne ke baad hi Jeevika Jankar login form open hoga.</small>
+      </div>
+    <% elsif @quizzes.blank? %>
+      <div class="jj-empty-exam compact">
+        <strong>No active exam</strong>
+        <small>Admin exam publish karega to login active hoga.</small>
+      </div>
+    <% else %>
+      <%= form_with url: jj_exam_login_path, method: :post, local: true, data: { turbo: false }, html: { class: "login-form jj-credential-form" } do |form| %>
+        <%= hidden_field_tag :jj_quiz_id, selected_quiz.id %>
+        <div class="jj-selected-exam">
+          <small>Exam</small>
+          <strong><%= selected_quiz.title.presence || "Jeevika Jankar Exam" %></strong>
+        </div>
+
+        <div class="jj-field-group">
+          <%= label_tag :jj_exam_user_id, "Jeevika Jankar User ID", class: "form-label" %>
+          <%= text_field_tag :login, params[:login], id: "jj_exam_user_id", class: "form-control", placeholder: "Enter Jeevika Jankar User ID", required: true, autocomplete: "new-password", autocapitalize: "none", spellcheck: false %>
+        </div>
+
+        <div class="jj-field-group">
+          <%= label_tag :jj_exam_password, "Password", class: "form-label" %>
+          <div class="login-password-field">
+            <%= password_field_tag :password, nil, id: "jj_exam_password", class: "form-control", placeholder: "Enter password", required: true, autocomplete: "new-password", data: { password_toggle_input: true } %>
+            <button type="button" class="password-eye-btn" data-password-toggle aria-label="Show password" title="Show password">&#128065;</button>
+          </div>
+        </div>
+
+        <%= button_tag(type: "submit", class: "jj-generate-btn", disabled: @quizzes.blank?) do %>
+          <span>Start Exam</span>
+        <% end %>
+      <% end %>
+    <% end %>
+  </section>
+</main>

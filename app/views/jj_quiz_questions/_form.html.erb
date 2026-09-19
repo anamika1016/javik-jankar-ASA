@@ -1,0 +1,52 @@
+<% question_form_url = question.persisted? ? jj_quiz_question_path(quiz, question) : jj_quiz_questions_path(quiz) %>
+
+<%= form_with model: question, url: question_form_url, local: true, data: { turbo: false }, html: { class: "module-entry-form jj-question-form" } do |form| %>
+  <% if question.errors.any? %>
+    <div class="app-alert"><%= question.errors.full_messages.to_sentence %></div>
+  <% end %>
+
+  <label class="jj-textarea-field">
+    <span>Question <em>*</em></span>
+    <%= form.text_area :question_text, rows: 4, required: true, placeholder: "Enter quiz question" %>
+  </label>
+
+  <div class="module-form-grid user-registration-grid">
+    <label>
+      <span>Option A <em>*</em></span>
+      <%= form.text_field :option_a, required: true %>
+    </label>
+    <label>
+      <span>Option B <em>*</em></span>
+      <%= form.text_field :option_b, required: true %>
+    </label>
+    <label>
+      <span>Option C</span>
+      <%= form.text_field :option_c %>
+    </label>
+    <label>
+      <span>Option D</span>
+      <%= form.text_field :option_d %>
+    </label>
+    <label>
+      <span>Correct Option <em>*</em></span>
+      <%= form.select :correct_option, options_for_select(JjQuizQuestion::OPTIONS, question.correct_option.presence || "A"), {}, required: true %>
+    </label>
+    <label>
+      <span>Marks <em>*</em></span>
+      <%= form.number_field :marks, min: 0.01, step: "0.01", required: true %>
+    </label>
+    <label>
+      <span>Position <em>*</em></span>
+      <%= form.number_field :position, min: 1, step: 1, required: true %>
+    </label>
+    <label>
+      <span>Status</span>
+      <%= form.select :status, options_for_select([["Active", "active"], ["Inactive", "inactive"]], question.status.presence || "active") %>
+    </label>
+  </div>
+
+  <div class="module-form-actions">
+    <%= link_to "Cancel", jj_quiz_path(quiz), class: "btn btn-secondary" %>
+    <%= form.submit question.persisted? ? "Update Question" : "Add Question", class: "list-btn upload" %>
+  </div>
+<% end %>

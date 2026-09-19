@@ -1,0 +1,66 @@
+<% content_for :title, "JJ Exam Results" %>
+
+<section class="module-page jj-admin-page">
+  <div class="module-hero">
+    <div>
+      <p class="vrp-eyebrow">Jeevika Jankar Exam</p>
+      <h1>Results</h1>
+      <p><%= @quiz.title %></p>
+    </div>
+    <div class="module-hero-actions">
+      <%= link_to "Back to Exam", jj_quiz_path(@quiz), class: "btn btn-secondary" %>
+      <%= link_to "Export Results", export_results_jj_quiz_path(@quiz), class: "list-btn export" %>
+    </div>
+  </div>
+
+  <section class="module-card">
+    <div class="table-shell">
+      <table class="module-table" data-paginated-table data-page-size="20">
+        <thead>
+          <tr>
+            <th>JJ Record ID</th>
+            <th>JJ User ID</th>
+            <th>Name</th>
+            <th>Mobile</th>
+            <th>Status</th>
+            <th>Score</th>
+            <th>Correct</th>
+            <th>Wrong</th>
+            <th>Skipped</th>
+            <th>Percentage</th>
+            <th>Result</th>
+            <th>Started</th>
+            <th>Submitted</th>
+            <th>Time Taken</th>
+            <th>View</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if @attempts.any? %>
+            <% @attempts.each do |attempt| %>
+              <tr>
+                <td><%= attempt.vrp_id %></td>
+                <td><%= attempt.vrp&.user_name %></td>
+                <td><%= attempt.vrp&.name %></td>
+                <td><%= attempt.vrp&.mobile_no %></td>
+                <td><%= attempt.status.titleize %></td>
+                <td><strong><%= attempt.score.to_s("F") %> / <%= attempt.total_marks.to_s("F") %></strong></td>
+                <td><%= attempt.correct_answers_count %></td>
+                <td><%= attempt.wrong_answers_count %></td>
+                <td><%= attempt.skipped_answers_count %></td>
+                <td><%= attempt.percentage.to_s("F") %>%</td>
+                <td><span class="status-pill <%= attempt.passed? ? "active" : "inactive" %>"><%= attempt.passed? ? "Pass" : "Needs Review" %></span></td>
+                <td><%= attempt.started_at&.strftime("%d/%m/%Y %I:%M %p").presence || "-" %></td>
+                <td><%= attempt.submitted_at&.strftime("%d/%m/%Y %I:%M %p").presence || "-" %></td>
+                <td><%= attempt.time_taken_label %></td>
+                <td><%= link_to "Open", jj_exam_result_path(attempt.access_token), class: "table-action", target: "_blank", rel: "noopener" %></td>
+              </tr>
+            <% end %>
+          <% else %>
+            <tr><td colspan="15">No result submitted yet.</td></tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

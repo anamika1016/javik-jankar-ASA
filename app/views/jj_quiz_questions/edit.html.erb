@@ -1,0 +1,15 @@
+<% content_for :title, "Edit Question" %>
+
+<section class="module-page jj-admin-page">
+  <div class="module-hero">
+    <div>
+      <p class="vrp-eyebrow">Jeevika Jankar Exam</p>
+      <h1>Edit Question</h1>
+      <p><%= @quiz.title %></p>
+    </div>
+  </div>
+
+  <section class="module-card">
+    <%= render "form", quiz: @quiz, question: @question %>
+  </section>
+</section>

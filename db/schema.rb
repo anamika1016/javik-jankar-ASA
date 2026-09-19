@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_15_110000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_19_102909) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -252,6 +252,79 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_15_110000) do
     t.index ["farm_id"], name: "index_ics_exit_declarations_on_farm_id"
     t.index ["farmer_farm_information_id"], name: "index_ics_exit_declarations_on_farmer_farm_information_id"
     t.index ["farmer_name"], name: "index_ics_exit_declarations_on_farmer_name"
+  end
+
+  create_table "jj_quiz_answers", force: :cascade do |t|
+    t.boolean "correct", default: false, null: false
+    t.string "correct_option", null: false
+    t.datetime "created_at", null: false
+    t.bigint "jj_quiz_attempt_id", null: false
+    t.bigint "jj_quiz_question_id", null: false
+    t.decimal "marks_awarded", precision: 8, scale: 2, default: "0.0", null: false
+    t.jsonb "question_snapshot", default: {}, null: false
+    t.string "selected_option"
+    t.datetime "updated_at", null: false
+    t.index ["jj_quiz_attempt_id", "jj_quiz_question_id"], name: "idx_jj_answers_on_attempt_and_question", unique: true
+    t.index ["jj_quiz_attempt_id"], name: "index_jj_quiz_answers_on_jj_quiz_attempt_id"
+    t.index ["jj_quiz_question_id"], name: "index_jj_quiz_answers_on_jj_quiz_question_id"
+  end
+
+  create_table "jj_quiz_attempts", force: :cascade do |t|
+    t.string "access_token", null: false
+    t.datetime "created_at", null: false
+    t.datetime "expires_at"
+    t.bigint "jj_quiz_id", null: false
+    t.string "login_ip"
+    t.boolean "passed", default: false, null: false
+    t.decimal "percentage", precision: 7, scale: 2, default: "0.0", null: false
+    t.decimal "score", precision: 10, scale: 2, default: "0.0", null: false
+    t.datetime "started_at"
+    t.string "status", default: "qr_issued", null: false
+    t.datetime "submitted_at"
+    t.decimal "total_marks", precision: 10, scale: 2, default: "0.0", null: false
+    t.datetime "updated_at", null: false
+    t.string "user_agent"
+    t.bigint "vrp_id", null: false
+    t.index ["access_token"], name: "index_jj_quiz_attempts_on_access_token", unique: true
+    t.index ["jj_quiz_id", "vrp_id"], name: "index_jj_quiz_attempts_on_jj_quiz_id_and_vrp_id"
+    t.index ["jj_quiz_id"], name: "index_jj_quiz_attempts_on_jj_quiz_id"
+    t.index ["status"], name: "index_jj_quiz_attempts_on_status"
+    t.index ["vrp_id"], name: "index_jj_quiz_attempts_on_vrp_id"
+  end
+
+  create_table "jj_quiz_questions", force: :cascade do |t|
+    t.string "correct_option", null: false
+    t.datetime "created_at", null: false
+    t.bigint "jj_quiz_id", null: false
+    t.decimal "marks", precision: 8, scale: 2, default: "1.0", null: false
+    t.string "option_a", null: false
+    t.string "option_b", null: false
+    t.string "option_c"
+    t.string "option_d"
+    t.integer "position", default: 1, null: false
+    t.text "question_text", null: false
+    t.string "status", default: "active", null: false
+    t.datetime "updated_at", null: false
+    t.index ["jj_quiz_id", "position"], name: "index_jj_quiz_questions_on_jj_quiz_id_and_position"
+    t.index ["jj_quiz_id"], name: "index_jj_quiz_questions_on_jj_quiz_id"
+    t.index ["status"], name: "index_jj_quiz_questions_on_status"
+  end
+
+  create_table "jj_quizzes", force: :cascade do |t|
+    t.boolean "allow_retake", default: false, null: false
+    t.datetime "created_at", null: false
+    t.bigint "created_by_id"
+    t.string "created_by_type"
+    t.text "description"
+    t.integer "duration_minutes", default: 30, null: false
+    t.datetime "ends_at"
+    t.decimal "passing_marks", precision: 8, scale: 2
+    t.datetime "starts_at"
+    t.string "status", default: "draft", null: false
+    t.string "title", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_by_type", "created_by_id"], name: "index_jj_quizzes_on_created_by_type_and_created_by_id"
+    t.index ["status"], name: "index_jj_quizzes_on_status"
   end
 
   create_table "module_records", force: :cascade do |t|
@@ -563,6 +636,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_15_110000) do
   add_foreign_key "farm_crop_area_details", "farmer_farm_information"
   add_foreign_key "farmer_farm_map_uploads", "farmer_farm_information"
   add_foreign_key "ics_exit_declarations", "farmer_farm_information"
+  add_foreign_key "jj_quiz_answers", "jj_quiz_attempts"
+  add_foreign_key "jj_quiz_answers", "jj_quiz_questions"
+  add_foreign_key "jj_quiz_attempts", "jj_quizzes"
+  add_foreign_key "jj_quiz_attempts", "vrps"
+  add_foreign_key "jj_quiz_questions", "jj_quizzes"
   add_foreign_key "on_farm_input_records", "farmer_farm_information"
   add_foreign_key "post_harvest_handling_storage_records", "farmer_farm_information"
   add_foreign_key "production_harvest_details", "farmer_farm_information"

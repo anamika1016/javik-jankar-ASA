@@ -1,0 +1,15 @@
+<% content_for :title, "New JJ Exam" %>
+
+<section class="module-page jj-admin-page">
+  <div class="module-hero">
+    <div>
+      <p class="vrp-eyebrow">Jeevika Jankar Exam</p>
+      <h1>New Exam</h1>
+      <p>Timer, passing marks aur exam active window define karein.</p>
+    </div>
+  </div>
+
+  <section class="module-card">
+    <%= render "form", quiz: @quiz %>
+  </section>
+</section>

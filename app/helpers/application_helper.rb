@@ -164,6 +164,14 @@ module ApplicationHelper
         ["Completed Payment List", :module, "jeevika-jankar-completed-payment-list"]
       ]
     },
+    {
+      title: "JJ Exam",
+      icon: "▨",
+      links: [
+        ["Exam Setup", :route, :jj_quizzes_path],
+        ["JJ Exam Login", :route, :jj_exam_login_path]
+      ]
+    },
   ].freeze
 
   def sidebar_sections
@@ -413,6 +421,12 @@ module ApplicationHelper
     if ["Office List", "Office Detail List"].include?(name.to_s.strip)
       keys.concat(["office-list", "office-detail-list"])
     end
+    if ["JJ Exam", "Jeevika Jankar Exam", "Exam Setup"].include?(name.to_s.strip)
+      keys.concat(["jj-exam", "exam-setup"])
+    end
+    if ["JJ Exam Login", "Start Exam"].include?(name.to_s.strip)
+      keys.concat(["jj-exam-login", "start-exam"])
+    end
     keys.uniq
   end
 
@@ -480,6 +494,13 @@ module ApplicationHelper
           ["Payment List Detail", :module, "jeevika-jankar-payment-list-detail"],
           ["Completed Payment List", :module, "jeevika-jankar-completed-payment-list"]
         ]
+      },
+      {
+        title: "JJ Exam",
+        icon: "▨",
+        links: [
+          ["Start Exam", :route, :jj_exam_login_path]
+        ]
       }
     ]
   end
@@ -489,7 +510,7 @@ module ApplicationHelper
     sections = vrp_sidebar_sections
 
     sections.filter_map do |section|
-      if section[:links].any? { |link| link.first == "Target Mapped JJ" }
+      if section[:links].any? { |link| ["Target Mapped JJ", "Start Exam"].include?(link.first) }
         next section
       end
 

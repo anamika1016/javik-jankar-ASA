@@ -1,0 +1,47 @@
+<%= form_with model: quiz, local: true, data: { turbo: false }, html: { class: "module-entry-form jj-quiz-form" } do |form| %>
+  <% if quiz.errors.any? %>
+    <div class="app-alert"><%= quiz.errors.full_messages.to_sentence %></div>
+  <% end %>
+
+  <div class="module-form-grid user-registration-grid">
+    <label>
+      <span>Exam Title <em>*</em></span>
+      <%= form.text_field :title, required: true, placeholder: "e.g. Jeevika Jankar Assessment" %>
+    </label>
+
+    <label>
+      <span>Duration Minutes <em>*</em></span>
+      <%= form.number_field :duration_minutes, min: 1, max: 240, required: true %>
+    </label>
+
+    <label>
+      <span>Passing Marks</span>
+      <%= form.number_field :passing_marks, min: 0, step: "0.01", placeholder: "Blank = full marks" %>
+    </label>
+
+    <label>
+      <span>Status</span>
+      <%= form.select :status, options_for_select(JjQuiz::STATUSES.map { |status| [status.titleize, status] }, quiz.status.presence || "draft") %>
+    </label>
+
+    <label>
+      <span>Start Date/Time</span>
+      <%= form.datetime_local_field :starts_at, value: quiz.starts_at&.strftime("%Y-%m-%dT%H:%M") %>
+    </label>
+
+    <label>
+      <span>End Date/Time</span>
+      <%= form.datetime_local_field :ends_at, value: quiz.ends_at&.strftime("%Y-%m-%dT%H:%M") %>
+    </label>
+  </div>
+
+  <label class="jj-textarea-field">
+    <span>Description</span>
+    <%= form.text_area :description, rows: 4, placeholder: "Exam instruction or purpose" %>
+  </label>
+
+  <div class="module-form-actions">
+    <%= link_to "Cancel", quiz.persisted? ? jj_quiz_path(quiz) : jj_quizzes_path, class: "btn btn-secondary" %>
+    <%= form.submit quiz.persisted? ? "Update Exam" : "Create Exam", class: "list-btn upload" %>
+  </div>
+<% end %>

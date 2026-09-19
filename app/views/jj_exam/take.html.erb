@@ -1,0 +1,70 @@
+<% content_for :title, @attempt.quiz.title %>
+
+<main class="jj-exam-take-shell" data-jj-exam-timer data-remaining-seconds="<%= @remaining_seconds %>">
+  <header class="jj-exam-sticky-head">
+    <div>
+      <p class="vrp-eyebrow">Jeevika Jankar Exam</p>
+      <h1><%= @attempt.quiz.title %></h1>
+      <small><%= @attempt.vrp.user_name %> - <%= @attempt.vrp.name %></small>
+    </div>
+    <div class="jj-timer">
+      <span>Time Left</span>
+      <strong data-timer-display>--:--</strong>
+    </div>
+  </header>
+
+  <%= form_with url: submit_jj_exam_path(@attempt.access_token), method: :post, local: true, data: { turbo: false }, html: { class: "jj-question-paper", data: { exam_form: true } } do %>
+    <% @questions.each_with_index do |question, index| %>
+      <section class="jj-question-block">
+        <div class="jj-question-head">
+          <span>Q<%= index + 1 %></span>
+          <strong><%= question.marks.to_s("F") %> marks</strong>
+        </div>
+        <h2><%= question.question_text %></h2>
+        <div class="jj-options-grid">
+          <% JjQuizQuestion::OPTIONS.each do |option| %>
+            <% label = question.option_label(option) %>
+            <% next if label.blank? %>
+            <label class="jj-option">
+              <%= radio_button_tag "answers[#{question.id}]", option, false %>
+              <span><strong><%= option %></strong><%= label %></span>
+            </label>
+          <% end %>
+        </div>
+      </section>
+    <% end %>
+
+    <div class="jj-submit-bar">
+      <span>All questions answer karke submit karein. Time over hone par exam auto-submit ho jayega.</span>
+      <button type="submit" class="jj-exam-primary">Submit Exam</button>
+    </div>
+  <% end %>
+</main>
+
+<script>
+  (() => {
+    const root = document.querySelector("[data-jj-exam-timer]");
+    if (!root) return;
+    const form = root.querySelector("[data-exam-form]");
+    const display = root.querySelector("[data-timer-display]");
+    let seconds = Number(root.dataset.remainingSeconds || 0);
+    const render = () => {
+      const minutes = Math.floor(seconds / 60).toString().padStart(2, "0");
+      const rest = Math.max(seconds % 60, 0).toString().padStart(2, "0");
+      display.textContent = `${minutes}:${rest}`;
+      root.classList.toggle("is-ending", seconds <= 60);
+    };
+    render();
+    const timer = window.setInterval(() => {
+      seconds -= 1;
+      render();
+      if (seconds <= 0) {
+        window.clearInterval(timer);
+        if (form) {
+          form.noValidate = true;
+          form.requestSubmit();
+        }
+      }
+    }, 1000);
+  })();
+</script>

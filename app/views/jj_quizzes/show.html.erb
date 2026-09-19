@@ -1,0 +1,176 @@
+<% content_for :title, @quiz.title %>
+
+<section class="module-page jj-admin-page">
+  <div class="module-hero">
+    <div>
+      <p class="vrp-eyebrow">Jeevika Jankar Exam</p>
+      <h1><%= @quiz.title %></h1>
+      <p><%= @quiz.description.presence || "Quiz questions, import and result management." %></p>
+    </div>
+    <div class="module-hero-actions">
+      <%= link_to "Back", jj_quizzes_path, class: "btn btn-secondary" %>
+      <%= link_to "Edit", edit_jj_quiz_path(@quiz), class: "list-btn edit" %>
+      <%= link_to "Results", results_jj_quiz_path(@quiz), class: "list-btn export" %>
+    </div>
+  </div>
+
+  <section class="jj-summary-grid">
+    <div class="jj-summary-tile">
+      <small>Status</small>
+      <strong><%= @quiz.status.titleize %></strong>
+    </div>
+    <div class="jj-summary-tile">
+      <small>Duration</small>
+      <strong><%= @quiz.duration_minutes %> min</strong>
+    </div>
+    <div class="jj-summary-tile">
+      <small>Total Marks</small>
+      <strong><%= @quiz.total_marks.to_s("F") %></strong>
+    </div>
+    <div class="jj-summary-tile">
+      <small>Attempts</small>
+      <strong><%= @quiz.attempts.count %></strong>
+    </div>
+  </section>
+
+  <section class="module-card jj-admin-actions">
+    <div class="jj-action-row">
+      <% unless @quiz.published? %>
+        <%= button_to "Publish Exam", publish_jj_quiz_path(@quiz), method: :patch, class: "list-btn upload" %>
+      <% end %>
+      <% unless @quiz.archived? %>
+        <%= button_to "Archive", archive_jj_quiz_path(@quiz), method: :patch, class: "list-btn deactive" %>
+      <% end %>
+      <%= link_to "Download Question Format", question_template_jj_quizzes_path, class: "list-btn export" %>
+      <%= link_to "Add Question Manually", new_jj_quiz_question_path(@quiz), class: "list-btn edit" %>
+    </div>
+
+    <%= form_with url: import_questions_jj_quiz_path(@quiz), multipart: true, local: true, data: { turbo: false }, html: { class: "jj-import-form" } do |form| %>
+      <label>
+        <span>Import Questions Excel/CSV</span>
+        <%= form.file_field :file, accept: ".xlsx,.csv", required: true %>
+      </label>
+      <button type="submit" class="list-btn upload">Import Questions</button>
+    <% end %>
+  </section>
+
+  <section class="module-card jj-admin-qr-panel">
+    <div class="jj-admin-qr-copy">
+      <p class="vrp-eyebrow">WhatsApp Group QR</p>
+      <h2>Share Exam QR</h2>
+      <p>Admin is QR/link ko WhatsApp group me share karega. Jeevika Jankar scan karke apna User ID aur password dalega, phir exam start hoga.</p>
+      <div class="jj-admin-qr-meta">
+        <span><strong>Duration</strong><%= @quiz.duration_minutes %> min</span>
+        <span><strong>Questions</strong><%= @quiz.active_questions.count %></span>
+        <span><strong>Total Marks</strong><%= @quiz.total_marks.to_s("F") %></span>
+      </div>
+      <label class="jj-admin-qr-link">
+        <span>Login URL</span>
+        <input type="text" value="<%= @exam_start_url %>" readonly>
+      </label>
+    </div>
+    <div class="jj-admin-qr-box">
+      <% if @exam_start_qr_svg.present? %>
+        <%= raw @exam_start_qr_svg %>
+        <div class="jj-admin-qr-actions">
+          <%= link_to "Share on WhatsApp", @whatsapp_share_url, class: "list-btn upload", target: "_blank", rel: "noopener" %>
+          <%= link_to "Open JJ Login", @exam_start_url, class: "list-btn export", target: "_blank", rel: "noopener" %>
+        </div>
+      <% else %>
+        <div class="jj-empty-exam compact">
+          <strong>QR inactive</strong>
+          <small>Exam publish karke active window me rakhein.</small>
+        </div>
+      <% end %>
+    </div>
+  </section>
+
+  <section class="module-card">
+    <div class="vrp-list-toolbar compact">
+      <strong>Questions</strong>
+      <%= link_to "Add Question", new_jj_quiz_question_path(@quiz), class: "list-btn upload" %>
+    </div>
+
+    <div class="table-shell">
+      <table class="module-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Question</th>
+            <th>Options</th>
+            <th>Answer</th>
+            <th>Marks</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if @questions.any? %>
+            <% @questions.each do |question| %>
+              <tr>
+                <td><%= question.position %></td>
+                <td><%= question.question_text %></td>
+                <td>
+                  <small>A. <%= question.option_a %></small><br>
+                  <small>B. <%= question.option_b %></small><br>
+                  <% if question.option_c.present? %><small>C. <%= question.option_c %></small><br><% end %>
+                  <% if question.option_d.present? %><small>D. <%= question.option_d %></small><% end %>
+                </td>
+                <td><strong><%= question.correct_option %></strong></td>
+                <td><%= question.marks.to_s("F") %></td>
+                <td><span class="status-pill <%= question.status == "active" ? "active" : "inactive" %>"><%= question.status.titleize %></span></td>
+                <td class="jj-action-cell">
+                  <%= link_to "Edit", edit_jj_quiz_question_path(@quiz, question), class: "table-action" %>
+                  <%= button_to "Delete", jj_quiz_question_path(@quiz, question), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this question?" } } %>
+                </td>
+              </tr>
+            <% end %>
+          <% else %>
+            <tr>
+              <td colspan="7">No questions added yet. Add manually or import the Excel format.</td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="module-card">
+    <div class="vrp-list-toolbar compact">
+      <strong>Recent Attempts</strong>
+      <%= link_to "View All Results", results_jj_quiz_path(@quiz), class: "list-btn export" %>
+    </div>
+    <div class="table-shell">
+      <table class="module-table">
+        <thead>
+          <tr>
+            <th>JJ</th>
+            <th>Status</th>
+            <th>Score</th>
+            <th>Correct</th>
+            <th>Wrong</th>
+            <th>Skipped</th>
+            <th>Submitted</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if @attempts.any? %>
+            <% @attempts.each do |attempt| %>
+              <tr>
+                <td><%= [attempt.vrp&.user_name, attempt.vrp&.name].compact_blank.join(" - ") %></td>
+                <td><%= attempt.status.titleize %></td>
+                <td><%= attempt.score.to_s("F") %> / <%= attempt.total_marks.to_s("F") %></td>
+                <td><%= attempt.correct_answers_count %></td>
+                <td><%= attempt.wrong_answers_count %></td>
+                <td><%= attempt.skipped_answers_count %></td>
+                <td><%= attempt.submitted_at&.strftime("%d/%m/%Y %I:%M %p").presence || "-" %></td>
+              </tr>
+            <% end %>
+          <% else %>
+            <tr><td colspan="7">No attempts yet.</td></tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

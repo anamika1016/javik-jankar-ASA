@@ -100,6 +100,14 @@ Rails.application.routes.draw do
   get    "logout", to: "sessions#destroy", as: nil
   delete "logout", to: "sessions#destroy", as: :logout
 
+  get  "jj-exam/login", to: "jj_exam#login", as: :jj_exam_login
+  get  "jj-exam/start/:quiz_token", to: "jj_exam#login", as: :start_jj_exam
+  post "jj-exam/login", to: "jj_exam#create_session"
+  get  "jj-exam/qr/:token", to: "jj_exam#qr", as: :jj_exam_qr
+  get  "jj-exam/take/:token", to: "jj_exam#take", as: :take_jj_exam
+  post "jj-exam/take/:token", to: "jj_exam#submit", as: :submit_jj_exam
+  get  "jj-exam/result/:token", to: "jj_exam#result", as: :jj_exam_result
+
   get "asa360-mapping", to: "asa360_master#index", as: :asa360_mapping
 
   root "sessions#new"
@@ -117,6 +125,16 @@ Rails.application.routes.draw do
   resources :users, except: [:show] do
     patch :toggle_status, on: :member
     patch :set_status, on: :member
+  end
+
+  resources :jj_quizzes, path: "jj-quizzes" do
+    get :question_template, on: :collection
+    post :import_questions, on: :member
+    patch :publish, on: :member
+    patch :archive, on: :member
+    get :results, on: :member
+    get :export_results, on: :member
+    resources :questions, controller: :jj_quiz_questions, as: :questions, except: %i[index show]
   end
 
   resources :afls, only: [:index, :destroy] do
