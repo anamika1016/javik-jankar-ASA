@@ -3978,7 +3978,9 @@ function initDeferredLayoutPage() {
       const totalHeader = weeklyHeaderRow?.querySelector("th:nth-last-child(2)");
       if (totalHeader) totalHeader.hidden = villageTargetMode();
 
-      weeklySummary.hidden = villageTargetMode();
+      // Village mode still plans week wise; it only drops the farmer specific
+      // Total/View columns, so the plan table must stay visible.
+      weeklySummary.hidden = false;
       weeklySummary.classList.toggle("target-weekly-village-mode", villageTargetMode());
       if (!rows.length) {
         weeklyRows.innerHTML = `<tr><td colspan="${villageTargetMode() ? 6 : 8}">Select Main Activity to view weekly plan.</td></tr>`;
@@ -3988,7 +3990,9 @@ function initDeferredLayoutPage() {
       weeklyRows.innerHTML = rows.map((row, index) => {
         const rowKey = weeklyRowKey(row);
         const selectedIds = farmerIdsForRow(rowKey);
-        const rowMonthlyCount = trainingMonthlyTargetFor(row) || monthlyCount;
+        // Village mode has no farmer selection to derive the monthly count
+        // from, so start blank and let the user type it.
+        const rowMonthlyCount = trainingMonthlyTargetFor(row) || (villageTargetMode() ? "" : monthlyCount);
         const rowWeeklyCounts = weeklyCountsFor(rowMonthlyCount);
         const farmerInputs = villageTargetMode() ? "" : Array.from(selectedIds).map((id) => `<input type="hidden" name="target_mapping[weekly_plan][${index}][afl_ids][]" value="${escapeHtml(id)}">`).join("");
         const viewCell = villageTargetMode() ? "" : `<td><div class="target-weekly-cell-center"><button type="button" class="table-action" data-target-weekly-view="${index}" data-weekly-row-key="${escapeHtml(weeklyRowKey(row))}" data-activity-label="${escapeHtml(row.label)}">View</button></div></td>`;
@@ -4309,6 +4313,21 @@ function initDeferredLayoutPage() {
 
       weeklyPlanValues[input.dataset.weeklyRowKey] ||= {};
       weeklyPlanValues[input.dataset.weeklyRowKey][input.dataset.weeklyField] = input.value;
+
+      if (input.dataset.weeklyField === "monthly" && villageTargetMode()) {
+        // No farmer selection drives the split in village mode, so seed the
+        // four weeks from Monthly; the user can still edit each week.
+        const rowKey = input.dataset.weeklyRowKey;
+        weeklyCountsFor(Number(input.value || 0)).forEach((count, index) => {
+          const field = `week_${index + 1}`;
+          const weekInput = weeklyRows.querySelector(`[data-weekly-row-key="${CSS.escape(rowKey)}"][data-weekly-field="${field}"]`);
+          if (!weekInput) return;
+
+          weekInput.value = String(count);
+          weeklyPlanValues[rowKey][field] = weekInput.value;
+        });
+        return;
+      }
 
       if (input.dataset.weeklyField === "monthly") {
         const limit = Number(input.value || 0);
