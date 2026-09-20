@@ -1677,6 +1677,23 @@ function initDeferredLayoutPage() {
     });
   });
 
+  document.querySelectorAll("[data-allowed-extensions]").forEach((input) => {
+    const allowed = String(input.dataset.allowedExtensions || "")
+      .split(",")
+      .map((extension) => extension.trim().toLowerCase())
+      .filter(Boolean);
+    if (!allowed.length) return;
+
+    input.addEventListener("change", () => {
+      const files = Array.from(input.files || []);
+      const invalid = files.filter((file) => !allowed.includes(file.name.split(".").pop().toLowerCase()));
+      if (!invalid.length) return;
+
+      window.alert(`Only ${allowed.join(", ").toUpperCase()} files are allowed here. Please select a ${allowed[0].toUpperCase()} file.`);
+      input.value = "";
+    });
+  });
+
   const uploadGalleryModal = document.querySelector("[data-upload-gallery-modal]");
   const uploadGalleryGrid = uploadGalleryModal?.querySelector("[data-upload-gallery-grid]");
   const uploadGalleryCount = uploadGalleryModal?.querySelector("[data-upload-gallery-count]");

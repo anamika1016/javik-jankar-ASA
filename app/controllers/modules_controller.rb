@@ -11474,12 +11474,30 @@ class ModulesController < ApplicationController
         end
       end
     end
+    errors += training_register_upload_errors
     return false if errors.empty?
 
     @records = module_records_required_for_show? ? module_records : []
     flash.now[:alert] = errors.to_sentence
     render :show, status: :unprocessable_entity
     true
+  end
+
+  TRAINING_REGISTER_CONTENT_TYPES = %w[application/pdf application/x-pdf].freeze
+
+  # Evidence/Documentation accepts a PDF only; the file picker is limited to
+  # PDFs too, so this guards direct posts and browsers that ignore `accept`.
+  def training_register_upload_errors
+    Array(module_record_params["training_register_upload"]).filter_map do |upload|
+      next unless upload.respond_to?(:original_filename)
+
+      if upload.size > 5.megabytes
+        "Evidence/Documentation Photo: maximum file size is 5 MB."
+      elsif !TRAINING_REGISTER_CONTENT_TYPES.include?(upload.content_type.to_s.downcase) ||
+            File.extname(upload.original_filename).downcase != ".pdf"
+        "Evidence/Documentation Photo: only PDF files are allowed."
+      end
+    end
   end
 
   def normalize_module_param_value(value)
