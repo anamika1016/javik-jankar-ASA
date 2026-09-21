@@ -37,10 +37,6 @@
         </div>
       </div>
 
-      <div class="vrp-list-toolbar compact">
-        <button type="button" class="list-btn delete" data-afl-delete-selected data-afl-bulk-destroy-url="<%= bulk_destroy_afls_path %>">Delete</button>
-      </div>
-
       <% if params[:report_id].present? %>
         <div class="import-report-banner">
           <span>Skipped rows ka exact reason report ready hai.</span>
@@ -54,7 +50,6 @@
         <table class="module-table vrp-list-table" id="afl_list">
           <thead>
             <tr>
-              <th><input type="checkbox" data-afl-select-all></th>
               <th>ID</th>
               <th>FCO ID</th>
               <th>FCO</th>
@@ -76,13 +71,13 @@
               <th>Mobile No</th>
               <th>Purchase Product</th>
               <th>Status</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody>
             <% if @afls.any? %>
               <% @afls.each do |afl| %>
                 <tr>
-                  <td><input type="checkbox" value="<%= afl_path(afl, @dashboard_afl_filter_params.merge(q: @query.presence, page: @page)) %>" data-afl-row-select></td>
                   <td><%= afl.id %></td>
                   <td><%= afl.fco_id %></td>
                   <td><%= afl.fco %></td>
@@ -104,6 +99,13 @@
                   <td><%= afl.mobile_no %></td>
                   <td><%= afl.purchase_product %></td>
                   <td><%= afl.status %></td>
+                  <td>
+                    <%= button_to "Delete",
+                          afl_path(afl, @dashboard_afl_filter_params.merge(q: @query.presence, page: @page)),
+                          method: :delete,
+                          class: "table-action danger",
+                          form: { data: { turbo_confirm: "Delete #{afl.farmer_name.presence || "this record"}?" } } %>
+                  </td>
                 </tr>
               <% end %>
             <% else %>
