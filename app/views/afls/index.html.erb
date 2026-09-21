@@ -25,7 +25,11 @@
             <%= hidden_field_tag :fcoc, @dashboard_afl_filter_params["fcoc"] if @dashboard_afl_filter_params["fcoc"].present? %>
             <%= hidden_field_tag :ics, @dashboard_afl_filter_params["ics"] if @dashboard_afl_filter_params["ics"].present? %>
             <span>⌕</span>
-            <%= form.search_field :q, value: @query, placeholder: "Search any field", data: { table_search: "afl_list" } %>
+            <%# The list is paginated on the server, so the search has to run there
+                too — filtering the rendered rows would only ever see one page. %>
+            <%= form.search_field :q, value: @query, placeholder: "Search any field" %>
+            <%= form.submit "Search", class: "list-btn" %>
+            <%= link_to "Clear", afls_path, class: "list-btn" if @query.present? %>
           <% end %>
           <%# Built on the server so the file holds every filtered row, not just this page. %>
           <%= link_to "Export", afls_path(@dashboard_afl_filter_params.merge(q: @query.presence, format: :xlsx)), class: "list-btn export" %>
@@ -44,7 +48,9 @@
       <% end %>
 
       <div class="table-shell">
-        <table class="module-table vrp-list-table" id="afl_list" data-paginated-table data-page-size="15">
+        <%# No client-side paginator: the controller already pages this list, and
+            a second one only re-paged the 15 rows on screen. %>
+        <table class="module-table vrp-list-table" id="afl_list">
           <thead>
             <tr>
               <th><input type="checkbox" data-afl-select-all></th>
@@ -101,7 +107,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="22">No target mapping records uploaded yet.</td>
+                <td colspan="22"><%= @query.present? ? "No records matched \"#{@query}\"." : "No target mapping records uploaded yet." %></td>
               </tr>
             <% end %>
           </tbody>
