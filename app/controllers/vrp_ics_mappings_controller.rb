@@ -5,7 +5,7 @@ class VrpIcsMappingsController < ApplicationController
     @mappings = visible_mappings.includes(:vrp).order(updated_at: :desc).limit(100)
     @admin_mapping_actions = admin_login?
     @remove_mapping_actions = !admin_login?
-    @edit_mapping = visible_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && @admin_mapping_actions
+    @edit_mapping = visible_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && (@admin_mapping_actions || @remove_mapping_actions)
     @edit_payload = edit_payload(@edit_mapping)
   end
 

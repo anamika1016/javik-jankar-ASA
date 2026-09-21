@@ -496,8 +496,8 @@
 	                  <% if show_mapping_actions %>
 	                    <td>
 	                      <div class="table-actions">
+	                        <%= link_to "Edit", target_mappings_path(edit_id: target.id), class: "table-action" %>
 	                        <% if @admin_mapping_actions %>
-	                          <%= link_to "Edit", target_mappings_path(edit_id: target.id), class: "table-action" %>
 	                          <%= button_to "Delete", target_mapping_path(target), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this target mapping?" } } %>
 	                        <% elsif @remove_mapping_actions %>
 	                          <%= button_to "Remove", target_mapping_path(target), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Remove this target mapping?" } } %>

@@ -33,7 +33,7 @@ class TargetMappingsController < ApplicationController
     # never assigned, so a successfully saved mapping always looked empty.
     @target_mapping_rows = target_mapping_rows(@target_mappings)
     @target_farmers_by_id = {}
-    @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && @admin_mapping_actions
+    @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && (@admin_mapping_actions || @remove_mapping_actions)
     @edit_payload = edit_payload(@edit_target)
     @sub_activity_options = target_sub_activity_options(@edit_target&.main_activity_name)
 

@@ -3549,7 +3549,7 @@ function initDeferredLayoutPage() {
         .filter(Boolean);
       if (ids.length) return [...new Set(ids)];
 
-      return Array(editTarget.afl_ids || []).map((id) => String(id)).filter(Boolean);
+      return [].concat(editTarget.afl_ids || []).map((id) => String(id)).filter(Boolean);
     };
     let editTarget = {};
     let targetSubActivityRows = [];
@@ -4009,7 +4009,10 @@ function initDeferredLayoutPage() {
     const renderTargetWeeklySummary = () => {
       if (!weeklySummary || !weeklyRows) return;
 
-      const rows = newFarmerTargetMode() && !villageTargetMode() ? [] : targetActivitySummaryRows();
+      // Every mode plans week wise once an activity is chosen.  With a New
+      // Farmer Target the Monthly column seeds from that number instead of the
+      // farmer selection (see selectedFarmerMonthlyCount).
+      const rows = targetActivitySummaryRows();
       restoreEditFarmerSelections(rows);
       const monthlyCount = selectedFarmerMonthlyCount();
       const selectedLabel = `${totalActivityFarmerSelections()} total farmer selections`;
@@ -4264,6 +4267,22 @@ function initDeferredLayoutPage() {
           if (farmerDialog?.open) renderDialogFarmers();
         });
       });
+
+      // After rendering, sync pre-selected (edit mode) farmer IDs into weeklyPlanFarmerIds
+      // so the TOTAL column and farmer dialog reflect the correct pre-selected count.
+      if (editTarget.id) {
+        const rows = targetActivitySummaryRows();
+        rows.forEach((row) => {
+          const rowKey = weeklyRowKey(row);
+          if (weeklyPlanFarmerIdsDirty.has(rowKey)) return; // user already changed this row
+          const preChecked = Array.from(farmerList.querySelectorAll("[data-target-farmer-checkbox]:checked"))
+            .map((cb) => String(cb.value)).filter(Boolean);
+          if (preChecked.length > 0) {
+            weeklyPlanFarmerIds[rowKey] = new Set(preChecked);
+          }
+        });
+      }
+
       updateTargetFarmerCount();
     };
 
@@ -4354,9 +4373,9 @@ function initDeferredLayoutPage() {
       weeklyPlanValues[input.dataset.weeklyRowKey] ||= {};
       weeklyPlanValues[input.dataset.weeklyRowKey][input.dataset.weeklyField] = input.value;
 
-      if (input.dataset.weeklyField === "monthly" && villageTargetMode()) {
-        // No farmer selection drives the split in village mode, so seed the
-        // four weeks from Monthly; the user can still edit each week.
+      if (input.dataset.weeklyField === "monthly") {
+        // Keep the four weeks in step with Monthly so the totals always match;
+        // each week can still be fine tuned afterwards.
         const rowKey = input.dataset.weeklyRowKey;
         weeklyCountsFor(Number(input.value || 0)).forEach((count, index) => {
           const field = `week_${index + 1}`;
@@ -4366,10 +4385,7 @@ function initDeferredLayoutPage() {
           weekInput.value = String(count);
           weeklyPlanValues[rowKey][field] = weekInput.value;
         });
-        return;
-      }
 
-      if (input.dataset.weeklyField === "monthly") {
         const limit = Number(input.value || 0);
         const selectedIds = farmerIdsForRow(input.dataset.weeklyRowKey);
         if (Number.isInteger(limit) && limit >= 0 && selectedIds.size > limit) {
