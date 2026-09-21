@@ -1460,6 +1460,7 @@ class ModulesController < ApplicationController
   def create
     load_module!
     return if reject_invalid_training_view_uploads
+    return if reject_invalid_other_target_uploads
 
     if record_source_slug == "approval-master" && approval_channel_params?
       create_approval_channel
@@ -1556,6 +1557,7 @@ class ModulesController < ApplicationController
     @record = record
     previous_data = record.data.deep_dup
     return if reject_invalid_training_view_uploads
+    return if reject_invalid_other_target_uploads
 
     next_data = record.data.merge(normalized_module_data)
     next_data = preserve_training_uploads(record.data, next_data) if record_source_slug == "training-form"
@@ -11513,6 +11515,40 @@ class ModulesController < ApplicationController
       field_errors
     end
     errors += training_register_upload_errors
+    return false if errors.empty?
+
+    @records = module_records_required_for_show? ? module_records : []
+    flash.now[:alert] = errors.to_sentence
+    render :show, status: :unprocessable_entity
+    true
+  end
+
+  OTHER_TARGET_UPLOAD_FIELDS = {
+    "attachment_upload" => "Attachment Upload",
+    "field_photo" => "Field Photo"
+  }.freeze
+  OTHER_TARGET_UPLOAD_LIMIT = 5
+  # Attachment Upload carries paperwork, not pictures.
+  OTHER_TARGET_ATTACHMENT_EXTENSIONS = %w[.pdf .xlsx .xls .csv].freeze
+
+  # Both Other Target upload fields take up to 5 files of 5 MB each.  The form
+  # limits this as well, so this guards direct posts.  Scoped to Other Target
+  # alone: Seed Distribution and PAPL360 keep their unrestricted single upload.
+  def reject_invalid_other_target_uploads
+    return false unless record_source_slug == "other-target"
+
+    errors = OTHER_TARGET_UPLOAD_FIELDS.flat_map do |key, label|
+      uploads = Array(module_record_params[key]).flatten.filter_map do |upload|
+        upload if upload.respond_to?(:original_filename)
+      end
+      field_errors = []
+      field_errors << "#{label}: maximum #{OTHER_TARGET_UPLOAD_LIMIT} files are allowed." if uploads.size > OTHER_TARGET_UPLOAD_LIMIT
+      field_errors << "#{label}: maximum file size is 5 MB." if uploads.any? { |upload| upload.size > 5.megabytes }
+      if key == "attachment_upload" && uploads.any? { |upload| OTHER_TARGET_ATTACHMENT_EXTENSIONS.exclude?(File.extname(upload.original_filename).downcase) }
+        field_errors << "#{label}: only PDF or Excel files are allowed."
+      end
+      field_errors
+    end
     return false if errors.empty?
 
     @records = module_records_required_for_show? ? module_records : []

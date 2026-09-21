@@ -9388,3 +9388,117 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* Training Form — Photo Guidelines Eye Icon & Hover Tooltip */
+.training-section-content {
+  flex: 1;
+}
+
+.training-section-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.photo-info-tooltip-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.photo-info-eye-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #2e7d32;
+  color: #ffffff;
+  cursor: pointer;
+  transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+  user-select: none;
+  box-shadow: 0 2px 6px rgba(46, 125, 50, 0.3);
+}
+
+.photo-info-eye-icon:hover,
+.photo-info-eye-icon:focus {
+  background: #1b5e20;
+  transform: scale(1.1);
+  box-shadow: 0 4px 10px rgba(27, 94, 32, 0.4);
+  outline: none;
+}
+
+.photo-info-tooltip-content {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 2500;
+  width: min(520px, 85vw);
+  background: #ffffff;
+  border: 1px solid #a5d6a7;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  padding: 16px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(6px);
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+  pointer-events: none;
+}
+
+.photo-info-tooltip-wrap:hover .photo-info-tooltip-content,
+.photo-info-tooltip-wrap:focus-within .photo-info-tooltip-content {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.photo-info-tooltip-header {
+  font-weight: 800;
+  font-size: 0.92rem;
+  color: #1b5e20;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #e8f5e9;
+}
+
+.photo-info-tooltip-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: #2e3b42;
+  line-height: 1.45;
+}
+
+.photo-info-tooltip-list li {
+  position: relative;
+  padding-left: 14px;
+}
+
+.photo-info-tooltip-list li::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: #2e7d32;
+  font-weight: bold;
+}
+
+.photo-info-tooltip-list strong {
+  color: #1b5e20;
+}
+
+.photo-info-tooltip-footer {
+  margin-top: 12px;
+  border-top: 1px solid #e8f5e9;
+  font-size: 0.78rem;
+  color: #37474f;
+  line-height: 1.45;
+  background: #f1f8e9;
+  border-radius: 6px;
+  padding: 8px 10px;
+}

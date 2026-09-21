@@ -1799,7 +1799,7 @@ function initDeferredLayoutPage() {
       const invalid = files.filter((file) => !allowed.includes(file.name.split(".").pop().toLowerCase()));
       if (!invalid.length) return;
 
-      window.alert(`Only ${allowed.join(", ").toUpperCase()} files are allowed here. Please select a ${allowed[0].toUpperCase()} file.`);
+      window.alert(`Only ${allowed.join(", ").toUpperCase()} files are allowed here. Please reselect.`);
       input.value = "";
     });
   });
@@ -2485,13 +2485,7 @@ function initDeferredLayoutPage() {
 	      totalFarmerCountInput.value = total ? String(total) : "";
 	    };
 
-    const syncIcsFarmerCountSplit = () => {
-      if (!icsSelect?.value || !maleCountInput || !femaleCountInput) return;
-
-      const count = selectedFarmerBoxes().length;
-      maleCountInput.value = "0";
-      femaleCountInput.value = String(count);
-    };
+    const syncIcsFarmerCountSplit = () => {};
 
 	    const updateFarmerCount = () => {
 	      const count = selectedFarmerBoxes().length;

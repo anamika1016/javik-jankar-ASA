@@ -2110,7 +2110,7 @@
           "Photo Back View" => "Training Major Work Indicator Photo — Trainer",
           "Photo Close-up View" => "Farmer Interaction Photo",
           "Photo Long Shot" => "Wide Group Photo",
-          "Training Register Upload" => "Evidence/Documentation Photo"
+          "Training Register Upload" => "Evidence/Documentation Pdf"
         } if @slug == "training-form" %>
         <div class="module-form-grid <%= "user-registration-grid" if @slug == "new-user" || (@slug == "all-user" && @record.present?) %> <%= "training-form-grid" if @slug == "training-form" %>">
           <% @module[:fields].each do |field| %>
@@ -2118,8 +2118,31 @@
               <% sec = training_form_sections[field] %>
               <div class="training-section-header">
                 <span class="training-section-number"><%= sec[:number] %></span>
-                <div>
-                  <h3 class="training-section-title"><%= sec[:title] %></h3>
+                <div class="training-section-content">
+                  <div class="training-section-title-wrap">
+                    <h3 class="training-section-title"><%= sec[:title] %></h3>
+                    <% if sec[:number] == "05" %>
+                      <div class="photo-info-tooltip-wrap">
+                        <span class="photo-info-eye-icon" aria-label="Photo Guidelines" tabindex="0">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                            <circle cx="12" cy="12" r="3"></circle>
+                          </svg>
+                        </span>
+                        <div class="photo-info-tooltip-content">
+                          <div class="photo-info-tooltip-header">Training के दौरान कम से कम 5 प्रकार की फोटो इस प्रकार केप्चर करें</div>
+                          <ul class="photo-info-tooltip-list">
+                            <li><strong>Opening/Introduction Photo —</strong> Trainer सामने हो और किसान बैठे/खड़े होकर Training लेते दिखाई दें। कोशिश करें कि पूरा समूह फ्रेम में आए।</li>
+                            <li><strong>Training Activity Photo —</strong> Trainer जिस विषय पर समझा रहा है, उसकी वास्तविक activity दिखे। जैसे INM/IPM, बीज उपचार, खाद/दवा का उपयोग, FFS या Field Demonstration हो तो सामग्री/फसल भी फोटो में आए।</li>
+                            <li><strong>Farmer Interaction Photo —</strong> किसान सवाल पूछते, सामग्री देखते या practical करते हुए दिखाई दें। केवल Trainer की फोटो न लें।</li>
+                            <li><strong>Wide Group Photo —</strong> Training समाप्त होने पर सभी किसानों और Trainer की एक साफ Group Photo लें। चेहरों की पहचान हो सके और फोटो बहुत दूर से न हो।</li>
+                            <li><strong>Evidence/Documentation Photo —</strong> यदि Attendance sheet, Training banner/board, demonstration material आदि है, तो उसकी भी एक फोटो लें। Banner पर संभव हो तो Training Name, Village, Date और Topic दिखाई दे।</li>
+                          </ul>
+                          <div class="photo-info-tooltip-footer"><strong>फोटो लेने का तरीका:</strong> मोबाइल को अधिकतर Landscape (आड़ा) रखें, कैमरा सीधा रखें, पर्याप्त रोशनी हो, blurry फोटो न लें और एक ही angle की बहुत सारी फोटो के बजाय अलग-अलग evidence वाली फोटो लें। यदि GPS/Date-Time वाली फोटो की आवश्यकता MIS में है, तो location/date-time capture भी रखा जा सकता है।</div>
+                        </div>
+                      </div>
+                    <% end %>
+                  </div>
                   <p class="training-section-desc"><%= sec[:desc] %></p>
                 </div>
               </div>
@@ -2184,10 +2207,9 @@
                 <%= field_label %>
                 <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
                   <small class="field-hint inline-upload-hint">Select multiple photos · max 5 MB each</small>
-                <% elsif @slug == "training-form" && field == "Training Register Upload" %>
-                  <small class="field-hint inline-upload-hint">PDF file only · max 5 MB</small>
-                <% elsif @slug == "training-form" && TrainingEditApproval::PHOTO_VIEW_FIELDS.key?(field_key.tr("-", "_")) %>
-                  <small class="field-hint inline-upload-hint">Up to 5 photos · max 5 MB each</small>
+                <%# Attachment Upload takes Excel, PDF and more, so it carries no photo hint. %>
+                <% elsif @slug == "other-target" && field == "Field Photo" %>
+                  <small class="field-hint inline-upload-hint">Up to 5 per field · Max 5 MB per image</small>
                 <% end %>
               </span>
               <% photo_view_key = field_key.tr("-", "_") %>
@@ -2226,6 +2248,13 @@
                 <% multiple_attachment_upload = @slug == "other-target" && ["Attachment Upload", "Field Photo"].include?(field) %>
                 <% upload_accept = "accept=\"image/*\" data-max-size-mb=\"5\"" if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
                 <% upload_accept = "accept=\"image/*\" data-max-size-mb=\"5\"" if field == "Field Photo" %>
+                <%# Other Target takes up to 5 files of 5 MB in each of its two upload
+                    fields: Attachment Upload carries the PDF/Excel paperwork, Field
+                    Photo the pictures. %>
+                <% if multiple_attachment_upload %>
+                  <% file_types = field == "Attachment Upload" ? "accept=\".pdf,.xlsx,.xls,.csv\" data-allowed-extensions=\"pdf,xlsx,xls,csv\"" : "accept=\"image/*\"" %>
+                  <% upload_accept = "#{file_types} data-max-size-mb=\"5\" data-max-files=\"5\"" %>
+                <% end %>
                 <%# Evidence/Documentation only accepts a PDF, so the picker itself is limited to PDFs. %>
                 <% upload_accept = "accept=\"application/pdf,.pdf\" data-allowed-extensions=\"pdf\" data-max-size-mb=\"5\"" if @slug == "training-form" && field == "Training Register Upload" %>
                 <input name="module_record[<%= field_key %>]<%= "[]" if multiple_photo_upload || multiple_attachment_upload %>" type="file" <%= "multiple" if multiple_photo_upload || multiple_attachment_upload %> <%= upload_accept&.html_safe %> <%= "required" if form_required && field_value.blank? && !other_target_form %>>
