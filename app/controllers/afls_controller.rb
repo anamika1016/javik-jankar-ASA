@@ -24,6 +24,13 @@ class AflsController < ApplicationController
       .order(Arel.sql("farmer_name ASC NULLS LAST, id ASC"))
       .offset((@page - 1) * @page_size)
       .limit(@page_size)
+
+    respond_to do |format|
+      format.html
+      # The list is paginated, so exporting the rendered table would only ever
+      # hold one page. Build the file from the whole filtered set instead.
+      format.xlsx { send_afls_xlsx(scoped_afls) }
+    end
   end
 
   def import
@@ -68,6 +75,49 @@ class AflsController < ApplicationController
   end
 
   private
+
+  AFL_EXPORT_COLUMNS = {
+    "ID" => :id,
+    "FCO ID" => :fco_id,
+    "FCO" => :fco,
+    "FPO ID" => :fpo_id,
+    "FPO Name" => :fpo_name,
+    "ICS ID" => :ics_id,
+    "ICS Name" => :ics_name,
+    "Village ID" => :village_id,
+    "Village Name" => :village_name,
+    "Farm ID" => :farm_id,
+    "Farmer Name" => :farmer_name,
+    "Father Name" => :father_name,
+    "Tracenet No" => :tracenet_no,
+    "Total Farm Area" => :total_farm_area,
+    "Purchase Quantity Amount" => :purchase_quantity_amount,
+    "Estimate Quantity" => :estimate_quantity,
+    "Purchase Quantity" => :purchase_quantity,
+    "Purchase Date" => :purchase_date,
+    "Mobile No" => :mobile_no,
+    "Purchase Product" => :purchase_product,
+    "Status" => :status
+  }.freeze
+
+  def send_afls_xlsx(scope)
+    columns = AFL_EXPORT_COLUMNS.values
+    date_index = columns.index(:purchase_date)
+
+    # pluck keeps this to raw values; instantiating every row would be heavy on
+    # a list this size.
+    rows = scope
+      .order(Arel.sql("farmer_name ASC NULLS LAST, id ASC"))
+      .pluck(*columns)
+      .each { |row| row[date_index] = row[date_index]&.strftime("%d-%m-%Y") }
+
+    send_xlsx(
+      headers: AFL_EXPORT_COLUMNS.keys,
+      rows: rows,
+      filename: "afl-upload-#{Time.current.strftime('%Y%m%d%H%M')}.xlsx",
+      sheet_name: "AFL Upload"
+    )
+  end
 
   def set_afl
     @afl = Afl.find(params[:id])

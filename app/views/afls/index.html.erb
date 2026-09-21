@@ -27,7 +27,8 @@
             <span>⌕</span>
             <%= form.search_field :q, value: @query, placeholder: "Search any field", data: { table_search: "afl_list" } %>
           <% end %>
-          <button type="button" class="list-btn export" data-export-table="afl_list">Export</button>
+          <%# Built on the server so the file holds every filtered row, not just this page. %>
+          <%= link_to "Export", afls_path(@dashboard_afl_filter_params.merge(q: @query.presence, format: :xlsx)), class: "list-btn export" %>
         </div>
       </div>
 
