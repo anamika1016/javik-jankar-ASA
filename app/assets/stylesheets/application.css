@@ -9505,29 +9505,27 @@ body {
 
 /* Dashboard summary cards: keep each card short and move the full list into a
    popup opened from the ↗ button, so the four cards stay side by side. */
-.metric-card-group-title {
-  padding-right: 40px;
-}
-
 .metric-card-popup-trigger {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 50%;
+  right: 16px;
+  transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
   padding: 0;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.18);
-  border: 0;
-  border-radius: 6px;
+  color: #1f2933;
+  background: #fff;
+  border: 1px solid rgba(31, 41, 51, 0.14);
+  border-radius: 9px;
   cursor: pointer;
 }
 
 .metric-card-popup-trigger:hover {
-  background: rgba(255, 255, 255, 0.34);
+  background: #f4f6f8;
+  border-color: rgba(31, 41, 51, 0.28);
 }
 
 .dashboard-grid.premium .metric-card-group {
@@ -9540,17 +9538,44 @@ body {
   display: none !important;
 }
 
+/* A tinted tile with a coloured top edge, the title in dark text and the popup
+   button on the right. */
 .dashboard-grid.premium.dashboard-training-secondary-summaries .metric-card-group {
   min-height: 0;
   height: auto;
   padding: 0;
+  border: 1px solid rgba(31, 41, 51, 0.1);
+  border-top: 4px solid #6aa34f;
+  border-radius: 12px;
+  background: #e9f3ea;
+  box-shadow: 0 2px 6px rgba(23, 33, 38, 0.06);
 }
 
 .dashboard-training-secondary-summaries .metric-card-group > .metric-card-group-title {
   display: flex;
   align-items: center;
-  min-height: 46px;
-  margin-bottom: 0;
+  min-height: 74px;
+  margin: 0;
+  padding: 18px 64px 18px 20px;
+  color: #1f2933 !important;
+  background: transparent;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.dashboard-grid.premium.dashboard-training-secondary-summaries .metric-card-group-fco {
+  border-top-color: #9474b9;
+  background: #f0e9f9;
+}
+
+.dashboard-grid.premium.dashboard-training-secondary-summaries .metric-card-group-billing {
+  border-top-color: #d99b3f;
+  background: #fbeacd;
+}
+
+.dashboard-grid.premium.dashboard-training-secondary-summaries .metric-card-group-registration:not(.cc-jj-work-status) {
+  border-top-color: #6ba3d6;
+  background: #e2ecf8;
 }
 
 .metric-card-popup {
