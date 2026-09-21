@@ -134,6 +134,9 @@ Rails.application.routes.draw do
     patch :archive, on: :member
     get :results, on: :member
     get :export_results, on: :member
+    get :answers, on: :member
+    get :export_answers, on: :member
+    delete "attempts/:attempt_id", on: :member, action: :destroy_attempt, as: :delete_attempt
     resources :questions, controller: :jj_quiz_questions, as: :questions, except: %i[index show]
   end
 

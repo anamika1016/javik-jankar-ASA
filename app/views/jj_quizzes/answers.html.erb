@@ -1,0 +1,93 @@
+<% content_for :title, "JJ Attempt Review" %>
+
+<section class="module-page jj-admin-page">
+  <div class="module-hero">
+    <div>
+      <p class="vrp-eyebrow">Jeevika Jankar Exam</p>
+      <h1>Attempt Review</h1>
+      <p><%= @quiz.title %></p>
+    </div>
+    <div class="module-hero-actions">
+      <%= link_to "Back to Results", results_jj_quiz_path(@quiz), class: "btn btn-secondary" %>
+      <%= link_to "Back to Exam", jj_quiz_path(@quiz), class: "btn btn-secondary" %>
+      <%= link_to "Download Sheet", export_answers_jj_quiz_path(@quiz, attempt_id: params[:attempt_id]), class: "list-btn export" %>
+    </div>
+  </div>
+
+  <section class="module-card jj-answer-sheet-shell">
+    <% if @attempts.any? %>
+      <% @attempts.each do |attempt| %>
+        <details class="jj-answer-card" open>
+          <summary>
+            <span>
+              <strong><%= attempt_vrp_label(attempt) %></strong>
+              <small><%= attempt.status.titleize %> · <%= attempt.score.to_s("F") %> / <%= attempt.total_marks.to_s("F") %> · Submitted <%= attempt.submitted_at&.strftime("%d/%m/%Y %I:%M %p").presence || "-" %></small>
+            </span>
+            <span class="status-pill <%= attempt.passed? ? "active" : "inactive" %>"><%= attempt.passed? ? "Pass" : "Needs Review" %></span>
+          </summary>
+
+          <div class="jj-answer-card-toolbar">
+            <%= button_to "Delete Attempt", delete_attempt_jj_quiz_path(@quiz, attempt), method: :delete, class: "table-action delete-attempt", form: { data: { turbo_confirm: "Delete this attempt? This JJ can take the exam again while the exam window is active." } } %>
+          </div>
+
+          <div class="table-shell">
+            <table class="module-table jj-answer-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Question</th>
+                  <th>Selected</th>
+                  <th>Correct</th>
+                  <th>Marks</th>
+                  <th>Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% rows = attempt_answer_rows(attempt) %>
+                <% if rows.any? %>
+                  <% rows.each.with_index(1) do |answer, serial| %>
+                    <tr>
+                      <td><%= serial %></td>
+                      <td>
+                        <strong><%= answer.question_snapshot.to_h["question_text"].presence || answer.question&.question_text %></strong>
+                        <% JjQuizQuestion::OPTIONS.each do |option| %>
+                          <% option_text = answer_option_text(answer, option) %>
+                          <% next if option_text.blank? %>
+                          <% option_classes = ["jj-option-line"] %>
+                          <% option_classes << "selected" if answer.selected_option.to_s.upcase == option %>
+                          <% option_classes << "correct" if answer.correct_option.to_s.upcase == option %>
+                          <small class="<%= option_classes.join(" ") %>">
+                            <span><%= option %>. <%= option_text %></span>
+                            <% if answer.selected_option.to_s.upcase == option %><em>Selected</em><% end %>
+                            <% if answer.correct_option.to_s.upcase == option %><em>Correct</em><% end %>
+                          </small>
+                        <% end %>
+                      </td>
+                      <td>
+                        <strong><%= answer.selected_option.presence || "Skipped" %></strong>
+                        <small><%= answer_option_text(answer, answer.selected_option) %></small>
+                      </td>
+                      <td>
+                        <strong><%= answer.correct_option %></strong>
+                        <small><%= answer_option_text(answer, answer.correct_option) %></small>
+                      </td>
+                      <td><%= answer.marks_awarded.to_s("F") %> / <%= answer.question_snapshot.to_h["marks"].presence || answer.question&.marks&.to_s("F") %></td>
+                      <td><span class="status-pill <%= answer_result_class(answer) %>"><%= answer_result_label(answer) %></span></td>
+                    </tr>
+                  <% end %>
+                <% else %>
+                  <tr><td colspan="6">No answers captured for this attempt yet.</td></tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+        </details>
+      <% end %>
+    <% else %>
+      <div class="jj-empty-exam compact">
+        <strong>No attempts found</strong>
+        <small>No attempt details are available for this exam yet.</small>
+      </div>
+    <% end %>
+  </section>
+</section>

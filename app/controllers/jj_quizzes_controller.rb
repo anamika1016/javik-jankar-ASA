@@ -1,6 +1,7 @@
 class JjQuizzesController < ApplicationController
   before_action :require_admin_user!
-  before_action :set_quiz, only: %i[show edit update destroy publish archive import_questions results export_results]
+  before_action :set_quiz, only: %i[show edit update destroy publish archive import_questions results export_results answers export_answers destroy_attempt]
+  helper_method :attempt_answer_rows, :answer_option_text, :answer_result_label, :answer_result_class, :attempt_vrp_label
 
   def index
     @quizzes = JjQuiz.recent.includes(:questions, :attempts)
@@ -98,6 +99,29 @@ class JjQuizzesController < ApplicationController
     )
   end
 
+  def answers
+    @attempts = answer_attempt_scope
+  end
+
+  def export_answers
+    attempts = answer_attempt_scope
+    send_xlsx(
+      headers: answer_sheet_headers,
+      rows: attempts.flat_map { |attempt| answer_sheet_rows(attempt) },
+      filename: "jj-exam-answer-sheets-#{@quiz.id}-#{Date.current}.xlsx",
+      sheet_name: "JJ Answer Sheets"
+    )
+  end
+
+  def destroy_attempt
+    attempt = @quiz.attempts.includes(:vrp).find(params[:attempt_id])
+    label = attempt_vrp_label(attempt)
+    attempt.destroy!
+    redirect_back fallback_location: results_jj_quiz_path(@quiz), notice: "#{label} attempt deleted successfully. Candidate can take the exam again while the exam window is active."
+  rescue ActiveRecord::RecordNotDestroyed => error
+    redirect_back fallback_location: results_jj_quiz_path(@quiz), alert: error.record.errors.full_messages.to_sentence.presence || "Attempt could not be deleted."
+  end
+
   private
 
   def set_quiz
@@ -144,5 +168,130 @@ class JjQuizzesController < ApplicationController
       attempt.submitted_at,
       attempt.time_taken_label
     ]
+  end
+
+  def answer_attempt_scope
+    scope = @quiz.attempts.includes(:vrp, answers: :question).recent
+    scope = scope.where(id: params[:attempt_id]) if params[:attempt_id].present?
+    scope
+  end
+
+  def attempt_answer_rows(attempt)
+    attempt.answers.sort_by { |answer| [answer_position(answer), answer.id] }
+  end
+
+  def answer_position(answer)
+    snapshot = answer.question_snapshot.to_h
+    (snapshot["position"].presence || answer.question&.position || answer.id).to_i
+  end
+
+  def answer_question_text(answer)
+    answer.question_snapshot.to_h["question_text"].presence || answer.question&.question_text.to_s
+  end
+
+  def answer_option_text(answer, option)
+    option = option.to_s.upcase
+    return "" unless JjQuizQuestion::OPTIONS.include?(option)
+
+    answer.question_snapshot.to_h["option_#{option.downcase}"].presence || answer.question&.option_label(option).to_s
+  end
+
+  def answer_result_label(answer)
+    return "Skipped" if answer.selected_option.blank?
+
+    answer.correct? ? "Correct" : "Wrong"
+  end
+
+  def answer_result_class(answer)
+    return "scheduled" if answer.selected_option.blank?
+
+    answer.correct? ? "active" : "inactive"
+  end
+
+  def attempt_vrp_label(attempt)
+    [attempt.vrp&.user_name, attempt.vrp&.name].compact_blank.join(" - ").presence || "Jeevika Jankar ##{attempt.vrp_id}"
+  end
+
+  def answer_sheet_headers
+    [
+      "Attempt ID",
+      "Exam",
+      "JJ Record ID",
+      "JJ User ID",
+      "JJ Name",
+      "Mobile",
+      "Attempt Status",
+      "Question No",
+      "Question",
+      "Option A",
+      "Option B",
+      "Option C",
+      "Option D",
+      "Selected Option",
+      "Selected Answer",
+      "Correct Option",
+      "Correct Answer",
+      "Marks Awarded",
+      "Question Marks",
+      "Answer Result",
+      "Started At",
+      "Submitted At"
+    ]
+  end
+
+  def answer_sheet_rows(attempt)
+    rows = attempt_answer_rows(attempt).map.with_index(1) do |answer, serial|
+      [
+        attempt.id,
+        @quiz.title,
+        attempt.vrp_id,
+        attempt.vrp&.user_name,
+        attempt.vrp&.name,
+        attempt.vrp&.mobile_no,
+        attempt.status,
+        serial,
+        answer_question_text(answer),
+        answer_option_text(answer, "A"),
+        answer_option_text(answer, "B"),
+        answer_option_text(answer, "C"),
+        answer_option_text(answer, "D"),
+        answer.selected_option.presence || "-",
+        answer_option_text(answer, answer.selected_option),
+        answer.correct_option,
+        answer_option_text(answer, answer.correct_option),
+        answer.marks_awarded,
+        answer.question_snapshot.to_h["marks"].presence || answer.question&.marks,
+        answer_result_label(answer),
+        attempt.started_at,
+        attempt.submitted_at
+      ]
+    end
+
+    return rows if rows.any?
+
+    [[
+      attempt.id,
+      @quiz.title,
+      attempt.vrp_id,
+      attempt.vrp&.user_name,
+      attempt.vrp&.name,
+      attempt.vrp&.mobile_no,
+      attempt.status,
+      nil,
+      "No answers captured",
+      nil,
+      nil,
+      nil,
+      nil,
+      nil,
+      nil,
+      nil,
+      nil,
+      nil,
+      nil,
+      nil,
+      attempt.started_at,
+      attempt.submitted_at
+    ]]
   end
 end

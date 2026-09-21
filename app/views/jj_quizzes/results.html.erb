@@ -9,6 +9,7 @@
     </div>
     <div class="module-hero-actions">
       <%= link_to "Back to Exam", jj_quiz_path(@quiz), class: "btn btn-secondary" %>
+      <%= link_to "Download Answer Sheet", export_answers_jj_quiz_path(@quiz), class: "list-btn export" %>
       <%= link_to "Export Results", export_results_jj_quiz_path(@quiz), class: "list-btn export" %>
     </div>
   </div>
@@ -32,7 +33,7 @@
             <th>Started</th>
             <th>Submitted</th>
             <th>Time Taken</th>
-            <th>View</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -53,7 +54,11 @@
                 <td><%= attempt.started_at&.strftime("%d/%m/%Y %I:%M %p").presence || "-" %></td>
                 <td><%= attempt.submitted_at&.strftime("%d/%m/%Y %I:%M %p").presence || "-" %></td>
                 <td><%= attempt.time_taken_label %></td>
-                <td><%= link_to "Open", jj_exam_result_path(attempt.access_token), class: "table-action", target: "_blank", rel: "noopener" %></td>
+                <td class="jj-action-cell">
+                  <%= link_to "Open", answers_jj_quiz_path(@quiz, attempt_id: attempt.id), class: "table-action" %>
+                  <%= link_to "Download Sheet", export_answers_jj_quiz_path(@quiz, attempt_id: attempt.id), class: "table-action export" %>
+                  <%= button_to "Delete Attempt", delete_attempt_jj_quiz_path(@quiz, attempt), method: :delete, class: "table-action delete-attempt", form: { data: { turbo_confirm: "Delete this attempt? This JJ can take the exam again while the exam window is active." } } %>
+                </td>
               </tr>
             <% end %>
           <% else %>

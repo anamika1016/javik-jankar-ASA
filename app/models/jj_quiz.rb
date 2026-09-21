@@ -41,6 +41,53 @@ class JjQuiz < ApplicationRecord
     "Active"
   end
 
+  def exam_progress_state
+    return "not_ready" unless shareable_for_exam?
+    return "scheduled" if starts_at.present? && starts_at > Time.current
+    return "ended" if ends_at.present? && ends_at < Time.current
+
+    "running"
+  end
+
+  def exam_progress_label
+    {
+      "running" => "Running",
+      "ended" => "Ended",
+      "scheduled" => "Scheduled",
+      "not_ready" => "Not Ready"
+    }.fetch(exam_progress_state)
+  end
+
+  def exam_progress_badge_class
+    {
+      "running" => "active running",
+      "ended" => "inactive ended",
+      "scheduled" => "scheduled",
+      "not_ready" => "inactive not_ready"
+    }.fetch(exam_progress_state)
+  end
+
+  def exam_progress_detail
+    case exam_progress_state
+    when "running"
+      ends_at.present? ? "Ends on #{exam_time_label(ends_at)}" : "No end time set"
+    when "ended"
+      "Ended on #{exam_time_label(ends_at)}"
+    when "scheduled"
+      "Starts on #{exam_time_label(starts_at)}"
+    else
+      inactive_for_exam_reason || "Publish the exam and add active questions."
+    end
+  end
+
+  def start_time_label
+    starts_at.present? ? exam_time_label(starts_at) : "Anytime"
+  end
+
+  def end_time_label
+    ends_at.present? ? exam_time_label(ends_at) : "No end"
+  end
+
   def published?
     status == "published"
   end
@@ -72,5 +119,9 @@ class JjQuiz < ApplicationRecord
     return if starts_at.blank? || ends_at.blank? || ends_at > starts_at
 
     errors.add(:ends_at, "must be after start date")
+  end
+
+  def exam_time_label(time)
+    time&.strftime("%d/%m/%Y %I:%M %p")
   end
 end

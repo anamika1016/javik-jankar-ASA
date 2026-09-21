@@ -35,8 +35,8 @@ class JjQuizQuestion < ApplicationRecord
 
   def self.template_rows
     [
-      ["Organic farming ka main objective kya hai?", "Chemical use badhana", "Soil health aur safe production", "Only packaging", "None", "B"],
-      ["Training attendance ka proof kya ho sakta hai?", "Photo", "Farmer list", "Both A and B", "Koi nahi", "C"]
+      ["What is the main objective of organic farming?", "Increasing chemical use", "Improving soil health and safe production", "Only packaging", "None", "B"],
+      ["What can be used as proof of training attendance?", "Photo", "Farmer list", "Both A and B", "None", "C"]
     ]
   end
 

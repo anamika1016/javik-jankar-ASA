@@ -11,6 +11,7 @@
       <%= link_to "Back", jj_quizzes_path, class: "btn btn-secondary" %>
       <%= link_to "Edit", edit_jj_quiz_path(@quiz), class: "list-btn edit" %>
       <%= link_to "Results", results_jj_quiz_path(@quiz), class: "list-btn export" %>
+      <%= button_to "Delete", jj_quiz_path(@quiz), method: :delete, class: "list-btn deactive", form: { data: { turbo_confirm: "Delete this exam?" } } %>
     </div>
   </div>
 
@@ -33,7 +34,16 @@
     </div>
     <div class="jj-summary-tile">
       <small>QR Status</small>
-      <strong><%= @quiz.exam_window_label %></strong>
+      <strong><span class="status-pill jj-window-pill <%= @quiz.exam_progress_badge_class %>"><%= @quiz.exam_progress_label %></span></strong>
+      <em><%= @quiz.exam_progress_detail %></em>
+    </div>
+    <div class="jj-summary-tile">
+      <small>Start Time</small>
+      <strong><%= @quiz.start_time_label %></strong>
+    </div>
+    <div class="jj-summary-tile">
+      <small>End Time</small>
+      <strong><%= @quiz.end_time_label %></strong>
     </div>
   </section>
 
@@ -102,14 +112,14 @@
     </div>
   </section>
 
-  <section class="module-card">
+  <section class="module-card jj-question-card">
     <div class="vrp-list-toolbar compact">
       <strong>Questions</strong>
       <%= link_to "Add Question", new_jj_quiz_question_path(@quiz), class: "list-btn upload" %>
     </div>
 
     <div class="table-shell">
-      <table class="module-table">
+      <table class="module-table jj-question-table">
         <thead>
           <tr>
             <th>#</th>
@@ -152,13 +162,16 @@
     </div>
   </section>
 
-  <section class="module-card">
+  <section class="module-card jj-attempt-card">
     <div class="vrp-list-toolbar compact">
       <strong>Recent Attempts</strong>
-      <%= link_to "View All Results", results_jj_quiz_path(@quiz), class: "list-btn export" %>
+      <div class="jj-action-row">
+        <%= link_to "Download Answer Sheet", export_answers_jj_quiz_path(@quiz), class: "list-btn export" %>
+        <%= link_to "View All Results", results_jj_quiz_path(@quiz), class: "list-btn export" %>
+      </div>
     </div>
     <div class="table-shell">
-      <table class="module-table">
+      <table class="module-table jj-attempt-table">
         <thead>
           <tr>
             <th>JJ</th>
@@ -168,23 +181,29 @@
             <th>Wrong</th>
             <th>Skipped</th>
             <th>Submitted</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           <% if @attempts.any? %>
             <% @attempts.each do |attempt| %>
               <tr>
-                <td><%= [attempt.vrp&.user_name, attempt.vrp&.name].compact_blank.join(" - ") %></td>
+                <td><%= attempt_vrp_label(attempt) %></td>
                 <td><%= attempt.status.titleize %></td>
                 <td><%= attempt.score.to_s("F") %> / <%= attempt.total_marks.to_s("F") %></td>
                 <td><%= attempt.correct_answers_count %></td>
                 <td><%= attempt.wrong_answers_count %></td>
                 <td><%= attempt.skipped_answers_count %></td>
                 <td><%= attempt.submitted_at&.strftime("%d/%m/%Y %I:%M %p").presence || "-" %></td>
+                <td class="jj-action-cell">
+                  <%= link_to "Open", answers_jj_quiz_path(@quiz, attempt_id: attempt.id), class: "table-action" %>
+                  <%= link_to "Download Sheet", export_answers_jj_quiz_path(@quiz, attempt_id: attempt.id), class: "table-action export" %>
+                  <%= button_to "Delete Attempt", delete_attempt_jj_quiz_path(@quiz, attempt), method: :delete, class: "table-action delete-attempt", form: { data: { turbo_confirm: "Delete this attempt? This JJ can take the exam again while the exam window is active." } } %>
+                </td>
               </tr>
             <% end %>
           <% else %>
-            <tr><td colspan="7">No attempts yet.</td></tr>
+            <tr><td colspan="8">No attempts yet.</td></tr>
           <% end %>
         </tbody>
       </table>
