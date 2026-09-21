@@ -1834,9 +1834,13 @@
 
       <div class="vrp-list-toolbar compact">
         <button type="button" class="list-btn edit" data-module-edit-selected>Edit</button>
-        <% unless ["training-form-list", "other-target-list"].include?(@slug) %>
+        <% record_only_list = ["training-form-list", "other-target-list"].include?(@slug) %>
+        <% unless record_only_list %>
           <button type="button" class="list-btn active" data-module-status-selected="Active">Active</button>
           <button type="button" class="list-btn deactive" data-module-status-selected="Inactive">Deactive</button>
+        <% end %>
+        <%# Record lists have no Active/Deactive, but an admin can still delete. %>
+        <% if !record_only_list || admin_access_user? %>
           <button type="button" class="list-btn delete" data-module-delete-selected>Delete</button>
         <% end %>
       </div>
