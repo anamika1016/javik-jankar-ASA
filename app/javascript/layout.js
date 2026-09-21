@@ -897,7 +897,9 @@ function initDeferredLayoutPage() {
   if (aflListTable) {
     const aflSelectAll = aflListTable.querySelector("[data-afl-select-all]");
     const aflDeleteButton = document.querySelector("[data-afl-delete-selected]");
-    const aflQueryInput = document.querySelector("[data-table-search='afl_list']");
+    // The bulk delete scopes itself to this query, so it must point at the real
+    // search box — not at a filter that no longer exists.
+    const aflQueryInput = document.querySelector("[data-afl-search], [data-table-search='afl_list']");
     const aflRows = () => Array.from(aflListTable.querySelectorAll("[data-afl-row-select]"));
     const aflSelectAllKey = () => `afl-list-select-all:${(aflQueryInput?.value || "").trim().toLowerCase()}`;
     const restoreAflSelection = () => {
@@ -920,6 +922,23 @@ function initDeferredLayoutPage() {
     };
 
     restoreAflSelection();
+
+    // Search as you type. The list pages on the server, so this submits the
+    // form after a short pause instead of filtering the rows on screen.
+    if (aflQueryInput?.form) {
+      let aflSearchTimer;
+      aflQueryInput.addEventListener("input", () => {
+        window.clearTimeout(aflSearchTimer);
+        aflSearchTimer = window.setTimeout(() => aflQueryInput.form.requestSubmit(), 450);
+      });
+
+      // The submit reloads the page, so put the cursor back to keep typing.
+      if (aflQueryInput.value && new URLSearchParams(window.location.search).has("q")) {
+        const caret = aflQueryInput.value.length;
+        aflQueryInput.focus();
+        aflQueryInput.setSelectionRange?.(caret, caret);
+      }
+    }
 
     aflSelectAll?.addEventListener("change", () => {
       if (aflSelectAll.checked) {
