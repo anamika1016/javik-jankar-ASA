@@ -9502,3 +9502,106 @@ body {
   border-radius: 6px;
   padding: 8px 10px;
 }
+
+/* Dashboard summary cards: keep each card short and move the full list into a
+   popup opened from the ↗ button, so the four cards stay side by side. */
+.metric-card-group-title {
+  padding-right: 40px;
+}
+
+.metric-card-popup-trigger {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.18);
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.metric-card-popup-trigger:hover {
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.dashboard-grid.premium .metric-card-group {
+  position: relative;
+}
+
+/* The card shows only its heading — every detail lives in the popup.
+   !important because the grid rules above set display with !important too. */
+.dashboard-training-secondary-summaries .metric-card-group > :not(.metric-card-group-title):not([data-card-popup-trigger]) {
+  display: none !important;
+}
+
+.dashboard-grid.premium.dashboard-training-secondary-summaries .metric-card-group {
+  min-height: 0;
+  height: auto;
+  padding: 0;
+}
+
+.dashboard-training-secondary-summaries .metric-card-group > .metric-card-group-title {
+  display: flex;
+  align-items: center;
+  min-height: 46px;
+  margin-bottom: 0;
+}
+
+.metric-card-popup {
+  width: min(880px, 92vw);
+  max-height: 86vh;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(23, 33, 38, 0.28);
+}
+
+.metric-card-popup::backdrop {
+  background: rgba(15, 23, 28, 0.55);
+}
+
+.metric-card-popup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  color: #fff;
+  background: #3f7d3f;
+}
+
+.metric-card-popup-close {
+  font-size: 1.4rem;
+  line-height: 1;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.metric-card-popup-body {
+  max-height: calc(86vh - 56px);
+  padding: 18px;
+  overflow: auto;
+}
+
+.metric-card-popup-body .metric-card-group-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  max-height: none;
+}
+
+/* The popup lives inside the dashboard grid, so the card height caps would
+   apply to the copied contents too. */
+.metric-card-popup-body .cc-jj-status-groups,
+.metric-card-popup-body .metric-card-group-items {
+  max-height: none;
+  overflow: visible;
+}

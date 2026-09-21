@@ -1804,6 +1804,42 @@ function initDeferredLayoutPage() {
     });
   });
 
+  // Dashboard summary cards stay short; the ↗ button reopens the same card
+  // contents full size in a popup.
+  const cardPopup = document.querySelector("[data-card-popup]");
+  const cardPopupTitle = cardPopup?.querySelector("[data-card-popup-title]");
+  const cardPopupBody = cardPopup?.querySelector("[data-card-popup-body]");
+
+  const closeCardPopup = () => {
+    if (typeof cardPopup?.close === "function") cardPopup.close();
+    else cardPopup?.removeAttribute("open");
+  };
+
+  document.querySelectorAll("[data-card-popup-trigger]").forEach((trigger) => {
+    trigger.addEventListener("click", () => {
+      const card = trigger.closest(".metric-card-group");
+      if (!card || !cardPopup || !cardPopupBody) return;
+
+      if (cardPopupTitle) {
+        cardPopupTitle.textContent = card.querySelector(".metric-card-group-title")?.textContent.trim() || "Details";
+      }
+
+      // Copy everything except the heading and the button itself.
+      const content = Array.from(card.children)
+        .filter((child) => !child.matches(".metric-card-group-title, [data-card-popup-trigger]"))
+        .map((child) => child.cloneNode(true));
+      cardPopupBody.replaceChildren(...content);
+
+      if (typeof cardPopup.showModal === "function") cardPopup.showModal();
+      else cardPopup.setAttribute("open", "open");
+    });
+  });
+
+  cardPopup?.querySelector("[data-card-popup-close]")?.addEventListener("click", closeCardPopup);
+  cardPopup?.addEventListener("click", (event) => {
+    if (event.target === cardPopup) closeCardPopup();
+  });
+
   const uploadGalleryModal = document.querySelector("[data-upload-gallery-modal]");
   const uploadGalleryGrid = uploadGalleryModal?.querySelector("[data-upload-gallery-grid]");
   const uploadGalleryCount = uploadGalleryModal?.querySelector("[data-upload-gallery-count]");
