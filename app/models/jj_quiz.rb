@@ -25,10 +25,10 @@ class JjQuiz < ApplicationRecord
   end
 
   def inactive_for_exam_reason
-    return "Exam draft/archived hai. Publish ya activate karein." unless published?
-    return "Kam se kam ek active question add karein." unless active_questions.exists?
-    return "Exam #{starts_at.strftime('%d/%m/%Y %I:%M %p')} se start hoga." if starts_at.present? && starts_at > Time.current
-    return "Exam #{ends_at.strftime('%d/%m/%Y %I:%M %p')} par end ho chuka hai." if ends_at.present? && ends_at < Time.current
+    return "This exam is draft or archived. Publish it before sharing." unless published?
+    return "Add at least one active question before sharing this exam." unless active_questions.exists?
+    return "Exam will start on #{starts_at.strftime('%d/%m/%Y at %I:%M %p')}." if starts_at.present? && starts_at > Time.current
+    return "Exam ended on #{ends_at.strftime('%d/%m/%Y at %I:%M %p')}." if ends_at.present? && ends_at < Time.current
 
     nil
   end

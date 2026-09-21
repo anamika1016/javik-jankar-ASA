@@ -61,21 +61,24 @@
   <section class="module-card jj-admin-qr-panel" id="share-exam">
     <div class="jj-admin-qr-copy">
       <p class="vrp-eyebrow">WhatsApp Group QR / Link</p>
-      <h2>Share Exam QR / Link</h2>
-      <p>Admin is QR/link ko WhatsApp group me share karega. Jeevika Jankar scan karke apna User ID aur password dalega, phir exam start hoga.</p>
+      <h2>Share Exam QR</h2>
+      <p>Share this QR or link in the WhatsApp group. Candidates can scan it, enter their User ID and password, and start the exam when the window opens.</p>
       <div class="jj-admin-qr-meta">
         <span><strong>Duration</strong><%= @quiz.duration_minutes %> min</span>
         <span><strong>Questions</strong><%= @quiz.active_questions.count %></span>
         <span><strong>Total Marks</strong><%= @quiz.total_marks.to_s("F") %></span>
       </div>
       <label class="jj-admin-qr-link">
-        <span>Login URL</span>
+        <span>Exam Access URL</span>
         <input type="text" value="<%= @exam_start_url %>" readonly>
       </label>
       <div class="jj-admin-qr-actions jj-admin-link-actions">
-        <%= link_to "Open Exam Link", @exam_start_url, class: "list-btn export", target: "_blank", rel: "noopener" %>
+        <% if @exam_start_qr_svg.present? %>
+          <button type="button" class="list-btn upload" data-copy-qr-image=".jj-qr-svg" data-copy-fallback-text="<%= @exam_start_url %>" data-copy-success-label="QR Copied" data-copy-fallback-label="Link Copied">Copy QR</button>
+        <% end %>
         <%= link_to "Share Link on WhatsApp", @whatsapp_share_url, class: "list-btn upload", target: "_blank", rel: "noopener" %>
         <button type="button" class="list-btn edit" data-copy-to-clipboard="<%= @exam_start_url %>">Copy Link</button>
+        <%= link_to "Open Exam Link", @exam_start_url, class: "list-btn export", target: "_blank", rel: "noopener" %>
       </div>
     </div>
     <div class="jj-admin-qr-box">
@@ -83,12 +86,12 @@
         <%= raw @exam_start_qr_svg %>
         <div class="jj-qr-state <%= @quiz.active_for_exam? ? "active" : "inactive" %>">
           <strong><%= @quiz.exam_window_label %></strong>
-          <small><%= @quiz.active_for_exam? ? "QR aur link se JJ login karke exam start kar sakta hai." : (@quiz.inactive_for_exam_reason || "Exam active window me nahi hai.") %></small>
+          <small><%= @quiz.active_for_exam? ? "Candidates can scan the QR/link, sign in, and start the exam." : (@quiz.inactive_for_exam_reason || "The exam is outside the active window.") %></small>
         </div>
       <% else %>
         <div class="jj-empty-exam compact">
           <strong>QR not ready</strong>
-          <small><%= @quiz.inactive_for_exam_reason || "Exam publish karke active question add karein." %></small>
+          <small><%= @quiz.inactive_for_exam_reason || "Publish the exam and add at least one active question to generate the QR." %></small>
           <% if @quiz.active_questions.exists? %>
             <%= link_to "Edit Window", edit_jj_quiz_path(@quiz), class: "list-btn export" %>
           <% else %>

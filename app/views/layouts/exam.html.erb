@@ -9,6 +9,17 @@
     <%= javascript_importmap_tags %>
   </head>
   <body class="jj-exam-public-body">
+    <div class="jj-public-language-bar">
+      <div class="language-switcher" data-language-switcher>
+        <span>Language</span>
+        <button type="button" data-language-option="en">English</button>
+        <button type="button" data-language-option="hi">हिन्दी</button>
+        <button type="button" data-language-option="mr">मराठी</button>
+        <button type="button" data-language-option="or">ଓଡ଼ିଆ</button>
+        <button type="button" data-language-option="gu">ગુજરાતી</button>
+      </div>
+      <div id="google_translate_element" class="google-translate-holder" aria-hidden="true"></div>
+    </div>
     <% if notice.present? %>
       <div class="jj-exam-flash notice"><%= notice %></div>
     <% end %>

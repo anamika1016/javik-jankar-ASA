@@ -174,84 +174,6 @@ const initClipboardButtons = () => {
   });
 };
 
-const svgToPngBlob = (svg) => new Promise((resolve, reject) => {
-  const source = new XMLSerializer().serializeToString(svg);
-  const svgBlob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
-  const url = URL.createObjectURL(svgBlob);
-  const image = new Image();
-  const width = Number(svg.getAttribute("width")) || svg.viewBox?.baseVal?.width || 320;
-  const height = Number(svg.getAttribute("height")) || svg.viewBox?.baseVal?.height || width;
-
-  image.onload = () => {
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext("2d");
-    if (!context) {
-      URL.revokeObjectURL(url);
-      reject(new Error("Could not render QR image"));
-      return;
-    }
-    context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, width, height);
-    context.drawImage(image, 0, 0, width, height);
-    URL.revokeObjectURL(url);
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error("Could not prepare QR image"));
-    }, "image/png");
-  };
-  image.onerror = () => {
-    URL.revokeObjectURL(url);
-    reject(new Error("Could not load QR image"));
-  };
-  image.src = url;
-});
-
-const initQrCopyButtons = () => {
-  document.querySelectorAll("[data-copy-qr-image]").forEach((button) => {
-    if (button.dataset.qrCopyBound === "true") return;
-
-    button.dataset.qrCopyBound = "true";
-    button.addEventListener("click", async () => {
-      const selector = button.dataset.copyQrImage || ".jj-qr-svg";
-      const scope = button.closest(".jj-admin-qr-panel, .jj-qr-panel, .jj-qr-card") || document;
-      const svg = scope.querySelector(selector);
-      const fallbackText = button.dataset.copyFallbackText || "";
-      const originalText = button.textContent;
-      const setTemporaryLabel = (label) => {
-        button.textContent = label;
-        window.setTimeout(() => {
-          button.textContent = originalText;
-        }, 1800);
-      };
-
-      if (!svg) return;
-      if (!navigator.clipboard) {
-        if (fallbackText) window.prompt("Copy exam link", fallbackText);
-        return;
-      }
-
-      try {
-        if (!window.ClipboardItem || !navigator.clipboard.write) throw new Error("Image clipboard is not available");
-
-        const pngBlob = await svgToPngBlob(svg);
-        await navigator.clipboard.write([new ClipboardItem({ "image/png": pngBlob })]);
-        setTemporaryLabel(button.dataset.copySuccessLabel || "QR Copied");
-      } catch (_error) {
-        if (!fallbackText) return;
-
-        try {
-          await navigator.clipboard.writeText(fallbackText);
-          setTemporaryLabel(button.dataset.copyFallbackLabel || "Link Copied");
-        } catch (_fallbackError) {
-          window.prompt("Copy exam link", fallbackText);
-        }
-      }
-    });
-  });
-};
-
 const runDeferredLayoutInit = () => {
   if (!window.__layoutVisitId) return;
   initDeferredLayoutPage();
@@ -1775,23 +1697,6 @@ function initDeferredLayoutPage() {
         window.alert(`Each photo must be ${maxSizeMb} MB or smaller. Please reselect the photos.`);
         input.value = "";
       }
-    });
-  });
-
-  document.querySelectorAll("[data-allowed-extensions]").forEach((input) => {
-    const allowed = String(input.dataset.allowedExtensions || "")
-      .split(",")
-      .map((extension) => extension.trim().toLowerCase())
-      .filter(Boolean);
-    if (!allowed.length) return;
-
-    input.addEventListener("change", () => {
-      const files = Array.from(input.files || []);
-      const invalid = files.filter((file) => !allowed.includes(file.name.split(".").pop().toLowerCase()));
-      if (!invalid.length) return;
-
-      window.alert(`Only ${allowed.join(", ").toUpperCase()} files are allowed here. Please select a ${allowed[0].toUpperCase()} file.`);
-      input.value = "";
     });
   });
 
@@ -3627,7 +3532,7 @@ function initDeferredLayoutPage() {
         .filter(Boolean);
       if (ids.length) return [...new Set(ids)];
 
-      return [].concat(editTarget.afl_ids || []).map((id) => String(id)).filter(Boolean);
+      return Array(editTarget.afl_ids || []).map((id) => String(id)).filter(Boolean);
     };
     let editTarget = {};
     let targetSubActivityRows = [];
@@ -4087,10 +3992,7 @@ function initDeferredLayoutPage() {
     const renderTargetWeeklySummary = () => {
       if (!weeklySummary || !weeklyRows) return;
 
-      // Every mode plans week wise once an activity is chosen.  With a New
-      // Farmer Target the Monthly column seeds from that number instead of the
-      // farmer selection (see selectedFarmerMonthlyCount).
-      const rows = targetActivitySummaryRows();
+      const rows = newFarmerTargetMode() && !villageTargetMode() ? [] : targetActivitySummaryRows();
       restoreEditFarmerSelections(rows);
       const monthlyCount = selectedFarmerMonthlyCount();
       const selectedLabel = `${totalActivityFarmerSelections()} total farmer selections`;
@@ -4099,9 +4001,7 @@ function initDeferredLayoutPage() {
       const totalHeader = weeklyHeaderRow?.querySelector("th:nth-last-child(2)");
       if (totalHeader) totalHeader.hidden = villageTargetMode();
 
-      // Village mode still plans week wise; it only drops the farmer specific
-      // Total/View columns, so the plan table must stay visible.
-      weeklySummary.hidden = false;
+      weeklySummary.hidden = villageTargetMode();
       weeklySummary.classList.toggle("target-weekly-village-mode", villageTargetMode());
       if (!rows.length) {
         weeklyRows.innerHTML = `<tr><td colspan="${villageTargetMode() ? 6 : 8}">Select Main Activity to view weekly plan.</td></tr>`;
@@ -4111,9 +4011,7 @@ function initDeferredLayoutPage() {
       weeklyRows.innerHTML = rows.map((row, index) => {
         const rowKey = weeklyRowKey(row);
         const selectedIds = farmerIdsForRow(rowKey);
-        // Village mode has no farmer selection to derive the monthly count
-        // from, so start blank and let the user type it.
-        const rowMonthlyCount = trainingMonthlyTargetFor(row) || (villageTargetMode() ? "" : monthlyCount);
+        const rowMonthlyCount = trainingMonthlyTargetFor(row) || monthlyCount;
         const rowWeeklyCounts = weeklyCountsFor(rowMonthlyCount);
         const farmerInputs = villageTargetMode() ? "" : Array.from(selectedIds).map((id) => `<input type="hidden" name="target_mapping[weekly_plan][${index}][afl_ids][]" value="${escapeHtml(id)}">`).join("");
         const viewCell = villageTargetMode() ? "" : `<td><div class="target-weekly-cell-center"><button type="button" class="table-action" data-target-weekly-view="${index}" data-weekly-row-key="${escapeHtml(weeklyRowKey(row))}" data-activity-label="${escapeHtml(row.label)}">View</button></div></td>`;
@@ -4345,22 +4243,6 @@ function initDeferredLayoutPage() {
           if (farmerDialog?.open) renderDialogFarmers();
         });
       });
-
-      // After rendering, sync pre-selected (edit mode) farmer IDs into weeklyPlanFarmerIds
-      // so the TOTAL column and farmer dialog reflect the correct pre-selected count.
-      if (editTarget.id) {
-        const rows = targetActivitySummaryRows();
-        rows.forEach((row) => {
-          const rowKey = weeklyRowKey(row);
-          if (weeklyPlanFarmerIdsDirty.has(rowKey)) return; // user already changed this row
-          const preChecked = Array.from(farmerList.querySelectorAll("[data-target-farmer-checkbox]:checked"))
-            .map((cb) => String(cb.value)).filter(Boolean);
-          if (preChecked.length > 0) {
-            weeklyPlanFarmerIds[rowKey] = new Set(preChecked);
-          }
-        });
-      }
-
       updateTargetFarmerCount();
     };
 
@@ -4452,18 +4334,6 @@ function initDeferredLayoutPage() {
       weeklyPlanValues[input.dataset.weeklyRowKey][input.dataset.weeklyField] = input.value;
 
       if (input.dataset.weeklyField === "monthly") {
-        // Keep the four weeks in step with Monthly so the totals always match;
-        // each week can still be fine tuned afterwards.
-        const rowKey = input.dataset.weeklyRowKey;
-        weeklyCountsFor(Number(input.value || 0)).forEach((count, index) => {
-          const field = `week_${index + 1}`;
-          const weekInput = weeklyRows.querySelector(`[data-weekly-row-key="${CSS.escape(rowKey)}"][data-weekly-field="${field}"]`);
-          if (!weekInput) return;
-
-          weekInput.value = String(count);
-          weeklyPlanValues[rowKey][field] = weekInput.value;
-        });
-
         const limit = Number(input.value || 0);
         const selectedIds = farmerIdsForRow(input.dataset.weeklyRowKey);
         if (Number.isInteger(limit) && limit >= 0 && selectedIds.size > limit) {
@@ -7343,7 +7213,6 @@ const bootLayoutPage = () => {
   initFastNavigation();
   initAflFarmerMapping();
   initClipboardButtons();
-  initQrCopyButtons();
   scheduleDeferredLayoutInit();
 };
 

@@ -1,4 +1,4 @@
-<% content_for :title, "JJ Exam Login" %>
+<% content_for :title, "Start Jeevika Jankar Exam" %>
 <% selected_quiz = @fixed_quiz %>
 
 <style>
@@ -222,7 +222,7 @@
 </style>
 
 <main class="jj-exam-shell jj-login-compact-shell">
-  <section class="jj-login-compact-card" aria-label="JJ Exam Login">
+  <section class="jj-login-compact-card" aria-label="Start Jeevika Jankar Exam">
     <div class="jj-login-compact-brand">
       <span class="jj-brand-logo"><%= image_tag app_logo_path, alt: app_display_name %></span>
       <div>
@@ -234,7 +234,7 @@
     <% if selected_quiz.blank? %>
       <div class="jj-scan-required">
         <strong>Scan QR to start exam</strong>
-        <small>Admin ke QR code scan karne ke baad hi Jeevika Jankar login form open hoga.</small>
+        <small>The credential form opens only from the QR or link shared by the admin.</small>
       </div>
     <% elsif @exam_blocked_reason.present? %>
       <div class="jj-selected-exam">
@@ -248,7 +248,7 @@
     <% elsif @quizzes.blank? %>
       <div class="jj-empty-exam compact">
         <strong>No active exam</strong>
-        <small>Admin exam publish karega to login active hoga.</small>
+        <small>The login form will activate after the admin publishes an exam.</small>
       </div>
     <% else %>
       <%= form_with url: jj_exam_login_path, method: :post, local: true, data: { turbo: false }, html: { class: "login-form jj-credential-form" } do |form| %>

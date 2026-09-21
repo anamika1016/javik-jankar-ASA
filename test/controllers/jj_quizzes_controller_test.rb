@@ -14,8 +14,10 @@ class JjQuizzesControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert_includes response.body, "Share Exam QR"
+    assert_includes response.body, "Copy QR"
     assert_includes response.body, "Share Link on WhatsApp"
     assert_includes response.body, start_jj_exam_url(quiz)
+    assert_not_includes response.body, "JJ Exam Login"
   end
 
   test "show renders direct link and qr for scheduled exam without bypassing schedule" do
@@ -27,12 +29,13 @@ class JjQuizzesControllerTest < ActionDispatch::IntegrationTest
     get jj_quiz_path(quiz)
 
     assert_response :success
-    assert_includes response.body, "Share Exam QR / Link"
+    assert_includes response.body, "Share Exam QR"
     assert_includes response.body, "Open Exam Link"
     assert_includes response.body, "Share Link on WhatsApp"
+    assert_includes response.body, "Copy QR"
     assert_includes response.body, "Copy Link"
     assert_includes response.body, "Scheduled"
-    assert_includes response.body, "se start hoga."
+    assert_includes response.body, "will start on"
     assert_not_includes response.body, "Activate Exam Now"
     assert_includes response.body, "jj-qr-svg"
     assert_includes response.body, start_jj_exam_url(quiz)

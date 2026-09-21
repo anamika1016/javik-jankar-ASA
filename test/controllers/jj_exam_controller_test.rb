@@ -31,7 +31,7 @@ class JjExamControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_includes response.body, "Scheduled JJ Exam"
     assert_includes response.body, "Scheduled"
-    assert_includes response.body, "se start hoga."
+    assert_includes response.body, "will start on"
     assert_select "input[name=?]", "login", count: 0
 
     assert_no_difference -> { JjQuizAttempt.count } do
@@ -39,7 +39,7 @@ class JjExamControllerTest < ActionDispatch::IntegrationTest
     end
 
     assert_response :unprocessable_entity
-    assert_includes response.body, "se start hoga."
+    assert_includes response.body, "will start on"
   end
 
   test "ended exam link opens but blocks login after end time" do
@@ -52,7 +52,7 @@ class JjExamControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_includes response.body, "Ended JJ Exam"
     assert_includes response.body, "Ended"
-    assert_includes response.body, "end ho chuka hai."
+    assert_includes response.body, "ended on"
     assert_select "input[name=?]", "login", count: 0
 
     assert_no_difference -> { JjQuizAttempt.count } do
@@ -60,7 +60,7 @@ class JjExamControllerTest < ActionDispatch::IntegrationTest
     end
 
     assert_response :unprocessable_entity
-    assert_includes response.body, "end ho chuka hai."
+    assert_includes response.body, "ended on"
   end
 
   private

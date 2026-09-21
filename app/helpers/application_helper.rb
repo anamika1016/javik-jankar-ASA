@@ -168,8 +168,7 @@ module ApplicationHelper
       title: "JJ Exam",
       icon: "▨",
       links: [
-        ["Exam Setup", :route, :jj_quizzes_path],
-        ["JJ Exam Login", :route, :jj_exam_login_path]
+        ["Exam Setup", :route, :jj_quizzes_path]
       ]
     },
   ].freeze
@@ -423,9 +422,6 @@ module ApplicationHelper
     end
     if ["JJ Exam", "Jeevika Jankar Exam", "Exam Setup"].include?(name.to_s.strip)
       keys.concat(["jj-exam", "exam-setup"])
-    end
-    if ["JJ Exam Login", "Start Exam"].include?(name.to_s.strip)
-      keys.concat(["jj-exam-login", "start-exam"])
     end
     keys.uniq
   end

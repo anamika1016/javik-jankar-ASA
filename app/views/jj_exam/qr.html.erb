@@ -19,7 +19,10 @@
       <% else %>
         <div class="jj-qr-fallback">QR data is too long. Use the exam link below.</div>
       <% end %>
-      <p>Mobile se QR scan karein. Agar same device par exam dena hai to button use karein.</p>
+      <p>Scan this QR on a mobile device. Use the button below if you are taking the exam on this device.</p>
+      <% if @qr_svg.present? %>
+        <button type="button" class="jj-exam-primary secondary" data-copy-qr-image=".jj-qr-svg" data-copy-fallback-text="<%= @take_url %>" data-copy-success-label="QR Copied" data-copy-fallback-label="Link Copied">Copy QR</button>
+      <% end %>
       <%= link_to "Open Exam", @take_url, class: "jj-exam-primary" %>
       <small><%= @take_url %></small>
     </div>
