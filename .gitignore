@@ -17,3 +17,6 @@
 .DS_Store
 *.swp
 *~
+
+# Precompiled assets. The server builds its own on deploy.
+/public/assets
