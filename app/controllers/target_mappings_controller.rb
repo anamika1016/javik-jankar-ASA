@@ -1813,7 +1813,16 @@ class TargetMappingsController < ApplicationController
       training_targets: (TRAINING_TARGET_FIELDS.keys + ["cc"]).index_with do |key|
         target_number_value(primary.public_send("#{key}_target")) if primary.has_attribute?("#{key}_target")
       end,
-      afl_ids: batch.flat_map { |t| normalized_afl_ids(t.afl_ids) }.uniq
+      afl_ids: batch.flat_map { |t| normalized_afl_ids(t.afl_ids) }.uniq,
+      # The saved Monthly/Week split, so editing shows the plan that was stored
+      # instead of a blank table.
+      weekly_plan: {
+        monthly: target_number_value(primary.target_quantity),
+        week_1: primary.week_1_target,
+        week_2: primary.week_2_target,
+        week_3: primary.week_3_target,
+        week_4: primary.week_4_target
+      }.transform_values { |value| value.nil? ? "" : value.to_s }
     }
   end
 

@@ -4061,8 +4061,16 @@ function initDeferredLayoutPage() {
     };
     const selectedFarmerIdsForActiveRow = () => farmerIdsForRow(activeFarmerDialogRowKey);
     const totalActivityFarmerSelections = () => Object.values(weeklyPlanFarmerIds).reduce((total, ids) => total + ids.size, 0);
+    // While editing, the stored Monthly/Week split is the starting point; it is
+    // only used until the row is touched, after which weeklyPlanValues wins.
+    const savedEditWeeklyValue = (field) => {
+      if (!editTarget.id) return undefined;
+
+      const saved = editTarget.weekly_plan?.[field];
+      return String(saved ?? "").trim() === "" ? undefined : String(saved);
+    };
     const weeklyPlanValue = (row, field, fallback = "") => {
-      const savedValue = weeklyPlanValues[weeklyRowKey(row)]?.[field];
+      const savedValue = weeklyPlanValues[weeklyRowKey(row)]?.[field] ?? savedEditWeeklyValue(field);
       return savedValue === undefined ? fallback : savedValue;
     };
     const weeklyMonthlyLimit = (rowKey) => {
