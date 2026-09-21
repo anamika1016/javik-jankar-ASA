@@ -9630,3 +9630,54 @@ body {
   max-height: none;
   overflow: visible;
 }
+
+/* Dashboard cards read as flat coloured tiles instead of white-to-tint
+   gradients. Palette taken from the krai build so both apps match. */
+.dashboard-status-panel .training-participation-box.total {
+  background: #e2f0f1;
+}
+
+.dashboard-status-panel .training-participation-box.green,
+.dashboard-status-panel .training-participation-box.completed {
+  background: #e6f2df;
+}
+
+.dashboard-status-panel .training-participation-box.yellow {
+  background: #fdf3d6;
+}
+
+.dashboard-status-panel .training-participation-box.red,
+.dashboard-status-panel .training-participation-box.pending {
+  background: #fbe4e4;
+}
+
+/* Summary and Demonstration tiles rotate through the six-colour palette. */
+.dashboard-summary-boxes .dashboard-summary-box:nth-child(6n + 1) {
+  border-top-color: #55848e;
+  background: #e2f0f1;
+}
+
+.dashboard-summary-boxes .dashboard-summary-box:nth-child(6n + 2) {
+  border-top-color: #66925a;
+  background: #e6f2df;
+}
+
+.dashboard-summary-boxes .dashboard-summary-box:nth-child(6n + 3) {
+  border-top-color: #6480b0;
+  background: #e5ecf6;
+}
+
+.dashboard-summary-boxes .dashboard-summary-box:nth-child(6n + 4) {
+  border-top-color: #b0863f;
+  background: #f5ead1;
+}
+
+.dashboard-summary-boxes .dashboard-summary-box:nth-child(6n + 5) {
+  border-top-color: #79709f;
+  background: #eae6f3;
+}
+
+.dashboard-summary-boxes .dashboard-summary-box:nth-child(6n) {
+  border-top-color: #a86660;
+  background: #f3e0dd;
+}
