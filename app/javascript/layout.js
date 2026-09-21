@@ -4068,11 +4068,17 @@ function initDeferredLayoutPage() {
     };
 
     const weeklyRowKey = (row) => `${row.mainActivity || ""}`;
+    // The plan renders every selected activity as one combined row keyed
+    // "__common__", so a saved target's farmers belong to that row.
+    const editRowMatchesKey = (rowKey) => {
+      if (!editTarget.id) return false;
+
+      const key = normalizeOption(String(rowKey || ""));
+      return key === "__common__" || key === normalizeOption(editTarget.main_activity_names?.[0]);
+    };
     const farmerIdsForRow = (rowKey) => {
-      const mainActivity = String(rowKey || "");
       const savedFarmerIds = savedEditFarmerIds();
-      const editRowMatches = editTarget.id &&
-        normalizeOption(mainActivity) === normalizeOption(editTarget.main_activity_names?.[0]);
+      const editRowMatches = editRowMatchesKey(rowKey);
 
       if (editRowMatches && savedFarmerIds.length && !weeklyPlanFarmerIdsDirty.has(rowKey)) {
         weeklyPlanFarmerIds[rowKey] = new Set(savedFarmerIds);
@@ -4087,9 +4093,7 @@ function initDeferredLayoutPage() {
       const savedFarmerIds = savedEditFarmerIds();
       if (!savedFarmerIds.length || !rows.length) return;
 
-      const matchingRow = rows.find((row) => (
-        normalizeOption(row.mainActivity) === normalizeOption(editTarget.main_activity_names?.[0])
-      ));
+      const matchingRow = rows.find((row) => editRowMatchesKey(weeklyRowKey(row)));
       if (!matchingRow) return;
 
       weeklyPlanFarmerIds[weeklyRowKey(matchingRow)] = new Set(savedFarmerIds);
