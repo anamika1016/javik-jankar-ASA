@@ -31,10 +31,16 @@ class TrainingPhotoViewsTest < ActiveSupport::TestCase
     @controller.define_singleton_method(:flash) { @test_flash ||= Struct.new(:now).new({}) }
     @controller.define_singleton_method(:render) { |*args, **kwargs| @rendered_status = kwargs[:status] }
     [[5.megabytes + 1, "image/png", "5 MB"], [100, "text/plain", "select an image"]].each do |size, type, message|
-      @controller.params = ActionController::Parameters.new(module_record: { photo_front_view: upload.new("photo.png", size, type) })
+      f = upload.new("photo.png", size, type)
+      @controller.define_singleton_method(:module_record_params) { { "photo_front_view" => [f] } }
       assert @controller.send(:reject_invalid_training_view_uploads)
       assert_match message, @controller.flash.now[:alert]
       assert_equal :unprocessable_entity, @controller.instance_variable_get(:@rendered_status)
     end
+
+    six_files = Array.new(6) { upload.new("photo.png", 100, "image/png") }
+    @controller.define_singleton_method(:module_record_params) { { "photo_front_view" => six_files } }
+    assert @controller.send(:reject_invalid_training_view_uploads)
+    assert_match "maximum 5 photos are allowed", @controller.flash.now[:alert]
   end
 end

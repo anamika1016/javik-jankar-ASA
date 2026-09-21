@@ -2221,6 +2221,7 @@ class ModulesController < ApplicationController
     sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
     other_target_achievement_index = approved_other_target_achievement_index
     group_key_counts = dashboard_target_mapping_group_key_counts(targets)
+    batch_keys = dashboard_target_batch_keys(targets)
 
     raw_rows = Array(targets).map do |target|
       assigned_farmer_ids = target_farmer_ids(target)
@@ -2284,7 +2285,12 @@ class ModulesController < ApplicationController
     end
 
     raw_rows.group_by do |row|
-      row[:target_record].present? ? dashboard_target_assignment_key(row[:target_record], group_key_counts) : row[:target_mapping_id]
+      record = row[:target_record]
+      next row[:target_mapping_id] if record.blank?
+
+      # Sub activities picked in one submission are saved as one record each, so
+      # the progress table shows that submission back as a single assigned target.
+      batch_keys[record.id] || dashboard_target_assignment_key(record, group_key_counts)
     end.values.map do |rows|
       first = rows.first
       main_activities = rows.map { |row| row[:main_activity].to_s.strip }.reject(&:blank?).uniq
@@ -4181,6 +4187,33 @@ class ModulesController < ApplicationController
       normalize_dashboard_text(target.main_activity_name),
       normalize_dashboard_text(target.activity_name)
     ]
+  end
+
+  # A submission saves every one of its sub activities in the same moment, and
+  # updating it re-saves them all again, so updated_at is what ties a batch
+  # together — created_at drifts once a sub activity is added later.
+  DASHBOARD_TARGET_BATCH_WINDOW = 10.seconds
+
+  def dashboard_target_batch_keys(targets)
+    Array(targets).group_by { |target| dashboard_target_batch_signature(target) }
+      .each_with_object({}) do |(signature, records), keys|
+        records
+          .sort_by { |target| dashboard_target_batch_time(target) }
+          .slice_when { |previous, current| dashboard_target_batch_time(current) - dashboard_target_batch_time(previous) > DASHBOARD_TARGET_BATCH_WINDOW }
+          .each_with_index do |batch, index|
+            batch.each { |target| keys[target.id] = [:target_batch, signature, index] }
+          end
+      end
+  end
+
+  # The assignment signature minus the sub activity: everything that must match
+  # for two records to have come from the same submission.
+  def dashboard_target_batch_signature(target)
+    dashboard_target_assignment_signature(target) + [normalize_dashboard_text(target.main_activity_name)]
+  end
+
+  def dashboard_target_batch_time(target)
+    target.updated_at || target.created_at || Time.zone.at(0)
   end
 
   def dashboard_target_assignment_signature(target)
@@ -11465,14 +11498,19 @@ class ModulesController < ApplicationController
     return false unless record_source_slug == "training-form"
 
     errors = TrainingEditApproval::PHOTO_VIEW_FIELDS.flat_map do |key, label|
-      Array(module_record_params[key]).filter_map do |upload|
-        next unless upload.respond_to?(:original_filename)
+      uploads = Array(module_record_params[key]).flatten.filter_map { |upload| upload if upload.respond_to?(:original_filename) }
+      field_errors = []
+      if uploads.size > 5
+        field_errors << "#{label}: maximum 5 photos are allowed."
+      end
+      uploads.each do |upload|
         if upload.size > 5.megabytes
-          "#{label}: maximum file size is 5 MB."
+          field_errors << "#{label}: maximum file size is 5 MB."
         elsif !FarmerTargetApi::TRAINING_PHOTO_CONTENT_TYPES.include?(upload.content_type.to_s.downcase)
-          "#{label}: select an image (JPEG, PNG, WebP, HEIC or HEIF)."
+          field_errors << "#{label}: select an image (JPEG, PNG, WebP, HEIC or HEIF)."
         end
       end
+      field_errors
     end
     errors += training_register_upload_errors
     return false if errors.empty?

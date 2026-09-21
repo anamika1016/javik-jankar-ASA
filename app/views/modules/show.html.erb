@@ -2186,12 +2186,13 @@
                   <small class="field-hint inline-upload-hint">Select multiple photos · max 5 MB each</small>
                 <% elsif @slug == "training-form" && field == "Training Register Upload" %>
                   <small class="field-hint inline-upload-hint">PDF file only · max 5 MB</small>
+                <% elsif @slug == "training-form" && TrainingEditApproval::PHOTO_VIEW_FIELDS.key?(field_key.tr("-", "_")) %>
+                  <small class="field-hint inline-upload-hint">Up to 5 photos · max 5 MB each</small>
                 <% end %>
               </span>
               <% photo_view_key = field_key.tr("-", "_") %>
               <% if @slug == "training-form" && TrainingEditApproval::PHOTO_VIEW_FIELDS.key?(photo_view_key) %>
-                <small class="field-hint">Max 5 MB · image</small>
-                <input name="module_record[<%= photo_view_key %>]" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" data-max-size-mb="5">
+                <input name="module_record[<%= photo_view_key %>][]" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple data-max-size-mb="5" data-max-files="5">
                 <% Array(raw_field_value).compact_blank.each do |url| %>
                   <small class="field-hint">Current: <%= link_to File.basename(url.to_s), url, target: "_blank", rel: "noopener" if url.to_s.start_with?("/uploads/module_records/") %></small>
                 <% end %>

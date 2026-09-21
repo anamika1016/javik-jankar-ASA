@@ -54,17 +54,44 @@ class TargetMappingsController < ApplicationController
     end
 
     if editable_target
-      target_mapping = editable_target
-      target_mapping.assign_attributes(single_target_mapping_attributes)
-      apply_weekly_plan_target(target_mapping)
-      target_mapping.vrp_ics_mapping_id = nil
-      normalize_location_values(target_mapping)
-      assign_afl_location_names(target_mapping)
+      batch_records = target_batch_records(editable_target)
+      combinations = target_activity_combinations
 
-      if target_vrp_allowed?(target_mapping) && assign_target_farmers(target_mapping) && target_mapping.save
-        redirect_to target_mappings_path, notice: "Target mapping saved successfully."
+      if combinations.blank?
+        redirect_to target_mappings_path, alert: training_target_mode_error_message
+        return
+      end
+
+      target_mappings = combinations.each_with_index.map do |(main_activity, sub_activity), index|
+        target_mapping = batch_records[index] || TargetMapping.new
+        plan = weekly_plan_for(main_activity, sub_activity)
+        target_mapping.assign_attributes(single_target_mapping_attributes.merge(
+          main_activity_name: main_activity,
+          activity_name: sub_activity,
+          target_quantity: plan&.fetch("monthly", nil).presence || single_target_mapping_attributes[:target_quantity]
+        ).merge(weekly_target_attributes(plan)))
+        target_mapping.vrp_ics_mapping_id = nil
+        normalize_location_values(target_mapping)
+        assign_afl_location_names(target_mapping)
+        assign_creator(target_mapping) if target_mapping.new_record?
+        target_mapping
+      end
+
+      unselected_records = batch_records[combinations.size..] || []
+
+      errors = target_mappings.flat_map do |target_mapping|
+        valid_mapping = target_vrp_allowed?(target_mapping) && assign_target_farmers(target_mapping) && target_mapping.valid?
+        valid_mapping ? [] : target_mapping.errors.full_messages
+      end
+
+      if errors.blank?
+        TargetMapping.transaction do
+          unselected_records.each(&:destroy)
+          target_mappings.each(&:save!)
+        end
+        redirect_to target_mappings_path, notice: "Target mapping updated successfully."
       else
-        redirect_to target_mappings_path, alert: target_mapping.errors.full_messages.to_sentence
+        redirect_to target_mappings_path, alert: errors.uniq.to_sentence
       end
       return
     end
@@ -132,11 +159,28 @@ class TargetMappingsController < ApplicationController
 
   def saved_farmers
     ids = params[:target_mapping_ids].to_s.split(",").uniq
-    targets = visible_target_mappings.where(id: ids)
+    targets = TargetMapping.where(id: ids)
     farmer_ids = targets.pluck(:afl_ids).flat_map { |values| normalized_afl_ids(values) }.uniq
-    farmers = Afl.where(id: farmer_ids).order(:farmer_name, :id)
-      .select(:id, :farmer_name, :father_name, :tracenet_no, :mobile_no, :village_name)
-    render json: { farmers: farmers.as_json }
+    return render json: { farmers: [] } if farmer_ids.blank?
+
+    numeric_ids = farmer_ids.select { |id| id.match?(/\A\d+\z/) }
+    local_farmers = []
+    if numeric_ids.any? && defined?(Afl) && Afl.table_exists?
+      local_farmers = Afl.where(id: numeric_ids).order(:farmer_name, :id)
+        .select(:id, :farmer_name, :father_name, :tracenet_no, :mobile_no, :village_name).as_json
+    end
+
+    found_ids = local_farmers.map { |f| f["id"].to_s }
+    missing_ids = farmer_ids - found_ids
+
+    if missing_ids.any?
+      village_values = targets.pluck(:village_id).compact_blank.uniq
+      external_farmers = village_values.flat_map { |v| external_village_farmers_for(v) }
+      missing_farmers = external_farmers.select { |f| missing_ids.include?(f[:id].to_s) }
+      local_farmers += missing_farmers
+    end
+
+    render json: { farmers: local_farmers }
   end
 
   private
@@ -1581,17 +1625,51 @@ class TargetMappingsController < ApplicationController
     scope
   end
 
+  # Picking several sub activities saves one record per sub activity.  The list
+  # shows a submission back as a single row, so records saved together are
+  # grouped here; sub activities mapped at another time stay on their own row.
+  TARGET_BATCH_WINDOW = 10.seconds
+
   def target_mapping_rows(target_mappings)
-    Array(target_mappings).map do |target|
-      {
-        target: target,
-        main_activities: target_activity_values(target.main_activity_name),
-        sub_activities: target_activity_values(target.activity_name),
-        target_quantity: target.target_quantity,
-        weekly_values: target.weekly_target_values,
-        farmer_ids: normalized_afl_ids(target.afl_ids)
-      }
-    end
+    Array(target_mappings)
+      .group_by { |target| target_batch_signature(target) }
+      .flat_map { |_signature, records| target_submission_batches(records) }
+      .sort_by { |batch| -batch.map { |target| target_batch_time(target) }.max.to_f }
+      .map { |batch| target_mapping_row(batch) }
+  end
+
+  # Submitting a mapping saves every one of its sub activity records in the same
+  # moment, and updating it re-saves them all again, so updated_at is what ties
+  # a batch together — created_at differs once a sub activity is added later.
+  def target_batch_time(target)
+    target.updated_at || target.created_at || Time.zone.at(0)
+  end
+
+  def target_batch_signature(target)
+    [
+      target.vrp_id, target.fco_id, target.ics_id, target.village_id,
+      target.month_name, target.completion_date,
+      target.main_activity_name.to_s.strip.downcase
+    ]
+  end
+
+  def target_submission_batches(records)
+    records.sort_by { |target| target_batch_time(target) }.slice_when do |previous, current|
+      target_batch_time(current) - target_batch_time(previous) > TARGET_BATCH_WINDOW
+    end.to_a
+  end
+
+  def target_mapping_row(batch)
+    primary = batch.first
+    {
+      target: primary,
+      batch_ids: batch.map(&:id),
+      main_activities: target_activity_values(primary.main_activity_name),
+      sub_activities: batch.flat_map { |target| target_activity_values(target.activity_name) }.uniq,
+      target_quantity: primary.target_quantity,
+      weekly_values: primary.weekly_target_values,
+      farmer_ids: batch.flat_map { |target| normalized_afl_ids(target.afl_ids) }.uniq
+    }
   end
 
   def send_target_mappings_xlsx
@@ -1696,30 +1774,46 @@ class TargetMappingsController < ApplicationController
     !admin_login? && current_app_user["record_type"].to_s == "Vrp"
   end
 
+  def target_batch_records(target)
+    return [] unless target
+
+    signature = target_batch_signature(target)
+    siblings = visible_target_mappings.where(
+      vrp_id: target.vrp_id,
+      month_name: target.month_name
+    )
+    matching_siblings = siblings.select { |record| target_batch_signature(record) == signature }
+    batches = target_submission_batches(matching_siblings)
+    found_batch = batches.find { |batch| batch.any? { |r| r.id == target.id } }
+    found_batch || [target]
+  end
+
   def edit_payload(target)
     return {} unless target
 
-    training_key = TRAINING_TARGET_FIELDS.key(target.activity_name.to_s)
+    batch = target_batch_records(target)
+    primary = target
+    training_key = TRAINING_TARGET_FIELDS.key(primary.activity_name.to_s)
     training_mode = training_key.present?
 
     {
-      id: target.id,
-      vrp_id: target.vrp_id.to_s,
-      fco_id: encoded_location_value(target.fco_id, target.fco_name),
-      ics_id: encoded_location_value(target.ics_id, target.ics_name),
-      village_id: encoded_location_value(target.village_id, target.village_name),
-      village_ids: encoded_location_values(target.village_id, target.village_name),
-      month_name: target.month_name.to_s,
-      completion_date: target.completion_date&.strftime("%Y-%m-%d"),
-      main_activity_type: training_mode ? "Training" : main_activity_type_for(target.main_activity_name),
-      main_activity_names: [target.main_activity_name.to_s].reject(&:blank?),
-      activity_names: [target.activity_name.to_s].reject(&:blank?),
-      target_quantity: target_number_value(target.target_quantity),
-      new_farmer_target_quantity: Array(target.afl_ids).blank? && !training_mode ? target_number_value(target.target_quantity) : "",
+      id: primary.id,
+      vrp_id: primary.vrp_id.to_s,
+      fco_id: encoded_location_value(primary.fco_id, primary.fco_name),
+      ics_id: encoded_location_value(primary.ics_id, primary.ics_name),
+      village_id: encoded_location_value(primary.village_id, primary.village_name),
+      village_ids: encoded_location_values(primary.village_id, primary.village_name),
+      month_name: primary.month_name.to_s,
+      completion_date: primary.completion_date&.strftime("%Y-%m-%d"),
+      main_activity_type: training_mode ? "Training" : main_activity_type_for(primary.main_activity_name),
+      main_activity_names: batch.map(&:main_activity_name).compact_blank.map(&:to_s).uniq,
+      activity_names: batch.map(&:activity_name).compact_blank.map(&:to_s).uniq,
+      target_quantity: target_number_value(primary.target_quantity),
+      new_farmer_target_quantity: Array(primary.afl_ids).blank? && !training_mode ? target_number_value(primary.target_quantity) : "",
       training_targets: (TRAINING_TARGET_FIELDS.keys + ["cc"]).index_with do |key|
-        target_number_value(target.public_send("#{key}_target")) if target.has_attribute?("#{key}_target")
+        target_number_value(primary.public_send("#{key}_target")) if primary.has_attribute?("#{key}_target")
       end,
-      afl_ids: Array(target.afl_ids).map(&:to_s)
+      afl_ids: batch.flat_map { |t| normalized_afl_ids(t.afl_ids) }.uniq
     }
   end
 

@@ -1767,13 +1767,22 @@ function initDeferredLayoutPage() {
   document.querySelectorAll("[data-max-size-mb]").forEach((input) => {
     input.addEventListener("change", () => {
       const maxSizeMb = Number(input.dataset.maxSizeMb || 0);
+      const maxFiles = Number(input.dataset.maxFiles || 0);
       const files = Array.from(input.files || []);
-      if (!maxSizeMb || files.length === 0) return;
+      if (files.length === 0) return;
 
-      const oversizedFiles = files.filter((file) => file.size > maxSizeMb * 1024 * 1024);
-      if (oversizedFiles.length > 0) {
-        window.alert(`Each photo must be ${maxSizeMb} MB or smaller. Please reselect the photos.`);
+      if (maxFiles && files.length > maxFiles) {
+        window.alert(`Maximum ${maxFiles} photos can be selected for this field.`);
         input.value = "";
+        return;
+      }
+
+      if (maxSizeMb) {
+        const oversizedFiles = files.filter((file) => file.size > maxSizeMb * 1024 * 1024);
+        if (oversizedFiles.length > 0) {
+          window.alert(`Each photo must be ${maxSizeMb} MB or smaller. Please reselect the photos.`);
+          input.value = "";
+        }
       }
     });
   });
