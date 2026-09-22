@@ -13,9 +13,10 @@ class TargetMappingsController < ApplicationController
   }.freeze
 
   def index
+    @list_only_view = params[:list_only].to_s == "true"
     @vrp_target_view = non_admin_vrp_login?
-    @admin_mapping_actions = admin_login?
-    @remove_mapping_actions = !admin_login? && !non_admin_vrp_login?
+    @admin_mapping_actions = admin_login? && !@list_only_view
+    @remove_mapping_actions = !admin_login? && !non_admin_vrp_login? && !@list_only_view
     @vrps = target_vrps
     @month_options = module_options("month-master", "month_name")
     @main_activity_options = module_options("add-activity-group", "main_activity_name", "activity_group_name")

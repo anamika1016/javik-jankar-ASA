@@ -1,15 +1,17 @@
-<% content_for :title, @vrp_target_view ? "Jeevika Jankar Targets" : "Target Mapping Master" %>
+<% page_title = @list_only_view ? "Recent Target Mappings" : (@vrp_target_view ? "Jeevika Jankar Targets" : "Target Mapping Master") %>
+<% page_heading = @list_only_view ? "Recent Target Mappings" : (@vrp_target_view ? "Recent Target Mappings" : "Target Mapping") %>
+<% content_for :title, page_title %>
 
 <main class="vrp-list-page">
   <section class="vrp-list-shell">
     <div class="vrp-list-header">
       <div>
-        <p class="vrp-eyebrow"><%= @vrp_target_view ? "Jeevika Jankar Targets" : "Target Mapping Master" %></p>
-        <h1><%= @vrp_target_view ? "Recent Target Mappings" : "Target Mapping" %></h1>
+        <p class="vrp-eyebrow"><%= page_title %></p>
+        <h1><%= page_heading %></h1>
       </div>
     </div>
 
-    <% unless @vrp_target_view %>
+    <% unless @vrp_target_view || @list_only_view %>
       <section class="module-card target-mapping-card"
         data-target-mapping
         data-edit-target="<%= html_escape(@edit_payload.to_json) %>"
