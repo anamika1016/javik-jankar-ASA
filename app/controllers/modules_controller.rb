@@ -661,14 +661,17 @@ class ModulesController < ApplicationController
     if selected_main_activity.present?
       normalized_selected_main_activity = normalize_dashboard_text(selected_main_activity)
       main_activity_matches = t_scope.select { |t| normalize_dashboard_text(t.main_activity_name) == normalized_selected_main_activity }
-      if main_activity_matches.blank? && selected_sub_activity.present?
-        main_activity_matches = t_scope
-      end
       t_scope = main_activity_matches
     elsif legacy_activity.present?
       t_scope = t_scope.select { |t| t.main_activity_name == legacy_activity || t.activity_name == legacy_activity }
     end
-    @filter_sub_activity_options = t_scope.map(&:activity_name).uniq.compact_blank.sort
+    @filter_sub_activity_options = dashboard_filter_sub_activity_options(t_scope)
+    selected_sub_activity = nil unless @filter_sub_activity_options.any? { |value| normalize_dashboard_text(value) == normalize_dashboard_text(selected_sub_activity) }
+    if selected_sub_activity.nil?
+      params.delete(:sub_activity)
+      @dashboard_filter_param_cache = {}
+    end
+
     if selected_sub_activity.present?
       t_scope = t_scope.select { |t| normalize_dashboard_text(t.activity_name) == normalize_dashboard_text(selected_sub_activity) }
     end
@@ -677,7 +680,7 @@ class ModulesController < ApplicationController
       v_scope = v_scope.select { |v| v_ids.include?(v.id) }
     end
 
-    # 2. FCO Filter. Merge FCO names from VRPs, target mappings and AFL records.
+    # 2. FCO Filter (depends on selected Activity)
     vrp_fcos = unfiltered_vrps.map(&:fcoc)
     target_fcos = unfiltered_targets.map(&:fco_name)
     afl_fcos = ModuleRecord.where(module_slug: "add-farmer-form").pluck(Arel.sql("data::jsonb ->> 'fco_name'"))
@@ -690,7 +693,7 @@ class ModulesController < ApplicationController
       v_scope = v_scope.select { |v| normalize_dashboard_text(v.fcoc) == f }
       v_ids = v_scope.map(&:id).to_set
       t_scope = t_scope.select { |t| t.vrp_id.present? && v_ids.include?(t.vrp_id) }
-    elsif !dashboard_global_view_user?
+    else
       default_fco_values = dashboard_summary_fco_filter_values
       v_scope = v_scope.select { |v| (training_fcoc_filter_values(v.fcoc) & default_fco_values).any? }
       t_scope = t_scope.select do |t|
@@ -717,8 +720,7 @@ class ModulesController < ApplicationController
     end
 
     # 4. ICS Filter
-    ics_option_scope = dashboard_global_view_user? && selected_cluster_incharge.blank? && @dashboard_fcoc_filter_value.blank? ? unfiltered_targets : t_scope
-    @filter_ics_options = ics_option_scope.map { |t| t.ics_name.presence || t.ics_id }.uniq.compact_blank.sort
+    @filter_ics_options = t_scope.map { |t| t.ics_name.presence || t.ics_id }.uniq.compact_blank.sort
     selected_ics_filter = dashboard_filter_param(:ics)
     if selected_ics_filter.present?
       selected_ics = selected_ics_filter.to_s
@@ -780,6 +782,7 @@ class ModulesController < ApplicationController
       return
     end
     @cc_jj_work_status_report = CcJjWorkStatusReport.new(calculator: self)
+    @dashboard_fco_names = dashboard_fco_names
     if params[:work_status_list] == "true"
       @work_status_rows = @cc_jj_work_status_report.rows
       respond_to do |format|
@@ -878,98 +881,101 @@ class ModulesController < ApplicationController
     @participation_fcoc_filter_value = @dashboard_fcoc_filter_value.presence || dashboard_default_visible_fcoc(@filter_fcoc_options)
     @participation_week_filter_value = dashboard_filter_param(:weekly_target_week).to_i if dashboard_filter_param(:weekly_target_week).present?
     @participation_week_filter_value = nil unless (1..4).include?(@participation_week_filter_value)
-    participation_dashboard_counts = cached_training_participation_dashboard_counts(
-      month_name: @participation_selected_month,
-      fcoc_name: @participation_fcoc_filter_value,
-      week_number: @participation_week_filter_value
-    )
-    mapped_count, mapped_popups = farmer_training_mapped_farmer_count_and_popups(
-      month_name: @participation_selected_month,
-      fcoc_name: @participation_fcoc_filter_value
-    )
-    no_training_count, no_training_popups, red_fco_details = farmer_training_no_training_count_and_popups(
-      month_name: @participation_selected_month,
-      fcoc_name: @participation_fcoc_filter_value
-    )
-    yellow_count, yellow_popups = farmer_training_yellow_farmer_count_and_popups(
-      month_name: @participation_selected_month,
-      fcoc_name: @participation_fcoc_filter_value
-    )
-    green_count, green_popups = farmer_training_green_farmer_count_and_popups(
-      month_name: @participation_selected_month,
-      fcoc_name: @participation_fcoc_filter_value
-    )
-    participation_dashboard_counts[:red] = no_training_count if participation_dashboard_counts.is_a?(Hash)
-    participation_dashboard_counts[:yellow] = yellow_count if participation_dashboard_counts.is_a?(Hash)
-    participation_dashboard_counts[:green] = green_count if participation_dashboard_counts.is_a?(Hash)
-    participation_dashboard_counts[:total] = mapped_count if participation_dashboard_counts.is_a?(Hash)
+    if @dashboard_farmer_activity_mode
+      participation_dashboard_counts = cached_training_participation_dashboard_counts(
+        month_name: @participation_selected_month,
+        fcoc_name: @participation_fcoc_filter_value,
+        week_number: @participation_week_filter_value
+      )
+      mapped_count, mapped_popups = farmer_training_mapped_farmer_count_and_popups(
+        month_name: @participation_selected_month,
+        fcoc_name: @participation_fcoc_filter_value
+      )
+      no_training_count, no_training_popups, red_fco_details = farmer_training_no_training_count_and_popups(
+        month_name: @participation_selected_month,
+        fcoc_name: @participation_fcoc_filter_value
+      )
+      yellow_count, yellow_popups = farmer_training_yellow_farmer_count_and_popups(
+        month_name: @participation_selected_month,
+        fcoc_name: @participation_fcoc_filter_value
+      )
+      green_count, green_popups = farmer_training_green_farmer_count_and_popups(
+        month_name: @participation_selected_month,
+        fcoc_name: @participation_fcoc_filter_value
+      )
+      participation_dashboard_counts[:red] = no_training_count if participation_dashboard_counts.is_a?(Hash)
+      participation_dashboard_counts[:yellow] = yellow_count if participation_dashboard_counts.is_a?(Hash)
+      participation_dashboard_counts[:green] = green_count if participation_dashboard_counts.is_a?(Hash)
+      participation_dashboard_counts[:total] = mapped_count if participation_dashboard_counts.is_a?(Hash)
 
-    @training_participation_status_cards = training_participation_dashboard_status_cards(
-      participation_dashboard_counts,
-      month_name: @participation_selected_month,
-      fcoc_name: @participation_fcoc_filter_value,
-      week_number: @participation_week_filter_value
-    )
-    @training_registered_farmer_count = participation_dashboard_counts[:registered_farmer_total].to_i
-    @training_unique_farmer_count = mapped_count
-    @training_mapped_farmer_count = mapped_count
-    @training_mapped_farmer_popups = mapped_popups
-    @training_no_training_popups = no_training_popups
-    @training_red_fco_details = red_fco_details
-    @training_yellow_farmer_popups = yellow_popups
-    @training_green_farmer_popups = green_popups
-    @training_total_training_farmer_count = participation_dashboard_counts[:target_map_total].to_i
-    @training_completed_target_map_count = participation_dashboard_counts[:completed_target_map_total].to_i
-    visible_vrp_ids = @filtered_vrps.map(&:id)
-    ics_mappings = model_ready?(:VrpIcsMapping) ? VrpIcsMapping.where(vrp_id: visible_vrp_ids).to_a : []
-    if selected_ics_filter.present?
-      selected_ics = normalize_dashboard_text(selected_ics_filter)
-      ics_mappings.select! do |mapping|
-        normalize_dashboard_text(mapping.ics_name.presence || mapping.ics_id) == selected_ics
+      @training_participation_status_cards = training_participation_dashboard_status_cards(
+        participation_dashboard_counts,
+        month_name: @participation_selected_month,
+        fcoc_name: @participation_fcoc_filter_value,
+        week_number: @participation_week_filter_value
+      )
+      @training_registered_farmer_count = participation_dashboard_counts[:registered_farmer_total].to_i
+      @training_unique_farmer_count = mapped_count
+      @training_mapped_farmer_count = mapped_count
+      @training_mapped_farmer_popups = mapped_popups
+      @training_no_training_popups = no_training_popups
+      @training_red_fco_details = red_fco_details
+      @training_yellow_farmer_popups = yellow_popups
+      @training_green_farmer_popups = green_popups
+      @training_total_training_farmer_count = participation_dashboard_counts[:target_map_total].to_i
+      @training_completed_target_map_count = participation_dashboard_counts[:completed_target_map_total].to_i
+      visible_vrp_ids = @filtered_vrps.map(&:id)
+      ics_mappings = model_ready?(:VrpIcsMapping) ? VrpIcsMapping.where(vrp_id: visible_vrp_ids).to_a : []
+      if selected_ics_filter.present?
+        selected_ics = normalize_dashboard_text(selected_ics_filter)
+        ics_mappings.select! do |mapping|
+          normalize_dashboard_text(mapping.ics_name.presence || mapping.ics_id) == selected_ics
+        end
       end
+      # Full target/participation rows are available on their dedicated report
+      # pages. The dashboard renders summary boxes only, so building those large
+      # unused datasets here needlessly multiplies queries and memory usage.
+      @ics_farmer_report_month_value = @participation_month_filter_value
+      @ics_farmer_report_selected_month = @ics_farmer_report_month_value == "all" ? nil : @ics_farmer_report_month_value
+      ics_report_targets = training_participation_targets_for_dashboard(
+        month_name: @ics_farmer_report_selected_month,
+        fcoc_name: @participation_fcoc_filter_value
+      )
+      @ics_farmer_report_options = ics_farmer_report_options([], ics_report_targets)
+      @ics_farmer_report_selected_ics = dashboard_filter_param(:ics_report_ics)
+      @ics_farmer_report_summary = ics_farmer_report_summary([], selected_ics: @ics_farmer_report_selected_ics)
+      @weekly_target_month_filter_value = @dashboard_month_filter_value.presence || default_status_month
+      @weekly_dashboard_selected_month = @weekly_target_month_filter_value == "all" ? nil : @weekly_target_month_filter_value
+      @weekly_target_fcoc_filter_value = @dashboard_fcoc_filter_value.presence || dashboard_default_visible_fcoc(@filter_fcoc_options)
+      @weekly_target_week_filter_value = @participation_week_filter_value
+      weekly_dashboard_targets = dashboard_targets_for_month(weekly_target_scope, @weekly_dashboard_selected_month)
+      if selected_post_filter.present?
+        selected_post = selected_post_filter.to_s
+        weekly_dashboard_targets = weekly_dashboard_targets.select { |target| target.vrp&.role.to_s == selected_post }
+      end
+      if selected_vrp_filter.present?
+        selected_vrp_id = selected_vrp_filter.to_s
+        weekly_dashboard_targets = weekly_dashboard_targets.select { |target| target.vrp_id.to_s == selected_vrp_id }
+      end
+      weekly_dashboard_targets = filter_weekly_activity_targets(
+        weekly_dashboard_targets,
+        activity: dashboard_filter_param(:activity, :main_activity),
+        sub_activity: dashboard_filter_param(:training_sub_activity, :sub_activity),
+        fcoc: @weekly_target_fcoc_filter_value
+      )
+      @dashboard_weekly_target_cards = weekly_activity_target_status_cards(
+        weekly_dashboard_targets,
+        month_name: @weekly_dashboard_selected_month,
+        fcoc_name: @weekly_target_fcoc_filter_value,
+        week_number: @weekly_target_week_filter_value,
+        participation_counts: participation_dashboard_counts
+      )
     end
-    # Full target/participation rows are available on their dedicated report
-    # pages. The dashboard renders summary boxes only, so building those large
-    # unused datasets here needlessly multiplies queries and memory usage.
-    @ics_farmer_report_month_value = @participation_month_filter_value
-    @ics_farmer_report_selected_month = @ics_farmer_report_month_value == "all" ? nil : @ics_farmer_report_month_value
-    ics_report_targets = training_participation_targets_for_dashboard(
-      month_name: @ics_farmer_report_selected_month,
-      fcoc_name: @participation_fcoc_filter_value
-    )
-    @ics_farmer_report_options = ics_farmer_report_options([], ics_report_targets)
-    @ics_farmer_report_selected_ics = dashboard_filter_param(:ics_report_ics)
-    @ics_farmer_report_summary = ics_farmer_report_summary([], selected_ics: @ics_farmer_report_selected_ics)
-    @weekly_target_month_filter_value = @dashboard_month_filter_value.presence || default_status_month
-    @weekly_dashboard_selected_month = @weekly_target_month_filter_value == "all" ? nil : @weekly_target_month_filter_value
-    @weekly_target_fcoc_filter_value = @dashboard_fcoc_filter_value.presence || dashboard_default_visible_fcoc(@filter_fcoc_options)
-    @weekly_target_week_filter_value = @participation_week_filter_value
-    weekly_dashboard_targets = dashboard_targets_for_month(weekly_target_scope, @weekly_dashboard_selected_month)
-    if selected_post_filter.present?
-      selected_post = selected_post_filter.to_s
-      weekly_dashboard_targets = weekly_dashboard_targets.select { |target| target.vrp&.role.to_s == selected_post }
-    end
-    if selected_vrp_filter.present?
-      selected_vrp_id = selected_vrp_filter.to_s
-      weekly_dashboard_targets = weekly_dashboard_targets.select { |target| target.vrp_id.to_s == selected_vrp_id }
-    end
-    weekly_dashboard_targets = filter_weekly_activity_targets(
-      weekly_dashboard_targets,
-      activity: dashboard_filter_param(:activity, :main_activity),
-      sub_activity: dashboard_filter_param(:training_sub_activity, :sub_activity),
-      fcoc: @weekly_target_fcoc_filter_value
-    )
-    @dashboard_weekly_target_cards = weekly_activity_target_status_cards(
-      weekly_dashboard_targets,
-      month_name: @weekly_dashboard_selected_month,
-      fcoc_name: @weekly_target_fcoc_filter_value,
-      week_number: @weekly_target_week_filter_value,
-      participation_counts: participation_dashboard_counts
-    )
+    @dashboard_other_activity_totals ||= dashboard_other_activity_totals(t_scope)
     summary_targets = training_participation_active_vrp_targets(t_scope)
     @dashboard_summary_cards = dashboard_summary_cards(summary_targets)
     @demonstration_method_cards = @dashboard_farmer_activity_mode ? demonstration_method_cards : []
-    @dashboard_cards = dashboard_cards
+    @dashboard_cards = @dashboard_farmer_activity_mode ? dashboard_cards : []
     @dashboard_generated_at = Time.current
 
     respond_to do |format|
@@ -1975,7 +1981,7 @@ class ModulesController < ApplicationController
       dashboard_card("Mapped Villages", village_count, "Villages assigned in #{month_caption}", vrp_dashboard_list_path("mapped_villages", training_month: selected_month)),
       dashboard_card("Main Activities", main_activity_count, "Main activities mapped in #{month_caption}", vrp_dashboard_list_path("main_activities", training_month: selected_month)),
       dashboard_card("Sub Activities", sub_activity_count, "Sub activities mapped in #{month_caption}", vrp_dashboard_list_path("sub_activities", training_month: selected_month)),
-      dashboard_card("Assigned Farmer", assigned_farmer_total, "Farmers assigned in #{month_caption}", vrp_dashboard_list_path("assigned_farmers", training_month: selected_month)),
+      dashboard_card("Assigned Farmers", assigned_farmer_total, "Farmers assigned in #{month_caption}", vrp_dashboard_list_path("assigned_farmers", training_month: selected_month)),
       dashboard_card("Assigned Target", dashboard_quantity(assigned_target_total), "Target quantity assigned in #{month_caption}", vrp_dashboard_list_path("assigned_target", training_month: selected_month)),
       dashboard_card("Achieved Target", dashboard_quantity(achieved_target_total), "Target completed in #{month_caption}", vrp_dashboard_list_path("achieved_target", training_month: selected_month)),
       dashboard_card("Pending Target", dashboard_quantity(pending_target_total), "Target pending in #{month_caption}", vrp_dashboard_list_path("pending_target", training_month: selected_month))
@@ -4178,6 +4184,145 @@ class ModulesController < ApplicationController
   def dashboard_target_assignment_groups(targets)
     group_key_counts = dashboard_target_mapping_group_key_counts(targets)
     Array(targets).group_by { |target| dashboard_target_assignment_key(target, group_key_counts) }.values
+  end
+
+  def dashboard_filter_sub_activity_options(targets)
+    month = params.key?(:month) ? dashboard_filter_param(:month) : Date.current.prev_month.strftime("%B")
+    fcoc = dashboard_filter_param(:fcoc, :fco)
+    fco_values = training_fcoc_filter_values(fcoc) if fcoc.present?
+    ics = dashboard_filter_param(:ics, :ics_name)
+    cluster = dashboard_filter_param(:cluster_incharge)
+    vrp_id = dashboard_filter_param(:vrp_id)
+    post = dashboard_filter_param(:post)
+    Array(targets).select do |target|
+      (month.blank? || normalize_dashboard_text(target.month_name) == normalize_dashboard_text(month)) &&
+        (fco_values.blank? || (training_fcoc_filter_values(target.fco_name, target.fco_id, target.vrp&.fcoc) & fco_values).any?) &&
+        (ics.blank? || (target.ics_name.presence || target.ics_id).to_s == ics) &&
+        (cluster.blank? || cluster_label_matches?(cluster, target.vrp&.cluster_incharge)) &&
+        (vrp_id.blank? || target.vrp_id.to_s == vrp_id) &&
+        (post.blank? || target.vrp&.role.to_s == post)
+    end.map(&:activity_name).uniq.compact_blank.sort
+  end
+  def dashboard_other_activity_totals(targets)
+    rows = dashboard_other_activity_rows(targets)
+    activities = rows.filter_map { |row| row["main_activity_name"].presence }.uniq
+    achievement_farmer = rows.sum { |row| row["achievement_farmer"].to_i }
+    mapped_farmer_by_activity = rows.each_with_object(Hash.new(0)) do |row, memo|
+      activity = row["main_activity_name"].presence
+      memo[activity] += row["mapped_farmer"].to_i if activity
+    end
+    # A farmer mapped to two Other activities counts once on the card but twice
+    # in the per-activity totals, so the card and the ratio use different bases.
+    mapped_farmer = rows.first&.[]("distinct_mapped_farmer").to_i
+    mapped_farmer_sum = mapped_farmer_by_activity.values.sum
+
+    {
+      main_major_work_indicator: activities.size,
+      mapped_farmer: mapped_farmer,
+      achievement_farmer: achievement_farmer,
+      pending_farmer: rows.sum { |row| row["pending_farmer"].to_i },
+      achieved: mapped_farmer_sum.positive? ? (achievement_farmer * 100.0 / mapped_farmer_sum).round(2) : 0,
+      main_major_work_indicator_popups: activities.map { |activity| "#{activity} = #{mapped_farmer_by_activity[activity]}" }
+    }
+  end
+  def dashboard_other_activity_rows(targets)
+    # Never widen an empty scope to every mapping: an empty scope means the
+    # filters matched nothing, so this panel must stay empty too.
+    other_targets = Array(targets).reject do |target|
+      target.main_activity_name.to_s.strip.casecmp("Farmers' Training").zero?
+    end
+    # The dashboard commonly opens in Farmers' Training mode, which empties this
+    # panel's scope. Rebuild it from the full list, but keep every non-activity
+    # filter: @filtered_vrps already carries the FCO/cluster/post/VRP selections,
+    # so only the target-level month and ICS filters need reapplying here.
+    if other_targets.empty?
+      visible_vrp_ids = @filtered_vrps ? Array(@filtered_vrps).map(&:id).to_set : nil
+      selected_month = normalize_dashboard_text(@dashboard_month_filter_value)
+      selected_ics = dashboard_filter_param(:ics)
+      other_targets = dashboard_target_mappings.select do |target|
+        !target.main_activity_name.to_s.strip.casecmp("Farmers' Training").zero? &&
+          (visible_vrp_ids.nil? || (target.vrp_id.present? && visible_vrp_ids.include?(target.vrp_id))) &&
+          (selected_month.blank? || normalize_dashboard_text(target.month_name) == selected_month) &&
+          (selected_ics.blank? || (target.ics_name.presence || target.ics_id).to_s == selected_ics)
+      end
+    end
+
+    target_ids = other_targets.filter_map(&:id).uniq
+    return [] if target_ids.empty? || !model_ready?(:TargetMapping) || !model_ready?(:ModuleRecord)
+
+    sql = <<~SQL
+      WITH mapping_detail AS (
+        SELECT DISTINCT TRIM(t.fco_id) AS fco_id, TRIM(t.fco_name) AS fco_name,
+          TRIM(t.main_activity_name) AS main_activity_name, f.farmer_id
+        FROM target_mappings t
+        CROSS JOIN LATERAL (
+          SELECT TRIM(value) AS farmer_id
+          FROM jsonb_array_elements_text(COALESCE(NULLIF(TRIM(t.afl_ids), '')::jsonb, '[]'::jsonb))
+        ) f
+        WHERE t.id IN (:target_ids) AND t.main_activity_name IS NOT NULL
+          AND TRIM(t.main_activity_name) <> ''
+          AND LOWER(TRIM(t.main_activity_name)) <> 'farmers'' training'
+      ), mapping_data AS (
+        SELECT TRIM(t.fco_id) AS fco_id, TRIM(t.fco_name) AS fco_name,
+          TRIM(t.main_activity_name) AS main_activity_name,
+          COUNT(DISTINCT t.mapping_group_key) AS total_mapping,
+          COUNT(DISTINCT md.farmer_id) AS mapped_farmer
+        FROM target_mappings t
+        LEFT JOIN mapping_detail md ON md.fco_id = TRIM(t.fco_id)
+          AND LOWER(TRIM(md.main_activity_name)) = LOWER(TRIM(t.main_activity_name))
+        WHERE t.id IN (:target_ids) AND t.main_activity_name IS NOT NULL
+          AND TRIM(t.main_activity_name) <> ''
+          AND LOWER(TRIM(t.main_activity_name)) <> 'farmers'' training'
+        GROUP BY TRIM(t.fco_id), TRIM(t.fco_name), TRIM(t.main_activity_name)
+      ), achievement_detail AS (
+        SELECT DISTINCT LOWER(TRIM((m.data::jsonb)->>'fco_name')) AS fco_key,
+          TRIM((m.data::jsonb)->>'main_activity') AS main_activity_name, f.farmer_id
+        FROM module_records m
+        CROSS JOIN LATERAL (
+          SELECT TRIM(value) AS farmer_id
+          FROM jsonb_array_elements_text(COALESCE((m.data::jsonb)->'selected_farmer_ids', '[]'::jsonb))
+        ) f
+        WHERE LOWER(TRIM((m.data::jsonb)->>'month')) IN (
+          SELECT DISTINCT LOWER(TRIM(month_name)) FROM target_mappings WHERE id IN (:target_ids)
+        ) AND (m.data::jsonb)->>'main_activity' IS NOT NULL
+          AND TRIM((m.data::jsonb)->>'main_activity') <> ''
+          AND LOWER(TRIM((m.data::jsonb)->>'main_activity')) <> 'farmers'' training'
+      ), achievement_data AS (
+        SELECT fco_key, main_activity_name, COUNT(DISTINCT farmer_id) AS achievement_farmer
+        FROM achievement_detail GROUP BY fco_key, main_activity_name
+      )
+      SELECT md.fco_id, md.fco_name, md.main_activity_name, md.total_mapping,
+        md.mapped_farmer, COALESCE(ad.achievement_farmer, 0) AS achievement_farmer,
+        GREATEST(md.mapped_farmer - COALESCE(ad.achievement_farmer, 0), 0) AS pending_farmer,
+        ROUND(COALESCE(ad.achievement_farmer, 0) * 100.0 / NULLIF(md.mapped_farmer, 0), 2) AS achievement_percentage,
+        (SELECT COUNT(DISTINCT farmer_id) FROM mapping_detail) AS distinct_mapped_farmer
+      FROM mapping_data md
+      LEFT JOIN achievement_data ad ON (
+        ad.fco_key = LOWER(TRIM(md.fco_name)) OR
+        ad.fco_key = LOWER('FCO-C ' || TRIM(md.fco_name))
+      ) AND LOWER(TRIM(ad.main_activity_name)) = LOWER(TRIM(md.main_activity_name))
+      ORDER BY md.fco_name, md.main_activity_name
+    SQL
+
+    ActiveRecord::Base.connection.exec_query(
+      ActiveRecord::Base.send(:sanitize_sql_array, [sql, { target_ids: target_ids }])
+    ).to_a
+  end
+  # The CC and JJ Work Status card used to list two hard-coded FCOs. Names now
+  # come from the data so every FCO the report returns is shown.
+  def dashboard_fco_names
+    names = {}
+    if model_ready?(:TargetMapping)
+      TargetMapping.where.not(fco_id: nil).distinct.pluck(:fco_id, :fco_name).each do |id, name|
+        names[id.to_s] = name.presence if names[id.to_s].blank?
+      end
+    end
+    if model_ready?(:Afl)
+      Afl.where.not(fco_id: nil).distinct.pluck(:fco_id, :fco).each do |id, name|
+        names[id.to_s] = name.presence if names[id.to_s].blank?
+      end
+    end
+    names
   end
 
   def dashboard_target_assignment_key(target, group_key_counts = nil)

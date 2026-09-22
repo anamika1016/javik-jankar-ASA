@@ -88,6 +88,11 @@ class TargetMappingsController < ApplicationController
         TargetMapping.transaction do
           unselected_records.each(&:destroy)
           target_mappings.each(&:save!)
+          # save! skips records whose attributes did not change, leaving their
+          # updated_at behind. The submission would then split into separate
+          # rows, and the next edit would miss those records and add duplicates.
+          # Put the whole submission on one timestamp.
+          TargetMapping.where(id: target_mappings.map(&:id)).touch_all
         end
         redirect_to target_mappings_path, notice: "Target mapping updated successfully."
       else

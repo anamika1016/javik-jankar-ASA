@@ -17,27 +17,6 @@
     <div>
       <h2>Farmer Training Participation Status</h2>
     </div>
-    <div class="dashboard-actions">
-      <%= form_with url: dashboard_path, method: :get, local: true, html: { class: "dashboard-month-filter" } do %>
-        <%= hidden_field_tag :activity, params[:activity] if params[:activity].present? %>
-        <%= hidden_field_tag :main_activity, params[:main_activity] if params[:main_activity].present? %>
-        <%= hidden_field_tag :training_sub_activity, params[:training_sub_activity] if params[:training_sub_activity].present? %>
-        <%= hidden_field_tag :sub_activity, params[:sub_activity] if params[:sub_activity].present? %>
-        <%= hidden_field_tag :fcoc, params[:fcoc] if params[:fcoc].present? %>
-        <%= hidden_field_tag :ics, params[:ics].presence || params[:ics_name].presence %>
-        <%= hidden_field_tag :month, params[:month] if params[:month].present? %>
-        <%= hidden_field_tag :vrp_id, params[:vrp_id] if params[:vrp_id].present? %>
-        <label class="dashboard-month-select">
-          <span>Week</span>
-          <select name="weekly_target_week" onchange="this.form.submit()">
-            <option value="">All Weeks</option>
-            <% 1.upto(4) do |week_number| %>
-              <option value="<%= week_number %>" <%= "selected" if participation_week_filter_value == week_number.to_s %>>W<%= week_number %></option>
-            <% end %>
-          </select>
-        </label>
-      <% end %>
-    </div>
   </div>
 
   <div class="training-participation-boxes compact">

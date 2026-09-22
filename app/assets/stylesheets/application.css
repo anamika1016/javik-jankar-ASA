@@ -10167,3 +10167,2678 @@ body {
   border-top-color: #a86660;
   background: #f3e0dd;
 }
+
+/* CC and JJ Work Status: one block per FCO, with its Red and Completed groups
+   side by side and the CC/JJ counts as small tiles inside each. */
+.cc-jj-status-groups {
+  display: grid;
+  gap: 14px;
+}
+
+.cc-jj-status-fco-row {
+  padding: 14px;
+  border: 1px solid rgba(31, 41, 51, 0.1);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.cc-jj-status-fco-name {
+  display: block;
+  margin-bottom: 10px;
+  color: #1f2933;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.cc-jj-status-fco-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.cc-jj-status-group {
+  padding: 12px;
+  border: 1px solid rgba(31, 41, 51, 0.08);
+  border-radius: 8px;
+  background: #f5f7f8;
+}
+
+.cc-jj-status-group > strong {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.cc-jj-status-red {
+  border-color: rgba(207, 90, 90, 0.32);
+  background: #fbe4e4;
+}
+
+.cc-jj-status-red > strong {
+  color: #a93d3d;
+}
+
+.cc-jj-status-completed {
+  border-color: rgba(79, 150, 62, 0.32);
+  background: #e6f2df;
+}
+
+.cc-jj-status-completed > strong {
+  color: #3f7d3f;
+}
+
+.cc-jj-status-group .metric-card-group-items {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: none;
+}
+
+.cc-jj-status-group .metric-card-group-item {
+  display: block;
+  padding: 8px 10px;
+  border: 1px solid rgba(31, 41, 51, 0.08);
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+  text-decoration: none;
+}
+
+.cc-jj-status-group .metric-card-group-item:hover {
+  border-color: rgba(31, 41, 51, 0.22);
+}
+
+.cc-jj-status-group .metric-card-group-item span {
+  display: block;
+  color: #5b6b73;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+}
+
+.cc-jj-status-group .metric-card-group-item strong {
+  font-size: 1.15rem;
+  line-height: 1.2;
+}
+
+.metric-card-popup-body .cc-jj-status-fco-row + .cc-jj-status-fco-row {
+  margin-top: 0;
+}
+
+.metric-card-popup-body > .table-action {
+  display: inline-block;
+  margin-top: 14px;
+}
+
+/* ── Dashboard styles ported from the KRAI build ──────────────────────────
+   Appended last so these win over the older dashboard rules above.
+   Only dashboard selectors; no other page's rules were touched. */
+
+:root[data-theme="dark"] .app-main,
+:root[data-theme="dark"] .dashboard-page,
+:root[data-theme="dark"] .module-page {
+  color: var(--vrp-text);
+}
+
+:root[data-theme="dark"] .module-card,
+:root[data-theme="dark"] .metric-card,
+:root[data-theme="dark"] .login-card,
+:root[data-theme="dark"] .module-hero,
+:root[data-theme="dark"] .dashboard-topbar,
+:root[data-theme="dark"] .list-controls,
+:root[data-theme="dark"] .training-dashboard-row,
+:root[data-theme="dark"] .training-row-panel,
+:root[data-theme="dark"] .training-summary-pill,
+:root[data-theme="dark"] .table-shell,
+:root[data-theme="dark"] .language-switcher,
+:root[data-theme="dark"] .theme-toggle {
+  background: var(--vrp-panel);
+  border-color: var(--vrp-line);
+  color: var(--vrp-text);
+}
+
+:root[data-theme="dark"] .module-hero *,
+:root[data-theme="dark"] .dashboard-topbar *,
+:root[data-theme="dark"] .module-card h1,
+:root[data-theme="dark"] .module-card h2,
+:root[data-theme="dark"] .module-card h3,
+:root[data-theme="dark"] .module-card h4,
+:root[data-theme="dark"] .module-card p,
+:root[data-theme="dark"] .module-card label,
+:root[data-theme="dark"] .module-card label span,
+:root[data-theme="dark"] .module-card small,
+:root[data-theme="dark"] .record-count,
+:root[data-theme="dark"] .column-filter-label,
+:root[data-theme="dark"] .list-search span,
+:root[data-theme="dark"] .side-link,
+:root[data-theme="dark"] .side-sub-link,
+:root[data-theme="dark"] .side-module > summary,
+:root[data-theme="dark"] .nav-kicker {
+  color: var(--vrp-text);
+}
+
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] .chip-multi-control,
+:root[data-theme="dark"] .chip-multi-dropdown,
+:root[data-theme="dark"] .module-table td,
+:root[data-theme="dark"] .module-table th {
+  background-color: #182126;
+  border-color: var(--vrp-line);
+  color: var(--vrp-text);
+}
+
+:root[data-theme="dark"] .module-table th,
+:root[data-theme="dark"] .column-filter-panel {
+  background: #223039;
+}
+
+:root[data-theme="dark"] .module-table tbody tr:hover td,
+:root[data-theme="dark"] .training-mini-grid span,
+:root[data-theme="dark"] .training-report-list span,
+:root[data-theme="dark"] .jeevika-bill-summary input,
+:root[data-theme="dark"] .bill-detail-summary,
+:root[data-theme="dark"] .bill-detail-summary > div {
+  background: var(--vrp-panel-soft);
+}
+
+:root[data-theme="dark"] .module-hero h1,
+:root[data-theme="dark"] .dashboard-topbar h1 {
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .module-hero p,
+:root[data-theme="dark"] .dashboard-topbar p {
+  color: #dce8ec;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.dashboard-page {
+  display: grid;
+  gap: 20px;
+}
+
+/* Keep the training dashboard sections in their reporting workflow order. */
+.dashboard-page > #dashboard_summary_boxes { order: 1; }
+
+.dashboard-page > .dashboard-training-primary-summaries { order: 1; }
+
+.dashboard-page > .training-status-panel { order: 2; }
+
+.dashboard-page > #demonstration_method_boxes { order: 3; }
+
+.dashboard-page > #other_major_work_indicator_boxes {
+  order: 4;
+  position: relative;
+  overflow: visible !important;
+}
+
+.dashboard-page > #other_major_work_indicator_boxes:hover,
+.dashboard-page > #other_major_work_indicator_boxes:focus-within {
+  z-index: 150 !important;
+}
+
+.dashboard-summary-panel {
+  overflow: visible;
+}
+
+.dashboard-summary-box {
+  position: relative;
+}
+
+.dashboard-summary-box:hover {
+  z-index: 200 !important;
+}
+
+.dashboard-card-hover-popup {
+  z-index: 99999 !important;
+}
+
+.dashboard-page > #dashboard_activity_overview {
+  display: none;
+}
+
+.dashboard-page > #dashboard_weekly_target_boxes { order: 5; }
+
+.dashboard-page > #dashboard_ics_farmer_report { order: 6; }
+
+.dashboard-page > .dashboard-training-secondary-summaries { order: 7; }
+
+.vrp-work-overview {
+  display: grid;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.vrp-work-overview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--vrp-line);
+  background: linear-gradient(120deg, rgba(89, 143, 64, 0.12), rgba(93, 140, 146, 0.08), var(--vrp-panel));
+}
+
+.vrp-work-overview-header h2,
+.vrp-work-overview-header p {
+  margin: 0;
+}
+
+.vrp-work-overview-header h2 {
+  font-size: 1.05rem;
+}
+
+.vrp-work-overview-header p,
+.vrp-work-overview-header > span {
+  margin-top: 3px;
+  color: var(--vrp-muted);
+  font-size: 0.76rem;
+  font-weight: 650;
+}
+
+.vrp-work-overview-metrics {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+
+/* JJ dashboard Work Overview uses the same colours as the admin dashboard
+   summary cards: soft tinted background + a coloured 4px left accent bar,
+   cycling through the shared 6-colour palette. */
+.vrp-work-overview-metrics a {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  align-content: center;
+  min-height: 104px;
+  padding: 14px 14px 14px 18px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.vrp-work-overview-metrics a::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--summary-accent, #6b9aa4);
+}
+
+.vrp-work-overview-metrics a:hover {
+  background: var(--vrp-panel-soft);
+}
+
+.vrp-work-overview-metrics span {
+  color: #365563;
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.vrp-work-overview-metrics strong {
+  margin: 6px 0;
+  color: #15262f;
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.vrp-work-overview-metrics small {
+  color: #667984;
+  font-size: 0.65rem;
+  line-height: 1.25;
+}
+
+/* Shared 6-colour palette from the admin dashboard summary boxes, with a bit
+   more depth: darker tinted backgrounds, accent bars and borders. */
+.vrp-work-overview-metrics a:nth-child(6n + 1) { --summary-accent: #55848e; background: #e2f0f1; border-color: rgba(85, 132, 142, 0.42); }
+
+.vrp-work-overview-metrics a:nth-child(6n + 2) { --summary-accent: #66925a; background: #e6f2df; border-color: rgba(102, 146, 90, 0.42); }
+
+.vrp-work-overview-metrics a:nth-child(6n + 3) { --summary-accent: #6480b0; background: #e5ecf6; border-color: rgba(100, 128, 176, 0.42); }
+
+.vrp-work-overview-metrics a:nth-child(6n + 4) { --summary-accent: #b0863f; background: #f5ead1; border-color: rgba(176, 134, 63, 0.45); }
+
+.vrp-work-overview-metrics a:nth-child(6n + 5) { --summary-accent: #79709f; background: #eae6f3; border-color: rgba(121, 112, 159, 0.42); }
+
+.vrp-work-overview-metrics a:nth-child(6n)     { --summary-accent: #a86660; background: #f3e0dd; border-color: rgba(168, 102, 96, 0.42); }
+
+@media (max-width: 1180px) {
+.vrp-work-overview-metrics { grid-template-columns: repeat(4, minmax(120px, 1fr)); }
+.vrp-work-overview-metrics a { border-bottom: 1px solid var(--vrp-line); }
+}
+
+@media (max-width: 680px) {
+.vrp-work-overview-header { align-items: flex-start; flex-direction: column; }
+.vrp-work-overview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.dashboard-topbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 24px;
+  border: 1px solid rgba(217, 226, 231, 0.9);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(23, 33, 38, 0.08);
+  overflow: hidden;
+}
+
+.dashboard-topbar::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 6px;
+  background: #5d8c92;
+}
+
+.dashboard-topbar h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 3vw, 2.5rem);
+}
+
+.dashboard-topbar p:last-child {
+  margin: 8px 0 0;
+  color: var(--vrp-muted);
+}
+
+.dashboard-header-clock {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 176px;
+  padding: 9px 13px;
+  border: 1px solid rgba(93, 140, 146, 0.28);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(93, 140, 146, 0.12), var(--vrp-panel));
+  text-align: right;
+  box-shadow: 0 5px 14px rgba(23, 33, 38, 0.06);
+}
+
+.dashboard-header-clock span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--vrp-primary);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.dashboard-header-clock strong {
+  margin-left: auto;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.dashboard-header-clock small {
+  color: var(--vrp-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.weekly-plan-header p {
+  margin: 4px 0 0;
+  color: var(--vrp-muted);
+  font-size: 0.82rem;
+}
+
+.dashboard-actions,
+.list-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dashboard-actions {
+  justify-content: flex-end;
+  max-width: 560px;
+}
+
+.dashboard-actions .list-search {
+  flex: 1 1 280px;
+}
+
+.dashboard-actions .btn,
+.dashboard-actions .import-btn {
+  flex: 0 0 auto;
+}
+
+.lg-directory-card .module-card-header {
+  align-items: flex-start;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--vrp-line);
+}
+
+.list-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: min(320px, 100%);
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 999px;
+  background: #fff;
+}
+
+.list-search.compact {
+  min-width: min(260px, 100%);
+}
+
+.list-search input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  background: transparent;
+}
+
+.dashboard-grid.premium .metric-card {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  min-height: 130px;
+  padding: 20px;
+}
+
+.metric-card-link:hover .metric-card {
+  transform: translateY(-3px);
+  border-color: rgba(102, 162, 170, 0.45);
+  box-shadow: 0 16px 32px rgba(23, 33, 38, 0.12);
+}
+
+.metric-card-link:hover .metric-card b {
+  background: var(--vrp-accent);
+  border-color: var(--vrp-accent);
+  color: #fff;
+}
+
+.dashboard-grid.premium .metric-card-group {
+  display: flex !important;
+  flex-direction: column;
+  min-height: 140px;
+  padding: 12px;
+  overflow: hidden;
+  border-top: 0;
+  background: #fff;
+}
+
+.dashboard-grid.premium .metric-card-group-assignment {
+  background: #fff;
+}
+
+.dashboard-grid.premium .metric-card-group-billing {
+  background: #fff;
+}
+
+.dashboard-grid.premium .metric-card-group-fco {
+  background: #fff;
+}
+
+.metric-card-group-title {
+  align-self: stretch;
+  width: auto;
+  margin: -16px -16px 14px;
+  padding: 12px 16px;
+  color: #fff !important;
+  background: linear-gradient(120deg, #4f8739, #6aa34f);
+  font-size: 0.86rem;
+  font-weight: 850;
+}
+
+.metric-card-group-assignment .metric-card-group-title {
+  background: linear-gradient(120deg, #397f8b, #579ba6);
+}
+
+.metric-card-group-billing .metric-card-group-title {
+  background: linear-gradient(120deg, #b8791f, #d99b3f);
+}
+
+.metric-card-group-fco .metric-card-group-title {
+  background: linear-gradient(120deg, #72549b, #9474b9);
+}
+
+.dashboard-grid.premium .metric-card-group > .metric-card-group-items {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 0;
+  flex: 1;
+}
+
+.dashboard-grid.premium .metric-card-group-registration > .metric-card-group-items,
+.dashboard-grid.premium .metric-card-group-fco > .metric-card-group-items {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+}
+
+.dashboard-grid.premium .metric-card-group-billing .metric-card-group-item-level-2-users {
+  grid-column: 1 / -1;
+  min-height: 48px;
+  background: linear-gradient(120deg, #fff8eb, #fffdf8);
+  border-color: rgba(205, 145, 52, 0.3);
+}
+
+.metric-card-group-fco .metric-card-group-item strong {
+  font-size: 1.18rem;
+  line-height: 1.2;
+}
+
+/* Training dashboard: the administration summaries are deliberately short,
+   two-panel rows instead of four narrow cards with unused space. */
+.dashboard-grid.premium.dashboard-training-primary-summaries,
+.dashboard-grid.premium.dashboard-training-secondary-summaries {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.dashboard-grid.premium.dashboard-training-secondary-summaries {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.dashboard-grid.premium.dashboard-training-primary-summaries .metric-card-group,
+.dashboard-grid.premium.dashboard-training-secondary-summaries .metric-card-group {
+  min-height: 140px;
+  height: 100%;
+  border: 1px solid rgba(204, 218, 222, 0.9);
+  border-radius: 12px;
+  box-shadow: 0 10px 24px rgba(23, 33, 38, 0.08);
+}
+
+.dashboard-training-primary-summaries .metric-card-group-title,
+.dashboard-training-secondary-summaries .metric-card-group-title {
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  font-size: 0.86rem;
+  letter-spacing: 0.01em;
+}
+
+.dashboard-training-primary-summaries .metric-card-group-billing > .metric-card-group-items,
+.dashboard-training-secondary-summaries .metric-card-group-billing > .metric-card-group-items,
+.dashboard-training-primary-summaries .metric-card-group-fco > .metric-card-group-items,
+.dashboard-training-secondary-summaries .metric-card-group-fco > .metric-card-group-items {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.dashboard-training-primary-summaries .metric-card-group-billing .metric-card-group-item-level-2-users,
+.dashboard-training-secondary-summaries .metric-card-group-billing .metric-card-group-item-level-2-users {
+  grid-column: auto;
+  min-height: 0;
+}
+
+.dashboard-training-primary-summaries .metric-card-group-item,
+.dashboard-training-secondary-summaries .metric-card-group-item {
+  min-height: 48px;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+.dashboard-training-primary-summaries .metric-card-group-item strong,
+.dashboard-training-secondary-summaries .metric-card-group-item strong {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.dashboard-training-secondary-summaries .metric-card-group-fco .metric-card-group-item span {
+  font-size: 0.68rem;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 760px) {
+.dashboard-grid.premium.dashboard-training-primary-summaries,
+  .dashboard-grid.premium.dashboard-training-secondary-summaries {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+.dashboard-training-primary-summaries .metric-card-group-billing > .metric-card-group-items,
+  .dashboard-training-secondary-summaries .metric-card-group-billing > .metric-card-group-items {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1180px) {
+.dashboard-grid.premium.dashboard-training-secondary-summaries {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.dashboard-grid.premium .metric-card > div {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.metric-card.featured {
+  background: #598f40;
+  color: #fff;
+}
+
+.metric-card.featured span,
+.metric-card.featured small {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.metric-card b {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.training-row-details .module-card-header {
+  margin-bottom: 10px;
+}
+
+.training-progress.compact {
+  margin-bottom: 4px;
+}
+
+.training-empty-state {
+  border: 1px dashed var(--vrp-line);
+  border-radius: 8px;
+  padding: 18px;
+  color: var(--vrp-muted);
+  font-weight: 800;
+  text-align: center;
+  background: #fbfdfe;
+}
+
+.training-participation-status-card {
+  display: grid;
+  gap: 14px;
+}
+
+.dashboard-status-panel {
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.dashboard-status-panel > .training-participation-status-header {
+  padding: 15px 16px;
+  color: #18343b;
+  border-left: 4px solid #438996;
+  border-bottom: 1px solid rgba(67, 137, 150, 0.2);
+  background: linear-gradient(120deg, #f2f8f9, #fff 72%);
+}
+
+.weekly-status-panel > .training-participation-status-header {
+  color: #294b22;
+  border-left-color: #5b9347;
+  border-bottom-color: rgba(91, 147, 71, 0.2);
+  background: linear-gradient(120deg, #f3f8f0, #fff 72%);
+}
+
+.dashboard-summary-panel > .training-participation-status-header {
+  color: #23425f;
+  border-left-color: #4f7ea8;
+  border-bottom-color: rgba(79, 126, 168, 0.22);
+  background: linear-gradient(120deg, #f1f6fb, #fff 72%);
+}
+
+.dashboard-status-panel > .training-participation-status-header h2,
+.dashboard-status-panel > .training-participation-status-header p,
+.dashboard-status-panel > .training-participation-status-header label,
+.dashboard-status-panel > .training-participation-status-header span {
+  color: inherit;
+}
+
+.dashboard-status-panel > .training-participation-status-header p {
+  color: var(--vrp-muted);
+  opacity: 1;
+}
+
+.dashboard-status-panel > .training-participation-status-header .list-btn {
+  border-color: rgba(67, 137, 150, 0.42);
+  color: #244d55;
+  background: #fff;
+}
+
+.weekly-status-panel > .training-participation-status-header .list-btn {
+  border-color: rgba(91, 147, 71, 0.42);
+  color: #3f7130;
+}
+
+.dashboard-status-panel > .training-participation-boxes {
+  padding: 16px;
+  background: #fff;
+}
+
+.training-participation-status-header {
+  align-items: start;
+}
+
+.training-participation-status-header p {
+  margin: 6px 0 0;
+  color: var(--vrp-muted);
+  font-weight: 650;
+}
+
+.training-participation-boxes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.training-participation-boxes.compact {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.training-participation-boxes.dashboard-summary-boxes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+  overflow: visible;
+}
+
+.training-participation-boxes.demonstration-method-boxes {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.dashboard-summary-boxes .dashboard-summary-box {
+  min-width: 0;
+  min-height: 150px;
+  padding: 14px;
+  gap: 8px;
+  border-top-width: 0;
+  border-radius: 8px;
+  position: relative;
+  overflow: visible;
+}
+
+.dashboard-summary-boxes .dashboard-summary-box::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--summary-accent, #6b9aa4);
+}
+
+.dashboard-summary-boxes .dashboard-summary-box span {
+  min-height: 32px;
+  color: #365563;
+  font-size: 0.72rem;
+  line-height: 1.28;
+  text-transform: none;
+}
+
+.dashboard-summary-boxes .dashboard-summary-box strong {
+  color: #15262f;
+  font-size: 1.85rem;
+  letter-spacing: 0;
+}
+
+.dashboard-summary-boxes .dashboard-summary-box small {
+  color: #667984;
+  font-size: 0.74rem;
+  line-height: 1.3;
+}
+
+.dashboard-summary-boxes .dashboard-summary-box:nth-child(6n + 1) {
+  --summary-accent: #6b9aa4;
+  background: #f6fbfb;
+  border-color: rgba(107, 154, 164, 0.28);
+}
+
+.dashboard-summary-boxes .dashboard-summary-box:nth-child(6n + 2) {
+  --summary-accent: #7aa36b;
+  background: #f7fbf5;
+  border-color: rgba(122, 163, 107, 0.28);
+}
+
+.dashboard-summary-boxes .dashboard-summary-box:nth-child(6n + 3) {
+  --summary-accent: #7892bd;
+  background: #f6f8fc;
+  border-color: rgba(120, 146, 189, 0.28);
+}
+
+.dashboard-summary-boxes .dashboard-summary-box:nth-child(6n + 4) {
+  --summary-accent: #c39a57;
+  background: #fcfaf4;
+  border-color: rgba(195, 154, 87, 0.3);
+}
+
+.dashboard-summary-boxes .dashboard-summary-box:nth-child(6n + 5) {
+  --summary-accent: #8d85b4;
+  background: #f8f7fc;
+  border-color: rgba(141, 133, 180, 0.28);
+}
+
+.dashboard-summary-boxes .dashboard-summary-box:nth-child(6n) {
+  --summary-accent: #bd7b75;
+  background: #fcf7f6;
+  border-color: rgba(189, 123, 117, 0.28);
+}
+
+.dashboard-summary-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: auto;
+}
+
+.dashboard-summary-actions .table-action {
+  flex: 1;
+  min-width: 0;
+  min-height: 30px;
+  padding: 7px 10px;
+  text-align: center;
+  font-size: 0.76rem;
+  line-height: 1.2;
+  border: 1px solid rgba(95, 148, 132, 0.15);
+  border-radius: 6px;
+  background: rgba(226, 244, 239, 0.72);
+  color: #3f7f32;
+}
+
+.dashboard-summary-action-popover {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.dashboard-card-hover-popup {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 30;
+  display: none;
+  min-width: 240px;
+  max-width: 300px;
+  max-height: 240px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #9db6bd transparent;
+  padding: 8px 10px;
+  border: 1px solid rgba(68, 121, 135, 0.22);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 14px 30px rgba(31, 57, 67, 0.18);
+  color: #254654;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.dashboard-card-hover-popup::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dashboard-card-hover-popup::-webkit-scrollbar-thumb {
+  background: #9db6bd;
+  border-radius: 8px;
+}
+
+.dashboard-card-hover-popup::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dashboard-card-hover-popup span {
+  display: block;
+  min-height: 0;
+}
+
+.dashboard-card-hover-popup span + span {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(68, 121, 135, 0.12);
+}
+
+/* Red popup compact breakdown */
+.red-popup-breakdown {
+  min-width: 200px;
+  max-width: 280px;
+  max-height: 240px;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+}
+
+.red-popup-breakdown .popup-fco-header {
+  padding: 3px 0 2px;
+  border-bottom: 1px solid rgba(68, 121, 135, 0.15);
+  margin-bottom: 2px;
+}
+
+.red-popup-breakdown .popup-fco-header strong {
+  font-size: 0.85rem !important;
+  font-weight: 800;
+  color: #1e3a42;
+  line-height: 1.3;
+}
+
+.red-popup-breakdown .popup-subitem {
+  padding: 1px 0;
+  border: none !important;
+  margin: 0 !important;
+}
+
+.red-popup-breakdown .popup-sublink {
+  color: #2e6376;
+  text-decoration: none;
+  font-size: 0.88rem !important;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.6;
+}
+
+/* Force number size = label text size (block parent strong override) */
+.dashboard-card-hover-popup strong,
+.red-popup-breakdown strong {
+  font-size: 1em !important;
+  font-weight: 800;
+}
+
+.red-popup-breakdown .popup-sublink strong {
+  font-size: 1em !important;
+  font-weight: 800;
+  color: #17303a;
+  white-space: nowrap;
+}
+
+.red-popup-breakdown .popup-sublink:hover {
+  text-decoration: underline;
+  color: #135168;
+}
+
+.dashboard-summary-box:hover .dashboard-card-hover-popup,
+.dashboard-summary-action-popover:hover .dashboard-card-hover-popup,
+.dashboard-summary-action-popover:focus-within .dashboard-card-hover-popup {
+  display: block;
+}
+
+.dashboard-summary-actions .table-action.export {
+  border-color: rgba(67, 137, 150, 0.35);
+  color: #255a64;
+  background: rgba(67, 137, 150, 0.08);
+}
+
+/* The Farmer Training Participation Status card holds hover popups (Pending / red
+   breakdown) that open upward; the panel's overflow:hidden was clipping them.
+   Allow this panel to overflow so the full popup data is visible. */
+.training-participation-status-card.training-status-panel {
+  overflow: visible;
+}
+
+.training-participation-boxes.compact .training-participation-box {
+  position: relative;
+  min-height: 96px;
+  padding: 12px 14px 12px 18px;
+  gap: 5px;
+}
+
+/* Coloured left accent bar, matching the Work Overview / summary cards.
+   No overflow:hidden on the box so the hover popup is not clipped; the bar's
+   left corners are rounded to follow the card's 8px radius. */
+.training-participation-boxes.compact .training-participation-box::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  border-radius: 8px 0 0 8px;
+  background: var(--participation-accent, #6b9aa4);
+}
+
+.training-participation-boxes.compact .training-participation-box.total { --participation-accent: #55848e; }
+
+.training-participation-boxes.compact .training-participation-box.red,
+.training-participation-boxes.compact .training-participation-box.pending { --participation-accent: #c26060; }
+
+.training-participation-boxes.compact .training-participation-box.yellow { --participation-accent: #c0902f; }
+
+.training-participation-boxes.compact .training-participation-box.green,
+.training-participation-boxes.compact .training-participation-box.completed { --participation-accent: #4f8a63; }
+
+.training-participation-boxes.compact .training-participation-box strong {
+  font-size: 1.65rem;
+}
+
+.training-participation-boxes.compact .training-participation-box small {
+  font-size: 0.72rem;
+}
+
+.training-participation-boxes.compact .training-participation-box b {
+  margin-top: auto;
+  font-size: 0.72rem;
+}
+
+@media (max-width: 900px) {
+.training-participation-boxes.dashboard-summary-boxes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.training-participation-boxes.demonstration-method-boxes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 620px) {
+.training-participation-boxes.dashboard-summary-boxes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.dashboard-summary-boxes .dashboard-summary-box {
+    min-height: 140px;
+  }
+}
+
+@media (max-width: 420px) {
+.training-participation-boxes.dashboard-summary-boxes { grid-template-columns: 1fr; }
+.training-participation-boxes.demonstration-method-boxes { grid-template-columns: 1fr; }
+}
+
+.training-participation-box {
+  display: grid;
+  gap: 8px;
+  min-height: 138px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 8px;
+  padding: 16px;
+  color: inherit;
+  text-decoration: none;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.dashboard-status-panel .training-participation-box {
+  min-height: 118px;
+  border-top-width: 4px;
+  background: #fff;
+  box-shadow: 0 7px 18px rgba(23, 33, 38, 0.06);
+}
+
+.dashboard-status-panel .training-participation-box strong {
+  color: #17242a;
+  font-size: 1.7rem;
+}
+
+.dashboard-status-panel .training-participation-box b {
+  color: currentColor;
+  text-decoration: none;
+}
+
+.dashboard-status-panel .training-participation-box.total {
+  border-top-color: #397f8b;
+  background: linear-gradient(180deg, rgba(57, 127, 139, 0.07), #fff 48%);
+}
+
+.dashboard-status-panel .training-participation-box.green {
+  border-top-color: #4f963e;
+  background: linear-gradient(180deg, rgba(79, 150, 62, 0.08), #fff 48%);
+}
+
+.dashboard-status-panel .training-participation-box.yellow {
+  border-top-color: #d99b2f;
+  background: #fdf3d6; /* light yellow */
+}
+
+.dashboard-status-panel .training-participation-box.red {
+  border-top-color: #cf5a5a;
+  background: #fbe4e4; /* light red */
+}
+
+.dashboard-status-panel .training-participation-box.pending {
+  border-top-color: #758891;
+  background: linear-gradient(180deg, rgba(117, 136, 145, 0.08), #fff 48%);
+}
+
+.dashboard-status-panel .training-participation-box.completed {
+  border-top-color: #3f6fb5;
+  background: linear-gradient(180deg, rgba(63, 111, 181, 0.08), #fff 48%);
+}
+
+.training-participation-box:hover,
+.training-participation-box.is-active {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 26px rgba(23, 33, 38, 0.10);
+}
+
+.training-participation-box.is-active {
+  outline: 3px solid currentColor;
+  outline-offset: 2px;
+}
+
+.training-participation-box span {
+  color: currentColor;
+  font-weight: 850;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+}
+
+.training-participation-box strong {
+  font-size: 2.25rem;
+  line-height: 1;
+}
+
+.training-participation-box small {
+  color: var(--vrp-muted);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.training-participation-box b {
+  justify-self: start;
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.training-participation-box.total {
+  border-color: rgba(22, 99, 118, 0.24);
+  background: rgba(22, 99, 118, 0.08);
+  color: #164f5f;
+}
+
+.training-participation-box.green {
+  border-color: rgba(56, 142, 60, 0.26);
+  background: rgba(56, 142, 60, 0.10);
+  color: #1b5e20;
+}
+
+.training-participation-box.yellow {
+  border-color: rgba(245, 168, 0, 0.32);
+  background: rgba(245, 168, 0, 0.14);
+  color: #7a4b00;
+}
+
+.training-participation-box.red {
+  border-color: rgba(211, 47, 47, 0.26);
+  background: rgba(211, 47, 47, 0.10);
+  color: #9b1c1c;
+}
+
+.training-participation-box.pending {
+  border-color: rgba(46, 113, 135, 0.24);
+  background: rgba(46, 113, 135, 0.08);
+  color: #20586a;
+}
+
+.training-participation-box.completed {
+  border-color: rgba(63, 111, 181, 0.26);
+  background: rgba(63, 111, 181, 0.10);
+  color: #254f8f;
+}
+
+@media (max-width: 760px) {
+.training-dashboard-header,
+  .training-row-heading,
+  .training-row-meta,
+  .training-dashboard-summary,
+  .training-participation-boxes,
+  .training-participation-boxes.compact {
+    grid-template-columns: 1fr;
+  }
+}
+
+.training-row-panel .table-shell.compact-scroll {
+  max-height: none;
+}
+
+.compact-table th,
+.compact-table td {
+  padding: 9px 8px;
+}
+
+.metric-card {
+  display: grid;
+  gap: 8px;
+  min-height: 132px;
+  padding: 18px;
+  border: 1px solid rgba(217, 226, 231, 0.9);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(23, 33, 38, 0.07);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.metric-card span {
+  color: var(--vrp-muted);
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.metric-card strong {
+  font-size: 2.05rem;
+  line-height: 1;
+  display: block;
+}
+
+.metric-card small {
+  color: var(--vrp-muted);
+  line-height: 1.45;
+}
+
+.module-card {
+  min-width: 0;
+  border: 1px solid rgba(217, 226, 231, 0.9);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(23, 33, 38, 0.07);
+  padding: 18px;
+}
+
+.module-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--vrp-line);
+}
+
+.module-card-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.jeevika-farmer-detail .module-table {
+  min-width: 980px;
+}
+
+@media print {
+.module-card {
+    box-shadow: none;
+    border: 0;
+  }
+}
+
+.add-level-btn.compact,
+.remove-level-btn.compact {
+  min-height: 38px;
+  border-radius: 10px;
+  padding: 7px 12px;
+  white-space: nowrap;
+}
+
+.table-shell {
+  width: 100%;
+  max-width: 100%;
+  max-height: 520px;
+  overflow-y: auto;
+  overflow-x: auto;
+  overscroll-behavior: contain;
+}
+
+.table-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 10px 4px 0;
+  color: var(--vrp-muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.ics-exit-declaration-sheet.compact {
+  padding: 22px;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.table-pagination button,
+.table-pagination .page-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--vrp-text);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.table-pagination button:disabled,
+.table-pagination .page-link.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.module-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 560px;
+}
+
+.module-table th,
+.module-table td {
+  border-bottom: 1px solid var(--vrp-line);
+  padding: 12px 10px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.module-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #fff;
+  color: var(--vrp-muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.module-table th.column-filter-header {
+  overflow: visible;
+  padding-right: 32px;
+}
+
+.vrp-eyebrow {
+  margin: 0 0 6px;
+  color: var(--vrp-primary);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+#target_mapping_list .target-activity-text {
+  min-width: 10rem;
+  max-width: 15rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+.grid-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1;
+  padding: 4px 8px;
+}
+
+.grid-status.approved {
+  background: #08864f;
+}
+
+.grid-status.submitted {
+  background: #6b7680;
+}
+
+.grid-status.pending {
+  background: #d89a00;
+}
+
+.grid-status.rejected {
+  background: #c72f45;
+}
+
+@media (max-width: 980px) {
+.dashboard-grid,
+  .module-grid.two,
+  .vrp-detail-grid,
+  .document-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+.dashboard-topbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+.dashboard-actions {
+    max-width: none;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 680px) {
+.dashboard-grid,
+  .dashboard-report-grid,
+  .dashboard-panels,
+  .module-grid.two,
+  .module-form-grid,
+  .module-form-grid.user-registration-grid,
+  .jeevika-payment-summary-grid,
+  .access-top-grid,
+  .vrp-detail-grid,
+  .document-grid,
+  .detail-list {
+    grid-template-columns: 1fr;
+  }
+.lg-directory-card .module-card-header,
+  .lg-directory-upload {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 680px) {
+.module-page,
+  .vrp-list-shell,
+  .dashboard-page {
+    gap: 14px;
+  }
+.module-hero,
+  .dashboard-topbar,
+  .vrp-header,
+  .vrp-list-header,
+  .module-card,
+  .vrp-card,
+  .vrp-list-card {
+    border-radius: 6px;
+  }
+.module-hero,
+  .dashboard-topbar {
+    padding: 16px;
+  }
+.module-card,
+  .vrp-card {
+    padding: 14px;
+  }
+.module-form-grid,
+  .module-form-grid.user-registration-grid,
+  .vrp-form-grid,
+  .access-top-grid,
+  .lg-directory-filter,
+  .dashboard-grid,
+  .dashboard-report-grid,
+  .dashboard-panels,
+  .module-grid,
+  .module-grid.two,
+  .vrp-detail-grid,
+  .document-grid,
+  .detail-list {
+    grid-template-columns: 1fr;
+  }
+.module-form-actions,
+  .vrp-actions,
+  .agreement-actions,
+  .dashboard-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+.module-form-actions .btn,
+  .module-form-actions .list-btn,
+  .vrp-actions .btn,
+  .dashboard-actions .list-btn,
+  .dashboard-actions .import-btn {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+.list-control-actions .list-search {
+    grid-column: 1 / -1;
+  }
+.list-search,
+  .list-search.compact {
+    width: 100%;
+  }
+.list-search input {
+    min-width: 0;
+    width: 100%;
+    font-size: 16px;
+  }
+.table-shell {
+    max-height: min(62vh, 520px);
+    border: 1px solid var(--vrp-line);
+    border-radius: 6px;
+  }
+.module-table {
+    min-width: 760px;
+  }
+.table-pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 540px) {
+.module-hero h1,
+  .dashboard-topbar h1 {
+    font-size: 1.45rem;
+  }
+.module-table {
+    min-width: 680px;
+  }
+}
+
+.dashboard-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  align-items: end;
+}
+
+.dashboard-filter-field {
+  display: grid;
+  gap: 5px;
+}
+
+.dashboard-filter-field label {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--vrp-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.dashboard-filter-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Shared overflow protection for every report/list table. Database labels can
+   contain long comma-separated activities or unbroken identifiers; keep them
+   inside their own cell instead of allowing visible overflow into neighbours. */
+.table-shell .module-table th,
+.table-shell .module-table td {
+  box-sizing: border-box;
+  max-width: 320px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+  vertical-align: top;
+}
+
+.table-shell .module-table td > a,
+.table-shell .module-table td > span,
+.table-shell .module-table td > div {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.table-shell .module-table input,
+.table-shell .module-table select,
+.table-shell .module-table textarea {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.table-shell .module-table .table-action,
+.table-shell .module-table .list-btn,
+.table-shell .module-table .grid-status,
+.table-shell .module-table .training-status-pill {
+  white-space: nowrap;
+}
+
+/* Keep list headings readable. Wide tables must use the table shell's
+   horizontal scrollbar instead of shrinking headers to one character per
+   line. Body values may still wrap inside their capped-width cells. */
+.table-shell .module-table {
+  width: max-content;
+  min-width: 100%;
+}
+
+.table-shell .module-table th {
+  max-width: none;
+  overflow-wrap: normal;
+  word-break: normal;
+  white-space: nowrap;
+}
+
+/* ─── Active Filter Chips ─────────────────────────────────────────────────── */
+
+.dashboard-filter-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 8px;
+  background: rgba(89, 143, 64, 0.06);
+}
+
+.filter-chips-label {
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: var(--vrp-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 4px;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(89, 143, 64, 0.14);
+  color: var(--vrp-primary-dark);
+  font-size: 0.8rem;
+  font-weight: 750;
+  border: 1px solid rgba(89, 143, 64, 0.22);
+}
+
+/* Dark mode overrides for filter & status */
+
+:root[data-theme="dark"] .dashboard-filter-bar,
+:root[data-theme="dark"] .dashboard-filter-chips,
+:root[data-theme="dark"] .vrp-status-card {
+  background: var(--vrp-panel);
+  border-color: var(--vrp-line);
+}
+
+@media (max-width: 900px) {
+.dashboard-filter-grid {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+}
+
+.target-activity-grouped-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.target-activity-grouped-list span {
+  display: block;
+  line-height: 1.4;
+  padding: 2px 0;
+}
+
+/* Small trigger box on each summary card that opens its detail in a popup. */
+.dashboard-training-secondary-summaries .metric-card-group {
+  position: relative;
+}
+
+.metric-card-popup-trigger {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.metric-card-popup-trigger:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.metric-card-popup {
+  width: min(92vw, 520px);
+  border: 1px solid var(--vrp-line);
+  border-radius: 12px;
+  padding: 0;
+  box-shadow: 0 24px 60px rgba(16, 24, 32, 0.28);
+}
+
+.metric-card-popup::backdrop {
+  background: rgba(16, 24, 32, 0.45);
+}
+
+.metric-card-popup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--vrp-line);
+  font-size: 1rem;
+}
+
+.metric-card-popup-close {
+  border: 0;
+  background: transparent;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  color: inherit;
+}
+
+.metric-card-popup-body {
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.metric-card-popup-body .metric-card-group-items {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metric-card-popup-body .metric-card-group-item {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  min-height: 60px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 8px;
+  background: #f7faf8;
+  color: inherit;
+  text-decoration: none;
+}
+
+.dashboard-grid.premium.dashboard-training-secondary-summaries {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+@media (max-width: 1200px) {
+.dashboard-grid.premium.dashboard-training-secondary-summaries {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+}
+
+.dashboard-grid.premium.dashboard-training-secondary-summaries .metric-card-group > .metric-card-group-items,
+.dashboard-grid.premium.dashboard-training-secondary-summaries .cc-jj-work-status .cc-jj-status-groups,
+.dashboard-grid.premium.dashboard-training-secondary-summaries .cc-jj-work-status > .table-action,
+.dashboard-grid.premium.dashboard-training-secondary-summaries .cc-target-status .cc-jj-status-groups {
+  display: none !important;
+}
+
+/* Heading-only cards: a clean, rounded colored tile with no empty body. */
+.dashboard-grid.premium.dashboard-training-secondary-summaries .metric-card-group {
+  min-height: 0;
+  height: auto;
+  padding: 0 !important;
+  border: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 20px rgba(23, 33, 38, 0.12);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dashboard-grid.premium.dashboard-training-secondary-summaries .metric-card-group:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(23, 33, 38, 0.2);
+}
+
+.dashboard-grid.premium.dashboard-training-secondary-summaries .metric-card-group-title {
+  margin: 0 !important;
+  padding: 16px 48px 16px 18px !important;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  min-height: 58px;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.dashboard-grid.premium.dashboard-training-secondary-summaries .metric-card-popup-trigger {
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.dashboard-grid.premium.dashboard-training-secondary-summaries .metric-card-popup-trigger:hover {
+  background: rgba(255, 255, 255, 0.45);
+}
+
+/* Keep work-status labels compact so adjacent dashboard cards do not stretch. */
+.cc-jj-status-groups {
+  display: grid;
+  gap: 14px;
+}
+
+.cc-jj-status-fco-row {
+  display: grid;
+  gap: 6px;
+}
+
+.cc-jj-status-fco-name {
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+/* One FCO's 4 boxes (Red CC/JJ + Completed CC/JJ) fill the full card width in one line. */
+.cc-jj-status-fco-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.cc-jj-status-fco-groups .cc-jj-status-group {
+  min-width: 0;
+}
+
+.cc-jj-status-fco-groups .cc-jj-status-group .metric-card-group-items {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cc-jj-status-group > strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.8rem;
+}
+
+/* Colour the CC/JJ boxes (not the label): Red status boxes red, Completed boxes green. */
+.cc-jj-status-red .metric-card-group-item {
+  border-color: #d64545;
+  background: rgba(214, 69, 69, 0.1);
+}
+
+.cc-jj-status-red .metric-card-group-item strong {
+  color: #c0392b;
+}
+
+.cc-jj-status-green .metric-card-group-item,
+.cc-jj-status-completed .metric-card-group-item {
+  border-color: #1a8a34;
+  background: rgba(26, 138, 52, 0.1);
+}
+
+.cc-jj-status-green .metric-card-group-item strong,
+.cc-jj-status-completed .metric-card-group-item strong {
+  color: #1a8a34;
+}
+
+/* Meaningful colours for the summary detail boxes (shown in the popup):
+   Required = blue, Active/Approved = green, Vacant/Pending = amber, Male = blue, Female = pink. */
+.dashboard-training-secondary-summaries .metric-card-group-item[class*="-required"] {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.dashboard-training-secondary-summaries .metric-card-group-item[class*="-required"] strong {
+  color: #2563eb;
+}
+
+.dashboard-training-secondary-summaries .metric-card-group-item[class*="-active"],
+.dashboard-training-secondary-summaries .metric-card-group-item[class*="-approved"] {
+  border-color: #1a8a34;
+  background: rgba(26, 138, 52, 0.1);
+}
+
+.dashboard-training-secondary-summaries .metric-card-group-item[class*="-active"] strong,
+.dashboard-training-secondary-summaries .metric-card-group-item[class*="-approved"] strong {
+  color: #1a8a34;
+}
+
+.dashboard-training-secondary-summaries .metric-card-group-item[class*="-vacant"],
+.dashboard-training-secondary-summaries .metric-card-group-item[class*="-pending"] {
+  border-color: #e0a800;
+  background: rgba(224, 168, 0, 0.14);
+}
+
+.dashboard-training-secondary-summaries .metric-card-group-item[class*="-vacant"] strong,
+.dashboard-training-secondary-summaries .metric-card-group-item[class*="-pending"] strong {
+  color: #b8860b;
+}
+
+.dashboard-training-secondary-summaries .metric-card-group-item[class*="-male"] {
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.dashboard-training-secondary-summaries .metric-card-group-item[class*="-male"] strong {
+  color: #2563eb;
+}
+
+.dashboard-training-secondary-summaries .metric-card-group-item[class*="-female"] {
+  border-color: #db2777;
+  background: rgba(219, 39, 119, 0.1);
+}
+
+.dashboard-training-secondary-summaries .metric-card-group-item[class*="-female"] strong {
+  color: #db2777;
+}
+
+.cc-jj-status-group .metric-card-group-items {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dashboard-grid.premium.dashboard-training-secondary-summaries {
+  align-items: start;
+}
+
+.dashboard-grid.premium.dashboard-training-secondary-summaries .metric-card-group {
+  height: auto;
+}
+
+.dashboard-grid.premium .cc-jj-work-status .cc-jj-status-group > strong {
+  font-size: 0.8rem;
+  line-height: 1.35;
+  margin: 0 0 6px;
+}
+
+.dashboard-grid.premium .cc-jj-work-status .cc-jj-status-group .metric-card-group-items {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.dashboard-grid.premium.dashboard-training-secondary-summaries {
+  align-items: stretch;
+}
+
+.dashboard-grid.premium.dashboard-training-secondary-summaries .metric-card-group {
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.dashboard-grid.premium .cc-jj-work-status .cc-jj-status-group .metric-card-group-items {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* Make the CC/JJ boxes fill the full card width and give them a bigger size. */
+.dashboard-grid.premium .cc-jj-work-status .cc-jj-status-fco-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+.dashboard-grid.premium .cc-jj-work-status .cc-jj-status-fco-groups .metric-card-group-items {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 10px;
+  width: 100%;
+  justify-items: stretch;
+}
+
+.dashboard-grid.premium .cc-jj-work-status .metric-card-group-item {
+  width: 100%;
+  justify-self: stretch;
+  min-height: 64px;
+  padding: 10px 12px;
+}
+
+.dashboard-grid.premium .cc-jj-work-status .metric-card-group-item > strong {
+  font-size: 1.2rem;
+}
+
+/* Dashboard visual refresh: scoped to dashboard; no changes to report behavior. */
+.dashboard-page {
+  --dashboard-ink: #29394b;
+  --dashboard-accent: #466a7e;
+  --dashboard-border: #e1e7ec;
+  gap: 24px;
+}
+
+.dashboard-page .dashboard-topbar {
+  position: relative;
+  padding: 22px 28px;
+  border: 1px solid #e1e7ec;
+  border-radius: 16px;
+  border-left-width: 1px;
+  background: linear-gradient(110deg, #ffffff 35%, #f3f7fa 75%, #f0f6f1 100%);
+  box-shadow: 0 4px 18px #263b5006;
+  color: #29394b;
+  gap: 20px;
+}
+
+.dashboard-page .dashboard-topbar h1 {
+  color: #29394b;
+  font-size: clamp(1.55rem, 2.2vw, 2rem);
+  font-weight: 750;
+  letter-spacing: -0.045em;
+  line-height: 1.2;
+  margin: 5px 0 7px;
+}
+
+.dashboard-page .dashboard-topbar p { color: #72808d; line-height: 1.6; }
+
+.dashboard-page .dashboard-topbar .vrp-eyebrow {
+  color: #6c8a79;
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  font-weight: 750;
+}
+
+.dashboard-page .dashboard-header-clock {
+  border: 1px solid #e0e8e6;
+  border-radius: 12px;
+  background: #ffffffb3;
+  box-shadow: none;
+  padding: 10px 14px;
+  color: #fff;
+}
+
+.dashboard-page .dashboard-header-clock strong,
+.dashboard-page .dashboard-header-clock small { color: #516577; }
+
+.dashboard-page .dashboard-header-clock span { background: #e3eee5; color: #477359; }
+
+.dashboard-page .dashboard-actions .list-search {
+  border-radius: 10px;
+  border: 1px solid #dfe6eb;
+  background: #fff;
+  color: #344e42;
+  min-height: 42px;
+}
+
+.dashboard-page .dashboard-actions .list-search input { color: #243e31; background: transparent; }
+
+.dashboard-page .dashboard-filter-bar {
+  padding: 22px 24px;
+  background: var(--vrp-panel);
+  border: 1px solid var(--dashboard-border);
+  border-radius: 16px;
+  box-shadow: 0 3px 12px #183e3205;
+}
+
+.dashboard-page .dashboard-filter-grid { gap: 16px; }
+
+.dashboard-page .dashboard-filter-field label {
+  font-size: 0.68rem;
+  line-height: 1.5;
+  letter-spacing: 0.07em;
+  font-weight: 700;
+}
+
+.dashboard-page .dashboard-filter-select {
+  min-height: 44px;
+  border-radius: 9px;
+  border-color: var(--dashboard-border);
+  background: var(--vrp-panel-soft);
+  font-size: 0.84rem;
+}
+
+.dashboard-page .dashboard-filter-actions .list-btn.active {
+  min-height: 44px;
+  padding: 10px 19px;
+  border-radius: 9px;
+  border: 1px solid #c9dcd1;
+  background: #e5efe8;
+  color: #355c46;
+  box-shadow: none;
+}
+
+.dashboard-page .module-card {
+  border: 1px solid var(--dashboard-border);
+  border-radius: 16px;
+  background: var(--vrp-panel);
+  box-shadow: 0 4px 18px #153d2e06;
+}
+
+.dashboard-page .dashboard-status-panel > .training-participation-status-header {
+  border-left: 0;
+  border-bottom: 1px solid var(--dashboard-border);
+  padding: 17px 24px;
+  background: transparent;
+  color: var(--vrp-text);
+}
+
+.dashboard-page .module-card-header h2 {
+  font-size: 1rem;
+  font-weight: 750;
+  letter-spacing: -0.025em;
+}
+
+.dashboard-page .dashboard-status-panel > .training-participation-boxes {
+  padding: 22px 24px;
+  gap: 16px;
+  background: transparent;
+}
+
+.dashboard-page .training-participation-box {
+  border: 1px solid var(--dashboard-border);
+  border-top: 1px solid var(--dashboard-border);
+  border-radius: 12px;
+  padding: 18px;
+  background: var(--vrp-panel-soft);
+  box-shadow: none;
+  min-width: 0;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.dashboard-page .training-participation-box > span {
+  font-size: 0.8rem;
+  font-weight: 650;
+  line-height: 1.5;
+  color: var(--vrp-muted);
+  letter-spacing: 0.01em;
+}
+
+.dashboard-page .training-participation-box > strong {
+  display: block;
+  margin: 10px 0 14px;
+  color: var(--vrp-text);
+  font-size: clamp(1.65rem, 2vw, 2.15rem);
+  line-height: 1.1;
+  font-weight: 750;
+  letter-spacing: -0.045em;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-page .training-participation-box.red { border-top-color: #d36767; }
+
+.dashboard-page .training-participation-box.yellow { border-top-color: #d69a35; }
+
+.dashboard-page .training-participation-box.green { border-top-color: #54976b; }
+
+.dashboard-page .training-participation-box.red > strong { color: #b64242; }
+
+.dashboard-page .training-participation-box.yellow > strong { color: #98600d; }
+
+.dashboard-page .training-participation-box.green > strong { color: #287549; }
+
+.dashboard-page .training-participation-box .table-action {
+  padding: 8px 12px;
+  min-height: 34px;
+  border-radius: 7px;
+  border: 1px solid var(--dashboard-border);
+  background: var(--vrp-panel);
+  color: var(--dashboard-accent);
+  font-size: 0.73rem;
+  font-weight: 700;
+}
+
+.dashboard-page .training-participation-box .table-action:hover {
+  background: #e7f2eb;
+  border-color: #95bea5;
+}
+
+.dashboard-page .training-participation-box:hover {
+  box-shadow: 0 6px 16px #183e320a;
+}
+
+.dashboard-page .filter-chip {
+  border-radius: 7px;
+  background: #e8f2eb;
+  border-color: #cadfce;
+  color: #286042;
+  padding: 6px 12px;
+}
+
+.dashboard-page .metric-card-group { border-radius: 14px; }
+
+.dashboard-page .metric-card-group-header { padding: 16px 18px; }
+
+.dashboard-page :is(a, button, input, select):focus-visible {
+  outline: 3px solid #84ad66;
+  outline-offset: 3px;
+}
+
+:root[data-theme="dark"] .dashboard-page {
+  --dashboard-border: #384b43;
+  --dashboard-accent: #a2d1b4;
+}
+
+:root[data-theme="dark"] .dashboard-page .training-participation-box.red > strong { color: #f09b99; }
+
+:root[data-theme="dark"] .dashboard-page .training-participation-box.yellow > strong { color: #efc279; }
+
+:root[data-theme="dark"] .dashboard-page .training-participation-box.green > strong { color: #a0d6ad; }
+
+:root[data-theme="dark"] .dashboard-page .training-participation-box .table-action:hover { background: #304b3b; }
+
+@media (max-width: 900px) {
+.dashboard-page .dashboard-topbar { padding: 24px; flex-wrap: wrap; }
+.dashboard-page .dashboard-actions { width: 100%; flex-wrap: wrap; }
+.dashboard-page .dashboard-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.dashboard-page .dashboard-filter-field--activity { grid-column: auto; min-width: 0; }
+.dashboard-page .dashboard-summary-boxes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 540px) {
+.dashboard-page { gap: 16px; }
+.dashboard-page .dashboard-topbar { padding: 22px 18px; border-radius: 14px; }
+.dashboard-page .dashboard-filter-bar { padding: 18px; }
+.dashboard-page .dashboard-filter-grid { grid-template-columns: minmax(0, 1fr); }
+.dashboard-page .dashboard-status-panel > .training-participation-status-header { padding: 16px; }
+.dashboard-page .dashboard-status-panel > .training-participation-boxes { padding: 16px; gap: 10px; }
+.dashboard-page .training-participation-box { padding: 14px; }
+.dashboard-page .dashboard-header-clock { flex-wrap: wrap; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+.dashboard-page .training-participation-box { transition: none; }
+}
+
+/* Soft dashboard palette: quiet surfaces with restrained status accents. */
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-summary-boxes > .training-participation-box:nth-child(5n + 1) {
+  background: #e2edf7; border-color: #bfd2e4;
+}
+
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-summary-boxes > .training-participation-box:nth-child(5n + 2) {
+  background: #e5eee1; border-color: #c4d5bc;
+}
+
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-summary-boxes > .training-participation-box:nth-child(5n + 3) {
+  background: #eae4f5; border-color: #cfc2e3;
+}
+
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-summary-boxes > .training-participation-box:nth-child(5n + 4) {
+  background: #f5ead6; border-color: #e0cba4;
+}
+
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-summary-boxes > .training-participation-box:nth-child(5n + 5) {
+  background: #dfefeb; border-color: #b8d5ce;
+}
+
+:root:not([data-theme="dark"]) .dashboard-page .training-participation-box.red { background: #f6bcbc; border-color: #e59a9a; }
+
+/* red */
+:root:not([data-theme="dark"]) .dashboard-page .training-participation-box.yellow { background: #f4dd8a; border-color: #e0c766; }
+
+/* yellow */
+:root:not([data-theme="dark"]) .dashboard-page .training-participation-box.green { background: #e3efe5; border-color: #bbd4c0; }
+
+.dashboard-page .dashboard-summary-boxes > .training-participation-box {
+  border-left-width: 1px;
+  border-top-width: 1px;
+}
+
+.dashboard-page .training-participation-box .table-action {
+  background: transparent;
+  border-color: transparent;
+  border-top: 1px solid var(--dashboard-border);
+  border-radius: 0;
+  text-align: left;
+  padding: 10px 0 0;
+}
+
+.dashboard-page .training-participation-box .table-action::after {
+  content: "\2192";
+  margin-left: 10px;
+}
+
+.dashboard-page .training-participation-box .table-action:hover {
+  background: transparent;
+  color: #284c65;
+  border-color: transparent;
+  border-top-color: #afc3cf;
+}
+
+.dashboard-page .metric-card-group .metric-card-group-title {
+  color: #496358 !important;
+  background: #eaf2ed;
+  font-weight: 700;
+}
+
+.dashboard-page .metric-card-group-fco .metric-card-group-title { background: #efebf6; color: #66567e !important; }
+
+.dashboard-page .metric-card-group-billing .metric-card-group-title { background: #f7efdf; color: #806538 !important; }
+
+.dashboard-page .metric-card-group-assignment .metric-card-group-title { background: #eaf1f7; color: #49657c !important; }
+
+.dashboard-page .metric-card-popup-trigger {
+  background: #ffffff80;
+  border-color: #a9b9b7;
+  color: #566878;
+}
+
+:root[data-theme="dark"] .dashboard-page .dashboard-topbar {
+  background: linear-gradient(110deg, #25313a, #293c37);
+  border-color: #40524b;
+}
+
+:root[data-theme="dark"] .dashboard-page .dashboard-topbar h1 { color: #eef3f5; }
+
+:root[data-theme="dark"] .dashboard-page .dashboard-topbar p { color: #b4c1c8; }
+
+:root[data-theme="dark"] .dashboard-page .dashboard-header-clock { background: #24342e; border-color: #40524b; }
+
+:root[data-theme="dark"] .dashboard-page .dashboard-header-clock strong,
+:root[data-theme="dark"] .dashboard-page .dashboard-header-clock small { color: #d2dfd8; }
+
+/* Four detail launchers: readable cards rather than heading-only strips. */
+.dashboard-page .dashboard-grid.dashboard-training-secondary-summaries {
+  gap: 18px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group {
+  --detail-accent: #356558;
+  --detail-tint: #e6efe9;
+  position: relative;
+  min-height: 172px;
+  padding: 20px !important;
+  border: 1px solid #cbd8d5;
+  border-top: 4px solid var(--detail-accent);
+  border-radius: 12px;
+  background: var(--vrp-panel);
+  box-shadow: 0 4px 12px #2437480a;
+  transition: box-shadow 160ms ease;
+}
+
+.dashboard-page .dashboard-training-secondary-summaries .metric-card-group-fco {
+  --detail-accent: #655389;
+  --detail-tint: #eee8f6;
+}
+
+.dashboard-page .dashboard-training-secondary-summaries .metric-card-group-billing {
+  --detail-accent: #91631f;
+  --detail-tint: #f7eddb;
+}
+
+.dashboard-page .dashboard-training-secondary-summaries .metric-card-group:nth-child(3) {
+  --detail-accent: #436e94;
+  --detail-tint: #e6eef7;
+}
+
+.dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group-title {
+  display: block;
+  min-height: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0;
+  background: transparent;
+  color: var(--vrp-text) !important;
+  font-size: 1rem;
+  line-height: 1.45;
+  font-weight: 750;
+  letter-spacing: -0.015em;
+}
+
+.dashboard-page .dashboard-training-secondary-summaries .metric-card-group-title::after {
+  content: "";
+  display: block;
+  margin-top: 9px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  font-weight: 450;
+  letter-spacing: 0;
+  color: var(--vrp-muted);
+}
+
+.dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-popup-trigger {
+  position: static;
+  transform: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  height: auto;
+  min-height: 38px;
+  margin-top: auto;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--detail-tint);
+  color: var(--detail-accent);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-popup-trigger:hover {
+  border-color: var(--detail-accent);
+  background: var(--detail-tint);
+}
+
+.dashboard-page .training-participation-box > span {
+  color: var(--vrp-text);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.dashboard-page .module-card-header h2 { font-size: 1.1rem; }
+
+.dashboard-page .training-participation-box .table-action { font-size: 0.8rem; font-weight: 700; }
+
+:root[data-theme="dark"] .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group {
+  border-color: #53616d;
+  border-top-color: var(--detail-accent);
+}
+
+@media (max-width: 1100px) {
+.dashboard-page .dashboard-grid.dashboard-training-secondary-summaries { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 560px) {
+.dashboard-page .dashboard-grid.dashboard-training-secondary-summaries { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+.dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group { transition: none; }
+}
+
+/* Black dashboard text in light mode. */
+:root:not([data-theme="dark"]) .dashboard-page .training-participation-box > span,
+:root:not([data-theme="dark"]) .dashboard-page .training-participation-box > strong,
+:root:not([data-theme="dark"]) .dashboard-page .training-participation-box .table-action,
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-training-secondary-summaries .metric-card-group-title::after,
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-popup-trigger {
+  color: #111;
+}
+
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group-title {
+  color: #111 !important;
+}
+
+/* Distinct colors for the four report cards, matching the summary palette. */
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group:nth-child(1) {
+  background: #eae4f5;
+  border-color: #cfc2e3;
+  border-top-color: #9a80bc;
+}
+
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group:nth-child(2) {
+  background: #f5ead6;
+  border-color: #e0cba4;
+  border-top-color: #c19a57;
+}
+
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group:nth-child(3) {
+  background: #e2edf7;
+  border-color: #bfd2e4;
+  border-top-color: #7c9fc0;
+}
+
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group:nth-child(4) {
+  background: #dfefeb;
+  border-color: #b8d5ce;
+  border-top-color: #77a598;
+}
+
+:root:not([data-theme="dark"]) .dashboard-page .training-status-panel .training-participation-box.total {
+  background: #e2edf7;
+  border-color: #bfd2e4;
+}
+
+/* Compact right-aligned detail icon; keeps the existing dialog trigger. */
+.dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group {
+  min-height: 126px;
+  padding-right: 76px !important;
+}
+
+.dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-popup-trigger {
+  position: absolute;
+  top: 20px;
+  right: 18px;
+  transform: none;
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 9px;
+  margin: 0;
+  justify-content: center;
+  border: 1px solid #9faeaa;
+  border-radius: 9px;
+  background: var(--vrp-panel);
+  color: var(--vrp-text);
+}
+
+.dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-popup-trigger:hover {
+  background: var(--vrp-panel-soft);
+  border-color: #56776a;
+}
+
+.dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-popup-trigger:focus-visible {
+  outline: 3px solid #56776a;
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+.dashboard-page > .dashboard-topbar,
+  .dashboard-page > .dashboard-filter-bar,
+  .dashboard-page > .dashboard-status-panel {
+    animation: dashboard-arrive 360ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  }
+.dashboard-page > .dashboard-filter-bar { animation-delay: 40ms; }
+.dashboard-page > #dashboard_summary_boxes { animation-delay: 80ms; }
+.dashboard-page > .training-status-panel { animation-delay: 120ms; }
+.dashboard-page > #demonstration_method_boxes { animation-delay: 160ms; }
+.dashboard-page .training-participation-box,
+  .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group {
+    transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  }
+.dashboard-page .table-action,
+  .dashboard-page .list-btn,
+  .dashboard-page .metric-card-popup-trigger {
+    transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  }
+.dashboard-page .table-action::after,
+  .dashboard-page .metric-card-popup-trigger svg {
+    transition: transform 180ms ease;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+.dashboard-page .training-participation-box:hover,
+  .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 7px 16px #263c5014;
+  }
+.dashboard-page .table-action:hover::after { transform: translateX(3px); }
+.dashboard-page .metric-card-popup-trigger:hover svg { transform: translate(1px, -1px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+.dashboard-page > *,
+  .dashboard-page .training-participation-box,
+  .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group,
+  .dashboard-page .table-action,
+  .dashboard-page .list-btn,
+  .dashboard-page .metric-card-popup-trigger,
+  .dashboard-page .table-action::after,
+  .dashboard-page .metric-card-popup-trigger svg {
+    animation: none;
+    transition: none;
+  }
+.dashboard-page .training-participation-box:hover,
+  .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group:hover {
+    transform: none;
+  }
+}
+
+/* Keep each method's target and achievement together, with explicit labels. */
+.demonstration-metric-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+  width: 100%;
+}
+
+.demonstration-metric-pair > div {
+  padding: 10px;
+  border: 1px solid rgba(31, 77, 58, .14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .75);
+}
+
+.demonstration-metric-pair > div > span {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #455b53;
+}
+
+.demonstration-metric-pair > div > strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.demonstration-metric-pair .demonstration-metric-achievement { background: #effaf3; }
+
+.demonstration-method-table .demonstration-metric-pair { min-width: 185px; margin: 0; }
+
+.demonstration-method-table .demonstration-metric-pair strong { font-size: 20px; }
+
+#module-form[data-training-target-form] > .module-card-header {
+  padding: 28px 32px;
+  margin: 0;
+  border-bottom: 1px solid var(--vrp-line);
+  border-top: 4px solid var(--vrp-primary);
+  background: var(--vrp-panel-soft);
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+@media (max-width: 680px) {
+#module-form[data-training-target-form] > .module-card-header { padding: 22px 18px; }
+}
+
+.jj-section-heading .vrp-eyebrow {
+  margin: 0 0 0.25rem;
+}
+
+.jj-card-head .vrp-eyebrow {
+  margin: 0 0 0.25rem;
+}
+
+.jj-attempts-card .table-shell {
+  max-height: none;
+}
+
+.jj-exam-steps.compact span {
+  background: #edf8f1;
+  color: #1b6a44;
+}
+
+.jj-login-shell .jj-exam-login-copy .vrp-eyebrow {
+  margin-top: 1.4rem;
+  color: #bdeed1;
+  letter-spacing: 0;
+}
+
+.jj-login-card-head .vrp-eyebrow {
+  margin: 0 0 0.35rem;
+  color: #20744c;
+  letter-spacing: 0;
+}
+
+.jj-empty-exam.compact {
+  justify-items: start;
+  padding: 0.8rem 0.9rem;
+  text-align: left;
+}
+
+.jj-empty-exam.compact form {
+  margin: 0.55rem 0 0;
+}
+
+.jj-empty-exam.compact .list-btn {
+  margin-top: 0.55rem;
+}
+
+.bill-observation-shell > .module-table { margin: 0; }

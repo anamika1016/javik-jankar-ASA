@@ -1,0 +1,9 @@
+<% values = value.to_s.split(/\s*\/\s*/, 2) %>
+<% if values.size == 2 %>
+  <div class="demonstration-metric-pair">
+    <div class="demonstration-metric-target"><span>Target</span><strong><%= values.first %></strong></div>
+    <div class="demonstration-metric-achievement"><span>Achievement</span><strong><%= values.last %></strong></div>
+  </div>
+<% else %>
+  <strong><%= value %></strong>
+<% end %>

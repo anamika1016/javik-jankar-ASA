@@ -57,7 +57,7 @@
       </div>
     <% end %>
 
-  <% demonstration_method_titles = ["OPG Training Target", "OPG Training Achievement", "General Training/Meeting", "Input Demo INM", "FFS", "Input Demo PM", "Exposure", "FFS Exposure"] %>
+  <% demonstration_method_titles = ["OPG Training Target", "OPG Training Achievement", "General Training/Meeting", "Input Demo INM", "FFS", "Input Demo PM", "Exposure", "FFS Exposure", "CC TARGET STATUS"] %>
     <% all_dashboard_summary_cards = Array(@dashboard_summary_cards) %>
     <% demonstration_method_cards = Array(@demonstration_method_cards).presence || all_dashboard_summary_cards.select { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
     <% dashboard_summary_cards = all_dashboard_summary_cards.reject { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
@@ -108,12 +108,49 @@
           <% demonstration_method_cards.each do |card| %>
             <div class="training-participation-box total dashboard-summary-box">
               <span><%= card[:title] %></span>
-              <strong><%= card[:value] %></strong>
-              <div class="dashboard-summary-actions">
-                <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true } %>
-              </div>
+              <%= render "demonstration_metric", value: card[:value] %>
             </div>
           <% end %>
+        </div>
+      </section>
+    <% end %>
+
+    <% if @dashboard_other_activity_totals.present? %>
+      <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel demonstration-method-panel" id="other_major_work_indicator_boxes" style="margin-top: 20px;">
+        <div class="module-card-header training-participation-status-header">
+          <div>
+            <h2>Main Major Work Indicator - Other</h2>
+          </div>
+        </div>
+
+        <div class="training-participation-boxes dashboard-summary-boxes demonstration-method-boxes">
+          <div class="training-participation-box total dashboard-summary-box">
+            <span>Main Major Work Indicator</span>
+            <strong><%= @dashboard_other_activity_totals[:main_major_work_indicator] %></strong>
+            <% if Array(@dashboard_other_activity_totals[:main_major_work_indicator_popups]).any? %>
+              <span class="dashboard-card-hover-popup" role="tooltip">
+                <% Array(@dashboard_other_activity_totals[:main_major_work_indicator_popups]).each do |item| %>
+                  <span><%= item %></span>
+                <% end %>
+              </span>
+            <% end %>
+          </div>
+          <div class="training-participation-box total dashboard-summary-box">
+            <span>Mapped Farmer</span>
+            <strong><%= @dashboard_other_activity_totals[:mapped_farmer] %></strong>
+          </div>
+          <div class="training-participation-box total dashboard-summary-box">
+            <span>Achievement Farmer</span>
+            <strong><%= @dashboard_other_activity_totals[:achievement_farmer] %></strong>
+          </div>
+          <div class="training-participation-box total dashboard-summary-box">
+            <span>Pending Farmer</span>
+            <strong><%= @dashboard_other_activity_totals[:pending_farmer] %></strong>
+          </div>
+          <div class="training-participation-box total dashboard-summary-box">
+            <span>Achieved</span>
+            <strong><%= @dashboard_other_activity_totals[:achieved].to_f.round(2) %>%</strong>
+          </div>
         </div>
       </section>
     <% end %>
@@ -138,6 +175,7 @@
       <div class="vrp-work-overview-metrics">
         <% ["Mapped Villages", "Main Activities", "Sub Activities", "Assigned Target", "Assigned Farmers", "Achieved Target", "Pending Target"].each do |title| %>
           <% card = dashboard_cards_by_title[title] %>
+          <%# A card this dashboard does not build should just be left out. %>
           <% next if card.blank? %>
           <%= link_to card[:path], class: "#{title.parameterize}", title: card[:caption], data: { dashboard_card: true } do %>
             <span><%= title %></span>
@@ -438,11 +476,18 @@
     </div>
   <% end %>
 
-  <% demonstration_method_titles = ["OPG Training Target", "OPG Training Achievement", "General Training/Meeting", "Input Demo INM", "FFS", "Input Demo PM", "Exposure", "FFS Exposure"] %>
+  <% main_activity_filter_value = params[:main_activity].presence || @dashboard_main_activity_filter_value.presence %>
+  <% normalized_main_activity_filter = main_activity_filter_value.to_s.downcase.strip %>
+  <% farmer_activity_mode = @dashboard_farmer_activity_mode ||
+       normalized_main_activity_filter.include?("training") ||
+       normalized_main_activity_filter.include?("farmer activity") %>
+
+  <% demonstration_method_titles = ["OPG Training Target", "OPG Training Achievement", "General Training/Meeting", "Input Demo INM", "FFS", "Input Demo PM", "Exposure", "FFS Exposure", "CC TARGET STATUS"] %>
   <% all_dashboard_summary_cards = Array(@dashboard_summary_cards) %>
   <% demonstration_method_cards = Array(@demonstration_method_cards).presence || all_dashboard_summary_cards.select { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
   <% dashboard_summary_cards = all_dashboard_summary_cards.reject { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
-  <% if dashboard_summary_cards.any? && !@vrp_dashboard %>
+  <%# Dashboard Summary is training-specific, so it stays hidden for Other activities. %>
+  <% if dashboard_summary_cards.any? && !@vrp_dashboard && farmer_activity_mode %>
     <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel" id="dashboard_summary_boxes">
       <div class="module-card-header training-participation-status-header">
         <div>
@@ -473,12 +518,6 @@
     </section>
   <% end %>
 
-  <% main_activity_filter_value = params[:main_activity].presence || @dashboard_main_activity_filter_value.presence %>
-  <% normalized_main_activity_filter = main_activity_filter_value.to_s.downcase.strip %>
-  <% farmer_activity_mode = @dashboard_farmer_activity_mode ||
-       normalized_main_activity_filter.include?("training") ||
-       normalized_main_activity_filter.include?("farmer activity") %>
-
   <% if farmer_activity_mode %>
     <%# ── TRAINING DASHBOARD ───────────────────────────────────────────── %>
     <%= render "farmer_training_dashboard" %>
@@ -486,8 +525,8 @@
     <section class="module-card dashboard-summary-panel">
       <div class="module-card-header"><h2><%= main_activity_filter_value.presence || "Activity" %> — <%= @dashboard_month_filter_value.presence || "All Months" %></h2></div>
       <div class="training-participation-boxes dashboard-summary-boxes">
-        <% { target: "Total Target", completed: "Completed", pending: "Pending" }.each do |key, label| %>
-          <div class="training-participation-box total dashboard-summary-box"><span><%= label %></span><strong><%= @dashboard_other_activity_totals[key] %></strong></div>
+        <% { main_major_work_indicator: "Main Major Work Indicator", mapped_farmer: "Mapped Farmer", achievement_farmer: "Achievement Farmer", pending_farmer: "Pending Farmer", achieved: "Achieved (%)" }.each do |key, label| %>
+          <div class="training-participation-box total dashboard-summary-box"><span><%= label %></span><strong><%= key == :achieved ? "#{@dashboard_other_activity_totals[key].to_f.round(2)}%" : @dashboard_other_activity_totals[key] %></strong></div>
         <% end %>
       </div>
     </section>
@@ -497,21 +536,55 @@
     <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel demonstration-method-panel" id="demonstration_method_boxes">
       <div class="module-card-header training-participation-status-header">
         <h2>Demonstration Method</h2>
-        <%= link_to "viwe list", demonstration_method_list_path(request.query_parameters), class: "table-action demonstration-common-list" %>
+        <%= link_to "View List", demonstration_method_list_path(request.query_parameters), class: "table-action demonstration-common-list" %>
       </div>
       <div class="training-participation-boxes dashboard-summary-boxes demonstration-method-boxes">
         <% demonstration_method_cards.each do |card| %>
           <div class="training-participation-box total dashboard-summary-box">
             <span><%= card[:title] %></span>
-            <strong><%= card[:value] %></strong>
-
+            <%= render "demonstration_metric", value: card[:value] %>
           </div>
         <% end %>
       </div>
     </section>
-  <% end %>
 
-  <% if farmer_activity_mode %>
+    <% if @dashboard_other_activity_totals.present? %>
+      <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel demonstration-method-panel" id="other_major_work_indicator_boxes" style="margin-top: 20px;">
+        <div class="module-card-header training-participation-status-header">
+          <h2>Main Major Work Indicator - Other</h2>
+        </div>
+        <div class="training-participation-boxes dashboard-summary-boxes demonstration-method-boxes">
+          <div class="training-participation-box total dashboard-summary-box">
+            <span>Main Major Work Indicator</span>
+            <strong><%= @dashboard_other_activity_totals[:main_major_work_indicator] %></strong>
+            <% if Array(@dashboard_other_activity_totals[:main_major_work_indicator_popups]).any? %>
+              <span class="dashboard-card-hover-popup" role="tooltip">
+                <% Array(@dashboard_other_activity_totals[:main_major_work_indicator_popups]).each do |item| %>
+                  <span><%= item %></span>
+                <% end %>
+              </span>
+            <% end %>
+          </div>
+          <div class="training-participation-box total dashboard-summary-box">
+            <span>Mapped Farmer</span>
+            <strong><%= @dashboard_other_activity_totals[:mapped_farmer] %></strong>
+          </div>
+          <div class="training-participation-box total dashboard-summary-box">
+            <span>Achievement Farmer</span>
+            <strong><%= @dashboard_other_activity_totals[:achievement_farmer] %></strong>
+          </div>
+          <div class="training-participation-box total dashboard-summary-box">
+            <span>Pending Farmer</span>
+            <strong><%= @dashboard_other_activity_totals[:pending_farmer] %></strong>
+          </div>
+          <div class="training-participation-box total dashboard-summary-box">
+            <span>Achieved</span>
+            <strong><%= @dashboard_other_activity_totals[:achieved].to_f.round(2) %>%</strong>
+          </div>
+        </div>
+      </section>
+    <% end %>
+
     <div class="dashboard-grid premium dashboard-training-secondary-summaries">
       <% Array(@dashboard_cards).sort_by { |card| ["FCO-wise JJ Requirement", "Jeevika Jankar Billing", "Gender Count"].index(card[:title]) || 99 }.each do |card| %>
         <% next if card.blank? %>
@@ -534,8 +607,11 @@
         <span class="metric-card-group-title">CC and JJ Work Status</span>
         <button type="button" class="metric-card-popup-trigger" data-card-popup-trigger title="Open in popup" aria-label="Open CC and JJ Work Status details"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9"/><path d="M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></svg></button>
         <div class="cc-jj-status-groups">
-          <% summary_by_fco = @cc_jj_work_status_report.summary.group_by { |row| row["fco_id"] } %>
-          <% { "1004" => "Sausar", "1006" => "Turekela" }.each do |fco_id, fco_name| %>
+          <% summary_by_fco = @cc_jj_work_status_report.summary.group_by { |row| row["fco_id"].to_s } %>
+          <%# Every FCO the report returns, not a fixed pair. %>
+          <% fco_names = @dashboard_fco_names || {} %>
+          <% summary_by_fco.keys.compact_blank.sort_by { |id| (fco_names[id].presence || id).to_s }.each do |fco_id| %>
+            <% fco_name = fco_names[fco_id].presence || fco_id %>
             <div class="cc-jj-status-fco-row">
               <strong class="cc-jj-status-fco-name"><%= fco_name %></strong>
               <div class="cc-jj-status-fco-groups">
@@ -558,6 +634,8 @@
         </div>
         <%= link_to "View List", cc_jj_work_status_list_path(request.query_parameters), class: "table-action" %>
       </article>
+
+
 
       <dialog class="metric-card-popup" data-card-popup>
         <div class="metric-card-popup-head">
