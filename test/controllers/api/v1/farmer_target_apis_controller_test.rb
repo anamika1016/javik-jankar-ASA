@@ -61,6 +61,31 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
     assert response.parsed_body["options"].key?("autofill")
   end
 
+  test "training forms alias works for React Native route names" do
+    ModuleRecord.create!(
+      module_slug: "training-form",
+      data: {
+        "month" => "July",
+        "ics_block" => "ICS-1",
+        "gram_name" => "Village 1",
+        "trainer_name" => "Trainer",
+        "created_by_id" => @user.id.to_s
+      }
+    )
+
+    get "/api/v1/training-forms", headers: auth_headers, as: :json
+    assert_response :success
+    body = response.parsed_body
+    assert_equal true, body["success"]
+    assert body["training_forms"].is_a?(Array)
+    assert body["count"] >= 1
+
+    get "/api/v1/training-forms/form-options", headers: auth_headers, as: :json
+    assert_response :success
+    assert_equal true, response.parsed_body["success"]
+    assert response.parsed_body["options"].key?("target_mappings")
+  end
+
   test "seed distribution list and form options work" do
     ModuleRecord.create!(
       module_slug: "seed-distribution-target",

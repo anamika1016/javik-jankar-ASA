@@ -66,6 +66,14 @@ Rails.application.routes.draw do
       get "jeevika-jankar-masters/cluster-incharges", to: "jeevika_jankar_masters#cluster_incharges"
 
       # Farmer Target modules — React Native APIs; web /modules/* unchanged
+      get "training-forms/form-options", to: "training_forms#form_options"
+      get "training-forms/form-data", to: "training_forms#form_data"
+      get "training-forms/months", to: "training_forms#months"
+      get "training-forms/farmers", to: "training_forms#farmers"
+      get "training-forms/mapped-farmers", to: "training_forms#mapped_farmers"
+      get "training-forms/:id/photos", to: "training_forms#photos"
+      resources :training_forms, path: "training-forms", only: [ :index, :create, :show ]
+
       get "farmer-trainings/form-options", to: "farmer_trainings#form_options"
       get "farmer-trainings/form-data", to: "farmer_trainings#form_data"
       get "farmer-trainings/months", to: "farmer_trainings#months"
