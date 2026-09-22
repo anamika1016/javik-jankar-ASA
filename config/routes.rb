@@ -73,6 +73,14 @@ Rails.application.routes.draw do
       get "training-forms/mapped-farmers", to: "training_forms#mapped_farmers"
       get "training-forms/:id/photos", to: "training_forms#photos"
       resources :training_forms, path: "training-forms", only: [ :index, :create, :show ]
+      get "training-form-list", to: "training_forms#index"
+      get "training-form-list/form-options", to: "training_forms#form_options"
+      get "training-form-list/form-data", to: "training_forms#form_data"
+      get "training-form-list/months", to: "training_forms#months"
+      get "training-form-list/farmers", to: "training_forms#farmers"
+      get "training-form-list/mapped-farmers", to: "training_forms#mapped_farmers"
+      get "training-form-list/:id/photos", to: "training_forms#photos"
+      get "training-form-list/:id", to: "training_forms#show"
 
       get "farmer-trainings/form-options", to: "farmer_trainings#form_options"
       get "farmer-trainings/form-data", to: "farmer_trainings#form_data"
@@ -87,6 +95,22 @@ Rails.application.routes.draw do
 
       get "papl360-targets/form-options", to: "papl360_targets#form_options"
       resources :papl360_targets, path: "papl360-targets", only: [ :index, :create, :show ]
+
+      get "other-targets/form-options", to: "other_targets#form_options"
+      get "other-targets/form-data", to: "other_targets#form_data"
+      get "other-targets/months", to: "other_targets#months"
+      get "other-targets/:id/photos", to: "other_targets#photos"
+      resources :other_targets, path: "other-targets", only: [ :index, :create, :show ]
+      get "other-target-list", to: "other_targets#index"
+      get "other-target-list/form-options", to: "other_targets#form_options"
+      get "other-target-list/form-data", to: "other_targets#form_data"
+      get "other-target-list/months", to: "other_targets#months"
+      get "other-target-list/:id/photos", to: "other_targets#photos"
+      get "other-target-list/:id", to: "other_targets#show"
+      get "other-forms/form-options", to: "other_targets#form_options"
+      get "other-forms/form-data", to: "other_targets#form_data"
+      get "other-forms/months", to: "other_targets#months"
+      resources :other_forms, path: "other-forms", controller: "other_targets", only: [ :index, :create, :show ]
 
       get "add-farmer-forms/form-options", to: "add_farmer_forms#form_options"
       resources :add_farmer_forms, path: "add-farmer-forms", only: [ :index, :create, :show ]

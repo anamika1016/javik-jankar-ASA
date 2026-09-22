@@ -5,7 +5,14 @@
 class FarmerTargetApi
   MAX_TRAINING_PHOTO_SIZE = 5.megabytes
   TRAINING_PHOTO_CONTENT_TYPES = %w[image/jpeg image/png image/webp image/heic image/heif].freeze
-  OTHER_TARGET_SLUGS = %w[seed-distribution-target papl360-target].freeze
+  TRAINING_PHOTO_UPLOAD_KEYS = %w[
+    training_photo_upload_with_geo_tag
+    photo_front_view
+    photo_back_view
+    photo_close_up_view
+    photo_long_shot
+  ].freeze
+  OTHER_TARGET_SLUGS = %w[seed-distribution-target papl360-target other-target].freeze
   TARGET_SLUGS = (%w[training-form add-farmer-form] + OTHER_TARGET_SLUGS).freeze
 
   def initialize(current_app_user:, module_slug:, exclude_record_id: nil)
@@ -30,7 +37,7 @@ class FarmerTargetApi
   end
 
   def create(raw_attrs)
-    upload_errors = training_photo_upload_errors(raw_attrs)
+    upload_errors = training_photo_upload_errors(raw_attrs) + other_target_upload_errors(raw_attrs)
     return { success: false, errors: upload_errors } if upload_errors.any?
 
     data = normalize_incoming(raw_attrs)
@@ -50,18 +57,22 @@ class FarmerTargetApi
     case @module_slug
     when "training-form"
       {
+        form_fields: training_form_fields,
         autofill: target_form_autofill,
         current_vrp: current_seed_target_vrp_option,
         months: training_target_month_options,
         target_mappings: training_target_mappings,
+        people_options: training_people_options,
         training_methods: ["Input Demo INM", "Input Demo PM", "FFS", "OPG Training"]
       }
     when *OTHER_TARGET_SLUGS
       {
+        form_fields: other_target_form_fields,
         autofill: target_form_autofill,
         months: seed_distribution_target_month_options,
         target_mappings: seed_distribution_target_mappings,
-        current_vrp: current_seed_target_vrp_option
+        current_vrp: current_seed_target_vrp_option,
+        upload_constraints: other_target_upload_constraints
       }
     when "add-farmer-form"
       {
@@ -81,7 +92,7 @@ class FarmerTargetApi
       data: record.data
     }
     if record.module_slug == "training-form"
-      payload[:photo_count] = Array(record.data["training_photo_upload_with_geo_tag"]).compact_blank.size
+      payload[:photo_count] = TRAINING_PHOTO_UPLOAD_KEYS.flat_map { |key| Array(record.data[key]) }.compact_blank.uniq.size
     end
     payload
   end
@@ -422,7 +433,7 @@ class FarmerTargetApi
     end
 
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
-    if data["target_mapping_id"].present?
+    if !generic_other_target? && data["target_mapping_id"].present?
       pending_farmer_ids = pending_other_target_farmer_ids_for(data["target_mapping_id"])
       selected_farmer_ids &= pending_farmer_ids unless pending_farmer_ids.nil?
     end
@@ -468,10 +479,6 @@ class FarmerTargetApi
       "fco_name" => "FCO Name",
       "trainer_name" => "Trainer Name",
       "trainer_contact" => "Trainer Contact",
-      "cluster_coordinator_name" => "Cluster Coordinator Name",
-      "agronomist_name" => "Agronomist Name",
-      "papl_staff_name" => "PAPL Staff Name",
-      "external_input" => "External Input",
       "training_date" => "Training Date",
       "training_location" => "Training Location",
       "main_activity" => "Main Activity",
@@ -481,8 +488,7 @@ class FarmerTargetApi
       "male_count" => "Male Count",
       "female_count" => "Female Count",
       "next_farmer_training_date" => "Next Farmer Training Date",
-      "training_register_upload" => "Training Register Upload",
-      "training_photo_upload_with_geo_tag" => "Training Photo Upload with Geo Tag"
+      "training_register_upload" => "Training Register Upload"
     }
 
     errors = missing_required_data_errors(data, required_fields)
@@ -530,7 +536,7 @@ class FarmerTargetApi
     new_farmer_target = target_mapping&.dig(:new_farmer_target)
     farmer_count = whole_number_value(data["farmer_count"])
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
-    unless new_farmer_target
+    unless new_farmer_target || generic_other_target?
       errors << "Farmer Count required hai." if data["farmer_count"].blank?
       errors << "Mapped Farmers select karein." if selected_farmer_ids.blank?
       errors << "Farmer Count valid whole number hona chahiye." if farmer_count.nil?
@@ -541,6 +547,10 @@ class FarmerTargetApi
     errors << "Mapped Other activity target select karein." if target_mapping.blank?
     errors << "Contact Number valid 10 digit hona chahiye." if data["contact_number"].present? && data["contact_number"].to_s.gsub(/\D/, "").length != 10
     errors
+  end
+
+  def generic_other_target?
+    @module_slug == "other-target"
   end
 
   def add_farmer_form_error_messages(data)
@@ -642,7 +652,7 @@ class FarmerTargetApi
         activity_setting = activity_setting_for(target, activity_settings, sub_activity_settings)
         next unless activity_setting.present? && !training_main_activity_type?(activity_setting[:main_activity_type])
 
-        farmer_ids = target_farmer_ids(target)
+        farmer_ids = generic_other_target? ? [] : target_farmer_ids(target)
         {
           target_mapping_id: target.id.to_s,
           vrp_id: target.vrp_id.to_s,
@@ -659,8 +669,8 @@ class FarmerTargetApi
           sub_activity: target.activity_name.to_s.strip,
           target: target.target_quantity.to_s,
           new_farmer_target: new_farmer_target_mapping?(target),
-          completed_farmer_ids: other_target_completed_farmer_ids_for(target.id),
-          farmers: training_farmers_for_ids(farmer_ids)
+          completed_farmer_ids: generic_other_target? ? [] : other_target_completed_farmer_ids_for(target.id),
+          farmers: generic_other_target? ? [] : training_farmers_for_ids(farmer_ids)
         }
       end
       .reject { |mapping| mapping[:ics].blank? && mapping[:village].blank? }
@@ -736,15 +746,236 @@ class FarmerTargetApi
 
   def target_form_autofill
     vrp = current_vrp_record if vrp_login_user?
+    department = training_trainee_department_default.presence || vrp&.fcoc.presence || current_app_user["fcoc"].presence || current_app_user["fcoc_name"].to_s
+    trainer_name = vrp&.name.presence || current_app_user["name"].to_s
+    trainer_contact = (vrp&.mobile_no.presence || current_app_user["mobile_no"]).to_s.gsub(/\D/, "").last(10)
+    cluster_coordinator = vrp&.cluster_incharge.to_s
+    agronomist = training_referred_by_name.to_s
 
     {
       jeevika_jankar_id: vrp&.id&.to_s,
       jeevika_jankar_name: vrp&.name.presence || current_app_user["name"].to_s,
-      contact_number: (vrp&.mobile_no.presence || current_app_user["mobile_no"]).to_s.gsub(/\D/, "").last(10),
-      department: vrp&.fcoc.presence || current_app_user["fcoc"].presence || current_app_user["fcoc_name"].to_s,
-      trainer_name: vrp&.name.presence || current_app_user["name"].to_s,
-      trainer_contact: (vrp&.mobile_no.presence || current_app_user["mobile_no"]).to_s.gsub(/\D/, "").last(10)
+      contact_number: trainer_contact,
+      department: department,
+      fco_name: department,
+      trainee_department: department,
+      trainer_name: trainer_name,
+      trainer_contact: trainer_contact,
+      cluster_coordinator_name: cluster_coordinator,
+      internal_trainer_name_1: cluster_coordinator,
+      agronomist_name: agronomist,
+      internal_trainer_name_2: agronomist,
+      papl_staff_name: current_app_user["name"].presence || current_app_user["username"].to_s,
+      main_activity_type: "Training"
     }
+  end
+
+  def other_target_form_fields
+    fields = [
+      field_payload("jeevika_jankar_name", "Jeevika Jankar Name", "select", "jeevika_jankars"),
+      field_payload("contact_number", "Contact Number", "tel", nil, readonly: true),
+      field_payload("department", "FCO Name", "text", nil, readonly: true),
+      field_payload("month", "Month", "select", "months"),
+      field_payload("ics", "ICS", "select", "ics"),
+      field_payload("village", "Village", "select", "villages"),
+      field_payload("main_activity", "Main Activity", "select", "main_activities"),
+      field_payload("sub_activity", "Sub Activity", "select", "sub_activities"),
+      field_payload("completion_date", "Completion Date", "date"),
+      field_payload("target", "Target", "number", nil, readonly: true),
+      field_payload("achievement", "Achievement", "number"),
+      field_payload("attachment_upload", "Attachment Upload", "file", nil, accept: ".pdf,.xlsx,.xls,.csv", multiple: generic_other_target?),
+      field_payload("field_photo", "Field Photo", "file", nil, accept: "image/*", multiple: generic_other_target?)
+    ]
+    return fields if generic_other_target?
+
+    fields.insert(9, field_payload("farmer_count", "Farmer Count", "number", nil, readonly: true))
+  end
+
+  def other_target_upload_constraints
+    return {} unless generic_other_target?
+
+    {
+      attachment_upload: {
+        max_files: 5,
+        max_size_mb: 5,
+        extensions: %w[.pdf .xlsx .xls .csv]
+      },
+      field_photo: {
+        max_files: 5,
+        max_size_mb: 5,
+        content_type_prefix: "image/"
+      }
+    }
+  end
+
+  def training_form_fields
+    [
+      field_payload("month", "Month", "select", "months"),
+      field_payload("ics_block", "ICS Name", "select", "ics"),
+      field_payload("gram_name", "Village Name", "select", "villages"),
+      field_payload("fco_name", "FCO Name", "text", nil, readonly: vrp_login_user?),
+      field_payload("trainer_name", "Trainer Name", "text", nil, readonly: vrp_login_user?),
+      field_payload("trainer_contact", "Trainer Contact", "tel", nil, readonly: vrp_login_user?),
+      field_payload("cluster_coordinator_name", "Cluster Coordinator Name", "select", "cluster_coordinators", required: false),
+      field_payload("agronomist_name", "Agronomist Name", "select", "agronomists", required: false),
+      field_payload("papl_staff_name", "ASA Staff Name", "select", "papl_staff", required: false),
+      field_payload("external_input", "Internal Inspector Name", "text", nil, required: false),
+      field_payload("training_date", "Training Date", "date"),
+      field_payload("training_location", "Training Location", "text"),
+      field_payload("main_activity", "Main Major Work Indicator", "select", "main_activities"),
+      field_payload("sub_activity", "Sub Major Work Indicator", "select", "sub_activities"),
+      field_payload("training_method", "Training Method", "select", "training_methods"),
+      field_payload("training_description", "Training Description", "text"),
+      field_payload("farmer_count", "Farmer Count", "number", nil, readonly: true),
+      field_payload("male_count", "Male Count", "number"),
+      field_payload("female_count", "Female Count", "number"),
+      field_payload("total_farmer_count", "Total Farmer Count", "number", nil, readonly: true),
+      field_payload("other_farmer_count", "Other Farmer Count", "number", nil, required: false),
+      field_payload("next_farmer_training_date", "Next Farmer Training Date", "date"),
+      field_payload("training_register_upload", "Evidence/Documentation Pdf", "file", nil, accept: "application/pdf"),
+      field_payload("training_photo_upload_with_geo_tag", "Training Photo Upload with Geo Tag", "file", nil, required: false, accept: "image/jpeg,image/png,image/webp,image/heic,image/heif", multiple: true),
+      field_payload("photo_front_view", "Opening/Introduction Photo - Trainer", "file", nil, required: false, accept: "image/jpeg,image/png,image/webp,image/heic,image/heif", multiple: true),
+      field_payload("photo_back_view", "Training Major Work Indicator Photo - Trainer", "file", nil, required: false, accept: "image/jpeg,image/png,image/webp,image/heic,image/heif", multiple: true),
+      field_payload("photo_close_up_view", "Farmer Interaction Photo", "file", nil, required: false, accept: "image/jpeg,image/png,image/webp,image/heic,image/heif", multiple: true),
+      field_payload("photo_long_shot", "Wide Group Photo", "file", nil, required: false, accept: "image/jpeg,image/png,image/webp,image/heic,image/heif", multiple: true),
+      field_payload("selected_farmer_ids", "Target Farmers", "multi_select", "mapped_farmers")
+    ]
+  end
+
+  def field_payload(key, label, type, options_key = nil, required: true, readonly: false, accept: nil, multiple: false)
+    {
+      key: key,
+      label: label,
+      type: type,
+      options_key: options_key,
+      required: required,
+      readonly: readonly,
+      accept: accept,
+      multiple: multiple
+    }.compact
+  end
+
+  def training_people_options
+    {
+      cluster_coordinators: cluster_coordinator_options,
+      agronomists: agronomist_options,
+      papl_staff: papl_staff_options
+    }
+  end
+
+  def cluster_coordinator_options
+    return training_people_options_for_current_vrp(:cluster_coordinator) if vrp_login_user?
+
+    (registered_user_options_matching(/cluster/i) + registered_vrp_cluster_names)
+      .compact_blank
+      .uniq { |name| normalize_text(name) }
+      .unshift("N/A")
+      .uniq
+  end
+
+  def agronomist_options
+    return training_people_options_for_current_vrp(:agronomist) if vrp_login_user?
+
+    registered_user_options_matching(/agronomist/i)
+      .compact_blank
+      .uniq { |name| normalize_text(name) }
+      .unshift("N/A")
+      .uniq
+  end
+
+  def papl_staff_options
+    (registered_app_user_names + registered_module_user_names)
+      .compact_blank
+      .select { |name| papl_staff_option_allowed?(name) }
+      .uniq { |name| normalize_text(name) }
+      .unshift("N/A")
+      .uniq
+  end
+
+  def training_people_options_for_current_vrp(kind)
+    values = ["N/A"]
+    vrp = current_vrp_record
+
+    case kind
+    when :cluster_coordinator
+      values << vrp&.cluster_incharge
+    when :agronomist
+      values << training_referred_by_name
+    when :papl_staff
+      values << current_app_user["name"].presence || current_app_user["username"]
+    end
+
+    values.map(&:to_s).map(&:strip).reject(&:blank?).uniq { |name| normalize_text(name) }
+  end
+
+  def registered_user_options_matching(pattern)
+    (registered_app_user_rows_matching(pattern) + registered_module_user_rows_matching(pattern))
+      .compact_blank
+      .uniq { |name| normalize_text(name) }
+  end
+
+  def registered_app_user_rows_matching(pattern)
+    return [] unless model_ready?(:User)
+
+    User.order(updated_at: :desc).filter_map do |user|
+      values = [
+        user.try(:role),
+        user.try(:role_name),
+        user.try(:stakeholder_role),
+        user.try(:user_management_role),
+        user.try(:person_type)
+      ].map(&:to_s)
+      next unless values.any? { |value| value.match?(pattern) }
+
+      user.full_name.presence || user.user_name.presence
+    end
+  end
+
+  def registered_module_user_rows_matching(pattern)
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord.where(module_slug: "new-user").order(updated_at: :desc).filter_map do |record|
+      next unless active_module_record?(record)
+
+      values = [
+        record.data["role"],
+        record.data["role_name"],
+        record.data["stakeholder_role"],
+        record.data["user_management_role"],
+        record.data["person_type"]
+      ].map(&:to_s)
+      next unless values.any? { |value| value.match?(pattern) }
+
+      [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ").presence || record.data["user_name"].presence
+    end
+  end
+
+  def registered_vrp_cluster_names
+    return [] unless model_ready?(:Vrp)
+    return [] unless Vrp.column_names.include?("cluster_incharge")
+
+    Vrp.order(updated_at: :desc).pluck(:cluster_incharge).compact_blank.uniq
+  end
+
+  def registered_app_user_names
+    return [] unless model_ready?(:User)
+
+    User.order(updated_at: :desc).filter_map { |user| user.full_name.presence || user.user_name.presence }
+  end
+
+  def registered_module_user_names
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord.where(module_slug: "new-user").order(updated_at: :desc).filter_map do |record|
+      next unless active_module_record?(record)
+
+      [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ").presence || record.data["user_name"].presence
+    end
+  end
+
+  def papl_staff_option_allowed?(name)
+    normalized_name = normalize_text(name)
+    normalized_name.present? && normalized_name != "admin"
   end
 
   def training_target_match(data)
@@ -1121,7 +1352,7 @@ class FarmerTargetApi
     return [] unless @module_slug == "training-form"
 
     raw = raw_attrs.respond_to?(:to_unsafe_h) ? raw_attrs.to_unsafe_h : Hash(raw_attrs)
-    uploads = Array(raw["training_photo_upload_with_geo_tag"] || raw[:training_photo_upload_with_geo_tag]).compact_blank
+    uploads = TRAINING_PHOTO_UPLOAD_KEYS.flat_map { |key| Array(raw[key] || raw[key.to_sym]) }.compact_blank
     uploads.each_with_object([]) do |upload, errors|
       next unless upload.respond_to?(:original_filename)
 
@@ -1132,6 +1363,25 @@ class FarmerTargetApi
         errors << "Each training photo must be 5 MB or smaller."
       end
     end.uniq
+  end
+
+  def other_target_upload_errors(raw_attrs)
+    return [] unless generic_other_target?
+
+    raw = raw_attrs.respond_to?(:to_unsafe_h) ? raw_attrs.to_unsafe_h : Hash(raw_attrs)
+    other_target_upload_field_errors(raw["attachment_upload"] || raw[:attachment_upload], "Attachment Upload", attachment: true) +
+      other_target_upload_field_errors(raw["field_photo"] || raw[:field_photo], "Field Photo")
+  end
+
+  def other_target_upload_field_errors(value, label, attachment: false)
+    uploads = Array(value).flatten.filter_map { |upload| upload if upload.respond_to?(:original_filename) }
+    errors = []
+    errors << "#{label}: maximum 5 files are allowed." if uploads.size > 5
+    errors << "#{label}: maximum file size is 5 MB." if uploads.any? { |upload| upload.respond_to?(:size) && upload.size.to_i > 5.megabytes }
+    if attachment && uploads.any? { |upload| %w[.pdf .xlsx .xls .csv].exclude?(File.extname(upload.original_filename).downcase) }
+      errors << "#{label}: only PDF or Excel files are allowed."
+    end
+    errors.uniq
   end
 
   def model_ready?(name)

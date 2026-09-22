@@ -16,7 +16,7 @@ module Api
           return render json: { success: false, message: "Training Form record not found." }, status: :not_found
         end
 
-        paths = Array(record.data["training_photo_upload_with_geo_tag"]).compact_blank
+        paths = training_photo_paths(record)
         photos = paths.map.with_index do |path, index|
           {
             id: index + 1,
