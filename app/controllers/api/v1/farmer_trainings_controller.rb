@@ -56,7 +56,7 @@ module Api
           filters: form_filter_payload,
           autofill: options[:autofill],
           options: {
-            months: option_values(mappings, :month),
+            months: Array(options[:months]),
             fcos: named_options(mappings, :fco_id, :fco_name),
             fpos: named_options(mappings, :fpo_id, :fpo_name),
             ics: option_values(mappings, :ics),
@@ -90,8 +90,7 @@ module Api
       end
 
       def months
-        mappings = Array(farmer_target_api.form_options[:target_mappings])
-        values = option_values(mappings, :month)
+        values = Array(farmer_target_api.form_options[:months])
 
         render json: {
           success: true,

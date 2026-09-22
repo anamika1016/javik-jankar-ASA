@@ -52,14 +52,14 @@ class FarmerTargetApi
       {
         autofill: target_form_autofill,
         current_vrp: current_seed_target_vrp_option,
-        months: training_target_mappings.map { |m| m[:month] }.compact_blank.uniq,
+        months: training_target_month_options,
         target_mappings: training_target_mappings,
         training_methods: ["Input Demo INM", "Input Demo PM", "FFS", "OPG Training"]
       }
     when *OTHER_TARGET_SLUGS
       {
         autofill: target_form_autofill,
-        months: seed_distribution_target_mappings.map { |m| m[:month] }.compact_blank.uniq,
+        months: seed_distribution_target_month_options,
         target_mappings: seed_distribution_target_mappings,
         current_vrp: current_seed_target_vrp_option
       }
@@ -590,6 +590,43 @@ class FarmerTargetApi
       end
       .reject { |mapping| mapping[:ics].blank? && mapping[:village].blank? }
       .uniq
+  end
+
+  def training_target_month_options
+    month_options_from(active_month_master_months + training_target_mappings.map { |mapping| mapping[:month] })
+  end
+
+  def seed_distribution_target_month_options
+    month_options_from(active_month_master_months + seed_distribution_target_mappings.map { |mapping| mapping[:month] })
+  end
+
+  def active_month_master_months
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "month-master")
+      .select { |record| active_module_record?(record) }
+      .filter_map { |record| first_present_data(record, "month_name", "month", "name", "select_bill_month") }
+  end
+
+  def month_options_from(values)
+    Array(values)
+      .map(&:to_s)
+      .map(&:strip)
+      .reject(&:blank?)
+      .uniq { |month| normalize_text(month) }
+      .sort_by { |month| [month_sort_index(month), month] }
+  end
+
+  def first_present_data(record, *keys)
+    data = record.respond_to?(:data) ? record.data : {}
+    keys.find { |key| data[key].present? }&.then { |key| data[key] }
+  end
+
+  def month_sort_index(month)
+    normalized = normalize_text(month)
+    index = Date::MONTHNAMES.index { |name| normalize_text(name) == normalized }
+    index || 99
   end
 
   def seed_distribution_target_mappings

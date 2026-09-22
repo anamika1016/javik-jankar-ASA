@@ -86,6 +86,19 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
     assert response.parsed_body["options"].key?("target_mappings")
   end
 
+  test "training form months include active month master rows without target mappings" do
+    ModuleRecord.create!(module_slug: "month-master", data: { "month_name" => "August", "status" => "Active" })
+    ModuleRecord.create!(module_slug: "month-master", data: { "month_name" => "September", "status" => "Active" })
+
+    get "/api/v1/training-forms/months", headers: auth_headers, as: :json
+
+    assert_response :success
+    body = response.parsed_body
+    assert_equal true, body["success"]
+    assert_equal [ "August", "September" ], body["months"].map { |month| month["name"] }
+    assert_equal 2, body["count"]
+  end
+
   test "seed distribution list and form options work" do
     ModuleRecord.create!(
       module_slug: "seed-distribution-target",
