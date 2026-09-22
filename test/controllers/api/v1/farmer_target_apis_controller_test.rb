@@ -84,6 +84,37 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_equal true, response.parsed_body["success"]
     assert response.parsed_body["options"].key?("target_mappings")
+    assert response.parsed_body["options"].key?("form_fields")
+    assert response.parsed_body["options"].key?("people_options")
+
+    get "/api/v1/training-forms/form-data", headers: auth_headers, as: :json
+    assert_response :success
+    assert response.parsed_body.key?("form_fields")
+    assert response.parsed_body.key?("autofill")
+    assert response.parsed_body.key?("people_options")
+  end
+
+  test "training form list alias exposes saved training records" do
+    record = ModuleRecord.create!(
+      module_slug: "training-form",
+      data: {
+        "month" => "July",
+        "ics_block" => "ICS-1",
+        "gram_name" => "Village 1",
+        "trainer_name" => "Trainer",
+        "created_by_id" => @user.id.to_s
+      }
+    )
+
+    get "/api/v1/training-form-list", headers: auth_headers, as: :json
+    assert_response :success
+    body = response.parsed_body
+    assert_equal true, body["success"]
+    assert body["training_forms"].any? { |row| row["id"] == record.id }
+
+    get "/api/v1/training-form-list/#{record.id}", headers: auth_headers, as: :json
+    assert_response :success
+    assert_equal record.id, response.parsed_body.dig("training_form", "id")
   end
 
   test "training form months include active month master rows without target mappings" do
@@ -141,6 +172,82 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
 
     get "/api/v1/papl360-targets/form-options", headers: auth_headers, as: :json
     assert_response :success
+  end
+
+  test "other target form data create and list aliases work" do
+    vrp = create_vrp(user_name: "other_target_vrp", name: "Other Target JJ", mobile_no: "9876543211")
+    ModuleRecord.create!(
+      module_slug: "add-activity-group",
+      data: {
+        "main_activity_name" => "Seed Distribution",
+        "main_activity_type" => "Other",
+        "status" => "Active"
+      }
+    )
+    ModuleRecord.create!(
+      module_slug: "add-vrp-activity",
+      data: {
+        "main_activity" => "Seed Distribution",
+        "sub_activity_name" => "Packet Distribution",
+        "status" => "Active"
+      }
+    )
+    mapping = TargetMapping.create!(
+      vrp: vrp,
+      fco_id: "FCO1",
+      fco_name: "FCO One",
+      ics_id: "ICS1",
+      ics_name: "ICS One",
+      village_id: "V1",
+      village_name: "Village One",
+      month_name: "September",
+      main_activity_name: "Seed Distribution",
+      activity_name: "Packet Distribution",
+      target_quantity: 10,
+      afl_ids: []
+    )
+
+    get "/api/v1/other-targets/form-data", headers: auth_headers, as: :json
+    assert_response :success
+    form_data = response.parsed_body
+    assert_equal true, form_data["success"]
+    assert form_data["form_fields"].any? { |field| field["key"] == "achievement" }
+    assert form_data["target_mappings"].any? { |row| row["target_mapping_id"] == mapping.id.to_s }
+    assert_equal 5, form_data.dig("upload_constraints", "attachment_upload", "max_files")
+
+    get "/api/v1/other-target-list/form-data",
+      params: { month: "September", main_activity: "Seed Distribution" },
+      headers: auth_headers,
+      as: :json
+    assert_response :success
+    assert_equal 1, response.parsed_body["count"]
+
+    post "/api/v1/other-targets",
+      params: {
+        jeevika_jankar_name: "Other Target JJ",
+        contact_number: "9876543211",
+        department: "FCO One",
+        month: "September",
+        ics: "ICS One",
+        village: "Village One",
+        main_activity: "Seed Distribution",
+        sub_activity: "Packet Distribution",
+        completion_date: Date.current.to_s,
+        achievement: "4"
+      },
+      headers: auth_headers,
+      as: :json
+
+    assert_response :created
+    body = response.parsed_body
+    assert_equal true, body["success"]
+    assert_equal mapping.id.to_s, body.dig("other_target", "data", "target_mapping_id")
+    assert_equal "10", body.dig("other_target", "data", "target")
+    assert_equal "4", body.dig("other_target", "data", "achievement")
+
+    get "/api/v1/other-target-list", headers: auth_headers, as: :json
+    assert_response :success
+    assert response.parsed_body["other_targets"].any? { |row| row.dig("data", "target_mapping_id") == mapping.id.to_s }
   end
 
   test "add farmer form list create and form options work" do

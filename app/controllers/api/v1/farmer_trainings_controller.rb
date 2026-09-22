@@ -20,7 +20,7 @@ module Api
           return render json: { success: false, message: "Farmer Training Form record not found." }, status: :not_found
         end
 
-        paths = Array(record.data["training_photo_upload_with_geo_tag"]).compact_blank
+        paths = training_photo_paths(record)
         photos = paths.map.with_index do |path, index|
           {
             id: index + 1,
@@ -54,7 +54,10 @@ module Api
           success: true,
           message: "Farmer Training form data fetched successfully.",
           filters: form_filter_payload,
+          form_fields: options[:form_fields],
+          current_vrp: options[:current_vrp],
           autofill: options[:autofill],
+          people_options: options[:people_options],
           options: {
             months: Array(options[:months]),
             fcos: named_options(mappings, :fco_id, :fco_name),
@@ -178,6 +181,16 @@ module Api
           main_activity: params[:main_activity],
           sub_activity: params[:sub_activity]
         }
+      end
+
+      def training_photo_paths(record)
+        %w[
+          training_photo_upload_with_geo_tag
+          photo_front_view
+          photo_back_view
+          photo_close_up_view
+          photo_long_shot
+        ].flat_map { |key| Array(record.data[key]) }.compact_blank.uniq
       end
     end
   end
