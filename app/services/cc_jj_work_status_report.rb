@@ -7,8 +7,7 @@ class CcJjWorkStatusReport
     @month = (month || (filters.key?(:month) ? filters[:month] : Date.current.prev_month.strftime("%B"))).to_s.strip
     @fco = (fco || filters[:fcoc] || filters[:fco] || filters[:fco_id]).to_s.strip
     @fco = "" if @fco.downcase.start_with?("all")
-    @fco = "1004" if @fco.downcase.include?("sausar")
-    @fco = "1006" if @fco.downcase.include?("turekela")
+    @fco = fco_id_for(@fco)
   end
 
   def summary
@@ -31,10 +30,34 @@ class CcJjWorkStatusReport
   end
 
   def caption
-    "#{all_months? ? 'All Months' : @month} · #{{ '1004' => 'Sausar', '1006' => 'Turekela' }.fetch(@fco, 'Sausar and Turekela')}"
+    label = @fco.present? ? (fco_id_names[@fco.to_s].presence || @fco) : "All FCO"
+    "#{all_months? ? 'All Months' : @month} · #{label}"
   end
 
   private
+
+  # An FCO may arrive as its id or its name; map it onto the id using whatever
+  # AFL holds, rather than knowing about two particular FCOs.
+  def fco_id_for(value)
+    return value if value.blank? || value.to_s.match?(/\A\d+\z/)
+
+    needle = value.to_s.strip.downcase
+    match = fco_id_names.find { |_id, name| name.present? && needle.include?(name.to_s.downcase) }
+    match ? match.first.to_s : value
+  end
+
+  def fco_id_names
+    return @fco_id_names if defined?(@fco_id_names)
+
+    @fco_id_names = if defined?(Afl) && Afl.table_exists?
+      Afl.where.not(fco_id: [nil, ""]).distinct.pluck(:fco_id, :fco).each_with_object({}) do |(id, name), memo|
+        key = id.to_s.strip
+        memo[key] = name.presence if key.present? && memo[key].blank?
+      end
+    else
+      {}
+    end
+  end
 
   def all_months?
     @month.blank? || @month.downcase.start_with?("all")

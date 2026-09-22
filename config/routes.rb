@@ -186,6 +186,8 @@ Rails.application.routes.draw do
     end
   end
 
+  # The same list without the entry form, so view-only access can be granted.
+  get "target_mappings/list", to: "target_mappings#index", defaults: { list_only: "true" }, as: :recent_target_mappings
   resources :target_mappings, only: [:index, :create, :destroy] do
     post :delete, on: :member, action: :destroy
     get :village_farmers, on: :collection

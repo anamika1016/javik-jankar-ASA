@@ -3904,10 +3904,14 @@ class ModulesController < ApplicationController
 
   def dashboard_fco_count_key(value)
     normalized = normalize_dashboard_text(value)
-    return "1004" if normalized.include?("1004") || normalized.include?("sausar")
-    return "1006" if normalized.include?("1006") || normalized.include?("turekela")
+    return normalized if normalized.blank?
 
-    normalized
+    # The data carries an FCO as either its id or its name, so map both onto the
+    # id using whatever AFL holds — no fixed pair of FCOs.
+    match = dashboard_fco_id_names.find do |id, name|
+      normalized.include?(id.to_s.downcase) || (name.present? && normalized.include?(name.to_s.downcase))
+    end
+    match ? match.first.to_s.downcase : normalized
   end
 
   def preload_dashboard_fco_active_vrp_counts(fco_names, month_name)
@@ -3918,14 +3922,16 @@ class ModulesController < ApplicationController
 
     connection = ActiveRecord::Base.connection
     counts = keys.each_with_index.map do |key, index|
-      condition = case key
-      when "1004"
-        "LOWER(TRIM(t.fco_id)) IN ('1004', 'sausar') OR LOWER(TRIM(t.fco_name)) LIKE '%sausar%'"
-      when "1006"
-        "LOWER(TRIM(t.fco_id)) IN ('1006', 'turekela') OR LOWER(TRIM(t.fco_name)) LIKE '%turekela%'"
-      else
-        "LOWER(TRIM(t.fco_id)) = #{connection.quote(key)} OR LOWER(TRIM(t.fco_name)) = #{connection.quote(key)}"
+      fco_name = dashboard_fco_id_names[key.to_s] || dashboard_fco_id_names[key.to_s.upcase]
+      parts = [
+        "LOWER(TRIM(t.fco_id)) = #{connection.quote(key)}",
+        "LOWER(TRIM(t.fco_name)) = #{connection.quote(key)}"
+      ]
+      if fco_name.present?
+        parts << "LOWER(TRIM(t.fco_id)) = #{connection.quote(fco_name.to_s.downcase)}"
+        parts << "LOWER(TRIM(t.fco_name)) LIKE #{connection.quote("%#{fco_name.to_s.downcase}%")}"
       end
+      condition = parts.join(" OR ")
       "COUNT(DISTINCT t.vrp_id) FILTER (WHERE #{condition}) AS fco_#{index}"
     end
     result = connection.select_one(<<~SQL)
@@ -3940,29 +3946,14 @@ class ModulesController < ApplicationController
 
   def dashboard_jj_requirement_items(fco_name, vrps, targets = nil)
     normalized_fco = normalize_dashboard_text(fco_name)
-    fco_id = if normalized_fco.include?("1004") || normalized_fco.include?("sausar")
-               "1004"
-             elsif normalized_fco.include?("1006") || normalized_fco.include?("turekela")
-               "1006"
-             else
-               nil
-             end
 
-    # Required strength remains fixed for these two FCOs; active JJ is always
-    # calculated from the selected month's distinct target-mapping VRP IDs.
-    if normalized_fco.include?("sausar") || fco_id == "1004"
-      required_count = 34
-      active_count   = dashboard_fco_active_vrp_count("1004", params[:month].presence || "August", vrps)
-    elsif normalized_fco.include?("turekela") || fco_id == "1006"
-      required_count = 24
-      active_count   = dashboard_fco_active_vrp_count("1006", params[:month].presence || "August", vrps)
-    else
-      selected_month = params[:month].presence || "August"
-      active_count   = dashboard_fco_active_vrp_count(fco_name, selected_month, vrps)
-      fco_targets    = Array(targets).select { |t| normalize_dashboard_text(t.fco_name).include?(normalized_fco) }
-      req            = fco_targets.map { |t| normalize_dashboard_text(t.village_name) }.reject(&:blank?).uniq.size
-      required_count = [req, active_count].max
-    end
+    # Every FCO is measured the same way: required strength from the villages it
+    # has targets in, active JJ from the month's distinct target-mapping VRPs.
+    selected_month = params[:month].presence || "August"
+    active_count   = dashboard_fco_active_vrp_count(fco_name, selected_month, vrps)
+    fco_targets    = Array(targets).select { |t| normalize_dashboard_text(t.fco_name).include?(normalized_fco) }
+    req            = fco_targets.map { |t| normalize_dashboard_text(t.village_name) }.reject(&:blank?).uniq.size
+    required_count = [req, active_count].max
 
     vacant_count = [required_count - active_count, 0].max
 
@@ -5527,6 +5518,18 @@ class ModulesController < ApplicationController
     ids.map { |value| value.to_s.strip.downcase }.reject(&:blank?).uniq
   end
 
+  # FCO id -> name straight from the AFL data. The dashboard used to carry a
+  # fixed Sausar/Turekela pair here, which hid every other FCO.
+  def dashboard_fco_id_names
+    return {} unless model_ready?(:Afl)
+
+    @dashboard_fco_id_names ||= Afl.where.not(fco_id: [nil, ""]).distinct.pluck(:fco_id, :fco)
+      .each_with_object({}) do |(id, name), memo|
+        key = id.to_s.strip
+        memo[key] = name.presence if key.present? && memo[key].blank?
+      end
+  end
+
   def dashboard_global_fco_ids
     return [] unless model_ready?(:Afl)
 
@@ -5651,8 +5654,8 @@ class ModulesController < ApplicationController
   end
 
   def format_red_fco_popups(rows, fco_ids)
-    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela" }
-    target_ids = Array(fco_ids).presence || %w[1004 1006]
+    fco_name_map = dashboard_fco_id_names
+    target_ids = Array(fco_ids).presence || dashboard_global_fco_ids
     rows_by_id = Array(rows).index_by { |r| r["fco_id"].to_s.strip.downcase }
 
     target_ids.flat_map do |id|
@@ -5674,8 +5677,8 @@ class ModulesController < ApplicationController
   end
 
   def format_red_fco_details(rows, fco_ids)
-    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela" }
-    target_ids = Array(fco_ids).presence || %w[1004 1006]
+    fco_name_map = dashboard_fco_id_names
+    target_ids = Array(fco_ids).presence || dashboard_global_fco_ids
     rows_by_id = Array(rows).index_by { |r| r["fco_id"].to_s.strip.downcase }
 
     target_ids.map do |id|
@@ -5804,8 +5807,8 @@ class ModulesController < ApplicationController
   end
 
   def format_fco_popups(rows, fco_ids, count_key)
-    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela" }
-    target_ids = Array(fco_ids).presence || %w[1004 1006]
+    fco_name_map = dashboard_fco_id_names
+    target_ids = Array(fco_ids).presence || dashboard_global_fco_ids
     rows_by_id = Array(rows).index_by { |r| r["fco_id"].to_s.strip.downcase }
 
     target_ids.map do |id|

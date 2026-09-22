@@ -131,7 +131,8 @@ module ApplicationHelper
       links: [
         ["AFL Upload", :route, :afls_path],
         # ["VRP ICS Mapping", :route, :vrp_ics_mappings_path],
-        ["Target Mapping Master", :route, :target_mappings_path]
+        ["Target Mapping Master", :route, :target_mappings_path],
+        ["Recent Target Mappings", :route, :recent_target_mappings_path]
       ]
     },
     {
@@ -401,6 +402,9 @@ module ApplicationHelper
     end
     if ["Target Mapping Master", "Target Mapping", "VRP Targets", "Target Mapped JJ"].include?(name.to_s.strip)
       keys.concat(["target-mapping-master", "target-mapping", "vrp-targets", "target-mapped-jj"])
+    end
+    if ["Recent Target Mappings", "Recent Target Mapping List", "Target Mapping List"].include?(name.to_s.strip)
+      keys.concat(["recent-target-mappings", "recent-target-mapping-list", "target-mapping-list"])
     end
     if ["Bill Process", "Jeevika Jankar Bill", "Jeevika Jankar Bill Process"].include?(name.to_s.strip)
       keys.concat(["bill-process", "jeevika-jankar-bill", "jeevika-jankar-bill-process"])

@@ -4,7 +4,7 @@ default: &default
   pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
   username: postgres
   password: postgres
-  host: <%= ENV.fetch("DATABASE_HOST") { Rails.root.join("tmp/sockets").to_s } %>
+  host: localhost
   port: <%= ENV.fetch("DATABASE_PORT") { 5432 } %>
 
 development:
