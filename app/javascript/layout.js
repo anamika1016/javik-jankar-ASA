@@ -4462,7 +4462,7 @@ function initDeferredLayoutPage() {
         const data = await response.json();
         if (requestId !== targetLoadRequestId) return;
 
-        // Block-wise FCOs always come from Office List.  Keep this client-side
+        // Block-wise FCOs always come from Office List. Keep this client-side
         // source authoritative so a late/stale AFL response cannot replace it.
         fillTargetSelect(fcoSelect, targetBlockWiseMode() ? blockFcoOptions : (data.fco_options || []), "Select FCO Name");
         if (targetBlockWiseMode()) {
@@ -4474,12 +4474,9 @@ function initDeferredLayoutPage() {
           villageSelect,
           data.village_options || [],
           "Select Village",
-          targetBlockWiseMode() && blockSelect?.value ? "No villages mapped to this Block in Office List" : ""
+          targetBlockWiseMode() && blockSelect?.value ? "No villages found for this Block" : ""
         );
         if (targetBlockWiseMode() && blockSelect?.value && villageSelect) {
-          // A Block selection always unlocks Village in Block Wise mode.  If
-          // Office List has no village records for that block, its empty-state
-          // message remains visible but the control is still usable.
           villageSelect.disabled = false;
           villageSelect.dispatchEvent(new Event("chip:refresh"));
         }

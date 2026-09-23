@@ -996,6 +996,9 @@ class TargetMappingsController < ApplicationController
   end
 
   def office_village_options(fco_value, block_value)
+    external_villages = fetch_external_villages(block_value)
+    return external_villages if external_villages.any?
+
     fco_id, fco_name = parse_location_value(fco_value)
     block_id, block_name = parse_location_value(block_value)
     return [] if fco_id.blank? || block_id.blank?
@@ -1023,6 +1026,36 @@ class TargetMappingsController < ApplicationController
         option_hash(village_id || village_name, village_name)
       end
       .then { |options| unique_location_options(options).sort_by { |option| option[:label].to_s.downcase } }
+  end
+
+  def fetch_external_villages(block_value)
+    block_id, = parse_location_value(block_value)
+    return [] if block_id.blank?
+
+    Rails.cache.fetch(["asa-vill-all-options", block_id], expires_in: 5.minutes, skip_nil: true) do
+      uri = URI("https://asa.ploughmanagro.com/api/vill_all")
+      uri.query = URI.encode_www_form(block_id: block_id)
+      response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 4, read_timeout: 10) do |http|
+        http.get(uri.request_uri)
+      end
+      return [] unless response.is_a?(Net::HTTPSuccess)
+
+      payload = JSON.parse(response.body)
+      return [] unless (payload["status"] == true || payload["status_code"] == 200) && payload["result"].is_a?(Array)
+
+      options = payload["result"].filter_map do |v|
+        vid = v["id"].to_s.strip
+        vname = v["name"].to_s.strip
+        next if vid.blank? || vname.blank?
+
+        option_hash(vid, vname)
+      end
+
+      unique_location_options(options).sort_by { |option| option[:label].to_s.downcase }
+    end
+  rescue StandardError => error
+    Rails.logger.warn("Unable to fetch vill_all for block #{block_value}: #{error.class} - #{error.message}")
+    []
   end
 
   def office_descendant_ids(offices, fco_id, fco_name)
