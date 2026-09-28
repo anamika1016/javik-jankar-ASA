@@ -1715,13 +1715,7 @@ class TargetMappingsController < ApplicationController
     return TargetMapping.all if admin_login?
     return TargetMapping.where(vrp_id: current_app_user["id"]) if non_admin_vrp_login?
 
-    # Management users oversee a set of VRPs (the same set the dashboard shows). List every
-    # mapping for those VRPs, not only the ones this user personally created, so the master
-    # list reflects all assigned targets. Global-view users (admin/CFO) see everything.
-    policy = dashboard_target_policy
-    return TargetMapping.all if policy.send(:dashboard_global_view_user?)
-
-    TargetMapping.where(vrp_id: policy.send(:dashboard_vrps).map(&:id))
+    TargetMapping.where(created_by_type: current_app_user["record_type"], created_by_id: current_app_user["id"])
   end
 
   def dashboard_filtered_target_mappings(scope)
