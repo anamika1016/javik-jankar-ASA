@@ -287,7 +287,14 @@
                 element.style.display = villageMode ? "none" : "";
               });
 
-              if (!villageMode) return;
+              if (!villageMode) {
+                const farmerWeeklySummary = shell.querySelector("[data-target-weekly-summary]");
+                if (farmerWeeklySummary) {
+                  farmerWeeklySummary.hidden = false;
+                  farmerWeeklySummary.style.display = "";
+                }
+                return;
+              }
 
               const targetInput = shell.querySelector("[data-target-quantity-input]");
               const registeredCountInput = shell.querySelector("[data-target-registered-count]");
@@ -307,9 +314,9 @@
                 .filter(Boolean);
 
               if (selectedTotal) selectedTotal.textContent = "Village target";
-              if (weeklySummary && selectedMainActivities.length) {
-                weeklySummary.hidden = false;
-                weeklySummary.style.display = "";
+              if (weeklySummary) {
+                weeklySummary.hidden = true;
+                weeklySummary.style.display = "none";
               }
               if (weeklyRows && selectedMainActivities.length && !weeklyRows.querySelector("[data-target-weekly-input]")) {
                 const escapeText = (value) => String(value || "").replace(/[&<>"']/g, (char) => ({

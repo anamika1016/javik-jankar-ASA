@@ -1102,37 +1102,8 @@ end
     .then { |options| options.uniq { |option| parse_location_value(option[:value]).first.downcase }.sort_by { |option| option[:label].to_s.downcase } }
 end
 
-  def office_village_options(fco_value, block_value)
-    external_villages = fetch_external_villages(block_value)
-    return external_villages if external_villages.any?
-
-    fco_id, fco_name = parse_location_value(fco_value)
-    block_id, block_name = parse_location_value(block_value)
-    return [] if fco_id.blank? || block_id.blank?
-
-    offices = office_list_items
-    office_ids = office_descendant_ids(offices, fco_id, fco_name)
-    return [] if office_ids.blank?
-
-    offices
-      .select { |office| office_ids.include?(office["id"].to_s) }
-      .flat_map { |office| Array(office["territory_zones"]) }
-      .select do |zone|
-        Array(zone["block"]).any? do |block|
-          zone_block_id = block["id"].to_s
-          zone_block_name = office_location_name(block["name"])
-          zone_block_id == block_id || zone_block_name.to_s.casecmp?(block_name.presence || block_id)
-        end
-      end
-      .flat_map { |zone| Array(zone["village"]) }
-      .filter_map do |village|
-        village_id = village["id"].presence || village["village_id"].presence
-        village_name = office_location_name(village["name"]).presence || office_location_name(village["village_name"])
-        next if village_name.blank?
-
-        option_hash(village_id || village_name, village_name)
-      end
-      .then { |options| unique_location_options(options).sort_by { |option| option[:label].to_s.downcase } }
+  def office_village_options(_fco_value, block_value)
+    fetch_external_villages(block_value)
   end
 
   def fetch_external_villages(block_value)

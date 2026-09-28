@@ -4169,9 +4169,7 @@ function initDeferredLayoutPage() {
       const totalHeader = weeklyHeaderRow?.querySelector("th:nth-last-child(2)");
       if (totalHeader) totalHeader.hidden = villageTargetMode();
 
-      // Village mode still plans week wise; it only drops the farmer specific
-      // Total/View columns, so the plan table must stay visible.
-      weeklySummary.hidden = false;
+      weeklySummary.hidden = villageTargetMode();
       weeklySummary.classList.toggle("target-weekly-village-mode", villageTargetMode());
       if (!rows.length) {
         weeklyRows.innerHTML = `<tr><td colspan="${villageTargetMode() ? 6 : 8}">Select Main Activity to view weekly plan.</td></tr>`;
