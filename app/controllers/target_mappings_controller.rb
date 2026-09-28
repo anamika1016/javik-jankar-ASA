@@ -340,15 +340,28 @@ class TargetMappingsController < ApplicationController
     return [] if id.blank?
 
     uri = URI("https://asa.ploughmanagro.com/api/farmers/get_farmers.json")
-    uri.query = URI.encode_www_form(data_type: data_type, type: type, id_key => id)
-    response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 4, read_timeout: 12) do |http|
-      http.get(uri.request_uri)
-    end
-    return nil unless response.is_a?(Net::HTTPSuccess)
+    rows = []
+    page = 1
 
-    payload = JSON.parse(response.body)
-    return nil if payload["success"] == false
-    Array(payload["data"]).filter_map.with_index do |row, index|
+    loop do
+      uri.query = URI.encode_www_form(data_type: data_type, type: type, id_key => id, page: page, per_page: 500)
+      response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 4, read_timeout: 12) do |http|
+        http.get(uri.request_uri)
+      end
+      return nil unless response.is_a?(Net::HTTPSuccess)
+
+      payload = JSON.parse(response.body)
+      return nil if payload["success"] == false
+
+      page_rows = Array(payload["data"])
+      rows.concat(page_rows)
+      total_count = Integer(payload["count"])
+      break if page_rows.empty? || rows.size >= total_count
+
+      page += 1
+    end
+
+    rows.filter_map.with_index do |row, index|
       farmer = row["farmer"].is_a?(Hash) ? row["farmer"] : row
       address = row["address"].is_a?(Hash) ? row["address"] : {}
       grouping = row["grouping"].is_a?(Hash) ? row["grouping"] : {}
