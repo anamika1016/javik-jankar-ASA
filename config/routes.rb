@@ -188,12 +188,14 @@ Rails.application.routes.draw do
 
   # The same list without the entry form, so view-only access can be granted.
   get "target_mappings/list", to: "target_mappings#index", defaults: { list_only: "true" }, as: :recent_target_mappings
+  get "jj-mapped-farmers", to: "target_mappings#jj_mapped_farmers", as: :jj_mapped_farmers
   resources :target_mappings, only: [:index, :create, :destroy] do
     post :delete, on: :member, action: :destroy
     get :village_farmers, on: :collection
     get :vrp_mappings, on: :collection
     get :saved_farmers, on: :collection
     get :user_blocks, on: :collection
+    get :jj_mapped_farmers, on: :collection
   end
 
   get "farmer-farm-information", to: "farmer_farm_information#index", as: :farmer_farm_information

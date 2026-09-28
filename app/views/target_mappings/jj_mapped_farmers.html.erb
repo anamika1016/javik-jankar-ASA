@@ -1,0 +1,208 @@
+<% content_for :title, "JJ Mapped Farmers Report" %>
+
+<main class="vrp-list-page">
+  <section class="vrp-list-shell">
+    <div class="vrp-list-header">
+      <div>
+        <p class="vrp-eyebrow">Target Mapping</p>
+        <h1>Jeevika Jankar Mapped Farmers</h1>
+      </div>
+    </div>
+
+    <!-- Filter Card -->
+    <div class="vrp-list-card mb-4" style="padding: 1.25rem; margin-bottom: 1.5rem; background: var(--bg-card, #ffffff); border-radius: 12px; border: 1px solid var(--border-color, #e2e8f0); box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+      <% if @is_vrp_login %>
+        <div style="background: #e0f2fe; border-left: 4px solid #0284c7; padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+          <div>
+            <span style="font-size: 0.8rem; font-weight: 600; color: #0369a1; text-transform: uppercase;">Logged In Jeevika Jankar:</span>
+            <strong style="font-size: 1rem; color: #0c4a6e; margin-left: 0.5rem;"><%= @selected_jj_name %></strong>
+            <span style="font-size: 0.9rem; color: #0284c7; margin-left: 0.5rem;">(<%= @selected_mobile_no %>)</span>
+          </div>
+          <span style="font-size: 0.8rem; color: #0369a1; background: #fff; padding: 0.25rem 0.6rem; border-radius: 4px; font-weight: 600;">Auto-Mapped Profile</span>
+        </div>
+      <% end %>
+
+      <form method="get" action="<%= jj_mapped_farmers_path %>" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; align-items: end;">
+        <% if @is_vrp_login %>
+          <input type="hidden" name="mobile_no" value="<%= @selected_mobile_no %>">
+        <% end %>
+
+        <div>
+          <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem; color: var(--text-color, #334155);">Month *</label>
+          <select name="month" class="target-field" required style="width: 100%; padding: 0.6rem 0.75rem; border-radius: 6px; border: 1px solid var(--border-color, #cbd5e1); background: var(--bg-input, #fff); font-size: 0.9rem;">
+            <option value="">Select Month</option>
+            <% @month_options.each do |label, val| %>
+              <option value="<%= val %>" <%= 'selected' if @selected_month == val %>><%= label %></option>
+            <% end %>
+          </select>
+        </div>
+
+        <div>
+          <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem; color: var(--text-color, #334155);">Year *</label>
+          <select name="year" class="target-field" required style="width: 100%; padding: 0.6rem 0.75rem; border-radius: 6px; border: 1px solid var(--border-color, #cbd5e1); background: var(--bg-input, #fff); font-size: 0.9rem;">
+            <option value="">Select Year</option>
+            <% @year_options.each do |y| %>
+              <option value="<%= y %>" <%= 'selected' if @selected_year == y %>><%= y %></option>
+            <% end %>
+          </select>
+        </div>
+
+        <% unless @is_vrp_login %>
+          <div>
+            <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem; color: var(--text-color, #334155);">Jeevika Jankar Name (API List) *</label>
+            <select name="mobile_no" class="target-field" required style="width: 100%; padding: 0.6rem 0.75rem; border-radius: 6px; border: 1px solid var(--border-color, #cbd5e1); background: var(--bg-input, #fff); font-size: 0.9rem;">
+              <option value="">Select Jeevika Jankar</option>
+              <% @api_vrp_users.each do |u| %>
+                <option value="<%= u[:mobile_no] %>" <%= 'selected' if @selected_mobile_no == u[:mobile_no] %>>
+                  <%= u[:label] %>
+                </option>
+              <% end %>
+            </select>
+          </div>
+
+          <div>
+            <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem; color: var(--text-color, #334155);">Mobile No (Optional Direct)</label>
+            <input type="text" name="vrp_mobile" value="<%= @selected_mobile_no %>" placeholder="e.g. 8839104575" style="width: 100%; padding: 0.6rem 0.75rem; border-radius: 6px; border: 1px solid var(--border-color, #cbd5e1); background: var(--bg-input, #fff); font-size: 0.9rem;">
+          </div>
+        <% end %>
+
+        <div style="display: flex; gap: 0.5rem;">
+          <button type="submit" class="list-btn active" style="padding: 0.6rem 1.25rem; font-weight: 600; background: #0284c7; color: #fff; border: none; border-radius: 6px; cursor: pointer; height: 38px; display: inline-flex; align-items: center; gap: 6px;">
+            <span>⌕</span> Get Mapped Farmers
+          </button>
+          <% if params[:month].present? || params[:year].present? || params[:mobile_no].present? || params[:vrp_mobile].present? %>
+            <a href="<%= jj_mapped_farmers_path %>" class="list-btn deactive" style="padding: 0.6rem 1rem; border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; height: 38px;">Reset</a>
+          <% end %>
+        </div>
+      </form>
+    </div>
+
+    <% if @selected_mobile_no.present? && @selected_month.present? && @selected_year.present? %>
+      <!-- KPI Stats Bar -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+        <div style="background: var(--bg-card, #fff); padding: 1rem; border-radius: 10px; border-left: 4px solid #0284c7; border: 1px solid var(--border-color, #e2e8f0); box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+          <div style="font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Total Farmers</div>
+          <div style="font-size: 1.6rem; font-weight: 700; color: #0f172a; margin-top: 0.2rem;"><%= @total_count %></div>
+        </div>
+
+        <div style="background: var(--bg-card, #fff); padding: 1rem; border-radius: 10px; border-left: 4px solid #10b981; border: 1px solid var(--border-color, #e2e8f0); box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+          <div style="font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Mapped Villages</div>
+          <div style="font-size: 1.6rem; font-weight: 700; color: #0f172a; margin-top: 0.2rem;"><%= @mapped_villages.size %></div>
+          <div style="font-size: 0.75rem; color: #64748b; margin-top: 0.2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            <%= @mapped_villages.map { |v| v[:name] }.join(", ").presence || "None" %>
+          </div>
+        </div>
+
+        <div style="background: var(--bg-card, #fff); padding: 1rem; border-radius: 10px; border-left: 4px solid #8b5cf6; border: 1px solid var(--border-color, #e2e8f0); box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+          <div style="font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Filter Selection</div>
+          <div style="font-size: 0.95rem; font-weight: 600; color: #0f172a; margin-top: 0.2rem;">
+            Month: <%= @selected_month %> / Year: <%= @selected_year %>
+          </div>
+          <div style="font-size: 0.8rem; color: #64748b;"><%= @selected_jj_name %> (<%= @selected_mobile_no %>)</div>
+        </div>
+      </div>
+
+      <!-- Main Data Table Container -->
+      <div class="vrp-list-card">
+        <div class="list-controls" style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+          <div style="display: flex; gap: 1rem; align-items: center; flex: 1; min-width: 280px;">
+            <div class="list-search" style="flex: 1;">
+              <span>⌕</span>
+              <input type="search" placeholder="Search farmers by name, village, unique ID..." data-table-search="jj_mapped_farmers_table">
+            </div>
+
+            <!-- Village Filter Dropdown -->
+            <% if @mapped_villages.any? %>
+              <form method="get" action="<%= jj_mapped_farmers_path %>" style="display: inline-flex; align-items: center; gap: 0.5rem;">
+                <input type="hidden" name="month" value="<%= @selected_month %>">
+                <input type="hidden" name="year" value="<%= @selected_year %>">
+                <input type="hidden" name="mobile_no" value="<%= @selected_mobile_no %>">
+                <select name="village_id" onchange="this.form.submit()" style="padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid var(--border-color, #cbd5e1); background: var(--bg-input, #fff); font-size: 0.85rem; font-weight: 500;">
+                  <option value="">All Mapped Villages (<%= @all_farmers.size %>)</option>
+                  <% @mapped_villages.each do |v| %>
+                    <option value="<%= v[:id] %>" <%= 'selected' if @selected_village_id == v[:id] %>><%= v[:name] %></option>
+                  <% end %>
+                </select>
+              </form>
+            <% end %>
+          </div>
+
+          <div class="list-control-actions">
+            <%= link_to jj_mapped_farmers_path(request.query_parameters.merge(format: :xlsx)), class: "list-btn export", style: "text-decoration: none; display: inline-flex; align-items: center; gap: 6px; background: #15803d; color: #fff; font-weight: 600; padding: 0.55rem 1rem; border-radius: 6px;" do %>
+              <span>⤓</span> Export Excel
+            <% end %>
+          </div>
+        </div>
+
+        <div class="table-shell">
+          <table class="module-table vrp-list-table" id="jj_mapped_farmers_table" data-paginated-table data-page-size="20">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Farmer Unique ID</th>
+                <th>Farmer Name</th>
+                <th>Father / Husband Name</th>
+                <th>Mobile No</th>
+                <th>Gender</th>
+                <th>Social Category</th>
+                <th>Economic Category</th>
+                <th>Village Name</th>
+                <th>Gram Panchayat</th>
+                <th>Block</th>
+                <th>District</th>
+                <th>FCO Name</th>
+                <th>Khasra / Plot No</th>
+                <th>Land Area (Ha)</th>
+                <th>Crops</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% if @farmers.any? %>
+                <% @farmers.each do |farmer| %>
+                  <tr>
+                    <td><%= farmer[:sl_no] %></td>
+                    <td><strong style="color: #0284c7;"><%= farmer[:farmer_unique_id] %></strong></td>
+                    <td><strong><%= farmer[:farmer_name] %></strong></td>
+                    <td><%= farmer[:father_husband_name] %></td>
+                    <td><%= farmer[:mobile_no] %></td>
+                    <td><%= farmer[:gender] %></td>
+                    <td><%= farmer[:social_category] %></td>
+                    <td><%= farmer[:economic_category] %></td>
+                    <td><span class="grid-status approved" style="background: #e0f2fe; color: #0369a1;"><%= farmer[:village_name] %></span></td>
+                    <td><%= farmer[:gp_name] %></td>
+                    <td><%= farmer[:block_name] %></td>
+                    <td><%= farmer[:district_name] %></td>
+                    <td><%= farmer[:fco_name] %></td>
+                    <td><%= farmer[:khasra_no] %></td>
+                    <td><%= farmer[:land_area] %></td>
+                    <td><%= farmer[:crop_names] %></td>
+                    <td>
+                      <% status_style = farmer[:status].to_s.casecmp?("done") || farmer[:status].to_s.casecmp?("approved") ? "background: #dcfce7; color: #15803d;" : "background: #fef3c7; color: #b45309;" %>
+                      <span class="grid-status" style="<%= status_style %> font-weight: 600;"><%= farmer[:status] %></span>
+                    </td>
+                  </tr>
+                <% end %>
+              <% else %>
+                <tr>
+                  <td colspan="17" style="text-align: center; padding: 2rem; color: #64748b;">
+                    No mapped farmer records found for the selected Month / Criteria.
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-pagination" data-pagination-for="jj_mapped_farmers_table"></div>
+      </div>
+    <% else %>
+      <div class="vrp-list-card" style="text-align: center; padding: 3rem 1.5rem; background: var(--bg-card, #fff); border-radius: 12px; border: 1px dashed var(--border-color, #cbd5e1);">
+        <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🔍</div>
+        <h3 style="font-size: 1.1rem; font-weight: 600; color: var(--text-color, #334155); margin-bottom: 0.5rem;">Select Filters to View Mapped Farmers</h3>
+        <p style="color: #64748b; font-size: 0.9rem; max-width: 500px; margin: 0 auto;">
+          Please select <strong>Month</strong> and <strong>Year</strong> above and click <em>"Get Mapped Farmers"</em> to view mapped villages and farmer details.
+        </p>
+      </div>
+    <% end %>
+  </section>
+</main>

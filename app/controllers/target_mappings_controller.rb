@@ -122,6 +122,92 @@ class TargetMappingsController < ApplicationController
     redirect_to target_mappings_path, notice: admin_login? ? "Target mapping deleted successfully." : "Target mapping removed successfully."
   end
 
+  def jj_mapped_farmers
+    @api_vrp_users = fetch_external_vrp_users
+    @month_options = [
+      ["January (01)", "1"],
+      ["February (02)", "2"],
+      ["March (03)", "3"],
+      ["April (04)", "4"],
+      ["May (05)", "5"],
+      ["June (06)", "6"],
+      ["July (07)", "7"],
+      ["August (08)", "8"],
+      ["September (09)", "9"],
+      ["October (10)", "10"],
+      ["November (11)", "11"],
+      ["December (12)", "12"]
+    ]
+    @year_options = (2024..2030).map(&:to_s)
+
+    # Detect if logged in user is Admin vs Jeevika Jankar (VRP)
+    user_mobile = current_app_user&.dig("mobile_no").to_s.strip.presence || current_app_user&.dig("username").to_s.strip
+    user_record_type = current_app_user&.dig("record_type").to_s
+    user_type = current_app_user&.dig("user_type").to_s
+
+    vrp_in_db = Vrp.find_by("mobile_no = ? OR user_name = ?", user_mobile, user_mobile) if defined?(Vrp) && Vrp.table_exists? && user_mobile.present?
+    api_vrp_match = @api_vrp_users.find { |u| u[:mobile_no] == user_mobile } if user_mobile.present?
+
+    is_admin = current_app_user.is_a?(Hash) && (
+      user_type.casecmp?("admin") ||
+      current_app_user["role"].to_s.casecmp?("admin") ||
+      user_mobile.casecmp?("admin") ||
+      (helpers.respond_to?(:admin_user?) && helpers.admin_user?)
+    )
+
+    if is_admin
+      @is_vrp_login = false
+      @selected_mobile_no = params[:mobile_no].to_s.strip.presence || params[:vrp_mobile].to_s.strip
+      match = @api_vrp_users.find { |u| u[:mobile_no] == @selected_mobile_no }
+      @selected_jj_name = match ? match[:name] : @selected_mobile_no
+    else
+      @is_vrp_login = user_record_type == "Vrp" ||
+                      user_type.casecmp?("vrp") ||
+                      vrp_in_db.present? ||
+                      api_vrp_match.present?
+
+      if @is_vrp_login
+        @selected_mobile_no = user_mobile.presence || vrp_in_db&.mobile_no.presence || api_vrp_match&.dig(:mobile_no)
+        @selected_jj_name = vrp_in_db&.name.presence || api_vrp_match&.dig(:name).presence || current_app_user&.dig("name").presence || current_app_user&.dig("user_name").presence || @selected_mobile_no
+      else
+        @selected_mobile_no = params[:mobile_no].to_s.strip.presence || params[:vrp_mobile].to_s.strip
+        match = @api_vrp_users.find { |u| u[:mobile_no] == @selected_mobile_no }
+        @selected_jj_name = match ? match[:name] : @selected_mobile_no
+      end
+    end
+
+    @selected_month = params[:month].to_s.strip.presence || Time.current.month.to_s
+    @selected_year = params[:year].to_s.strip.presence || Time.current.year.to_s
+    @selected_village_id = params[:village_id].to_s.strip
+
+    @farmers = []
+    @all_farmers = []
+    @mapped_villages = []
+    @total_count = 0
+
+    if @selected_mobile_no.present? && @selected_month.present? && @selected_year.present?
+      api_data = fetch_external_mapped_farmers(
+        mobile_no: @selected_mobile_no,
+        month: @selected_month,
+        year: @selected_year
+      )
+      @all_farmers = api_data[:farmers]
+      @mapped_villages = api_data[:mapped_villages]
+
+      if @selected_village_id.present?
+        @farmers = @all_farmers.select { |f| f[:village_id].to_s == @selected_village_id || f[:village_name].to_s.casecmp?(@selected_village_id) }
+      else
+        @farmers = @all_farmers
+      end
+      @total_count = @farmers.size
+    end
+
+    respond_to do |format|
+      format.html
+      format.xlsx { send_jj_mapped_farmers_xlsx }
+    end
+  end
+
   def vrp_mappings
     block_wise = target_entry_mode_block_wise?
     village_value = target_village_param
@@ -968,21 +1054,14 @@ class TargetMappingsController < ApplicationController
     fco_id, fco_name = parse_location_value(fco_value)
     return [] if fco_id.blank? && fco_name.blank?
 
-    office_list_items
-      .select do |office|
-        office_id = office["id"].to_s.strip
-        office_name = office["name"].to_s.strip
-        parent_id = office.dig("parent", "id").to_s.strip
-        parent_name = office.dig("parent", "name").to_s.strip
-        selected_name = fco_name.presence || fco_id
+    # Use the selected FCO's own territory, not its child offices' territories.
+    offices = office_list_items.select { |office| office["id"].to_s.strip == fco_id }
+    if offices.empty? && fco_id !~ /\A\d+\z/
+      selected_name = fco_name.presence || fco_id
+      offices = office_list_items.select { |office| office["name"].to_s.strip.casecmp?(selected_name) }
+    end
 
-        # FCO records normally have their blocks on the child FPC/ICS offices,
-        # whose parent is the selected FCO (for example, Betul-FCO -> Athner).
-        office_id == fco_id ||
-          office_name.casecmp?(selected_name) ||
-          parent_id == fco_id ||
-          parent_name.casecmp?(selected_name)
-      end
+    offices
       .flat_map { |office| Array(office["territory_zones"]) }
       .flat_map { |zone| Array(zone["block"]) }
       .filter_map do |block|
@@ -992,7 +1071,7 @@ class TargetMappingsController < ApplicationController
 
         option_hash(block_id || block_name, block_name)
       end
-      .then { |options| unique_location_options(options).sort_by { |option| option[:label].to_s.downcase } }
+      .then { |options| options.uniq { |option| parse_location_value(option[:value]).first.downcase }.sort_by { |option| option[:label].to_s.downcase } }
   end
 
   def office_village_options(fco_value, block_value)
@@ -1081,7 +1160,7 @@ class TargetMappingsController < ApplicationController
   def office_list_items
     return @office_list_items if defined?(@office_list_items)
 
-    @office_list_items = Rails.cache.fetch("office-list-api-items-v2", expires_in: 10.minutes) do
+    @office_list_items = Rails.cache.fetch("office-list-api-items-v3", expires_in: 10.minutes) do
       office_list_api_urls.lazy.map { |url| fetch_office_list_items(url) }
         .find(&:present?) || []
     end
@@ -1102,7 +1181,6 @@ class TargetMappingsController < ApplicationController
 
   def office_list_api_urls
     [
-      "http://144.76.19.201:3003/api/get_office_detail_list",
       "https://asa.ploughmanagro.com/api/get_office_detail_list"
     ]
   end
@@ -1918,12 +1996,150 @@ class TargetMappingsController < ApplicationController
   end
 
 
-  def dashboard_target_policy
-    policy = ModulesController.new
-    policy.request = request
-    policy.instance_variable_set(:@current_app_user, current_app_user)
-    policy
+  def fetch_external_vrp_users
+    Rails.cache.fetch("asa-external-vrp-users-list", expires_in: 10.minutes, skip_nil: true) do
+      uri = URI("https://asa.ploughmanagro.com/api/get_user_list")
+      response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 5, read_timeout: 12) do |http|
+        http.get(uri.request_uri)
+      end
+      return [] unless response.is_a?(Net::HTTPSuccess)
+
+      payload = JSON.parse(response.body)
+      return [] unless (payload["status"] == true || payload["status_code"] == 200) && payload["result"].is_a?(Array)
+
+      payload["result"].filter_map do |u|
+        name = u.dig("user_profile", "name").to_s.strip
+        mobile = u["mobile_no"].to_s.strip.presence || u["username"].to_s.strip
+        next if mobile.blank?
+
+        display_name = name.present? ? "#{name} (#{mobile})" : mobile
+        { id: u["id"].to_s, name: name.presence || mobile, mobile_no: mobile, label: display_name }
+      end.uniq { |u| u[:mobile_no] }.sort_by { |u| u[:name].downcase }
+    end
+  rescue StandardError => error
+    Rails.logger.warn("Unable to fetch external VRP users: #{error.class} - #{error.message}")
+    []
   end
 
+  def fetch_external_mapped_farmers(mobile_no:, month:, year:)
+    return { farmers: [], mapped_villages: [], count: 0 } if mobile_no.blank? || month.blank? || year.blank?
 
+    cache_key = ["asa-jj-mapped-farmers-full", mobile_no, month, year].join(":")
+    Rails.cache.fetch(cache_key, expires_in: 2.minutes, skip_nil: true) do
+      uri = URI("https://asa.ploughmanagro.com/api/farmer")
+      uri.query = URI.encode_www_form(MOBILE_NO: mobile_no, MONTH: month, YEAR: year)
+
+      response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 5, read_timeout: 12) do |http|
+        http.get(uri.request_uri)
+      end
+      return { farmers: [], mapped_villages: [], count: 0 } unless response.is_a?(Net::HTTPSuccess)
+
+      payload = JSON.parse(response.body)
+      return { farmers: [], mapped_villages: [], count: 0 } unless (payload["status"] == true || payload["status_code"] == 200) && payload["result"].is_a?(Array)
+
+      raw_results = payload["result"]
+
+      mapped_villages = raw_results.filter_map do |row|
+        grouping = row["grouping"].is_a?(Hash) ? row["grouping"] : {}
+        address = row["address"].is_a?(Hash) ? row["address"] : {}
+        vid = grouping["village_id"].presence || address["village_lg_code"].presence
+        vname = grouping["village"].presence || address["village"].presence || row.dig("farmer", "village_name")
+        next if vname.blank?
+
+        { id: vid.to_s.presence || vname, name: vname }
+      end.uniq { |v| [v[:id], v[:name].downcase] }.sort_by { |v| v[:name].downcase }
+
+      farmers = raw_results.each_with_index.map do |row, index|
+        farmer = row["farmer"].is_a?(Hash) ? row["farmer"] : {}
+        family = row["family"].is_a?(Hash) ? row["family"] : {}
+        address = row["address"].is_a?(Hash) ? row["address"] : {}
+        grouping = row["grouping"].is_a?(Hash) ? row["grouping"] : {}
+        lands = Array(row["lands"])
+
+        khasra_no = lands.filter_map { |l| l["khasra_no"].presence || l["plot_no"].presence }.compact_blank.join(", ")
+        total_area = lands.sum { |l| l["total_area"].to_f }.round(3)
+        crop_names = lands.flat_map { |l| Array(l["crops"]) }.filter_map { |c| c["crop_name"].presence }.compact_blank.uniq.join(", ")
+
+        {
+          sl_no: index + 1,
+          farmer_unique_id: farmer["farmer_unique_id"].presence || "-",
+          farmer_name: farmer["farmer_name"].presence || "-",
+          father_husband_name: farmer["father_husband_name"].presence || family["head_of_family_male"].presence || "-",
+          mobile_no: farmer["mobile_no"].presence || "-",
+          gender: farmer["gender"].presence || "-",
+          social_category: family["social_category"].presence || "-",
+          economic_category: family["social_economic_category"].presence || "-",
+          village_name: grouping["village"].presence || address["village"].presence || farmer["village_name"].presence || "-",
+          village_id: grouping["village_id"].presence || address["village_lg_code"].presence || "-",
+          gp_name: address["gram_panchayat"].presence || "-",
+          block_name: address["block"].presence || "-",
+          district_name: address["district"].presence || "-",
+          fco_name: farmer["fco_name"].presence || "-",
+          khasra_no: khasra_no.presence || "-",
+          land_area: total_area > 0 ? total_area : "-",
+          crop_names: crop_names.presence || "-",
+          status: row["status"].presence || "Pending",
+          vrp_user: family["user"].presence || "-"
+        }
+      end
+
+      {
+        farmers: farmers,
+        mapped_villages: mapped_villages,
+        count: farmers.size
+      }
+    end
+  rescue StandardError => error
+    Rails.logger.warn("Unable to fetch external mapped farmers: #{error.class} - #{error.message}")
+    { farmers: [], mapped_villages: [], count: 0 }
+  end
+
+  def send_jj_mapped_farmers_xlsx
+    headers = [
+      "S.No",
+      "Farmer Unique ID",
+      "Farmer Name",
+      "Father / Husband Name",
+      "Mobile No",
+      "Gender",
+      "Social Category",
+      "Economic Category",
+      "Village Name",
+      "Gram Panchayat",
+      "Block",
+      "District",
+      "FCO Name",
+      "Khasra / Plot No",
+      "Land Area (Ha)",
+      "Crops",
+      "Status",
+      "Assigned VRP / User"
+    ]
+
+    rows = @farmers.map do |f|
+      [
+        f[:sl_no],
+        f[:farmer_unique_id],
+        f[:farmer_name],
+        f[:father_husband_name],
+        f[:mobile_no],
+        f[:gender],
+        f[:social_category],
+        f[:economic_category],
+        f[:village_name],
+        f[:gp_name],
+        f[:block_name],
+        f[:district_name],
+        f[:fco_name],
+        f[:khasra_no],
+        f[:land_area],
+        f[:crop_names],
+        f[:status],
+        f[:vrp_user]
+      ]
+    end
+
+    filename = "JJ_Mapped_Farmers_#{@selected_mobile_no}_#{@selected_month}_#{@selected_year}.xlsx"
+    send_xlsx(headers: headers, rows: rows, filename: filename, sheet_name: "Mapped Farmers")
+  end
 end

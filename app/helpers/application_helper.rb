@@ -132,7 +132,8 @@ module ApplicationHelper
         ["AFL Upload", :route, :afls_path],
         # ["VRP ICS Mapping", :route, :vrp_ics_mappings_path],
         ["Target Mapping Master", :route, :target_mappings_path],
-        ["Recent Target Mappings", :route, :recent_target_mappings_path]
+        ["Recent Target Mappings", :route, :recent_target_mappings_path],
+        ["JJ Mapped Farmers", :route, :jj_mapped_farmers_path]
       ]
     },
     {
@@ -160,6 +161,7 @@ module ApplicationHelper
       links: [
         ["Bill Process", :module, "jeevika-jankar-bill-process"],
         ["Bill List", :module, "jeevika-jankar-bill-list"],
+        ["Observation List", :module, "jeevika-jankar-observation-list"],
         ["Payment List", :module, "jeevika-jankar-payment-list"],
         ["Payment List Detail", :module, "jeevika-jankar-payment-list-detail"],
         ["Completed Payment List", :module, "jeevika-jankar-completed-payment-list"]
@@ -406,11 +408,17 @@ module ApplicationHelper
     if ["Recent Target Mappings", "Recent Target Mapping List", "Target Mapping List"].include?(name.to_s.strip)
       keys.concat(["recent-target-mappings", "recent-target-mapping-list", "target-mapping-list"])
     end
+    if ["JJ Mapped Farmers", "Jeevika Jankar Mapped Farmers", "Mapped Farmer List"].include?(name.to_s.strip)
+      keys.concat(["jj-mapped-farmers", "jeevika-jankar-mapped-farmers"])
+    end
     if ["Bill Process", "Jeevika Jankar Bill", "Jeevika Jankar Bill Process"].include?(name.to_s.strip)
       keys.concat(["bill-process", "jeevika-jankar-bill", "jeevika-jankar-bill-process"])
     end
     if ["Bill List", "Jeevika Jankar Bill List"].include?(name.to_s.strip)
       keys.concat(["bill-list", "jeevika-jankar-bill-list"])
+    end
+    if ["Observation List", "Jeevika Jankar Observation List"].include?(name.to_s.strip)
+      keys.concat(["observation-list", "jeevika-jankar-observation-list"])
     end
     if ["Payment List", "Jeevika Jankar Payment List"].include?(name.to_s.strip)
       keys.concat(["payment-list", "jeevika-jankar-payment-list"])
@@ -470,7 +478,8 @@ module ApplicationHelper
         title: "Target Mapping",
         icon: "▨",
         links: [
-          ["Target Mapped JJ", :route, :target_mappings_path]
+          ["Target Mapped JJ", :route, :target_mappings_path],
+          ["JJ Mapped Farmers", :route, :jj_mapped_farmers_path]
         ]
       },
       {
@@ -490,6 +499,7 @@ module ApplicationHelper
         links: [
           ["Bill Process", :module, "jeevika-jankar-bill-process"],
           ["Bill List", :module, "jeevika-jankar-bill-list"],
+          ["Observation List", :module, "jeevika-jankar-observation-list"],
           ["Payment List", :module, "jeevika-jankar-payment-list"],
           ["Payment List Detail", :module, "jeevika-jankar-payment-list-detail"],
           ["Completed Payment List", :module, "jeevika-jankar-completed-payment-list"]
@@ -510,7 +520,7 @@ module ApplicationHelper
     sections = vrp_sidebar_sections
 
     sections.filter_map do |section|
-      if section[:links].any? { |link| ["Target Mapped JJ", "Start Exam"].include?(link.first) }
+      if section[:links].any? { |link| ["Target Mapped JJ", "Start Exam", "JJ Mapped Farmers"].include?(link.first) }
         next section
       end
 

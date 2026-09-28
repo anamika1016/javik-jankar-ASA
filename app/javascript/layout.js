@@ -6586,6 +6586,19 @@ function initDeferredLayoutPage() {
     const originalText = window.__vrpOriginalText ||= new WeakMap();
     const attributeNames = ["placeholder", "title", "aria-label", "data-turbo-confirm"];
     const translations = {
+      "Observation Parameter": "ऑब्ज़र्वेशन पैरामीटर",
+      "Observation List": "ऑब्ज़र्वेशन सूची",
+      "Jeevika Jankar Observation List": "जीविका जानकार ऑब्ज़र्वेशन सूची",
+      "Observation rating saved with each Jeevika Jankar bill.": "प्रत्येक जीविका जानकार बिल के साथ सेव की गई ऑब्ज़र्वेशन रेटिंग।",
+      "No observation saved yet.": "अभी कोई ऑब्ज़र्वेशन सेव नहीं है।",
+      "Good": "अच्छा",
+      "Needs Improvement": "सुधार की जरुरत",
+      "No Progress": "प्रोग्रेस नहीं",
+      "Not Rated": "रेटिंग नहीं",
+      "Click to open": "खोलने के लिए क्लिक करें",
+      "Overall": "कुल",
+      "Average": "औसत",
+      "Poor": "कमजोर",
       "Language": "भाषा",
       "Dashboard": "डैशबोर्ड",
       "No Activity Mapping": "कुल मेप नहीं किये गये किसान",

@@ -15,7 +15,7 @@
     </div>
   <% end %>
 
-  <% list_only_slugs = ["activity-group-list", "vrp-activity-list", "task-completion-indicator-list", "approval-list", "access-control-list", "vrp-bill-list", "jeevika-jankar-bill-list", "jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail", "jeevika-jankar-completed-payment-list", "training-form-list", "seed-distribution-target-list", "papl360-target-list", "other-target-list"] %>
+  <% list_only_slugs = ["activity-group-list", "vrp-activity-list", "task-completion-indicator-list", "approval-list", "access-control-list", "vrp-bill-list", "jeevika-jankar-bill-list", "jeevika-jankar-observation-list", "jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail", "jeevika-jankar-completed-payment-list", "training-form-list", "seed-distribution-target-list", "papl360-target-list", "other-target-list"] %>
   <% entry_only_slugs = ["approval-master", "access-control", "vrp-bill-add", "jeevika-jankar-bill-process", "training-form"] %>
 
   <% if @slug == "jeevika-jankar-bill-list" && (@bill_print_mode || @bill_detail_record.present?) %>
@@ -874,6 +874,61 @@
           </table>
         </div>
 
+        <% saved_observations = @record&.data&.[]("observations") %>
+        <% saved_observations = {} unless saved_observations.is_a?(Hash) %>
+        <details class="bill-observation-shell">
+          <summary class="bill-observation-summary">
+            <span>Observation Parameter</span>
+            <small>Click to open</small>
+          </summary>
+          <table class="module-table jeevika-observation-table">
+            <thead>
+              <tr>
+                <th class="observation-serial">Sr.</th>
+                <th>Observation Parameter</th>
+                <% ModulesController::JEEVIKA_JANKAR_OBSERVATION_OPTIONS.each do |option| %>
+                  <th class="observation-option"><%= option[:label] %></th>
+                <% end %>
+              </tr>
+            </thead>
+            <tbody>
+              <% ModulesController::JEEVIKA_JANKAR_OBSERVATION_PARAMETERS.each_with_index do |parameter, index| %>
+                <% selected_option = saved_observations[parameter[:key]].to_s %>
+                <tr>
+                  <td class="observation-serial"><%= index + 1 %></td>
+                  <td><%= parameter[:label] %></td>
+                  <% ModulesController::JEEVIKA_JANKAR_OBSERVATION_OPTIONS.each do |option| %>
+                    <td class="observation-option">
+                      <label class="observation-choice" title="<%= option[:label] %>">
+                        <input type="radio"
+                          name="module_record[observations][<%= parameter[:key] %>]"
+                          value="<%= option[:key] %>"
+                          required
+                          <%= "checked" if selected_option == option[:key] %>>
+                        <span class="sr-only"><%= option[:label] %></span>
+                      </label>
+                    </td>
+                  <% end %>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </details>
+        <script>
+          (() => {
+            const shell = document.currentScript.previousElementSibling;
+            const form = shell?.closest("form");
+            if (!shell || !form || form.dataset.observationGuard === "true") return;
+            form.dataset.observationGuard = "true";
+            // Required radios inside a closed <details> are not focusable, so the
+            // browser refuses to submit without showing why. Open it first.
+            form.addEventListener("invalid", (event) => {
+              if (!shell.contains(event.target)) return;
+              shell.open = true;
+            }, true);
+          })();
+        </script>
+
         <div class="jeevika-bill-payment-total">
           <label>
             <span>Total Payment</span>
@@ -1668,6 +1723,96 @@
       </div>
       <div class="table-pagination" data-pagination-for="<%= table_id %>"></div>
     </section>
+  <% elsif @slug == "jeevika-jankar-observation-list" %>
+    <section class="module-card">
+      <div class="module-card-header list-title-header">
+        <div>
+          <h2>Jeevika Jankar Observation List</h2>
+          <p class="field-hint">Observation rating saved with each Jeevika Jankar bill.</p>
+        </div>
+        <div class="list-control-actions observation-header-actions">
+          <%= form_with url: module_path(@slug), method: :get, html: { class: "observation-month-filter" } do %>
+            <label>
+              <span>Bill Month</span>
+              <select name="bill_month" onchange="this.form.submit()">
+                <option value="">All Months</option>
+                <% Array(@observation_master_months).each do |month| %>
+                  <option value="<%= month %>" <%= "selected" if @observation_selected_month == month %>><%= month %></option>
+                <% end %>
+              </select>
+            </label>
+          <% end %>
+          <%= link_to "Export Excel",
+                export_module_path(@slug, format: :xlsx, bill_month: @observation_selected_month.presence),
+                class: "list-btn export" %>
+        </div>
+      </div>
+
+      <div class="list-controls">
+        <div class="list-search compact">
+          <span>⌕</span>
+          <input type="search" placeholder="Search Jeevika Jankar" data-table-search="jeevika_observation_table">
+        </div>
+        <strong><%= Array(@observation_rows).size %> record(s)</strong>
+      </div>
+
+      <div class="table-shell">
+        <table class="module-table jeevika-observation-table" id="jeevika_observation_table" data-paginated-table data-page-size="20">
+          <thead>
+            <tr>
+              <th>Jeevika Jankar Name</th>
+              <th>Bill Month</th>
+              <% ModulesController::JEEVIKA_JANKAR_OBSERVATION_PARAMETERS.each_with_index do |parameter, index| %>
+                <th class="observation-rating-head" title="<%= parameter[:label] %>">
+                  <span class="observation-head-index"><%= index + 1 %></span>
+                  <span><%= parameter[:short_label] %></span>
+                </th>
+              <% end %>
+              <th class="observation-rating-head">Overall</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if Array(@observation_rows).any? %>
+              <% @observation_rows.each do |row| %>
+                <tr>
+                  <td><%= row[:jeevika_jankar_name].presence || "-" %></td>
+                  <td><%= row[:bill_month].presence || "-" %></td>
+                  <% row[:ratings].each do |rating| %>
+                    <td>
+                      <% if rating[:label].present? %>
+                        <span class="observation-badge observation-badge-<%= rating[:key].tr("_", "-") %>"><%= rating[:label] %></span>
+                      <% else %>
+                        <span class="observation-badge observation-badge-blank">Not Rated</span>
+                      <% end %>
+                    </td>
+                  <% end %>
+                  <td>
+                    <span class="observation-grade observation-grade-<%= row[:grade][:key] %>">
+                      <%= row[:grade][:label] %> · <%= row[:score_percentage] %>%
+                    </span>
+                  </td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="<%= ModulesController::JEEVIKA_JANKAR_OBSERVATION_PARAMETERS.size + 3 %>">No observation saved yet.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="jeevika_observation_table"></div>
+
+      <div class="observation-legend">
+        <strong>Observation Parameter</strong>
+        <ol>
+          <% ModulesController::JEEVIKA_JANKAR_OBSERVATION_PARAMETERS.each do |parameter| %>
+            <li><strong><%= parameter[:short_label] %></strong> — <%= parameter[:label] %></li>
+          <% end %>
+        </ol>
+      </div>
+    </section>
+
   <% elsif @slug == "jeevika-jankar-bill-list" && @record.blank? %>
     <% table_id = "jeevika_jankar_bill_table" %>
     <% bill_rows = jeevika_bill_rows(@records) %>
