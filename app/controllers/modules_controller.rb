@@ -1812,6 +1812,26 @@ class ModulesController < ApplicationController
       farmer.merge(already_included: completed_lookup.key?(farmer[:id].to_s))
     end
 
+    missing_external = farmers.select { |f| f[:record_missing] && f[:id].to_s !~ /\A\d+\z/ }
+    if missing_external.any?
+      missing_ids_set = Set.new(missing_external.map { |f| f[:id].to_s })
+      village_ids = targets.flat_map do |target|
+        ids_for_target = Array(target.afl_ids).flat_map { |v| v.to_s.split(",") }.map(&:strip)
+        next [] unless ids_for_target.any? { |fid| missing_ids_set.include?(fid) }
+        raw_vid = target.village_id
+        vids = raw_vid.is_a?(String) && raw_vid.start_with?("[") ? (JSON.parse(raw_vid) rescue []) : Array(raw_vid)
+        vids.flatten.map(&:to_s).reject(&:blank?)
+      end.uniq
+
+      if village_ids.any?
+        external_lookup = fetch_training_external_farmer_names(village_ids, missing_ids_set)
+        farmers = farmers.map do |farmer|
+          ext = farmer[:record_missing] && external_lookup[farmer[:id].to_s]
+          ext ? farmer.merge(ext).merge(record_missing: false) : farmer
+        end
+      end
+    end
+
     render json: { farmers: farmers }
   end
 
@@ -13280,6 +13300,23 @@ class ModulesController < ApplicationController
     all_farmer_ids = (targets.flat_map { |target| Array(target.afl_ids).map(&:to_s) } + saved_farmer_ids).reject(&:blank?).uniq
     farmers_lookup = training_farmers_for_ids(all_farmer_ids).index_by { |farmer| farmer[:id].to_s }
 
+    missing_external_ids = farmers_lookup.select { |fid, f| f[:record_missing] && fid !~ /\A\d+\z/ }.keys
+    if missing_external_ids.any?
+      missing_ids_set = Set.new(missing_external_ids)
+      village_ids = targets.flat_map do |target|
+        target_ids = Array(target.afl_ids).map(&:to_s)
+        next [] unless target_ids.any? { |fid| missing_ids_set.include?(fid) }
+        raw_vid = target.village_id
+        vids = raw_vid.is_a?(String) && raw_vid.start_with?("[") ? (JSON.parse(raw_vid) rescue []) : Array(raw_vid)
+        vids.flatten.map(&:to_s).reject(&:blank?)
+      end.uniq
+      if village_ids.any?
+        fetch_training_external_farmer_names(village_ids, missing_ids_set).each do |fid, ext|
+          farmers_lookup[fid] = farmers_lookup[fid].merge(ext).merge(record_missing: false)
+        end
+      end
+    end
+
     targets
       .map do |target|
         farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
@@ -13615,6 +13652,53 @@ class ModulesController < ApplicationController
     (resolved_farmers + missing_farmers).sort_by do |farmer|
       [farmer[:record_missing] ? 1 : 0, farmer[:farmer_name].to_s.downcase, farmer[:id].to_i]
     end
+  end
+
+  def fetch_training_external_farmer_names(village_ids, needed_ids)
+    result = {}
+    village_ids.each_slice(6) do |batch|
+      threads = batch.map do |vid|
+        Thread.new do
+          Rails.application.executor.wrap do
+            uri = URI("https://asa.ploughmanagro.com/api/farmers/get_farmers.json")
+            rows = []
+            page = 1
+            loop do
+              uri.query = URI.encode_www_form(data_type: "detail", type: "village", village_id: vid, page: page, per_page: 500)
+              resp = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 4, read_timeout: 12) { |http| http.get(uri.request_uri) }
+              break unless resp.is_a?(Net::HTTPSuccess)
+              payload = JSON.parse(resp.body)
+              break if payload["success"] == false
+              page_rows = Array(payload["data"])
+              rows.concat(page_rows)
+              break if page_rows.empty? || rows.size >= Integer(payload["count"])
+              page += 1
+            end
+            rows
+          rescue StandardError => e
+            Rails.logger.warn("Training external farmer fetch for village #{vid}: #{e.message}")
+            []
+          end
+        end
+      end
+      ActiveSupport::Dependencies.interlock.permit_concurrent_loads do
+        threads.each do |thread|
+          Array(thread.value).each do |row|
+            farmer = row["farmer"].is_a?(Hash) ? row["farmer"] : row
+            fid = (farmer["farmer_unique_id"].presence || farmer["id"].presence).to_s
+            next unless needed_ids.include?(fid)
+            result[fid] ||= {
+              farmer_name: farmer["farmer_name"].to_s.strip.presence || "Farmer ##{fid}",
+              father_name: farmer["father_husband_name"].presence || farmer["father_name"].presence,
+              tracenet_no: farmer["tracenet_id"].presence || farmer["tracenet_no"].presence,
+              mobile_no: farmer["mobile_no"].presence,
+              khasara_no: Array(row["lands"]).filter_map { |l| l["khasra_no"].presence || l["plot_no"].presence }.join(", ").presence
+            }
+          end
+        end
+      end
+    end
+    result
   end
 
   def role_management_mappings
