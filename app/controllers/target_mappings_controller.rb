@@ -1063,29 +1063,44 @@ class TargetMappingsController < ApplicationController
     end.then { |options| unique_fco_options(options).sort_by { |option| option[:label].to_s.downcase } }
   end
 
-  def office_block_options(fco_value)
-    fco_id, fco_name = parse_location_value(fco_value)
-    return [] if fco_id.blank? && fco_name.blank?
+def office_block_options(fco_value)
+  fco_id, fco_name = parse_location_value(fco_value)
+  return [] if fco_id.blank? && fco_name.blank?
 
-    # Use the selected FCO's own territory, not its child offices' territories.
-    offices = office_list_items.select { |office| office["id"].to_s.strip == fco_id }
-    if offices.empty? && fco_id !~ /\A\d+\z/
-      selected_name = fco_name.presence || fco_id
-      offices = office_list_items.select { |office| office["name"].to_s.strip.casecmp?(selected_name) }
-    end
-
-    offices
-      .flat_map { |office| Array(office["territory_zones"]) }
-      .flat_map { |zone| Array(zone["block"]) }
-      .filter_map do |block|
-        block_id = block["id"].presence || block["block_id"].presence
-        block_name = office_location_name(block["name"]).presence || office_location_name(block["block_name"])
-        next if block_name.blank?
-
-        option_hash(block_id || block_name, block_name)
-      end
-      .then { |options| options.uniq { |option| parse_location_value(option[:value]).first.downcase }.sort_by { |option| option[:label].to_s.downcase } }
+  selected_name = fco_name.presence || fco_id
+  fco_offices = office_list_items.select { |office| office["id"].to_s.strip == fco_id }
+  if fco_offices.empty? && fco_id !~ /\A\d+\z/
+    fco_offices = office_list_items.select { |office| office["name"].to_s.strip.casecmp?(selected_name) }
   end
+
+  territory_blocks = ->(offices) do
+    Array(offices).flat_map { |office| Array(office["territory_zones"]) }
+      .flat_map { |zone| Array(zone["block"]) }
+  end
+
+  blocks = territory_blocks.call(fco_offices)
+  if blocks.empty?
+child_offices = office_list_items.select do |office|
+  if fco_id.match?(/\A\d+\z/)
+    office.dig("parent", "id").to_s.strip == fco_id
+  else
+    office.dig("parent", "name").to_s.strip.casecmp?(selected_name)
+  end
+end
+    fpc_blocks = territory_blocks.call(child_offices.reject { |office| office["name"].to_s.match?(/\s*-\s*TO\s*\z/i) })
+    blocks = fpc_blocks.presence || territory_blocks.call(child_offices)
+  end
+
+  blocks
+    .filter_map do |block|
+      block_id = block["id"].presence || block["block_id"].presence
+      block_name = office_location_name(block["name"]).presence || office_location_name(block["block_name"])
+      next if block_name.blank?
+
+      option_hash(block_id || block_name, block_name)
+    end
+    .then { |options| options.uniq { |option| parse_location_value(option[:value]).first.downcase }.sort_by { |option| option[:label].to_s.downcase } }
+end
 
   def office_village_options(fco_value, block_value)
     external_villages = fetch_external_villages(block_value)

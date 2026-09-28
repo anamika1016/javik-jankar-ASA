@@ -34,4 +34,21 @@ class TargetMappingOfficeFallbackTest < ActiveSupport::TestCase
     assert_empty controller.send(:office_block_options, "999||Ranapur - FCO")
   end
 
+test "uses direct FPC blocks when an FCO has no blocks of its own" do
+  controller = TargetMappingsController.new
+  offices = [
+    { "id" => 15, "name" => "Bhawanipatna - FCO", "territory_zones" => [] },
+    { "id" => 156, "name" => "Budhadangar FPC", "parent" => { "id" => 15, "name" => "Bhawanipatna - FCO" },
+      "territory_zones" => [{ "block" => [
+        { "id" => 42, "name" => { "en" => "Bhawanipatna" } },
+        { "id" => 43, "name" => { "en" => "Kesinga" } }
+      ] }] },
+    { "id" => 94, "name" => "Bhawanipatna - TO", "parent" => { "id" => 15, "name" => "Bhawanipatna - FCO" },
+      "territory_zones" => [{ "block" => [{ "id" => 99, "name" => { "en" => "Unrelated" } }] }] }
+  ]
+  controller.define_singleton_method(:office_list_items) { offices }
+
+  assert_equal ["42||Bhawanipatna", "43||Kesinga"], controller.send(:office_block_options, "15||Bhawanipatna - FCO").map { |option| option[:value] }
+end
+
 end
