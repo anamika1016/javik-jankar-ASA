@@ -35,10 +35,10 @@
             <%= f.text_field :farm_id, required: true, placeholder: "Select a Farmer Name", data: { afl_mapped_field: "farm_id" } %>
           </label>
           <label>
-            <span>ICS Name</span>
+            <span>ICS Name/Block Name</span>
             <%= f.select :ics_name,
               options_for_select(@afl_ics_name_options, form_record.ics_name),
-              { include_blank: "Select ICS Name from AFL" },
+              { include_blank: "Select ICS Name/Block Name from AFL" },
               data: { afl_mapped_field: "ics_name" } %>
           </label>
           <label>

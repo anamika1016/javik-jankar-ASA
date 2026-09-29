@@ -1,4 +1,111 @@
 module ApplicationHelper
+  # Section headings used by the Training Form (show.html.erb). The edit-request
+  # page reuses them so a reviewer sees the changes laid out exactly like the
+  # form they were made on.
+  TRAINING_FORM_SECTIONS = {
+    "Month" => ["01", "Location & reporting period"],
+    "Trainer Name" => ["02", "Trainer & resource persons"],
+    "Training Date" => ["03", "Training details"],
+    "Farmer Count" => ["04", "Farmer participation"],
+    "Photo Front View" => ["05", "Photos & documentation"]
+  }.freeze
+
+  # Farmer id lists are stored as raw ids. Show the same identity the Training
+  # Form shows while selecting them -- name, father, tracenet -- so a reviewer
+  # can tell who was added or removed. Ids with no AFL row stay as-is.
+  def training_farmer_labels(ids)
+    ids = Array(ids).map(&:to_s).compact_blank.uniq
+    return {} if ids.empty? || !"Afl".safe_constantize&.table_exists?
+
+    @training_farmer_label_cache ||= {}
+    missing = ids - @training_farmer_label_cache.keys
+    if missing.any?
+      Afl.where(id: missing).select(:id, :farmer_name, :father_name, :tracenet_no).each do |farmer|
+        @training_farmer_label_cache[farmer.id.to_s] = {
+          name: farmer.farmer_name.to_s.strip.presence || "Farmer ##{farmer.id}",
+          meta: [("Father: #{farmer.father_name}" if farmer.father_name.present?),
+                 ("Tracenet: #{farmer.tracenet_no}" if farmer.tracenet_no.present?)].compact.join(" · ")
+        }
+      end
+      (missing - @training_farmer_label_cache.keys).each do |id|
+        @training_farmer_label_cache[id] = { name: "Farmer ##{id}", meta: "not in AFL master" }
+      end
+    end
+    @training_farmer_label_cache.slice(*ids)
+  end
+
+  # Extra record keys the form stores but does not list as fields. The geo-tagged
+  # photo belongs with Photos; the farmer selection gets the same "Select target
+  # farmers" section the form uses.
+  TRAINING_SECTION_EXTRAS = {
+    "05" => [["training_photo_upload_with_geo_tag", "Training Photo Upload with Geo Tag"]]
+  }.freeze
+  TRAINING_FARMER_SECTION = ["06", "Select target farmers", [["selected_farmer_ids", "Target Farmers"]]].freeze
+  # Internal duplicates of fields already shown, plus bookkeeping keys. Showing
+  # them again only adds noise for the approver.
+  TRAINING_HIDDEN_KEYS = %w[
+    selected_farmer_names main_activity_type trainee_department
+    training_subject training_topic target_mapping_id target_mapping_ids
+    main_activities sub_activities geo_latitude geo_longitude
+  ].freeze
+
+  # Lay the edit request out exactly like the Training Form: same sections, same
+  # field order, every filled field shown so a reviewer reads it as the form.
+  # Each entry carries :changed so the view can highlight edits.
+  def training_edit_request_sections(changed_keys, all_keys: [])
+    changed = changed_keys.map(&:to_s)
+    known = (changed + all_keys.map(&:to_s)).uniq
+    resolve = ->(key) { known.find { |c| c == key || c.tr("-", "_") == key.tr("-", "_") } || key }
+    build = ->(key, label) { { key: key, label: label, changed: changed.include?(key) } }
+
+    sections = []
+    current = nil
+    close = lambda do
+      next unless current
+      Array(TRAINING_SECTION_EXTRAS[current[:number]]).each do |key, label|
+        actual = resolve.(key)
+        current[:fields] << build.(actual, label)
+      end
+      sections << current if current[:fields].any?
+    end
+
+    Array(ModulesController::MODULES.dig("training-form", :fields)).each do |field|
+      heading = TRAINING_FORM_SECTIONS[field]
+      if heading
+        close.call
+        current = { number: heading[0], title: heading[1], fields: [] }
+      end
+      current ||= { number: "01", title: "Details", fields: [] }
+      current[:fields] << build.(resolve.(field.parameterize(separator: "_")), field)
+    end
+    close.call
+
+    number, title, fields = TRAINING_FARMER_SECTION
+    farmer_fields = fields.map { |key, label| build.(resolve.(key), label) }
+    sections << { number: number, title: title, fields: farmer_fields }
+    sections
+  end
+
+  # Stored upload paths can outlive the file on disk (restored DB, or a deploy
+  # that wiped public/uploads). Split them so the form links what is really
+  # there and reports the rest, instead of rendering links that 404.
+  def partition_existing_uploads(urls)
+    Array(urls).partition do |url|
+      text = url.to_s
+      next true unless text.start_with?("/uploads/module_records/")
+
+      filename = text[%r{\A/uploads/module_records/([^/?#]+)\z}, 1]
+      next false if filename.blank?
+
+      # Mirror UploadsController's guard: anything that is not a plain filename
+      # can never be served, so report it as missing rather than linking it.
+      decoded = CGI.unescape(filename)
+      next false unless decoded == File.basename(decoded)
+
+      UploadsController::MODULE_RECORD_UPLOAD_ROOT.join(decoded).file?
+    end
+  end
+
   def farmer_farm_information_select_options
     return [] unless "FarmerFarmInformation".safe_constantize&.table_exists?
 

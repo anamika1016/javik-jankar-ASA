@@ -1,30 +1,196 @@
-<section class="dashboard-page">
-  <div class="dashboard-topbar"><h1>Training Form Edit Request #<%= @revision.id %></h1><%= link_to "Back to Approval List", training_edit_approvals_path %></div>
-  <section class="module-card">
-    <p>Status: <%= @revision.data["status"] %></p>
-    <p>Approval channel: <%= Array(@revision.data["approvers"]).join(" → ").presence || "Awaiting channel configuration" %></p>
-    <table class="module-table"><thead><tr><th>Field</th><th>Current / Original</th><th>Requested Change</th></tr></thead><tbody>
-      <% (@revision.data["before"].keys | @revision.data["proposed"].keys).each do |key| %>
-        <% before = @revision.data["before"][key]; proposed = @revision.data["proposed"][key] %>
-        <% next if before == proposed %>
-        <tr><th><%= key.humanize %></th><% [before, proposed].each do |value| %><td>
-          <% if TrainingEditApproval::IMAGE_KEYS.include?(key) %>
-            <% Array(value).each do |url| %><%= link_to File.basename(url.to_s), url, target: "_blank", rel: "noopener" if url.to_s.start_with?("/uploads/module_records/") %><br><% end %>
-          <% else %><%= value.is_a?(Array) || value.is_a?(Hash) ? value.to_json : value %><% end %>
-        </td><% end %></tr>
-      <% end %>
-    </tbody></table>
-    <% if TrainingEditApproval.can_decide?(@revision, current_app_user) %>
-      <%= form_with url: training_edit_approval_path(@revision), method: :patch do |form| %>
-        <%= form.label :remarks %><%= form.text_area :remarks, required: true %>
-        <%= form.button "Approve", name: "decision", value: "approve", class: "list-btn active" %>
-        <%= form.button "Return", name: "decision", value: "reject", class: "list-btn delete" %>
-      <% end %>
-    <% elsif admin_access_user? && @revision.data["status"] == "Pending" && Array(@revision.data["approvers"]).empty? %>
-      <p>Configure “Training Form Edit” in Jeevika Jankar Approval Form for the requesting CC, then route this request.</p>
-      <%= link_to "Configure Channel", module_path("approval-master") %>
-      <%= button_to "Route to Configured Channel", training_edit_approval_path(@revision), method: :patch, params: { decision: "route" } %>
-    <% end %>
-    <% Array(@revision.data["history"]).each do |entry| %><p><%= entry["at"] %> · <%= entry["action"] %> · <%= entry["actor"] %> · <%= entry["remarks"] %></p><% end %>
+<% status = @revision.data["status"].to_s %>
+<% before_data = @revision.data["before"] || {} %>
+<% proposed_data = @revision.data["proposed"] || {} %>
+<% all_keys = before_data.keys | proposed_data.keys %>
+<% changed_keys = all_keys.reject { |key| before_data[key] == proposed_data[key] } %>
+<% farmer_key = ->(key) { key.to_s.include?("farmer_id") } %>
+
+<section class="dashboard-page edit-request-page">
+  <div class="module-hero edit-request-hero">
+    <div>
+      <p class="vrp-eyebrow">Farmer Target</p>
+      <h1>Training Form Edit Request #<%= @revision.id %></h1>
+      <p><%= changed_keys.size %> field<%= "s" unless changed_keys.size == 1 %> changed · requested by <%= @revision.data.dig("requester", "name").presence || @revision.data["requester_identity"] %></p>
+    </div>
+    <%= link_to "← Back to Approval List", training_edit_approvals_path, class: "list-btn" %>
+  </div>
+
+  <section class="module-card edit-request-meta">
+    <div class="edit-request-meta-item">
+      <span>Status</span>
+      <strong class="edit-request-status edit-request-status-<%= status.parameterize.presence || "pending" %>"><%= status.presence || "Pending" %></strong>
+    </div>
+    <div class="edit-request-meta-item">
+      <span>Agronomist approver</span>
+      <strong><%= Array(@revision.data["approvers"]).join(" → ").presence || "Not assigned yet" %></strong>
+    </div>
+    <div class="edit-request-meta-item">
+      <span>Submitted</span>
+      <strong><%= @revision.created_at&.strftime("%d %b %Y, %I:%M %p") %></strong>
+    </div>
   </section>
+
+  <% training_edit_request_sections(changed_keys, all_keys: all_keys).each do |section| %>
+    <% upload_section = section[:title].to_s.include?("Photos") %>
+    <%# Unchanged fields that were never filled add nothing for a reviewer. %>
+    <% visible_fields = section[:fields].reject do |field| %>
+      <% !field[:changed] && ModuleUploadPaths.call(proposed_data[field[:key]]).empty? &&
+           Array(proposed_data[field[:key]]).compact_blank.empty? &&
+           proposed_data[field[:key]].to_s.strip.blank? %>
+    <% end %>
+    <% next if visible_fields.empty? %>
+    <section class="module-card edit-request-section">
+      <div class="training-section-heading">
+        <span class="training-section-number" aria-hidden="true"><%= section[:number] %></span>
+        <div><h3><%= section[:title] %></h3></div>
+      </div>
+
+      <div class="module-form-grid user-registration-grid edit-request-grid">
+        <% visible_fields.each do |field| %>
+          <% key = field[:key] %>
+          <% before_value = before_data[key] %>
+          <% proposed_value = proposed_data[key] %>
+          <% before_urls = ModuleUploadPaths.call(before_value) %>
+          <% proposed_urls = ModuleUploadPaths.call(proposed_value) %>
+          <% upload_field = upload_section || before_urls.any? || proposed_urls.any? %>
+          <% is_farmer = farmer_key.(key) %>
+          <% wide = is_farmer || (proposed_value.is_a?(Array) && proposed_value.size > 6) %>
+
+          <label class="edit-request-field <%= "is-changed" if field[:changed] %> <%= "is-wide" if wide %>">
+            <span><%= field[:label] %><% if field[:changed] %><b class="edit-request-tag">changed</b><% end %></span>
+
+            <div class="edit-request-value">
+              <% if upload_field %>
+                <% if proposed_urls.empty? %>
+                  <span class="edit-request-empty">No file</span>
+                <% else %>
+                  <% _present, missing = partition_existing_uploads(proposed_urls) %>
+                  <div class="edit-request-files">
+                    <% proposed_urls.each do |url| %>
+                      <% is_new = before_urls.any? && before_urls.exclude?(url) %>
+                      <% if missing.include?(url) %>
+                        <span class="edit-request-file is-missing" title="<%= File.basename(url) %>">
+                          <span class="edit-request-file-name"><%= File.basename(url) %></span>
+                          <small>file missing on server</small>
+                        </span>
+                      <% elsif url.downcase.end_with?(".pdf") %>
+                        <%= link_to url, target: "_blank", rel: "noopener", class: "edit-request-file#{" is-new" if is_new}", title: File.basename(url) do %>
+                          <span class="edit-request-file-icon">PDF</span>
+                          <span class="edit-request-file-name"><%= File.basename(url) %></span>
+                        <% end %>
+                      <% else %>
+                        <%= link_to url, target: "_blank", rel: "noopener", class: "edit-request-thumb#{" is-new" if is_new}", title: File.basename(url) do %>
+                          <%= image_tag url, alt: File.basename(url), loading: "lazy" %>
+                          <% if is_new %><small class="edit-request-new">New</small><% end %>
+                        <% end %>
+                      <% end %>
+                    <% end %>
+                  </div>
+                <% end %>
+
+              <% elsif is_farmer %>
+                <% before_ids = Array(before_value).map(&:to_s).compact_blank %>
+                <% proposed_ids = Array(proposed_value).map(&:to_s).compact_blank %>
+                <% added = proposed_ids - before_ids %>
+                <% removed = before_ids - proposed_ids %>
+                <% ordered = added + (proposed_ids - added) + removed %>
+                <% labels = training_farmer_labels(ordered) %>
+                <details class="edit-request-farmer-panel">
+                  <summary>
+                    <span class="edit-request-count"><%= before_ids.size %> → <%= proposed_ids.size %> farmers</span>
+                    <% if added.any? %><span class="edit-request-added">+<%= added.size %> added</span><% end %>
+                    <% if removed.any? %><span class="edit-request-removed">−<%= removed.size %> removed</span><% end %>
+                    <% if added.empty? && removed.empty? %><span class="edit-request-empty">no change</span><% end %>
+                    <b class="edit-request-toggle">Click to view</b>
+                  </summary>
+                  <div class="edit-request-farmers">
+                    <% ordered.each do |id| %>
+                      <% label = labels[id] || { name: "Farmer ##{id}", meta: "" } %>
+                      <% css = removed.include?(id) ? "is-removed" : (added.include?(id) ? "is-added" : "") %>
+                      <div class="edit-request-farmer <%= css %>">
+                        <strong><%= label[:name] %></strong>
+                        <% if label[:meta].present? %><small><%= label[:meta] %></small><% end %>
+                        <% if removed.include?(id) %><em>removed</em><% elsif added.include?(id) %><em>added</em><% end %>
+                      </div>
+                    <% end %>
+                  </div>
+                </details>
+
+              <% elsif proposed_value.is_a?(Array) %>
+                <% items = proposed_value.map(&:to_s).compact_blank %>
+                <% if items.empty? %>
+                  <span class="edit-request-empty">—</span>
+                <% else %>
+                  <div class="edit-request-chips"><% items.each { |item| %><span class="edit-request-chip"><%= item %></span><% } %></div>
+                <% end %>
+
+              <% elsif proposed_value.is_a?(Hash) %>
+                <ul class="edit-request-list"><% proposed_value.each { |k, v| %><li><strong><%= k.humanize %>:</strong> <%= v %></li><% } %></ul>
+
+              <% elsif proposed_value.to_s.strip.blank? %>
+                <span class="edit-request-empty">—</span>
+              <% else %>
+                <%= proposed_value %>
+              <% end %>
+            </div>
+
+            <% if field[:changed] && !is_farmer %>
+              <small class="edit-request-was">
+                Pehle:
+                <% if upload_field %>
+                  <%= before_urls.any? ? "#{before_urls.size} file(s)" : "no file" %>
+                <% elsif before_value.is_a?(Array) %>
+                  <%= before_value.map(&:to_s).compact_blank.join(", ").presence || "—" %>
+                <% else %>
+                  <%= before_value.to_s.strip.presence || "—" %>
+                <% end %>
+              </small>
+            <% end %>
+          </label>
+        <% end %>
+      </div>
+    </section>
+  <% end %>
+
+  <% if TrainingEditApproval.can_decide?(@revision, current_app_user) %>
+    <section class="module-card edit-request-decision">
+      <div class="module-card-header"><h2>Your decision</h2></div>
+      <%= form_with url: training_edit_approval_path(@revision), method: :patch, html: { class: "module-entry-form" } do |form| %>
+        <label>
+          <span>Remarks <em>*</em></span>
+          <%= form.text_area :remarks, rows: 3, required: true, placeholder: "Approve ya reject karne ka reason likhein" %>
+        </label>
+        <div class="module-form-actions">
+          <%= form.button "Reject", name: "decision", value: "reject", class: "list-btn deactive" %>
+          <%= form.button "Approve", name: "decision", value: "approve", class: "list-btn active" %>
+        </div>
+      <% end %>
+    </section>
+  <% elsif admin_access_user? && status == "Pending" && Array(@revision.data["approvers"]).empty? %>
+    <section class="module-card edit-request-decision">
+      <div class="module-card-header"><h2>Routing needed</h2></div>
+      <p class="field-hint">Is training ke FCO office par ek active Agronomist account assign karein, phir routing dobara chalayein.</p>
+      <%= button_to "Route to Responsible Agronomist", training_edit_approval_path(@revision),
+            method: :patch, params: { decision: "route" }, class: "list-btn active" %>
+    </section>
+  <% end %>
+
+  <% history = Array(@revision.data["history"]) %>
+  <% if history.any? %>
+    <section class="module-card">
+      <div class="module-card-header"><h2>History</h2></div>
+      <ol class="edit-request-history">
+        <% history.reverse_each do |entry| %>
+          <li>
+            <span class="edit-request-history-action edit-request-history-<%= entry["action"].to_s.parameterize.presence || "note" %>"><%= entry["action"].to_s.humanize %></span>
+            <div>
+              <strong><%= entry["actor"] %></strong>
+              <small><%= (Time.zone.parse(entry["at"].to_s)&.strftime("%d %b %Y, %I:%M %p") rescue nil) || entry["at"] %></small>
+              <% if entry["remarks"].present? %><p><%= entry["remarks"] %></p><% end %>
+            </div>
+          </li>
+        <% end %>
+      </ol>
+    </section>
+  <% end %>
 </section>

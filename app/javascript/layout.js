@@ -2408,11 +2408,11 @@ function initDeferredLayoutPage() {
     ).map(optionValue);
     const mappedIcsOptions = () => uniqueOptions(mappings.filter((mapping) => !monthSelect?.value || normalizeOption(mapping.month) === normalizeOption(monthSelect.value)).map((mapping) => makeOption(mapping.ics, mapping.ics))).map(optionValue);
     const mappedMainActivityOptions = () => uniqueOptions(
-      targetRowsForSelection({ requireVillage: true, includeMainActivity: false, includeSubActivity: false })
+      targetRowsForSelection({ requireMonth: true, requireVillage: true, includeMainActivity: false, includeSubActivity: false })
         .map((mapping) => makeOption(mapping.main_activity, mapping.main_activity))
     ).map(optionValue);
     const mappedSubActivityOptions = () => {
-      const rows = targetRowsForSelection({ requireVillage: true, requireMainActivity: true, includeSubActivity: false });
+      const rows = targetRowsForSelection({ requireMonth: true, requireVillage: true, requireMainActivity: true, includeSubActivity: false });
       const selectedMainActivities = selectedMainActivityValues().map(normalizeOption);
       const configured = activityMappings
         .filter((mapping) => selectedMainActivities.includes(normalizeOption(mapping.main_activity)))
@@ -2732,7 +2732,7 @@ function initDeferredLayoutPage() {
 
 	    if (monthSelect) fillTrainingSelect(monthSelect, mappedMonthOptions(), "Select Month");
 	    const initialIcsOptions = mappedIcsOptions();
-	    fillTrainingSelect(icsSelect, initialIcsOptions, "Select ICS Name");
+	    fillTrainingSelect(icsSelect, initialIcsOptions, "Select ICS Name/Block Name");
 	    setOnlyTrainingOption(icsSelect, initialIcsOptions);
 	    const initialVillageOptions = mappedVillageOptions();
 	    fillTrainingSelect(villageSelect, initialVillageOptions, "Select Village Name");
@@ -2763,7 +2763,7 @@ function initDeferredLayoutPage() {
 	      if (mainActivitySelect) mainActivitySelect.value = "";
 	      if (subActivitySelect) subActivitySelect.value = "";
 	      const icsOptions = mappedIcsOptions();
-	      fillTrainingSelect(icsSelect, icsOptions, "Select ICS Name");
+	      fillTrainingSelect(icsSelect, icsOptions, "Select ICS Name/Block Name");
 	      setOnlyTrainingOption(icsSelect, icsOptions);
 	      const villageOptions = mappedVillageOptions();
 	      fillTrainingSelect(villageSelect, villageOptions, "Select Village Name");

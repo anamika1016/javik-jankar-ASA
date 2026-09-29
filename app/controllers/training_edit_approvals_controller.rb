@@ -1,14 +1,14 @@
 class TrainingEditApprovalsController < ApplicationController
   def index
-    @revisions = ModuleRecord.where(module_slug: TrainingEditApproval::SLUG).order(id: :desc).select do |revision|
-      TrainingEditApproval.assign_configured_channel!(revision)
-      TrainingEditApproval.visible?(revision, current_app_user)
+    @revisions = TrainingEditApproval.summaries_for(current_app_user)
+    @revisions.sort_by! do |revision|
+      [TrainingEditApproval.can_decide?(revision, current_app_user) ? 0 : (revision.data["status"] == "Pending" ? 1 : 2), -revision.id]
     end
   end
 
   def show
     @revision = ModuleRecord.where(module_slug: TrainingEditApproval::SLUG).find(params[:id])
-    TrainingEditApproval.assign_configured_channel!(@revision)
+    TrainingEditApproval.assign_automatic_approver!(@revision)
     head :forbidden unless TrainingEditApproval.visible?(@revision, current_app_user)
   end
 

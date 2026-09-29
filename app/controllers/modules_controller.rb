@@ -37,7 +37,8 @@ class ModulesController < ApplicationController
                 :training_trainee_department_default, :seed_distribution_target_mappings,
                 :seed_distribution_target_month_options, :current_seed_target_vrp_option,
                 :add_farmer_form_mappings, :dashboard_vrp_previous_status, :dashboard_vrp_status_label,
-                :training_edit_revision_for, :dashboard_weekly_report_filter_params
+                :training_edit_revision_for, :dashboard_weekly_report_filter_params,
+                :jeevika_bill_observation_row
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
   OTHER_TARGET_MODULE_SLUGS = ["seed-distribution-target", "papl360-target", "other-target"].freeze
@@ -669,16 +670,26 @@ class ModulesController < ApplicationController
     end
 
     # ─── CASCADING FILTER DROPDOWNS ───
-    # 1. Activity Filter (always show all in initial scope, restrict others)
-    @filter_main_activity_options = t_scope.map(&:main_activity_name).uniq.compact_blank.sort
-    # Open the dashboard on the farmer-training view when it is available;
-    # an explicitly selected activity always takes precedence.
+    # 1. Activity Filter — scoped to the selected month (same default rule as
+    # dashboard_filter_sub_activity_options) so a Main/Sub Activity combo with
+    # zero mappings for that month is never offered as a dead end.
+    activity_filter_month = params.key?(:month) ? dashboard_filter_param(:month) : Date.current.strftime("%B")
+    month_scoped_activity_targets = activity_filter_month.present? ?
+      t_scope.select { |t| normalize_dashboard_text(t.month_name) == normalize_dashboard_text(activity_filter_month) } : t_scope
+    @filter_main_activity_options = month_scoped_activity_targets.map(&:main_activity_name).uniq.compact_blank.sort
+    # Open the dashboard on the farmer-training view whenever it exists at all,
+    # even if the default month happens to have no mappings for it yet — the
+    # default activity should not depend on the default month having data.
+    # An explicitly selected activity always takes precedence.
     @dashboard_main_activity_filter_value = dashboard_filter_param(:main_activity) ||
-      @filter_main_activity_options.find do |activity|
+      t_scope.map(&:main_activity_name).uniq.compact_blank.find do |activity|
         normalize_dashboard_text(activity) == normalize_dashboard_text("Farmer Activity") ||
           normalize_dashboard_text(activity) == normalize_dashboard_text("Farmers' Training") ||
           normalize_dashboard_text(activity) == normalize_dashboard_text("Farmers Training")
       end
+    if @dashboard_main_activity_filter_value.present? && @filter_main_activity_options.exclude?(@dashboard_main_activity_filter_value)
+      @filter_main_activity_options = (@filter_main_activity_options + [@dashboard_main_activity_filter_value]).sort
+    end
     normalized_dashboard_main_activity = normalize_dashboard_text(@dashboard_main_activity_filter_value)
     @dashboard_farmer_activity_mode = [
       "Farmer Activity",
@@ -766,9 +777,9 @@ class ModulesController < ApplicationController
       .compact_blank
       .sort_by { |m| dashboard_month_index(m) || 0 }
     weekly_target_scope = t_scope.dup
-    # Monthly dashboard summary opens on the previous month by default. Users
+    # Monthly dashboard summary opens on the current month by default. Users
     # can still choose All Months or another month from the filter.
-    default_dashboard_month = Date.current.prev_month.strftime("%B")
+    default_dashboard_month = Date.current.strftime("%B")
     @dashboard_month_filter_value = params.key?(:month) ? dashboard_filter_param(:month) : default_dashboard_month
     if @dashboard_month_filter_value.present?
       m = normalize_dashboard_text(@dashboard_month_filter_value)
@@ -1619,7 +1630,7 @@ class ModulesController < ApplicationController
       return
     end
 
-    if record_source_slug == "training-form"
+    if record_source_slug == "training-form" && module_cluster_incharge_login? && !admin_dashboard_user?
       begin
         revision = TrainingEditApproval.submit!(record: record, proposed: next_data, actor: current_app_user)
         redirect_to module_path("training-form-list"), notice: "Training changes submitted for approval. #{TrainingEditApproval.status_label(revision)}."
@@ -3620,7 +3631,7 @@ class ModulesController < ApplicationController
   def demonstration_method_cards
     report = @demonstration_method_report || DemonstrationMethodReport.new(
       targets: @filtered_targets || dashboard_target_mappings,
-      month: params.key?(:month) ? dashboard_filter_param(:month) : Date.current.prev_month.strftime("%B"))
+      month: params.key?(:month) ? dashboard_filter_param(:month) : Date.current.strftime("%B"))
     cards = DemonstrationMethodReport::METRICS.map do |metric|
       dashboard_summary_card({ "OPG Target" => "OPG Training Target", "FFS" => "Exposer" }.fetch(metric, metric),
         dashboard_quantity(report.summary.sum { |row| row[metric] }), "Training method entries",
@@ -4240,7 +4251,7 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_filter_sub_activity_options(targets)
-    month = params.key?(:month) ? dashboard_filter_param(:month) : Date.current.prev_month.strftime("%B")
+    month = params.key?(:month) ? dashboard_filter_param(:month) : Date.current.strftime("%B")
     fcoc = dashboard_filter_param(:fcoc, :fco)
     fco_values = training_fcoc_filter_values(fcoc) if fcoc.present?
     ics = dashboard_filter_param(:ics, :ics_name)
@@ -4318,7 +4329,6 @@ class ModulesController < ApplicationController
       ), mapping_data AS (
         SELECT TRIM(t.fco_id) AS fco_id, TRIM(t.fco_name) AS fco_name,
           TRIM(t.main_activity_name) AS main_activity_name,
-          COUNT(DISTINCT t.mapping_group_key) AS total_mapping,
           COUNT(DISTINCT md.farmer_id) AS mapped_farmer
         FROM target_mappings t
         LEFT JOIN mapping_detail md ON md.fco_id = TRIM(t.fco_id)
@@ -4344,7 +4354,7 @@ class ModulesController < ApplicationController
         SELECT fco_key, main_activity_name, COUNT(DISTINCT farmer_id) AS achievement_farmer
         FROM achievement_detail GROUP BY fco_key, main_activity_name
       )
-      SELECT md.fco_id, md.fco_name, md.main_activity_name, md.total_mapping,
+      SELECT md.fco_id, md.fco_name, md.main_activity_name,
         md.mapped_farmer, COALESCE(ad.achievement_farmer, 0) AS achievement_farmer,
         GREATEST(md.mapped_farmer - COALESCE(ad.achievement_farmer, 0), 0) AS pending_farmer,
         ROUND(COALESCE(ad.achievement_farmer, 0) * 100.0 / NULLIF(md.mapped_farmer, 0), 2) AS achievement_percentage,
@@ -9183,9 +9193,19 @@ class ModulesController < ApplicationController
 
   def training_edit_revision_for(record)
     return unless record&.module_slug == "training-form"
-    @training_edit_revisions_by_record ||= ModuleRecord.where(module_slug: TrainingEditApproval::SLUG).order(id: :desc).to_a.each_with_object({}) { |revision, index| index[revision.data["record_id"].to_s] ||= revision }
+
+    @training_edit_revisions_by_record ||= TrainingEditApproval.summary_scope
+      .order(id: :desc).to_a.each_with_object({}) do |revision, index|
+        index[revision.data["record_id"].to_s] ||= revision
+      end
     revision = @training_edit_revisions_by_record[record.id.to_s]
-    revision && TrainingEditApproval.assign_configured_channel!(revision)
+    if revision && revision.data["status"] == "Pending" && revision.data["approval_role"] != "agronomist"
+      @training_edit_staff_catalogue ||= TrainingStaffScope.staff_catalogue
+      full_revision = ModuleRecord.find(revision.id)
+      TrainingEditApproval.assign_automatic_approver!(full_revision, staff_catalogue: @training_edit_staff_catalogue)
+      revision.data = full_revision.data.except("before", "proposed", "evidence", "history")
+    end
+    revision
   end
 
   def preserve_training_uploads(previous_data, next_data)
@@ -9992,6 +10012,28 @@ class ModulesController < ApplicationController
     end
 
     { score_earned: earned, score_maximum: maximum, score_percentage: percentage, grade: grade }
+  end
+
+  # The observation ratings are saved inside each bill's own data. Build the same
+  # row the Jeevika Jankar Observation List renders, but for this single bill, so
+  # the bill detail (eye-icon) view can show it below. Returns nil when the bill
+  # has no observation ratings.
+  def jeevika_bill_observation_row(record)
+    data = record&.data || {}
+    observations = data["observations"].is_a?(Hash) ? data["observations"] : {}
+    return nil unless observations.values.any?(&:present?)
+
+    option_labels = JEEVIKA_JANKAR_OBSERVATION_OPTIONS.to_h { |option| [option[:key], option[:label]] }
+    row = {
+      jeevika_jankar_name: (data["select_vrp_name"].presence || data["jeevika_jankar_name"].presence ||
+        jeevika_bill_vrp(record)&.name).to_s,
+      bill_month: data["bill_month"].to_s,
+      ratings: JEEVIKA_JANKAR_OBSERVATION_PARAMETERS.map do |parameter|
+        option_key = observations[parameter[:key]].to_s
+        { key: option_key, label: option_labels[option_key] }
+      end
+    }
+    row.merge(jeevika_jankar_observation_score(row[:ratings]))
   end
 
   def jeevika_jankar_observation_export_rows
@@ -11857,10 +11899,10 @@ class ModulesController < ApplicationController
       next unless upload.respond_to?(:original_filename)
 
       if upload.size > 5.megabytes
-        "Evidence/Documentation Photo: maximum file size is 5 MB."
+        "Evidence/Documentation PDF: maximum file size is 5 MB."
       elsif !TRAINING_REGISTER_CONTENT_TYPES.include?(upload.content_type.to_s.downcase) ||
             File.extname(upload.original_filename).downcase != ".pdf"
-        "Evidence/Documentation Photo: only PDF files are allowed."
+        "Evidence/Documentation PDF: only PDF files are allowed."
       end
     end
   end

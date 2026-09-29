@@ -441,7 +441,7 @@
 
       <%# ICS Name (cascades from the selected activity, FCO and Cluster Incharge) %>
       <div class="dashboard-filter-field">
-        <label for="dash_ics">ICS Name</label>
+        <label for="dash_ics">ICS Name/Block Name</label>
         <%= f.select :ics,
               options_for_select(
                 [["All ICS", ""]] + (@filter_ics_options || []).map { |v| [v, v] },

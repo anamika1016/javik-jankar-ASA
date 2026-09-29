@@ -8032,6 +8032,296 @@ body {
   text-decoration: underline;
 }
 
+.training-approval-badge {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-weight: 700;
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+.training-approval-badge--pending { background: #fef3c7; color: #854d0e; border: 1px solid #facc15; }
+.training-approval-badge--approved { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.training-approval-badge--rejected { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+.training-approval-badge--none { background: #f1f5f9; color: #475569; }
+
+/* ── Training Form Edit Request (Training Form jaisa layout) ───────────── */
+
+.edit-request-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.edit-request-hero h1 { margin: 2px 0 6px; }
+.edit-request-hero p:last-child { color: #4a5a6a; font-size: 0.9rem; }
+
+.edit-request-meta { display: flex; flex-wrap: wrap; gap: 32px; }
+.edit-request-meta-item { display: flex; flex-direction: column; gap: 5px; }
+
+.edit-request-meta-item > span {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #6b8296;
+}
+
+.edit-request-meta-item > strong { font-size: 0.95rem; color: #16354f; }
+
+.edit-request-status {
+  display: inline-block;
+  padding: 4px 14px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  width: fit-content;
+}
+
+.edit-request-status-pending { background: #fdf3e0; color: #8a5a0b; }
+.edit-request-status-approved { background: #e3f7e8; color: #15682f; }
+.edit-request-status-rejected { background: #fdeaea; color: #9f1f16; }
+
+
+/* Fields laid out exactly like the Training Form grid */
+.edit-request-grid { align-items: start; }
+.edit-request-grid .edit-request-field.is-wide { grid-column: 1 / -1; }
+
+.edit-request-field {
+  display: grid;
+  gap: 7px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: #2b373d;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.edit-request-field.is-changed { background: #f3faf5; border-color: #bfe7cb; }
+
+.edit-request-field > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.edit-request-tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #15682f;
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.edit-request-value {
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid #d9e4ee;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: #16354f;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.edit-request-field.is-changed .edit-request-value { border-color: #bfe7cb; }
+
+.edit-request-was {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #4a7a5c;
+}
+
+.edit-request-empty { color: #9aa8b4; font-weight: 500; }
+.edit-request-list { margin: 0; padding-left: 18px; font-weight: 500; }
+
+.edit-request-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.edit-request-chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #eef2f6;
+  color: #44586a;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+/* Farmer list, same identity as the Training Form picker */
+/* Farmer panel: summary line, list opens on click */
+.edit-request-farmer-panel > summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.edit-request-farmer-panel > summary::-webkit-details-marker { display: none; }
+
+.edit-request-toggle {
+  margin-left: auto;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: #eef6f1;
+  color: #15682f;
+  font-size: 0.73rem;
+  font-weight: 800;
+}
+
+.edit-request-farmer-panel[open] > summary { margin-bottom: 10px; }
+.edit-request-farmer-panel[open] .edit-request-toggle::after { content: " ✕"; }
+
+.edit-request-count { padding: 3px 12px; border-radius: 999px; background: #eef2f6; color: #44586a; }
+.edit-request-added { color: #15682f; }
+.edit-request-removed { color: #9f1f16; }
+
+.edit-request-farmers {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.edit-request-farmer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 11px;
+  border: 1px solid #dde5ec;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.edit-request-farmer strong { font-size: 0.82rem; font-weight: 700; color: #16354f; }
+.edit-request-farmer small { font-size: 0.71rem; color: #7a8894; }
+.edit-request-farmer.is-added { border-color: #bfe7cb; background: #f4fbf6; }
+.edit-request-farmer.is-removed { border-color: #f4c9c6; background: #fdf5f5; }
+.edit-request-farmer.is-removed strong { text-decoration: line-through; opacity: 0.7; }
+
+.edit-request-farmer em {
+  font-style: normal;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.edit-request-farmer.is-added em { color: #15682f; }
+.edit-request-farmer.is-removed em { color: #9f1f16; }
+
+/* Uploads shown like the form's photo cards */
+.edit-request-files { display: flex; flex-wrap: wrap; gap: 9px; align-items: flex-start; }
+
+.edit-request-thumb {
+  position: relative;
+  display: block;
+  width: 74px;
+  height: 74px;
+  border: 1px solid #d9e4ee;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f4f8fb;
+}
+
+.edit-request-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.edit-request-thumb:hover { border-color: #2f7fbf; }
+.edit-request-thumb.is-new,
+.edit-request-file.is-new { border-color: #15682f; box-shadow: 0 0 0 2px rgba(21, 104, 47, 0.15); }
+
+.edit-request-new {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  padding: 1px 0;
+  text-align: center;
+  background: #15682f;
+  color: #fff;
+  font-size: 0.58rem;
+  font-weight: 800;
+}
+
+.edit-request-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 7px 11px;
+  border: 1px solid #d9e4ee;
+  border-radius: 8px;
+  background: #fff;
+  color: #16354f;
+  text-decoration: none;
+  font-size: 0.77rem;
+  font-weight: 600;
+}
+
+.edit-request-file:hover { border-color: #2f7fbf; }
+
+.edit-request-file-icon {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #b42318;
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 800;
+}
+
+.edit-request-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.edit-request-file.is-missing {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  border-color: #f4c9c6;
+  background: #fdeaea;
+  color: #9f1f16;
+}
+
+/* Decision + history */
+.edit-request-decision .module-entry-form { max-width: 620px; }
+.edit-request-decision textarea { width: 100%; }
+
+.edit-request-history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.edit-request-history li { display: flex; gap: 12px; align-items: flex-start; }
+
+.edit-request-history-action {
+  flex-shrink: 0;
+  min-width: 96px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 800;
+  background: #eef2f6;
+  color: #44586a;
+}
+
+.edit-request-history-approve { background: #e3f7e8; color: #15682f; }
+.edit-request-history-reject { background: #fdeaea; color: #9f1f16; }
+.edit-request-history-resubmitted { background: #fdf3e0; color: #8a5a0b; }
+.edit-request-history small { display: block; color: #7a8894; font-size: 0.75rem; }
+.edit-request-history p { margin: 4px 0 0; color: #44586a; }
+
+@media (max-width: 1100px) {
+  .edit-request-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 /* Jeevika Jankar exam module */
 .jj-admin-page {
   gap: 1rem;
@@ -13081,6 +13371,97 @@ body {
 .observation-grade-yellow { background: #d9950f; color: #241900; }
 
 .observation-grade-red { background: #a8231a; color: #fff; }
+
+/* Jeevika Jankar Observation block inside the bill detail (eye-icon) view. */
+.bill-observation-section {
+  margin-top: 24px;
+  padding: 18px 20px;
+  background: var(--vrp-panel);
+  border: 1px solid var(--vrp-line);
+  border-radius: 14px;
+  box-shadow: var(--vrp-shadow);
+}
+.bill-observation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--vrp-line);
+}
+.bill-observation-header h2 {
+  margin: 0;
+  font-size: 17px;
+  color: var(--vrp-text);
+}
+
+/* Bill-detail observation table: centered, spacious rating cells. */
+.bill-observation-section .jeevika-observation-table th,
+.bill-observation-section .jeevika-observation-table td {
+  text-align: center;
+  vertical-align: middle;
+  padding: 12px 10px;
+}
+.bill-observation-section .observation-rating-head {
+  font-size: 12px;
+  color: var(--vrp-muted);
+}
+.bill-observation-section .observation-head-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--vrp-primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.bill-observation-section .observation-badge {
+  display: inline-block;
+  min-width: 96px;
+}
+
+/* Collapsible "Farmer Details" block in the bill detail (click heading to open). */
+.bill-farmers-collapse {
+  margin-top: 16px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--vrp-panel);
+}
+.bill-farmers-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 18px;
+  cursor: pointer;
+  list-style: none;
+  background: var(--vrp-panel-soft);
+  font-weight: 700;
+  color: var(--vrp-text);
+  user-select: none;
+}
+.bill-farmers-summary::-webkit-details-marker { display: none; }
+.bill-farmers-summary::before {
+  content: "▸";
+  color: var(--vrp-primary);
+  font-size: 14px;
+  transition: transform 0.15s ease;
+}
+.bill-farmers-collapse[open] .bill-farmers-summary::before { transform: rotate(90deg); }
+.bill-farmers-summary-title { flex: 1; }
+.bill-farmers-summary-hint {
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--vrp-muted);
+}
+.bill-farmers-collapse .table-shell { margin: 0; border: none; border-radius: 0; }
 
 .observation-legend {
   margin-top: 18px;

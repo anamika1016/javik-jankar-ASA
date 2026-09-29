@@ -1,6 +1,6 @@
 require "base64"
 
-# Revisions remain separate from live training data until the complete channel approves.
+# Revisions remain separate from live training data until the responsible Agronomist approves.
 class TrainingEditApproval
   SLUG = "training-form-edit-request".freeze
   PHOTO_VIEW_FIELDS = {
@@ -34,45 +34,76 @@ class TrainingEditApproval
       .compact_blank.map { |value| username(value) }.uniq
   end
 
-  def self.channel(actor)
-    # Approval Form may save either the account username or the display name.
-    # Treat all identity fields as aliases for the same CC user.
-    labels = [actor["username"], actor["user_name"], actor["name"], actor["mobile_no"]]
-      .compact_blank.map { |value| username(value) }
-    ModuleRecord.where(module_slug: "approval-master").select do |record|
-      data = record.data
-      data["module_name"] == "Training Form Edit" && data["status"].to_s.casecmp("Active").zero? &&
-        labels.include?(username(data["user_name"])) &&
-        (data["stakeholder_name"].blank? || data["stakeholder_name"].to_s.casecmp(actor["stakeholder"].to_s).zero?)
-    end.sort_by { |record| [record.data["approval_level"].to_s[/\d+/].to_i, record.id] }
-      .filter_map { |record| record.data["approver_approved_by"].presence }
+  def self.automatic_routing(data, actor, staff_catalogue: nil)
+    office = TrainingStaffScope.office_for(data, actor)
+    candidates = TrainingStaffScope.staff(office, :agronomist, catalogue: staff_catalogue)
+      .reject { |candidate| candidate["user_name"].blank? || identity(candidate) == identity(actor) }
+      .uniq { |candidate| username(candidate["user_name"]) }
+    return {} unless candidates.one?
+
+    approver = candidates.first
+    { "approvers" => [TrainingStaffScope.name(approver)],
+      "approver_identities" => [identity(approver)], "approval_office" => office, "approval_role" => "agronomist" }
   end
 
-  def self.assign_configured_channel!(revision)
-    return revision unless revision.data["status"] == "Pending" && Array(revision.data["approvers"]).empty?
+  def self.assign_automatic_approver!(revision, staff_catalogue: nil)
+    return revision unless revision.data["status"] == "Pending" && revision.data["approval_role"] != "agronomist"
 
     revision.with_lock do
       data = revision.data.deep_dup
-      approvers = channel(data["requester"] || {})
-      revision.update!(data: data.merge("approvers" => approvers)) if approvers.any?
+      routing = automatic_routing(data["before"] || {}, data["requester"] || {}, staff_catalogue: staff_catalogue)
+      routing = { "approvers" => [], "approver_identities" => [], "approval_role" => nil } if routing.empty?
+      updated_data = data.merge(routing).merge("step" => 0)
+      # Legacy unassigned requests are rechecked so a later Agronomist assignment
+      # is still picked up. Skip the identical write/reload on every page render.
+      next revision if updated_data == data
+
+      revision.update!(data: updated_data)
     end
     revision.reload
   end
 
   def self.submit!(record:, proposed:, actor:)
     record.with_lock do
-      pending = ModuleRecord.where(module_slug: SLUG).where("data::jsonb ->> 'record_id' = ? AND data::jsonb ->> 'status' = 'Pending'", record.id.to_s).exists?
-      raise InvalidTransition, "This training form already has a pending edit request." if pending
+      pending = ModuleRecord.where(module_slug: SLUG).where("data::jsonb ->> 'record_id' = ? AND data::jsonb ->> 'status' = 'Pending'", record.id.to_s).first
+      if pending && pending.data["requester_identity"] != identity(actor)
+        raise InvalidTransition, "Another user's edit is pending approval for this training form."
+      end
+      routing = automatic_routing(record.data, actor)
+      raise InvalidTransition, "A single active Agronomist account must be assigned to this training's FCO office before submitting the edit." if routing.empty?
       IMAGE_KEYS.each { |key| proposed[key] = (Array(record.data[key]) + Array(proposed[key])).compact_blank.uniq }
       # Preserve creator/ownership fields; CC edits cannot reassign records.
       record.data.each { |key, value| proposed[key] = value if key.start_with?("created_by") || %w[vrp_id select_vrp jeevika_jankar_id].include?(key) }
+      if pending
+        pending.with_lock do
+          raise InvalidTransition, "This request was already decided. Reload the training form before editing." unless pending.data["status"] == "Pending"
+          raise InvalidTransition, "The original record changed. Reload before submitting." unless comparable_data(pending.data["before"]) == comparable_data(record.data)
+          previous = pending.data.deep_dup
+          history = Array(previous["history"]) + [{ "action" => "resubmitted", "actor" => identity(actor), "at" => Time.current.iso8601 }]
+          pending.update!(data: previous.merge(routing).merge(
+            "proposed" => proposed, "step" => 0, "history" => history,
+            "evidence" => (Array(previous["evidence"]) + evidence(record.data, proposed)).uniq
+          ))
+        end
+        return pending
+      end
       ModuleRecord.create!(module_slug: SLUG, data: {
         "record_id" => record.id, "before" => record.data.deep_dup, "proposed" => proposed,
-        "requester" => actor.slice("id", "record_type", "username", "user_name", "name", "mobile_no", "stakeholder"),
+        "requester" => actor.slice("id", "record_type", "username", "user_name", "name", "stakeholder", *TrainingStaffScope::OFFICE_KEYS),
         "requester_identity" => identity(actor), "status" => "Pending", "step" => 0,
-        "approvers" => channel(actor), "history" => [], "evidence" => evidence(record.data, proposed)
-      })
+        "history" => [], "evidence" => evidence(record.data, proposed)
+      }.merge(routing))
     end
+  end
+
+  def self.edit_data(record, actor)
+    return record.data unless record.module_slug == "training-form"
+
+    revision = ModuleRecord.where(module_slug: SLUG)
+      .where("data::jsonb ->> 'record_id' = ? AND data::jsonb ->> 'status' = 'Pending'", record.id.to_s).first
+    return record.data unless revision && revision.data["requester_identity"] == identity(actor)
+
+    revision.data["proposed"].deep_dup
   end
 
   def self.evidence(*snapshots)
@@ -85,9 +116,50 @@ class TrainingEditApproval
     end
   end
 
+  def self.pending_for(actor)
+    return [] if actor.blank?
+
+    # The sidebar checks all pending revisions. Reuse one catalogue for this request
+    # instead of loading every User and new-user record once per revision.
+    staff_catalogue = TrainingStaffScope.staff_catalogue
+    ModuleRecord.where(module_slug: SLUG).where("data::jsonb ->> 'status' = 'Pending'").order(id: :desc).select do |revision|
+      assign_automatic_approver!(revision, staff_catalogue: staff_catalogue)
+      visible?(revision, actor)
+    end
+  end
+
+  # Lists and badges need routing metadata, not image evidence or training snapshots.
+  # Projected revisions are read-only; routing and decisions use complete records.
+  def self.summary_scope(scope = ModuleRecord.where(module_slug: SLUG))
+    scope.select(:id, :module_slug, :created_at, :updated_at)
+      .select("(module_records.data::jsonb - ARRAY['before', 'proposed', 'evidence', 'history'])::text AS data")
+      .readonly
+  end
+
+  def self.summaries_for(actor, pending_only: false)
+    return [] if actor.blank?
+
+    scope = ModuleRecord.where(module_slug: SLUG)
+    scope = scope.where("data::jsonb ->> 'status' = 'Pending'") if pending_only
+    staff_catalogue = nil
+    summary_scope(scope).order(id: :desc).filter_map do |summary|
+      if summary.data["status"] == "Pending" && summary.data["approval_role"] != "agronomist"
+        # Preserve legacy routing, loading staff once only when routing is needed.
+        staff_catalogue ||= TrainingStaffScope.staff_catalogue
+        revision = ModuleRecord.find(summary.id)
+        assign_automatic_approver!(revision, staff_catalogue: staff_catalogue)
+        summary.data = revision.data.except("before", "proposed", "evidence", "history")
+      end
+      summary if visible?(summary, actor)
+    end
+  end
+
   def self.visible?(revision, actor)
     return true if actor["user_type"].to_s.casecmp("admin").zero? || revision.data["requester_identity"] == identity(actor)
 
+    if revision.data["approver_identities"].present?
+      return Array(revision.data["approver_identities"]).include?(identity(actor))
+    end
     aliases = actor_usernames(actor)
     Array(revision.data["approvers"]).any? { |label| aliases.include?(username(label)) }
   end
@@ -96,39 +168,103 @@ class TrainingEditApproval
     return false unless revision.data["status"] == "Pending" && Array(revision.data["approvers"]).any?
     return true if actor["user_type"].to_s.casecmp("admin").zero?
 
+    if revision.data["approver_identities"].present?
+      return revision.data["approver_identities"][revision.data["step"].to_i] == identity(actor)
+    end
     approver = revision.data["approvers"][revision.data["step"].to_i]
     actor_usernames(actor).include?(username(approver))
+  end
+
+  # The "before" snapshot and the live record store the same values in different
+  # shapes: blank as nil or "", a single upload as "path" or ["path"], and keys
+  # that only appear once a newer form version saves them. Comparing raw hashes
+  # therefore rejects approvals where nothing actually changed, so compare a
+  # normalised view instead. Real content edits still differ and are still caught.
+  def self.comparable_data(data)
+    Hash(data).each_with_object({}) do |(key, value), memo|
+      normalized = comparable_value(value)
+      memo[key] = normalized unless normalized.nil?
+    end
+  end
+
+  def self.comparable_value(value)
+    case value
+    when String
+      value.strip.presence
+    when Array
+      cleaned = value.filter_map { |item| comparable_value(item) }
+      # A single upload is stored as "path" in one snapshot and ["path"] in the
+      # other, so collapse one-element arrays to make those two forms equal.
+      cleaned.size == 1 ? cleaned.first : cleaned.presence
+    when Hash
+      comparable_data(value).presence
+    else
+      value
+    end
+  end
+
+  # Apply only the requested changes to the latest record. A later unrelated
+  # edit must not block approval or be overwritten by the old proposed snapshot.
+  def self.merge_approved_data(before:, proposed:, current:)
+    before, proposed, current = [before, proposed, current].map { |value| Hash(value) }
+    keys = before.keys | proposed.keys
+    # Email is stamped/backfilled on save, not an editable training field.
+    # Keep the current email even for old pending snapshots lacking that key.
+    changed = keys.reject { |key| key == "created_by_email" }
+      .select { |key| comparable_value(before[key]) != comparable_value(proposed[key]) }
+    protected_keys = (before.keys | current.keys).select do |key|
+      (key.start_with?("created_by") && key != "created_by_email") ||
+        (%w[vrp_id select_vrp jeevika_jankar_id fco_name trainee_department] + TrainingStaffScope::OFFICE_KEYS).include?(key)
+    end
+    conflicts = changed.select do |key|
+      live = comparable_value(current[key])
+      live != comparable_value(before[key]) && live != comparable_value(proposed[key])
+    end
+    # Ownership/office changes can invalidate the saved approval routing.
+    conflicts |= protected_keys.select { |key| comparable_value(current[key]) != comparable_value(before[key]) }
+    if conflicts.any?
+      raise InvalidTransition, "These training fields changed after this request: #{conflicts.sort.join(', ')}. Reject this request and submit a fresh edit."
+    end
+
+    current.deep_dup.tap do |merged|
+      changed.each do |key|
+        proposed.key?(key) ? merged[key] = proposed[key].deep_dup : merged.delete(key)
+      end
+    end
   end
 
   def self.status_label(revision)
     status = revision.data["status"].to_s
     return "Approved" if status == "Approved"
-    return "Returned" if %w[Rejected Returned].include?(status)
+    return "Rejected" if status == "Rejected"
 
     approver = Array(revision.data["approvers"])[revision.data["step"].to_i]
-    approver.present? ? "Pending at #{approver}" : "Pending - approval channel not configured"
+    approver.present? ? "Pending at #{approver}" : "Pending - Agronomist assignment unavailable"
   end
 
   def self.decide!(revision:, actor:, decision:, remarks:)
+    assign_automatic_approver!(revision)
     raise InvalidTransition, "Invalid decision." unless %w[approve reject route].include?(decision)
     revision.with_lock do
       data = revision.data.deep_dup
       if decision == "route"
         raise InvalidTransition, "Only admin can route an unassigned pending request." unless actor["user_type"].to_s.casecmp("admin").zero? && data["status"] == "Pending" && Array(data["approvers"]).empty?
-        data["approvers"] = channel(data["requester"])
-        raise InvalidTransition, "Configure a Training Form Edit approval channel for this requester first." if data["approvers"].empty?
+        routing = automatic_routing(data["before"] || {}, data["requester"] || {})
+        raise InvalidTransition, "Assign a single active Agronomist account to the training's FCO office first." if routing.empty?
+        data.merge!(routing)
       else
         raise InvalidTransition, "This request is not awaiting your approval." unless can_decide?(revision, actor)
         raise InvalidTransition, "Remarks are required." if remarks.blank?
         if decision == "reject"
-          data["status"] = "Returned"
+          data["status"] = "Rejected"
         else
           data["step"] = data["step"].to_i + 1
           if data["step"] >= data["approvers"].size
             record = ModuleRecord.find(data["record_id"])
             record.with_lock do
-              raise InvalidTransition, "The original record changed. Reject this request and submit a fresh edit." unless record.module_slug == "training-form" && record.data == data["before"]
-              record.update!(data: data["proposed"])
+              raise InvalidTransition, "The original record is no longer a training form." unless record.module_slug == "training-form"
+              merged = merge_approved_data(before: data["before"], proposed: data["proposed"], current: record.data)
+              record.update!(data: merged)
             end
             data["status"] = "Approved"
           end
