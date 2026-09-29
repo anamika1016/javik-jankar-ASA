@@ -31,7 +31,7 @@ class ApiAuthToken
     when "User"
       User.find_by(id: data["id"]) if "User".safe_constantize&.table_exists?
     when "Vrp"
-      Vrp.find_by(id: data["id"]) if "Vrp".safe_constantize&.table_exists?
+      Vrp.where(is_active: true, is_deleted: false).find_by(id: data["id"]) if "Vrp".safe_constantize&.table_exists?
     when "ModuleRecord"
       ModuleRecord.where(module_slug: "new-user").find_by(id: data["id"]) if defined?(ModuleRecord) && ModuleRecord.table_exists?
     end

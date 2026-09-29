@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_19_102909) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_29_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -333,6 +333,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_19_102909) do
     t.string "module_slug", null: false
     t.datetime "updated_at", null: false
     t.index "(((data)::jsonb ->> 'mobile_no'::text))", name: "index_module_records_new_users_on_mobile_no", where: "((module_slug)::text = 'new-user'::text)"
+    t.index "(((data)::jsonb ->> 'record_id'::text))", name: "index_training_edits_on_record_id", where: "((module_slug)::text = 'training-form-edit-request'::text)"
+    t.index "(((data)::jsonb ->> 'status'::text))", name: "index_training_edits_on_status", where: "((module_slug)::text = 'training-form-edit-request'::text)"
     t.index "((data)::jsonb)", name: "index_module_records_on_json_data", using: :gin
     t.index "lower(((data)::jsonb ->> 'email'::text))", name: "index_module_records_new_users_on_lower_email", where: "((module_slug)::text = 'new-user'::text)"
     t.index "lower(((data)::jsonb ->> 'user_name'::text))", name: "index_module_records_new_users_on_lower_user_name", where: "((module_slug)::text = 'new-user'::text)"

@@ -6895,6 +6895,7 @@ function initDeferredLayoutPage() {
     };
     const englishAliases = {
       "ट्रेनिंग प्रपत्र": "Training Form",
+      "कृषि जानकार (VRP) के रूप में संलग्नता हेतु घोषणा एवं स्वीकृति पत्र": "Declaration and Acceptance for Engagement as Jeevika Jankar (VRP)",
       "VRP training details save karne ke liye.": "Save VRP training details.",
       "Saved training records dekhne ke liye.": "View saved training records.",
       "Training documents/videos upload karna.": "Upload training documents/videos.",
@@ -7125,13 +7126,19 @@ function initDeferredLayoutPage() {
         return;
       }
 
-      loadGoogleTranslate().then(() => {
+      const selectLanguage = (attempt = 0) => {
         const combo = document.querySelector(".goog-te-combo");
-        if (!combo) return;
+        if (!combo) {
+          // Google invokes its callback before the select is always attached.
+          // Retry briefly so first-login agreement pages translate without a refresh.
+          if (attempt < 20) window.setTimeout(() => selectLanguage(attempt + 1), 100);
+          return;
+        }
 
         combo.value = googleLanguageCodes[language] || "en";
         combo.dispatchEvent(new Event("change"));
-      });
+      };
+      loadGoogleTranslate().then(() => selectLanguage());
     };
 
     const preserveSpacing = (original, replacement) => {
@@ -7246,14 +7253,12 @@ function initDeferredLayoutPage() {
 
 	    const setLanguage = (language, fromPageLoad) => {
       const nextLanguage = ["en", "hi", "mr", "or", "gu"].includes(language) ? language : "en";
-      const previousLanguage = localStorage.getItem("vrp_language") || "en";
       localStorage.setItem("vrp_language", nextLanguage);
-      if (!fromPageLoad && nextLanguage === "en" && previousLanguage !== "en") {
-        window.location.reload();
-        return;
-      }
-      applyGoogleLanguage(nextLanguage);
+      // Restore the original DOM immediately. A full reload was especially
+      // disruptive on the agreement page and made English much slower than
+      // every other language.
       applyLanguage(nextLanguage);
+      applyGoogleLanguage(nextLanguage);
     };
 
     if (switcher) {

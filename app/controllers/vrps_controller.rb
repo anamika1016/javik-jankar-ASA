@@ -52,7 +52,9 @@ class VrpsController < ApplicationController
         registered_by: registered_by_name(vrp),
         mapped_cluster_name: vrp.cluster_incharge.presence || "-",
         status_label: vrp_status_label(vrp),
-        is_active: vrp.is_active
+        is_active: vrp.is_active,
+        active_status_changed_by: vrp_active_status_history[vrp.id.to_s]&.data&.[]("action_by").presence || "-",
+        active_status_changed_at: status_history_time(vrp_active_status_history[vrp.id.to_s])
       }
     end
   end
@@ -135,7 +137,7 @@ class VrpsController < ApplicationController
     end
 
     active = ActiveModel::Type::Boolean.new.cast(params[:active])
-    @vrp.update_columns(is_active: active, updated_at: Time.current)
+    update_vrp_active_status!(@vrp, active)
     redirect_to vrps_path, notice: "Jeevika JankaR marked #{active ? "active" : "inactive"}."
   end
 
@@ -143,10 +145,11 @@ class VrpsController < ApplicationController
     ids = Array(params[:ids]).map(&:to_i).reject(&:zero?)
     active = ActiveModel::Type::Boolean.new.cast(params[:active])
 
-    vrps = own_vrps.where(id: ids)
-    vrps.update_all(is_active: active, updated_at: Time.current)
+    manageable_ids = manageable_vrps.map(&:id)
+    vrps = Vrp.where(id: ids & manageable_ids).to_a
+    Vrp.transaction { vrps.each { |vrp| update_vrp_active_status!(vrp, active) } }
 
-    render json: { success: true, updated: vrps.count }
+    render json: { success: true, updated: vrps.size }
   end
 
   def approvals
@@ -508,7 +511,13 @@ class VrpsController < ApplicationController
   end
 
   def find_manageable_vrp(id)
-    own_vrps.find_by(id: id)
+    manageable_vrps.find { |vrp| vrp.id == id.to_i }
+  end
+
+  def manageable_vrps
+    return Vrp.all.to_a if current_app_user.blank? || admin_user?
+
+    (own_vrps.to_a + cluster_mapped_vrps.to_a).uniq
   end
 
   def cluster_mapped_vrps
@@ -2177,6 +2186,43 @@ class VrpsController < ApplicationController
     else
       Array(field_key).filter_map { |key| record.data[key].presence }.first
     end.to_s
+  end
+
+  def update_vrp_active_status!(vrp, active)
+    return vrp if vrp.is_active == active
+
+    changed_at = Time.current
+    actor = current_app_user || {}
+    actor_name = actor["name"].presence || actor["username"].presence || actor["user_name"].presence || "System"
+
+    Vrp.transaction do
+      vrp.update_columns(is_active: active, updated_at: changed_at)
+      ModuleRecord.create!(module_slug: "vrp-active-status-history", data: {
+        "vrp_id" => vrp.id.to_s,
+        "status" => active ? "Active" : "Inactive",
+        "action_by" => actor_name,
+        "action_by_id" => actor["id"].to_s,
+        "action_by_type" => actor["record_type"].to_s,
+        "action_at" => changed_at.iso8601
+      })
+    end
+    vrp
+  end
+
+  def vrp_active_status_history
+    @vrp_active_status_history ||= ModuleRecord
+      .where(module_slug: "vrp-active-status-history")
+      .order(created_at: :desc, id: :desc)
+      .each_with_object({}) { |record, rows| rows[record.data["vrp_id"].to_s] ||= record }
+  end
+
+  def status_history_time(history)
+    return "-" unless history
+
+    value = Time.zone.parse(history.data["action_at"].to_s)
+    value.strftime("%d-%m-%Y %I:%M %p")
+  rescue ArgumentError, TypeError
+    "-"
   end
 
   def sync_existing_vrp_master_records

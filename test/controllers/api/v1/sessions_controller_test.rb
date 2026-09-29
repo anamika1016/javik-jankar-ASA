@@ -85,6 +85,17 @@ class Api::V1::SessionsControllerTest < ActionDispatch::IntegrationTest
     assert_equal vrp.id, response.parsed_body.dig("user", "id")
   end
 
+  test "api token stops working immediately after JJ is deactivated" do
+    vrp = create_vrp(user_name: "inactive_token_vrp", password: "secret", agreement_accepted_at: Time.current)
+    token = ApiAuthToken.encode(vrp)
+    vrp.update!(is_active: false)
+
+    get api_v1_me_path, headers: { "Authorization" => "Bearer #{token}" }, as: :json
+
+    assert_response :unauthorized
+    assert_equal "Unauthorized. Please login again.", response.parsed_body["message"]
+  end
+
   test "api me rejects missing token" do
     get api_v1_me_path, as: :json
 

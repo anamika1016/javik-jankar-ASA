@@ -51,6 +51,18 @@ class ApplicationController < ActionController::Base
     stored_user = session[:app_user]
     return unless stored_user.present?
 
+    # Recheck JJ accounts on every request so deactivation immediately closes
+    # an already-open session instead of waiting for the refresh interval.
+    if stored_user["record_type"] == "Vrp"
+      vrp = Vrp.where(is_active: true, is_deleted: false).find_by(id: stored_user["id"])
+      unless vrp
+        reset_session
+        return
+      end
+
+      return refresh_app_user_session!(vrp)
+    end
+
     if session_refresh_fresh?
       @current_app_user = stored_user
       return stored_user

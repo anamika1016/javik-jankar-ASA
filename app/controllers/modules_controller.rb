@@ -9201,7 +9201,11 @@ class ModulesController < ApplicationController
   def training_edit_revision_for(record, skip_auto_assign: false)
     return unless record&.module_slug == "training-form"
 
-    @training_edit_revisions_by_record ||= TrainingEditApproval.summary_scope
+    revision_scope = TrainingEditApproval.summary_scope
+    if defined?(@training_edit_revision_record_ids) && @training_edit_revision_record_ids.present?
+      revision_scope = revision_scope.where("data::jsonb ->> 'record_id' IN (?)", @training_edit_revision_record_ids)
+    end
+    @training_edit_revisions_by_record ||= revision_scope
       .order(id: :desc).to_a.each_with_object({}) do |revision, index|
         index[revision.data["record_id"].to_s] ||= revision
       end
@@ -9249,6 +9253,7 @@ class ModulesController < ApplicationController
     end
     records = records.select { |record| target_record_visible?(record) } if target_record_source?
     if @slug == "training-form-list"
+      @training_edit_revision_record_ids = records.map { |record| record.id.to_s }
       return records.sort_by { |record|
         revision = training_edit_revision_for(record, skip_auto_assign: true)
         pending = revision && revision.data["status"] == "Pending" ? 0 : 1

@@ -96,6 +96,19 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     sender.verify
   end
 
+  test "deactivated JJ is logged out on the next request" do
+    vrp = create_vrp(user_name: "active_session_jj", password: "secret", agreement_accepted_at: Time.current)
+    post login_path, params: { login: vrp.user_name, password: "secret" }
+    assert_redirected_to dashboard_path
+
+    vrp.update!(is_active: false)
+    get dashboard_path
+
+    assert_redirected_to login_path
+    follow_redirect!
+    assert_includes response.body, "Please login first."
+  end
+
   private
 
   def create_vrp(attributes = {})

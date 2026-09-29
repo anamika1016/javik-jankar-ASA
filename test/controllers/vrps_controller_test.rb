@@ -22,6 +22,22 @@ class VrpsControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes response.body, hidden_vrp.name
   end
 
+  test "CC can deactivate a mapped Jeevika Jankar and audit is recorded" do
+    cc = create_user(first_name: "Diwakar", last_name: "Tiwari", user_name: "mapped_cc_status")
+    mapped_vrp = create_vrp(name: "Mapped Status JJ", cluster_incharge: "Diwakar Tiwari", is_active: true)
+    hidden_vrp = create_vrp(name: "Other Status JJ", cluster_incharge: "Another CC", is_active: true)
+    post login_path, params: { login: cc.user_name, password: "secret" }
+
+    patch set_active_vrp_path(mapped_vrp), params: { active: false }
+
+    assert_redirected_to vrps_path
+    assert_not mapped_vrp.reload.is_active
+    assert hidden_vrp.reload.is_active
+    history = ModuleRecord.where(module_slug: "vrp-active-status-history").order(:id).last
+    assert_equal mapped_vrp.id.to_s, history.data["vrp_id"]
+    assert_equal "Diwakar Tiwari", history.data["action_by"]
+  end
+
   test "show falls back to saved gram panchayat and village lists when profile location is blank" do
     admin = create_admin_user(user_name: "vrp_show_admin", password: "secret")
     gram_panchayat = ModuleRecord.create!(
@@ -123,6 +139,27 @@ class VrpsControllerTest < ActionDispatch::IntegrationTest
     get location_options_vrps_path, params: filters.merge(level: "village", gram_panchayat: "Test GP")
     assert_response :success
     assert_equal ["गाँव एक", "गाँव दो"].sort, response.parsed_body.fetch("options").map { |option| option.fetch("value") }.sort
+  end
+
+  test "active status change records actor date and appears in list" do
+    admin = create_admin_user(user_name: "status_admin", first_name: "Status", last_name: "Admin", password: "secret")
+    vrp = create_vrp(user_name: "status_jj", created_by_id: admin.id, is_active: true)
+    post login_path, params: { login: admin.user_name, password: "secret" }
+
+    patch set_active_vrp_path(vrp), params: { active: false }
+
+    assert_redirected_to vrps_path
+    assert_not vrp.reload.is_active
+    history = ModuleRecord.where(module_slug: "vrp-active-status-history").order(:id).last
+    assert_equal vrp.id.to_s, history.data["vrp_id"]
+    assert_equal "Inactive", history.data["status"]
+    assert_equal "Status Admin", history.data["action_by"]
+    assert history.data["action_at"].present?
+
+    get vrps_path
+    assert_response :success
+    assert_includes response.body, "Status Changed By"
+    assert_includes response.body, "Status Admin"
   end
 
   private
