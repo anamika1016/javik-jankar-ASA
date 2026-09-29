@@ -28,7 +28,7 @@ class ModulesController < ApplicationController
                 :jeevika_payment_detail_rows, :jeevika_completed_payment_rows,
                 :jeevika_completed_payment_month_options, :jeevika_completed_payment_date_options,
                 :jeevika_payment_transaction_types,
-                :jeevika_bill_vrp, :bill_display_date, :bill_display_datetime,
+                :jeevika_bill_vrp, :jeevika_bill_cc_name, :bill_display_date, :bill_display_datetime,
                 :approval_sequence_from_level, :module_record_field_value, :module_upload_public_url,
                 :module_upload_public_urls,
                 :approval_level_display_label, :approval_level_label_for_sequence,
@@ -192,8 +192,11 @@ class ModulesController < ApplicationController
         "Male Count",
         "Female Count",
         "Next Farmer Training Date",
-        "Training Register Upload",
-        "Training Photo Upload with Geo Tag"
+        "Evidence/Documentation Pdf",
+        "Opening/Introduction Photo",
+        "Training Major Work Indicator Photo",
+        "Farmer Interaction Photo",
+        "Wide Group Photo"
       ]
     },
     "seed-distribution-target" => {
@@ -3396,6 +3399,10 @@ class ModulesController < ApplicationController
     bill_records = bill_records.to_a
     bill_records = bill_records.select { |record| jeevika_jankar_bill_record_visible?(record) } unless admin_dashboard_user?
     bill_records = bill_records.select { |record| jeevika_jankar_bill_blocks_duplicate?(record) }
+    if @dashboard_month_filter_value.present? && @dashboard_month_filter_value != "all"
+      m = normalize_dashboard_text(@dashboard_month_filter_value)
+      bill_records = bill_records.select { |r| normalize_dashboard_text(r.data["bill_month"].to_s) == m }
+    end
     approved_bills = bill_records.count { |r| dashboard_bill_approved?(r) }
     pending_bills = bill_records.count { |r| dashboard_bill_pending?(r) }
     billing_items = [
@@ -9191,7 +9198,7 @@ class ModulesController < ApplicationController
     head :forbidden unless keys.include?(requested)
   end
 
-  def training_edit_revision_for(record)
+  def training_edit_revision_for(record, skip_auto_assign: false)
     return unless record&.module_slug == "training-form"
 
     @training_edit_revisions_by_record ||= TrainingEditApproval.summary_scope
@@ -9199,7 +9206,7 @@ class ModulesController < ApplicationController
         index[revision.data["record_id"].to_s] ||= revision
       end
     revision = @training_edit_revisions_by_record[record.id.to_s]
-    if revision && revision.data["status"] == "Pending" && revision.data["approval_role"] != "agronomist"
+    if !skip_auto_assign && revision && revision.data["status"] == "Pending" && revision.data["approval_role"] != "agronomist"
       @training_edit_staff_catalogue ||= TrainingStaffScope.staff_catalogue
       full_revision = ModuleRecord.find(revision.id)
       TrainingEditApproval.assign_automatic_approver!(full_revision, staff_catalogue: @training_edit_staff_catalogue)
@@ -9230,6 +9237,7 @@ class ModulesController < ApplicationController
     return [] unless ModuleRecord.table_exists?
 
     records_scope = ModuleRecord.where(module_slug: record_source_slug)
+    records_scope = records_scope.order(created_at: :desc).limit(200) if @slug == "training-form-list" && request.format.html? && params[:all].blank?
     records = records_scope.to_a
     if record_source_slug == "jeevika-jankar-bill-process"
       records = if ["jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail"].include?(@slug) && jeevika_jankar_payment_module_access?(@slug)
@@ -9242,7 +9250,7 @@ class ModulesController < ApplicationController
     records = records.select { |record| target_record_visible?(record) } if target_record_source?
     if @slug == "training-form-list"
       return records.sort_by { |record|
-        revision = training_edit_revision_for(record)
+        revision = training_edit_revision_for(record, skip_auto_assign: true)
         pending = revision && revision.data["status"] == "Pending" ? 0 : 1
         [pending, -(record.created_at || Time.at(0)).to_i, -record.id.to_i]
       }
@@ -9837,15 +9845,33 @@ class ModulesController < ApplicationController
     end
     names_by_id = Array(record.data["selected_farmer_names"]).map(&:to_s)
 
+    missing_external = selected_ids.select { |id| !farmers_by_id.key?(id) && id !~ /\A\d+\z/ }
+    external_lookup = {}
+    if missing_external.any?
+      target_id = record.data["target_mapping_id"]
+      target = TargetMapping.find_by(id: target_id) if target_id.present?
+      if target
+        raw_vid = target.village_id
+        village_ids = raw_vid.is_a?(String) && raw_vid.start_with?("[") ? (JSON.parse(raw_vid) rescue []) : Array(raw_vid)
+        village_ids = village_ids.flatten.map(&:to_s).reject(&:blank?)
+        if village_ids.any?
+          needed = Set.new(missing_external)
+          external_lookup = fetch_training_external_farmer_names(village_ids, needed)
+        end
+      end
+    end
+
     selected_ids.map.with_index do |id, index|
       farmer = farmers_by_id[id]
+      ext = external_lookup[id]
       {
         id: id,
-        farmer_name: farmer&.farmer_name.presence || names_by_id[index].presence || "Farmer ##{id}",
-        father_name: farmer&.father_name.presence || "-",
-        tracenet_no: farmer&.tracenet_no.presence || "-",
-        mobile_no: farmer&.mobile_no.presence || "-",
-        khasara_no: farmer&.khasara_no.presence || "-"
+        farmer_name: farmer&.farmer_name.presence || ext&.[](:farmer_name).presence || names_by_id[index].presence || "Farmer ##{id}",
+        village_name: farmer&.village_name.presence || ext&.[](:village_name).presence || "-",
+        father_name: farmer&.father_name.presence || ext&.[](:father_name).presence || "-",
+        tracenet_no: farmer&.tracenet_no.presence || ext&.[](:tracenet_no).presence || "-",
+        mobile_no: farmer&.mobile_no.presence || ext&.[](:mobile_no).presence || "-",
+        khasara_no: farmer&.khasara_no.presence || ext&.[](:khasara_no).presence || "-"
       }
     end
   end
@@ -10329,20 +10355,57 @@ class ModulesController < ApplicationController
 
   def jeevika_bill_time_slot_rows(record)
     jeevika_bill_detail_rows(record).flat_map do |item|
+      achievement = dashboard_numeric(item["achievement_count"])
+      farmers = Array(item["farmer_details"]).select do |farmer|
+        farmer["training_date"].present? && !farmer["status"].to_s.match?(/pending|rejected|returned/i)
+      end.uniq { |farmer| farmer["id"].presence || farmer }
       dates = item["timesheet_dates"].to_s.split(",").map(&:strip).reject(&:blank?)
-      dates = Array(item["farmer_details"]).filter_map { |farmer| farmer["training_date"].presence }.uniq if dates.blank?
-      dates = ["-"] if dates.blank?
-
-      dates.map do |date|
-        {
-          working_date: bill_display_date(date),
-          village: item["village"].presence || "-",
-          activity: item["main_activity"].presence || "-",
-          tci: item["activity"].presence || "-",
-          number: item["achievement_count"].presence || item["assigned_count"].presence || "0"
-        }
+      dates = farmers.map { |farmer| farmer["training_date"] }.uniq if dates.empty?
+      dates = dates.map { |date| bill_display_date(date) }.uniq
+      base = {
+        village: item["village"].presence || "-",
+        activity: item["activity"].presence || "-",
+        tci: item["main_activity"].presence || "-"
+      }
+      attendance = jeevika_bill_training_attendance_by_date(item)
+      if attendance.any?
+        next attendance.sort_by { |date, _ids| date }.map do |date, ids|
+          base.merge(working_date: bill_display_date(date), number: ids.size)
+        end
+      end
+      farmers_by_date = farmers.group_by { |farmer| bill_display_date(farmer["training_date"]) }
+      # Split only when the saved attendance accounts for the entire achievement.
+      # Legacy/aggregate entries have no reliable per-date allocation: display
+      # their working period together instead of repeating the total each day.
+      if farmers.any? && farmers.size == achievement
+        farmers_by_date.map do |date, attendees|
+          base.merge(working_date: date, number: attendees.size)
+        end
+      else
+        [base.merge(working_date: dates.presence&.join(", ") || "-", number: dashboard_quantity(achievement))]
       end
     end
+  end
+
+  def jeevika_bill_training_attendance_by_date(item)
+    return {} unless training_main_activity_type?(item["main_activity_type"].presence || "Training")
+
+    ids = Array(item["target_mapping_ids"]) + [item["target_mapping_id"]]
+    targets = TargetMapping.includes(:vrp).where(id: ids.compact_blank.uniq)
+    saved_dates = item["timesheet_dates"].to_s.split(",").filter_map { |date| parse_module_date(date.strip) }
+    saved_farmer_ids = Array(item["farmer_details"]).filter_map { |farmer| farmer["id"].presence&.to_s }.uniq
+    attendance = Hash.new { |hash, date| hash[date] = [] }
+    targets.each do |target|
+      farmer_ids = saved_farmer_ids.presence || target_farmer_ids(target)
+      matching_training_records_for_target(target, farmer_ids).each do |training|
+        date = parse_module_date(training_summary(training)[:training_date])
+        next unless date && (saved_dates.empty? || saved_dates.include?(date))
+
+        selected = training_record_selected_farmer_ids(training) & farmer_ids
+        attendance[date.to_s] |= selected if selected.any?
+      end
+    end
+    attendance
   end
 
   def jeevika_bill_description_rows(record)
@@ -10374,18 +10437,36 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_bill_prepared_by(record)
-    sent_history = jeevika_bill_approval_history(record).find { |history| history.data["action"].to_s == "Sent for Approval" }
+    all_history = jeevika_bill_approval_history(record)
+    sent_history = all_history.find { |h| h.data["action"].to_s == "Sent for Approval" }
+    first_history = all_history.first
+    vrp_name = jeevika_jankar_display_name(record.data["select_vrp_name"].presence || jeevika_jankar_vrp_label(record.data["select_vrp"])).presence
+    vrp_record_name = jeevika_bill_vrp(record)&.name.presence
+    creator = bill_creator_user(record.data) unless record.data["created_by_record_type"] == "ModuleRecord"
+    creator_record = bill_creator_module_record(record.data) unless creator
+    prepared_name = [sent_history&.data&.[]("action_by"), record.data["created_by_name"],
+      creator&.full_name, creator_record&.data&.[]("name"), creator_record&.data&.[]("full_name"),
+      record.data["created_by_username"], creator&.user_name, creator_record&.data&.[]("user_name"),
+      vrp_record_name, vrp_name].map { |value| value.to_s.strip }.reject { |value| value.blank? || value.match?(/\A(?:-|null|nil)\z/i) }.first || "-"
+    prepared_at = sent_history&.data&.[]("action_at").presence ||
+      first_history&.data&.[]("action_at").presence ||
+      record.created_at
     {
-      name: sent_history&.data&.[]("action_by").presence || "-",
-      at: bill_display_datetime(sent_history&.data&.[]("action_at").presence || record.created_at)
+      name: prepared_name,
+      at: bill_display_datetime(prepared_at)
     }
   end
 
   def jeevika_bill_approved_by_rows(record)
     approved_history = jeevika_bill_approval_history(record)
       .select { |history| history.data["action"].to_s == "Approved" }
-    approved_history.map.with_index do |history, index|
-      approval_label = index == approved_history.size - 1 ? "Finance Approval" : history.data["approval_level"].presence || "Approval"
+    approved_history.map do |history|
+      raw_label = history.data["approval_level"].presence || "Approval"
+      approval_label = if raw_label.to_s.downcase.match?(/fourth|4th|financial/)
+        "Financial Approver"
+      else
+        raw_label
+      end
       [
         approval_label,
         history.data["approver"].presence || history.data["action_by"].presence || "-",
@@ -10565,8 +10646,8 @@ class ModulesController < ApplicationController
 
     (data["created_by_id"].present? && new_user_module_records.find { |record| record.id.to_s == data["created_by_id"].to_s }) ||
       new_user_module_records.detect do |record|
-        record.data["user_name"].to_s == data["created_by_username"].to_s ||
-          record.data["email"].to_s.casecmp(data["created_by_email"].to_s).zero?
+        (data["created_by_username"].present? && record.data["user_name"].to_s == data["created_by_username"].to_s) ||
+          (data["created_by_email"].present? && record.data["email"].to_s.casecmp(data["created_by_email"].to_s).zero?)
       end
   end
 
@@ -11131,6 +11212,7 @@ class ModulesController < ApplicationController
         {
           id: farmer_id.to_s,
           name: farmer&.farmer_name.presence || "Farmer ##{farmer_id}",
+          village_name: farmer&.village_name,
           father_name: farmer&.father_name,
           mobile_no: farmer&.mobile_no,
           tracenet_no: farmer&.tracenet_no,
@@ -11778,7 +11860,12 @@ class ModulesController < ApplicationController
       "Main Activity" => ["main_activity", "training_topic", "activity_group", "activity_group_name"],
       "Sub Activity" => ["sub_activity", "training_subject", "activity_name", "vrp_activity_name"],
       "State Name" => ["state_name", "state"],
-      "State Code" => ["state_code"]
+      "State Code" => ["state_code"],
+      "Evidence/Documentation Pdf" => ["training_register_upload", "evidence_documentation_pdf"],
+      "Opening/Introduction Photo" => ["photo_front_view", "opening_introduction_photo"],
+      "Training Major Work Indicator Photo" => ["photo_back_view", "training_major_work_indicator_photo"],
+      "Farmer Interaction Photo" => ["photo_close_up_view", "farmer_interaction_photo"],
+      "Wide Group Photo" => ["photo_long_shot", "wide_group_photo"]
     }.fetch(field.to_s, [])
   end
 
@@ -12166,7 +12253,16 @@ class ModulesController < ApplicationController
   def jeevika_bill_vrp(record)
     return nil unless model_ready?(:Vrp)
 
-    cached_vrp_lookup(record&.data&.[]("select_vrp"))
+    data = record&.data || {}
+    candidates = [data["select_vrp"], data["vrp_id"], data["select_vrp_name"]] +
+      jeevika_bill_detail_rows(record).flat_map { |item| [item["vrp_id"], item["vrp_name"]] }
+    candidates.filter_map { |value| cached_vrp_lookup(value) }.first
+  end
+
+  def jeevika_bill_cc_name(record)
+    values = [jeevika_bill_vrp(record)&.cluster_incharge, record.data["cluster_incharge"], record.data["cc_name"]] +
+      jeevika_bill_detail_rows(record).flat_map { |item| [item["cluster_incharge"], item["cc_name"]] }
+    values.map { |value| value.to_s.strip }.reject { |value| value.blank? || value.match?(/\A(?:-|null|nil)\z/i) }.first || "-"
   end
 
   def first_present_from_items(items, *keys)
@@ -13669,6 +13765,7 @@ class ModulesController < ApplicationController
         {
           id: farmer.id.to_s,
           farmer_name: dashboard_text_value(farmer.farmer_name).presence || "Farmer ##{farmer.id}",
+          village_name: dashboard_text_value(farmer.village_name),
           father_name: dashboard_text_value(farmer.father_name),
           tracenet_no: dashboard_text_value(farmer.tracenet_no),
           mobile_no: dashboard_text_value(farmer.mobile_no),
@@ -13730,6 +13827,7 @@ class ModulesController < ApplicationController
             fid = (farmer["farmer_unique_id"].presence || farmer["id"].presence).to_s
             next unless needed_ids.include?(fid)
             result[fid] ||= {
+              village_name: farmer["village_name"].presence || row.dig("address", "village").presence || row.dig("grouping", "village"),
               farmer_name: farmer["farmer_name"].to_s.strip.presence || "Farmer ##{fid}",
               father_name: farmer["father_husband_name"].presence || farmer["father_name"].presence,
               tracenet_no: farmer["tracenet_id"].presence || farmer["tracenet_no"].presence,

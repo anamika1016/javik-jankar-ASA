@@ -1,3 +1,9 @@
+const farmerIdentityMeta = (farmer) => [["Village", farmer.village_name || farmer.village], ["Father", farmer.father_name], ["Tracenet", farmer.tracenet_no]]
+  .map(([label, raw]) => {
+    const value = String(raw ?? "").trim();
+    return `${label}: ${!value || /^(null|nil|undefined)$/i.test(value) ? "-" : value}`;
+  }).join(" | ");
+
 const closeOpenChipMultiControls = (event) => {
   const eventPath = typeof event.composedPath === "function" ? event.composedPath() : [];
   document.querySelectorAll(".chip-multi-control.open").forEach((control) => {
@@ -386,8 +392,7 @@ function initDeferredLayoutPage() {
           const name = document.createElement("strong");
           name.textContent = farmer.farmer_name || `Farmer #${farmer.id}`;
           const meta = document.createElement("small");
-          meta.textContent = [["Father", farmer.father_name], ["Tracenet", farmer.tracenet_no], ["Mobile", farmer.mobile_no], ["Village", farmer.village_name]]
-            .filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`).join(" | ");
+          meta.textContent = farmerIdentityMeta(farmer);
           content.append(name, meta);
           item.append(content);
           fragment.append(item);
@@ -656,7 +661,7 @@ function initDeferredLayoutPage() {
 
         if (farmer.father_name) {
           const fatherName = document.createElement("small");
-          fatherName.textContent = `Father: ${farmer.father_name}`;
+          fatherName.textContent = farmerIdentityMeta(farmer);
           farmerCell.appendChild(fatherName);
         }
 
@@ -2667,12 +2672,7 @@ function initDeferredLayoutPage() {
 	      }
 
 	      farmerList.innerHTML = farmers.map((farmer) => {
-	        const meta = [
-	          farmer.father_name ? `Father: ${farmer.father_name}` : "",
-	          farmer.tracenet_no ? `Tracenet: ${farmer.tracenet_no}` : "",
-	          farmer.mobile_no ? `Mobile: ${farmer.mobile_no}` : "",
-	          farmer.khasara_no ? `Khasara: ${farmer.khasara_no}` : ""
-	        ].filter(Boolean).join(" | ");
+	        const meta = farmerIdentityMeta(farmer);
 	        const isSelected = selectedFarmerIds.has(String(farmer.id));
 	        const checked = isSelected ? " checked" : "";
 	        const includedClass = farmer.already_included ? " already-included" : "";
@@ -3159,13 +3159,7 @@ function initDeferredLayoutPage() {
       farmerList.innerHTML = farmerRows.map(({ farmer, farmerId, completed, checked: isChecked }) => {
         const checked = isChecked ? " checked" : "";
         const disabled = completed ? " disabled" : "";
-        const meta = [
-          farmer.father_name ? `Father: ${farmer.father_name}` : "",
-          farmer.tracenet_no ? `Tracenet: ${farmer.tracenet_no}` : "",
-          farmer.mobile_no ? `Mobile: ${farmer.mobile_no}` : "",
-          farmer.khasara_no ? `Khasara: ${farmer.khasara_no}` : "",
-          completed ? "Already submitted" : ""
-        ].filter(Boolean).join(" | ");
+        const meta = farmerIdentityMeta(farmer);
 
         return `
           <label class="vrp-ics-farmer-item${completed ? " disabled" : ""}">
@@ -3479,12 +3473,7 @@ function initDeferredLayoutPage() {
       }
 
       farmersList.innerHTML = farmers.map((farmer) => {
-        const meta = [
-          farmer.father_name ? `Father: ${farmer.father_name}` : "",
-          farmer.tracenet_no ? `Tracenet: ${farmer.tracenet_no}` : "",
-          farmer.mobile_no ? `Mobile: ${farmer.mobile_no}` : "",
-          farmer.khasara_no ? `Khasara: ${farmer.khasara_no}` : ""
-        ].filter(Boolean).join(" | ");
+        const meta = farmerIdentityMeta(farmer);
 
         return `
           <label class="vrp-ics-farmer-item${farmer.mapped_to_other ? " disabled" : ""}">
@@ -4169,7 +4158,8 @@ function initDeferredLayoutPage() {
       const totalHeader = weeklyHeaderRow?.querySelector("th:nth-last-child(2)");
       if (totalHeader) totalHeader.hidden = villageTargetMode();
 
-      weeklySummary.hidden = villageTargetMode();
+      weeklySummary.hidden = false;
+      weeklySummary.style.display = "";
       weeklySummary.classList.toggle("target-weekly-village-mode", villageTargetMode());
       if (!rows.length) {
         weeklyRows.innerHTML = `<tr><td colspan="${villageTargetMode() ? 6 : 8}">Select Main Activity to view weekly plan.</td></tr>`;
@@ -4385,12 +4375,7 @@ function initDeferredLayoutPage() {
       }
 
       farmerList.innerHTML = farmers.map((farmer) => {
-        const meta = [
-          farmer.father_name ? `Father: ${farmer.father_name}` : "",
-          farmer.tracenet_no ? `Tracenet: ${farmer.tracenet_no}` : "",
-          farmer.mobile_no ? `Mobile: ${farmer.mobile_no}` : "",
-          farmer.khasara_no ? `Khasara: ${farmer.khasara_no}` : ""
-        ].filter(Boolean).join(" | ");
+        const meta = farmerIdentityMeta(farmer);
         const alreadyMapped = farmer.already_mapped;
         const checked = farmer.selected ? " checked" : "";
 
@@ -6090,9 +6075,7 @@ function initDeferredLayoutPage() {
 
       const rows = farmers.map((farmer) => `
         <tr>
-          <td>${escapeHtml(farmer.name)}</td>
-          <td>${escapeHtml(farmer.father_name || "-")}</td>
-          <td>${escapeHtml(farmer.mobile_no || "-")}</td>
+          <td>${escapeHtml(farmer.name)}<small>${escapeHtml(farmerIdentityMeta(farmer))}</small></td>
           <td>${escapeHtml(farmer.department || "-")}</td>
           <td>${escapeHtml(farmer.training_topic || "-")}</td>
           <td>${escapeHtml(farmer.training_subject || "-")}</td>
@@ -6106,8 +6089,6 @@ function initDeferredLayoutPage() {
             <thead>
               <tr>
                 <th>Farmer</th>
-                <th>Father</th>
-                <th>Mobile</th>
                 <th>Department</th>
                 <th>Main Activity</th>
                 <th>Sub Activity</th>
@@ -6170,7 +6151,7 @@ function initDeferredLayoutPage() {
 
       if (totalTargetInput) totalTargetInput.value = String(totalTarget);
       if (totalAchievementInput) totalAchievementInput.value = String(totalAchievement);
-      if (grandTotalInput && !grandTotalInput.dataset.userEdited) grandTotalInput.value = JEEVIKA_BILL_FIXED_TOTAL.toFixed(2);
+      if (grandTotalInput && !grandTotalInput.dataset.userEdited && grandTotalInput.value) grandTotalInput.value = grandTotalInput.value;
       syncPaymentRemarks();
     };
 
@@ -7263,9 +7244,14 @@ function initDeferredLayoutPage() {
 
       window.__vrpApplyLanguage = applyLanguage;
 
-	    const setLanguage = (language) => {
+	    const setLanguage = (language, fromPageLoad) => {
       const nextLanguage = ["en", "hi", "mr", "or", "gu"].includes(language) ? language : "en";
+      const previousLanguage = localStorage.getItem("vrp_language") || "en";
       localStorage.setItem("vrp_language", nextLanguage);
+      if (!fromPageLoad && nextLanguage === "en" && previousLanguage !== "en") {
+        window.location.reload();
+        return;
+      }
       applyGoogleLanguage(nextLanguage);
       applyLanguage(nextLanguage);
     };
@@ -7387,7 +7373,7 @@ function initDeferredLayoutPage() {
       });
     });
 
-    setLanguage(localStorage.getItem("vrp_language") || "en");
+    setLanguage(localStorage.getItem("vrp_language") || "en", true);
 
     if (!window.__vrpLanguageObserver) {
       const observeTarget = () => document.querySelector(".app-main") || document.body;

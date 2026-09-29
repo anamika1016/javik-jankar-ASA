@@ -23,13 +23,11 @@
       <table class="module-table compact-table agreement-archive-table" data-page-size="<%= [@accepted_agreements.size, 1].max %>">
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Village</th>
-            <th>FCO Name</th>
-            <th>Mobile Number</th>
-            <th>Accepted At</th>
-            <th>Signature</th>
             <th>View</th>
+            <th>Name</th>
+            <th>FCO Name</th>
+            <th>Village</th>
+            <th>Mobile Number</th>
             <% if agreement_admin_user? %>
               <th>Action</th>
             <% end %>
@@ -39,13 +37,11 @@
           <% if @accepted_agreements.any? %>
             <% @accepted_agreements.each do |agreement| %>
               <tr>
-                <td><%= agreement[:name] %></td>
-                <td><%= agreement[:village] %></td>
-                <td><%= agreement[:fcoc] %></td>
-                <td><%= agreement[:mobile_no] %></td>
-                <td><%= agreement[:accepted_at].presence || "-" %></td>
-                <td><%= agreement[:signature_present] ? "Signed" : "Signature missing" %></td>
                 <td><%= link_to "Open", vrp_agreement_record_path(agreement[:id]), class: "table-action", target: "_blank", rel: "noopener" %></td>
+                <td><%= agreement[:name] %></td>
+                <td><%= agreement[:fcoc] %></td>
+                <td><%= agreement[:village] %></td>
+                <td><%= agreement[:mobile_no] %></td>
                 <% if agreement_admin_user? %>
                   <td><%= button_to "Delete", reset_vrp_agreement_path(agreement[:id]), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this agreement and require signature again?" } } %></td>
                 <% end %>
@@ -53,7 +49,7 @@
             <% end %>
           <% else %>
             <tr>
-              <td colspan="8">No accepted agreements found for your mapped Jeevika Jankars.</td>
+              <td colspan="<%= agreement_admin_user? ? 6 : 5 %>">No accepted agreements found for your mapped Jeevika Jankars.</td>
             </tr>
           <% end %>
         </tbody>

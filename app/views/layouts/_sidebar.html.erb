@@ -20,7 +20,10 @@
 
         <div class="side-subnav">
           <% section[:links].each do |link| %>
-            <%= link_to link.first, sidebar_link_path(link), class: "side-sub-link #{'active' if sidebar_link_active?(link)}" %>
+            <% has_pending = sidebar_link_has_pending?(link) %>
+            <%= link_to sidebar_link_path(link), class: "side-sub-link #{'active' if sidebar_link_active?(link)}" do %>
+              <%= link.first %><% if has_pending %><span class="side-pending-dot" title="Pending training approval" aria-label="Pending training approval"></span><% end %>
+            <% end %>
           <% end %>
         </div>
       </details>

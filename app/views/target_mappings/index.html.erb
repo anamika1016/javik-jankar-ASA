@@ -315,8 +315,8 @@
 
               if (selectedTotal) selectedTotal.textContent = "Village target";
               if (weeklySummary) {
-                weeklySummary.hidden = true;
-                weeklySummary.style.display = "none";
+                weeklySummary.hidden = false;
+                weeklySummary.style.display = "";
               }
               if (weeklyRows && selectedMainActivities.length && !weeklyRows.querySelector("[data-target-weekly-input]")) {
                 const escapeText = (value) => String(value || "").replace(/[&<>"']/g, (char) => ({

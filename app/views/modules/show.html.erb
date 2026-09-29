@@ -51,6 +51,7 @@
             <p>Invoice Date: <%= bill_display_date(detail_record.data["invoice_date"].presence || detail_record.created_at) %></p>
             <p>Invoice Month: <%= detail_record.data["bill_month"].presence || "-" %></p>
             <p>FCO: <%= detail_summary[:fco].presence || "-" %>, TO: <%= detail_summary[:to].presence || "-" %>, Block: <%= (bill_vrp&.vrp_profile&.block_id).presence || "-" %></p>
+            <p>CC Name: <%= jeevika_bill_cc_name(detail_record) %></p>
           </div>
         </div>
 
@@ -120,6 +121,8 @@
           </div>
           <% if jeevika_bill_status_label(detail_record).to_s.downcase.include?("final approved") %>
             <%= render "modules/approved_stamp" %>
+          <% elsif jeevika_bill_status_class(detail_record) == "pending" %>
+            <span class="bill-final-approved bill-pending-stamp" aria-label="Pending approval">◷ Pending</span>
           <% end %>
         </div>
       </section>
@@ -984,7 +987,8 @@
             <input name="module_record[grand_total]" type="number" min="0.01"
               max="<%= ModulesController::JEEVIKA_JANKAR_BILL_FIXED_TOTAL.to_i %>"
               step="0.01"
-              value="<%= @record&.data&.[]("grand_total").presence || format("%.2f", ModulesController::JEEVIKA_JANKAR_BILL_FIXED_TOTAL) %>"
+              value="<%= @record&.data&.[]("grand_total").presence %>"
+              placeholder="Enter total payment"
               data-jeevika-grand-total required>
           </label>
           <% saved_payment = @record&.data&.[]("grand_total").to_f %>
@@ -2094,7 +2098,7 @@
                   raw_sub_activities = item.data["sub_activities"].presence || item.data["sub_activity"].presence || item.data["training_subject"]
                   raw_sub_activities.is_a?(Array) ? raw_sub_activities : raw_sub_activities.to_s.split(/,\s*(?=\d+\.\s*)/)
                 end.map(&:to_s).map(&:strip).reject(&:blank?).uniq %>
-                <% training_edit_revision = training_edit_revision_for(record) if @slug == "training-form-list" %>
+                <% training_edit_revision = training_edit_revision_for(record, skip_auto_assign: true) if @slug == "training-form-list" %>
                 <tr>
                   <% edit_slug = { "approval-list" => "approval-master", "access-control-list" => "access-control", "vrp-bill-list" => "vrp-bill-add", "jeevika-jankar-bill-list" => "jeevika-jankar-bill-process", "training-form-list" => "training-form", "seed-distribution-target-list" => "seed-distribution-target", "papl360-target-list" => "papl360-target", "other-target-list" => "other-target" }.fetch(@slug, @slug) %>
                   <td>
@@ -2143,7 +2147,7 @@
                       <% value ||= Array(record.data["module_names"]).join(", ").presence if field == "Module Name" %>
                       <% value ||= Array(record.data["sub_module_names"].presence || record.data["sub_module_name"]).join(", ").presence if field == "Sub Module Name" %>
                     <% end %>
-                    <% upload_field = field == "Training Register Upload" || field == "Training Photo Upload with Geo Tag" || field == "Field Photo" || field.downcase.include?("upload") || field.downcase.include?("file") %>
+                    <% upload_field = field == "Training Register Upload" || field == "Training Photo Upload with Geo Tag" || field == "Field Photo" || field.downcase.include?("upload") || field.downcase.include?("file") || field.downcase.include?("photo") || field.downcase.end_with?("pdf") %>
                     <% value = value.join(", ") if value.is_a?(Array) && !upload_field %>
                     <% value ||= "-" %>
                     <% if field == "Status" %>

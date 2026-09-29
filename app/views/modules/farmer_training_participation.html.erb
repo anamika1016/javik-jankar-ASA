@@ -90,7 +90,7 @@
                 <td>
                   <%= row[:farmer_name] %>
                   <% if row[:father_name].present? %>
-                    <small>Father: <%= row[:father_name] %></small>
+                    <small><%= farmer_identity_meta(row[:village], row[:father_name], row[:tracenet_no]) %></small>
                   <% end %>
                 </td>
                 <td><%= row[:mobile_no].presence || "-" %></td>

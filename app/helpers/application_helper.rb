@@ -13,6 +13,14 @@ module ApplicationHelper
   # Farmer id lists are stored as raw ids. Show the same identity the Training
   # Form shows while selecting them -- name, father, tracenet -- so a reviewer
   # can tell who was added or removed. Ids with no AFL row stay as-is.
+  def farmer_identity_meta(village, father, tracenet)
+    [["Village", village], ["Father", father], ["Tracenet", tracenet]].map do |label, raw|
+      value = raw.to_s.strip
+      value = "-" if value.blank? || value.match?(/\A(?:null|nil|undefined)\z/i)
+      "#{label}: #{value}"
+    end.join(" | ")
+  end
+
   def training_farmer_labels(ids)
     ids = Array(ids).map(&:to_s).compact_blank.uniq
     return {} if ids.empty? || !"Afl".safe_constantize&.table_exists?
@@ -20,18 +28,80 @@ module ApplicationHelper
     @training_farmer_label_cache ||= {}
     missing = ids - @training_farmer_label_cache.keys
     if missing.any?
-      Afl.where(id: missing).select(:id, :farmer_name, :father_name, :tracenet_no).each do |farmer|
+      Afl.where(id: missing).select(:id, :farmer_name, :village_name, :father_name, :tracenet_no).each do |farmer|
         @training_farmer_label_cache[farmer.id.to_s] = {
           name: farmer.farmer_name.to_s.strip.presence || "Farmer ##{farmer.id}",
-          meta: [("Father: #{farmer.father_name}" if farmer.father_name.present?),
-                 ("Tracenet: #{farmer.tracenet_no}" if farmer.tracenet_no.present?)].compact.join(" · ")
+          meta: farmer_identity_meta(farmer.village_name, farmer.father_name, farmer.tracenet_no)
         }
       end
+
+      still_missing = (missing - @training_farmer_label_cache.keys).select { |id| id !~ /\A\d+\z/ }
+      if still_missing.any?
+        resolve_external_farmer_labels_for_approval(still_missing)
+      end
+
       (missing - @training_farmer_label_cache.keys).each do |id|
         @training_farmer_label_cache[id] = { name: "Farmer ##{id}", meta: "not in AFL master" }
       end
     end
     @training_farmer_label_cache.slice(*ids)
+  end
+
+  def resolve_external_farmer_labels_for_approval(farmer_ids)
+    needed = Set.new(farmer_ids)
+    village_ids = []
+
+    if defined?(@revision) && @revision.respond_to?(:data)
+      record_id = @revision.data["record_id"]
+      if record_id.present?
+        record = ModuleRecord.find_by(id: record_id)
+        target_id = record&.data&.[]("target_mapping_id")
+        target = TargetMapping.find_by(id: target_id) if target_id.present?
+        if target
+          raw_vid = target.village_id
+          village_ids = raw_vid.is_a?(String) && raw_vid.start_with?("[") ? (JSON.parse(raw_vid) rescue []) : Array(raw_vid)
+          village_ids = village_ids.flatten.map(&:to_s).reject(&:blank?)
+        end
+      end
+    end
+
+    return if village_ids.empty?
+
+    require "net/http"
+    village_ids.each do |vid|
+      break if needed.empty?
+      begin
+        uri = URI("https://asa.ploughmanagro.com/api/farmers/get_farmers.json")
+        page = 1
+        loop do
+          uri.query = URI.encode_www_form(data_type: "detail", type: "village", village_id: vid, page: page, per_page: 500)
+          resp = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 4, read_timeout: 12) { |http| http.get(uri.request_uri) }
+          break unless resp.is_a?(Net::HTTPSuccess)
+          payload = JSON.parse(resp.body)
+          break if payload["success"] == false
+          page_rows = Array(payload["data"])
+          page_rows.each do |row|
+            farmer = row["farmer"].is_a?(Hash) ? row["farmer"] : row
+            fid = (farmer["farmer_unique_id"].presence || farmer["id"].presence).to_s
+            next unless needed.include?(fid)
+
+            father = farmer["father_husband_name"].presence || farmer["father_name"].presence
+            tracenet = farmer["tracenet_id"].presence || farmer["tracenet_no"].presence
+            @training_farmer_label_cache[fid] = {
+              name: farmer["farmer_name"].to_s.strip.presence || "Farmer ##{fid}",
+              meta: farmer_identity_meta(farmer["village_name"].presence || row.dig("address", "village").presence || row.dig("grouping", "village"), father, tracenet)
+            }
+            needed.delete(fid)
+          end
+          break if page_rows.empty? || needed.empty?
+          total = Integer(payload["count"]) rescue nil
+          break if total && page_rows.size >= total
+          page += 1
+        end
+      rescue StandardError => e
+        Rails.logger.warn("training_farmer_labels external fetch for village #{vid}: #{e.message}")
+      end
+    end
   end
 
   # Extra record keys the form stores but does not list as fields. The geo-tagged
@@ -315,6 +385,22 @@ module ApplicationHelper
 
   def sidebar_section_active?(section)
     section[:links].any? { |link| sidebar_link_active?(link) }
+  end
+
+  def sidebar_link_has_pending?(link)
+    label, _type, _target = link
+    @sidebar_pending_flags ||= compute_sidebar_pending_flags
+    @sidebar_pending_flags[label.to_s]
+  end
+
+  def compute_sidebar_pending_flags
+    flags = {}
+    if defined?(TrainingEditApproval) && current_app_user.present?
+      has_pending = TrainingEditApproval.summaries_for(current_app_user, pending_only: true)
+        .any? { |revision| TrainingEditApproval.can_decide?(revision, current_app_user) }
+      flags["Training Form List"] = has_pending
+    end
+    flags
   end
 
   def sidebar_access_key(link)
