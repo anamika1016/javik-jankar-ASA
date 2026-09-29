@@ -393,6 +393,12 @@ module ApplicationHelper
     @sidebar_pending_flags[label.to_s]
   end
 
+  # The parent menu stays collapsed by default, so it carries the same dot as
+  # soon as any link inside it is waiting on this user.
+  def sidebar_section_has_pending?(section)
+    Array(section[:links]).any? { |link| sidebar_link_has_pending?(link) }
+  end
+
   def compute_sidebar_pending_flags
     flags = {}
     if defined?(TrainingEditApproval) && current_app_user.present?

@@ -470,6 +470,11 @@ a {
   flex-shrink: 0;
 }
 
+/* The summary is already a flex row with its own gap. */
+.side-module summary .side-pending-dot {
+  margin-left: 0;
+}
+
 .app-main {
   min-width: 0;
   padding: 24px 28px 36px;
