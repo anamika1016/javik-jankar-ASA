@@ -7090,6 +7090,30 @@ function initDeferredLayoutPage() {
       document.cookie = `googtrans=${value};path=/`;
       document.cookie = `googtrans=${value};path=/;domain=${window.location.hostname}`;
     };
+    // Returning to English is a revert, not a translation. The cookie has to be
+    // removed, otherwise Google translates the page again on the next load.
+    const clearGoogleTranslateCookie = () => {
+      const expired = "expires=Thu, 01 Jan 1970 00:00:00 GMT";
+      [
+        "path=/",
+        `path=/;domain=${window.location.hostname}`,
+        `path=/;domain=.${window.location.hostname}`
+      ].forEach((scope) => {
+        document.cookie = `googtrans=;${scope};${expired}`;
+      });
+    };
+    // Google attaches its select only after its callback fires, so every switch
+    // retries briefly instead of silently doing nothing.
+    const selectGoogleLanguage = (value, attempt = 0) => {
+      const combo = document.querySelector(".goog-te-combo");
+      if (!combo) {
+        if (attempt < 20) window.setTimeout(() => selectGoogleLanguage(value, attempt + 1), 100);
+        return;
+      }
+
+      combo.value = value;
+      combo.dispatchEvent(new Event("change"));
+    };
     const loadGoogleTranslate = () => {
       if (window.google?.translate?.TranslateElement) return Promise.resolve();
       if (window.__vrpGoogleTranslateLoading) return window.__vrpGoogleTranslateLoading;
@@ -7116,29 +7140,19 @@ function initDeferredLayoutPage() {
       return window.__vrpGoogleTranslateLoading;
     };
     const applyGoogleLanguage = (language) => {
-      setGoogleTranslateCookie(language);
       if (language === "en") {
-        const combo = document.querySelector(".goog-te-combo");
-        if (combo) {
-          combo.value = "";
-          combo.dispatchEvent(new Event("change"));
-        }
+        clearGoogleTranslateCookie();
+        // Nothing to undo unless Google actually translated the page.
+        if (!document.documentElement.className.includes("translated")) return;
+
+        // Selecting the page language is Google's own "show original" action.
+        // The empty placeholder value leaves the page translated.
+        loadGoogleTranslate().then(() => selectGoogleLanguage("en"));
         return;
       }
 
-      const selectLanguage = (attempt = 0) => {
-        const combo = document.querySelector(".goog-te-combo");
-        if (!combo) {
-          // Google invokes its callback before the select is always attached.
-          // Retry briefly so first-login agreement pages translate without a refresh.
-          if (attempt < 20) window.setTimeout(() => selectLanguage(attempt + 1), 100);
-          return;
-        }
-
-        combo.value = googleLanguageCodes[language] || "en";
-        combo.dispatchEvent(new Event("change"));
-      };
-      loadGoogleTranslate().then(() => selectLanguage());
+      setGoogleTranslateCookie(language);
+      loadGoogleTranslate().then(() => selectGoogleLanguage(googleLanguageCodes[language] || "en"));
     };
 
     const preserveSpacing = (original, replacement) => {
