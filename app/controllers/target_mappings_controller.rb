@@ -277,16 +277,35 @@ class TargetMappingsController < ApplicationController
 
   private
 
+  # The farmer API frequently omits the address block, so the village would show
+  # as "-" even though the list was fetched for one specific village. Keep the
+  # selected village label and use it whenever the API leaves the name blank.
+  def blank_village_name?(value)
+    text = value.to_s.strip
+    text.blank? || text == "-" || text.match?(/\A(?:null|nil|undefined|n\/a)\z/i)
+  end
+
   def external_village_farmers_for(village_value)
-    village_ids = parse_location_values(village_value).map(&:first).reject(&:blank?)
+    village_pairs = parse_location_values(village_value)
+    village_names_by_id = village_pairs.to_h { |id, label| [id.to_s, label.to_s.strip] }
+    village_ids = village_pairs.map { |id, _label| id.to_s }.reject(&:blank?)
     return [] if village_ids.blank?
 
     village_ids.uniq.each_slice(6).flat_map do |batch|
       batch.map do |village_id|
         Thread.new do
           Rails.application.executor.wrap do
-            Rails.cache.fetch(["asa-village-farmer-list", village_id], expires_in: 1.minute, skip_nil: true) do
+            rows = Rails.cache.fetch(["asa-village-farmer-list", village_id], expires_in: 1.minute, skip_nil: true) do
               fetch_external_farmers(data_type: "detail", type: "village", id_key: "village_id", id: village_id)
+            end
+            # Decorate after the cache read so the cache keeps raw API rows.
+            next nil if rows.nil?
+
+            fallback = village_names_by_id[village_id].presence
+            next rows if fallback.blank?
+
+            rows.map do |farmer|
+              blank_village_name?(farmer[:village_name]) ? farmer.merge(village_name: fallback) : farmer
             end
           end
         end
@@ -912,6 +931,10 @@ class TargetMappingsController < ApplicationController
     parsed_village_values = parse_location_values(village_id)
     return [] if parsed_village_values.blank?
 
+    # AFL rows do not always carry a village name, but the farmers were looked
+    # up per village, so fall back to the selected village's own label.
+    village_names_by_id = parsed_village_values.to_h { |id, label| [id.to_s, label.to_s.strip] }
+
     target_afl_scope_for_location(
       vrp_id,
       parsed_fco_id,
@@ -934,6 +957,8 @@ class TargetMappingsController < ApplicationController
             tracenet_no: profile[:tracenet_no].presence || "-",
             mobile_no: profile[:mobile_no].presence || "-",
             khasara_no: profile[:khasara_no].presence || "-",
+            village_name: profile[:village_name].presence ||
+              village_names_by_id[afl.village_id.to_s].presence || "-",
             assigned_to_other: assigned_ids.include?(afl.id.to_s),
             selected: selected_ids.include?(afl.id.to_s)
           }
