@@ -55,4 +55,36 @@ class JeevikaBillInvoiceTest < ActiveSupport::TestCase
     assert_not helper.compute_sidebar_pending_flags["Training Form List"]
   end
 
+  # The invoice footer stamps "Final Approved" bills and shows a Pending mark
+  # for everything still awaiting an approver. These are the exact status
+  # strings the saved bills carry.
+  test "the invoice stamps an approved bill and marks a pending one" do
+    def @controller.jeevika_bill_approval_history(_record); []; end
+    def @controller.jeevika_bill_approval_steps(_record); []; end
+
+    {
+      "Final Approved" => "approved",
+      "Pending at Gaurav Mittal (Chief Financial Officer, PAPL)" => "pending",
+      "Pending at Shailesh  Bagde (agricultural specialist)" => "pending",
+      "Submitted (Not sent for approval)" => "submitted",
+      "Returned by First Approver" => "returned",
+      "Rejected by Second Approver" => "rejected"
+    }.each do |status, expected|
+      record = ModuleRecord.new(data: { "status" => status })
+      assert_equal expected, @controller.send(:jeevika_bill_status_class, record),
+        "#{status.inspect} should render the #{expected} state"
+    end
+  end
+
+  # A rejected or returned bill is no longer waiting on anyone, so it must not
+  # carry the Pending mark.
+  test "a rejected or returned bill is never marked pending" do
+    def @controller.jeevika_bill_approval_history(_record); []; end
+    def @controller.jeevika_bill_approval_steps(_record); []; end
+
+    ["Returned by First Approver", "Rejected by Second Approver"].each do |status|
+      record = ModuleRecord.new(data: { "status" => status })
+      assert_not_equal "pending", @controller.send(:jeevika_bill_status_class, record)
+    end
+  end
 end

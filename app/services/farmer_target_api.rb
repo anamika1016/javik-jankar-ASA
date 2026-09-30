@@ -1188,6 +1188,7 @@ class FarmerTargetApi
       {
         id: farmer.id.to_s,
         farmer_name: farmer.farmer_name.presence || "Farmer ##{farmer.id}",
+        village_name: farmer.village_name.to_s,
         father_name: farmer.father_name.to_s,
         tracenet_no: farmer.tracenet_no.to_s,
         mobile_no: farmer.mobile_no.to_s,

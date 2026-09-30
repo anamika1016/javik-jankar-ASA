@@ -503,7 +503,22 @@ class VrpsController < ApplicationController
       own_records
     end
 
-    (base_vrps + approval_related_vrps).uniq
+    (base_vrps + office_scoped_vrps + approval_related_vrps).uniq
+  end
+
+  # A staff login that belongs to an FCO office sees every Jeevika Jankar of
+  # that office, whoever registered them. A Jeevika Jankar login stays limited
+  # to its own records, so this never widens a JJ's own view.
+  def office_scoped_vrps
+    return [] if current_app_user&.dig("record_type").to_s == "Vrp"
+
+    offices = AgreementVrpScope.user_office_keys(current_app_user)
+    return [] if offices.blank?
+
+    Vrp.where.not(fcoc: [nil, ""]).select do |vrp|
+      key = AgreementVrpScope.office_key(vrp.fcoc)
+      key.present? && offices.include?(key)
+    end
   end
 
   def find_visible_vrp(id)

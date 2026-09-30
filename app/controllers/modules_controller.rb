@@ -12931,11 +12931,11 @@ class ModulesController < ApplicationController
       mappings = normalized_user_hierarchy_list_mappings(record)
       if mappings.blank?
         users = collapsed_hierarchy_users(record.data["level_2_users"].presence || record.data["level_2_user"], record.data["level_3_users"].presence || record.data["level_3_user"])
-        users = users.select { |level_2_user| cluster_incharge_user_label?(level_2_user) }
+        users = users.select { |level_2_user| hierarchy_cluster_incharge_label?(level_2_user) }
         users.map { |level_2_user| base.merge(level_2_user: level_2_user) }
       else
         mappings
-          .select { |mapping| cluster_incharge_user_label?(mapping["level_2_user"]) }
+          .select { |mapping| hierarchy_cluster_incharge_label?(mapping["level_2_user"]) }
           .map { |mapping| base.merge(level_2_user: mapping["level_2_user"].presence || "-") }
       end
     end
@@ -12967,6 +12967,13 @@ class ModulesController < ApplicationController
   def cluster_incharge_user_label?(label)
     role_text = label.to_s[/\(([^)]*)\)\s*\z/, 1].to_s
     role_text.downcase.include?("cluster")
+  end
+
+  # Saved hierarchy labels may or may not carry the role in parentheses, so fall
+  # back to the registered User's own role. Every other caller already pairs
+  # these two checks; the list must behave the same way.
+  def hierarchy_cluster_incharge_label?(label)
+    cluster_incharge_user_label?(label) || user_record_cluster_incharge_label?(label)
   end
 
   # Hierarchy labels do not always contain the role in parentheses. In that
@@ -13788,6 +13795,7 @@ class ModulesController < ApplicationController
       {
         id: farmer_id,
         farmer_name: "Mapped Farmer ##{farmer_id}",
+        village_name: nil,
         father_name: nil,
         tracenet_no: nil,
         mobile_no: nil,

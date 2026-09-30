@@ -42,4 +42,28 @@ class UserHierarchyListTest < ActionDispatch::IntegrationTest
       "the mapped Cluster Incharge should be listed"
     assert_includes response.body, "Rajkumar Pradhan"
   end
+
+  # Not every saved label carries "(Cluster Incharge)"; the role then has to come
+  # from the registered User, exactly as every other screen resolves it.
+  test "a subordinate saved without the role suffix is still listed" do
+    User.create!(user_name: "plain_cc", password: "secret", first_name: "Lilabati",
+                 last_name: "Bhoi", role: "Cluster Incharge", status: "Active")
+    create_mapping(head: "Sangam Kumari (Manager ics)", subordinate: "Lilabati Bhoi")
+
+    get module_path("user-hierarchy-list")
+    assert_response :success
+    assert_includes response.body, "Lilabati Bhoi",
+      "a Cluster Incharge without the role suffix should still be listed"
+  end
+
+  test "a subordinate who is not a cluster incharge stays out of the list" do
+    User.create!(user_name: "plain_agro", password: "secret", first_name: "Bimal",
+                 last_name: "Pradhan", role: "Agronomist", status: "Active")
+    create_mapping(head: "Akash Mandal (FCO-C Turekela)", subordinate: "Bimal Pradhan")
+
+    get module_path("user-hierarchy-list")
+    assert_response :success
+    assert_not_includes response.body, "Bimal Pradhan",
+      "a non cluster incharge must not appear in the Cluster Incharge list"
+  end
 end
