@@ -12949,15 +12949,14 @@ class ModulesController < ApplicationController
         status: record.data["status"].presence || "Active"
       }
 
+      # Every mapped subordinate is listed, not only Cluster Incharges, so a
+      # saved mapping is always visible on the screen that lists them.
       mappings = normalized_user_hierarchy_list_mappings(record)
       if mappings.blank?
         users = collapsed_hierarchy_users(record.data["level_2_users"].presence || record.data["level_2_user"], record.data["level_3_users"].presence || record.data["level_3_user"])
-        users = users.select { |level_2_user| hierarchy_cluster_incharge_label?(level_2_user) }
         users.map { |level_2_user| base.merge(level_2_user: level_2_user) }
       else
-        mappings
-          .select { |mapping| hierarchy_cluster_incharge_label?(mapping["level_2_user"]) }
-          .map { |mapping| base.merge(level_2_user: mapping["level_2_user"].presence || "-") }
+        mappings.map { |mapping| base.merge(level_2_user: mapping["level_2_user"].presence || "-") }
       end
     end
   end
@@ -12990,12 +12989,6 @@ class ModulesController < ApplicationController
     role_text.downcase.include?("cluster")
   end
 
-  # Saved hierarchy labels may or may not carry the role in parentheses, so fall
-  # back to the registered User's own role. Every other caller already pairs
-  # these two checks; the list must behave the same way.
-  def hierarchy_cluster_incharge_label?(label)
-    cluster_incharge_user_label?(label) || user_record_cluster_incharge_label?(label)
-  end
 
   # Hierarchy labels do not always contain the role in parentheses. In that
   # case resolve the matching registered User and inspect its saved role.

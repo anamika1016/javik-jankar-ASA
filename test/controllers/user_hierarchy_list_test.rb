@@ -101,14 +101,28 @@ class UserHierarchyListTest < ActionDispatch::IntegrationTest
     assert_equal 9, response.body.scan(/Subordinate \d+/).size
   end
 
-  test "a subordinate who is not a cluster incharge stays out of the list" do
-    User.create!(user_name: "plain_agro", password: "secret", first_name: "Bimal",
-                 last_name: "Pradhan", role: "Agronomist", status: "Active")
-    create_mapping(head: "Akash Mandal (FCO-C Turekela)", subordinate: "Bimal Pradhan")
+  # Any mapped subordinate is listed, whatever their role, so a saved mapping is
+  # never silently missing from the screen that lists mappings.
+  test "a subordinate of any role is listed" do
+    create_mapping(head: "Akashdeep Nath (FCO-Pakur)",
+                   subordinate: "Mohanlal Saha (Agrinomist)")
 
     get module_path("user-hierarchy-list")
     assert_response :success
-    assert_not_includes response.body, "Bimal Pradhan",
-      "a non cluster incharge must not appear in the Cluster Incharge list"
+    assert_includes response.body, "Mohanlal Saha",
+      "an Agronomist subordinate should be listed"
+    assert_includes response.body, "Akashdeep Nath"
+  end
+
+  test "cluster incharge and other roles appear together" do
+    create_mapping(head: "Akash Mandal (FCO-C Turekela)",
+                   subordinate: "Jagadish Putel (Cluster Incharge)")
+    create_mapping(head: "Akashdeep Nath (FCO-Pakur)",
+                   subordinate: "Mohanlal Saha (Agrinomist)")
+
+    get module_path("user-hierarchy-list")
+    assert_response :success
+    assert_includes response.body, "Jagadish Putel"
+    assert_includes response.body, "Mohanlal Saha"
   end
 end
