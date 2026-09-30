@@ -2103,6 +2103,19 @@ body {
   background: #f8fbfc;
 }
 
+/* One head can map many cluster incharges. Without a cap the row grows taller
+   than the scrolling table, pushing Head/Category/Status out of view so the row
+   looks empty. Keep the row compact and scroll the subordinates instead. */
+#user_hierarchy_list_table td {
+  vertical-align: top;
+}
+
+#user_hierarchy_list_table .approval-level-stack {
+  max-height: 208px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
 .approval-level-item strong {
   font-size: 0.92rem;
 }

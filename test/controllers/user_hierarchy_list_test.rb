@@ -56,6 +56,51 @@ class UserHierarchyListTest < ActionDispatch::IntegrationTest
       "a Cluster Incharge without the role suffix should still be listed"
   end
 
+  # The list's Edit/Delete buttons act on the checkbox value, which is the
+  # record's edit path (Delete strips the trailing "/edit").
+  test "the row exposes a working edit path and the edit screen is prefilled" do
+    record = create_mapping(head: "Akash Mandal (FCO-C Turekela)",
+                            subordinate: "Jogendra Putel (Cluster Incharge)")
+    edit_path = "/modules/user-hierarchy-mapping/records/#{record.id}/edit"
+
+    get module_path("user-hierarchy-list")
+    assert_includes response.body, edit_path, "the row checkbox should carry the edit path"
+
+    get edit_path
+    assert_response :success
+    assert_includes response.body, "Akash Mandal", "the edit screen should prefill the saved head"
+  end
+
+  test "deleting from the list removes the mapping" do
+    record = create_mapping(head: "Akash Mandal (FCO-C Turekela)",
+                            subordinate: "Jogendra Putel (Cluster Incharge)")
+
+    assert_difference -> { ModuleRecord.where(module_slug: "user-hierarchy-mapping").count }, -1 do
+      delete "/modules/user-hierarchy-mapping/records/#{record.id}"
+    end
+    assert_nil ModuleRecord.find_by(id: record.id)
+  end
+
+  # A head with many subordinates still has to render its own columns; a tall
+  # row previously pushed them out of the scrolling table.
+  test "a head with many subordinates still renders head, category and status" do
+    subs = (1..9).map { |i| "CC Person #{i} (Cluster Incharge)" }
+    ModuleRecord.create!(module_slug: "user-hierarchy-mapping", data: {
+      "stakeholder_category" => "PAPL",
+      "level_1_user" => "Akash Mandal (FCO-C Turekela)",
+      "status" => "Active",
+      "level_2_mappings" => subs.map { |s| { "level_2_user" => s, "level_3_users" => [] } },
+      "level_2_users" => subs, "level_2_user" => subs.join(", ")
+    })
+
+    get module_path("user-hierarchy-list")
+    assert_response :success
+    assert_includes response.body, "Akash Mandal"
+    assert_includes response.body, "PAPL"
+    assert_select "##{'user_hierarchy_list_table'} tbody .status-pill", minimum: 1
+    assert_equal 9, response.body.scan(/Subordinate \d+/).size
+  end
+
   test "a subordinate who is not a cluster incharge stays out of the list" do
     User.create!(user_name: "plain_agro", password: "secret", first_name: "Bimal",
                  last_name: "Pradhan", role: "Agronomist", status: "Active")

@@ -3849,23 +3849,45 @@ class ModulesController < ApplicationController
     0
   end
 
-  # Farmer-count scope: filter strictly by fco_id (numeric IDs only), not by fco name.
-  # This prevents name-based double-counting when some AFL rows have fco = 'FCO-C Sausar'
-  # but a different fco_id, which would inflate the count.
+  # AFL stores the bare FCO name ("Sausar", "Bhawanipatna") while a login's
+  # office is spelled "FCO-C Sausar", "FCO-Bhawanipatna" or "Bhawanipatna - FCO".
+  # Comparing the shared office key makes every spelling resolve to the same
+  # FCO. This works for every office -- there is no hard-coded FCO list.
+  def dashboard_afl_fco_pairs
+    @dashboard_afl_fco_pairs ||= model_ready?(:Afl) ? Afl.distinct.pluck(:fco_id, :fco) : []
+  end
+
+  def dashboard_afl_fco_ids_for(values)
+    keys = Array(values).filter_map { |value| AgreementVrpScope.office_key(value).presence }
+      .reject { |key| key == "null" }.to_set
+    return [] if keys.empty?
+
+    dashboard_afl_fco_pairs.filter_map do |fco_id, fco_name|
+      id = fco_id.to_s.strip
+      next if id.blank? || id.casecmp("null").zero?
+
+      matched = keys.include?(AgreementVrpScope.office_key(fco_name)) ||
+        keys.include?(AgreementVrpScope.office_key(id)) ||
+        keys.include?(id.downcase)
+      id if matched
+    end.uniq
+  end
+
+  # Farmer-count scope: filter strictly by fco_id, not by fco name. This
+  # prevents name-based double-counting when some AFL rows have fco =
+  # 'FCO-C Sausar' but a different fco_id, which would inflate the count.
   def dashboard_total_afl_farmer_scope
     scope = Afl.where.not(id: nil)
     fcoc_value = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
     fco_values = dashboard_summary_fco_filter_values(fcoc_value)
     return scope if fco_values.blank?
 
-    # Extract only the numeric-style fco_id values (e.g., '1004', '1006')
-    fco_id_values = fco_values.select { |v| v.match?(/\A\d+\z/) }
-
-    if fco_id_values.any?
-      scope = scope.where("LOWER(BTRIM(COALESCE(fco_id, ''))) IN (:fco_id_values)", fco_id_values: fco_id_values)
+    fco_ids = dashboard_afl_fco_ids_for(fco_values)
+    scope = if fco_ids.any?
+      scope.where("BTRIM(COALESCE(fco_id, '')) IN (:fco_ids)", fco_ids: fco_ids)
     else
-      # Fallback to standard name+id scope if no numeric IDs found
-      scope = scope.where(
+      # Nothing resolved by office key; keep the previous literal matching.
+      scope.where(
         "LOWER(BTRIM(COALESCE(fco, ''))) IN (:fco_values) OR LOWER(BTRIM(COALESCE(fco_id, ''))) IN (:fco_values)",
         fco_values: fco_values
       )
@@ -3888,10 +3910,15 @@ class ModulesController < ApplicationController
     fcoc_value = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
     fco_values = dashboard_summary_fco_filter_values(fcoc_value)
     if fco_values.any?
-      scope = scope.where(
-        "LOWER(BTRIM(COALESCE(fco, ''))) IN (:fco_values) OR LOWER(BTRIM(COALESCE(fco_id, ''))) IN (:fco_values)",
-        fco_values: fco_values
-      )
+      fco_ids = dashboard_afl_fco_ids_for(fco_values)
+      scope = if fco_ids.any?
+        scope.where("BTRIM(COALESCE(fco_id, '')) IN (:fco_ids)", fco_ids: fco_ids)
+      else
+        scope.where(
+          "LOWER(BTRIM(COALESCE(fco, ''))) IN (:fco_values) OR LOWER(BTRIM(COALESCE(fco_id, ''))) IN (:fco_values)",
+          fco_values: fco_values
+        )
+      end
     end
 
     ics_value = dashboard_filter_param(:ics, :ics_name)
@@ -3937,14 +3964,8 @@ class ModulesController < ApplicationController
         value if value.match?(/\A\d+\z/)
       end
       names = dashboard_visible_fco_filter_values.reject { |value| value.match?(/\A\d+\z/) }
-      if model_ready?(:Afl) && names.any?
-        ids.concat(
-          Afl.where("LOWER(BTRIM(COALESCE(fco, ''))) IN (:names)", names: names)
-             .where.not(fco_id: [nil, ""])
-             .distinct
-             .pluck(:fco_id)
-        )
-      end
+      # Resolve by office key so "FCO-Bhawanipatna" also finds AFL's "Bhawanipatna".
+      ids.concat(dashboard_afl_fco_ids_for(names)) if names.any?
       ids.map { |value| value.to_s.strip.downcase }.reject(&:blank?).uniq
     end
   end
