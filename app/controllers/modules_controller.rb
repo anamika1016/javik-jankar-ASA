@@ -11955,9 +11955,12 @@ class ModulesController < ApplicationController
         field_errors << "#{label}: maximum 5 photos are allowed."
       end
       uploads.each do |upload|
+        ext = File.extname(upload.original_filename.to_s).downcase
+        is_image_type = FarmerTargetApi::TRAINING_PHOTO_CONTENT_TYPES.include?(upload.content_type.to_s.downcase) ||
+                        %w[.jpg .jpeg .png .webp .heic .heif].include?(ext)
         if upload.size > 5.megabytes
           field_errors << "#{label}: maximum file size is 5 MB."
-        elsif !FarmerTargetApi::TRAINING_PHOTO_CONTENT_TYPES.include?(upload.content_type.to_s.downcase)
+        elsif !is_image_type
           field_errors << "#{label}: select an image (JPEG, PNG, WebP, HEIC or HEIF)."
         end
       end
@@ -12006,7 +12009,7 @@ class ModulesController < ApplicationController
     true
   end
 
-  TRAINING_REGISTER_CONTENT_TYPES = %w[application/pdf application/x-pdf].freeze
+  TRAINING_REGISTER_CONTENT_TYPES = %w[application/pdf application/x-pdf application/octet-stream binary/octet-stream].freeze
 
   # Evidence/Documentation accepts a PDF only; the file picker is limited to
   # PDFs too, so this guards direct posts and browsers that ignore `accept`.
@@ -12014,10 +12017,12 @@ class ModulesController < ApplicationController
     Array(module_record_params["training_register_upload"]).filter_map do |upload|
       next unless upload.respond_to?(:original_filename)
 
+      ext = File.extname(upload.original_filename.to_s).downcase
+      is_pdf = ext == ".pdf" && (TRAINING_REGISTER_CONTENT_TYPES.include?(upload.content_type.to_s.downcase) || upload.content_type.blank?)
+
       if upload.size > 5.megabytes
         "Evidence/Documentation PDF: maximum file size is 5 MB."
-      elsif !TRAINING_REGISTER_CONTENT_TYPES.include?(upload.content_type.to_s.downcase) ||
-            File.extname(upload.original_filename).downcase != ".pdf"
+      elsif !is_pdf
         "Evidence/Documentation PDF: only PDF files are allowed."
       end
     end
@@ -13094,11 +13099,16 @@ class ModulesController < ApplicationController
       "male_count" => "Male Count",
       "female_count" => "Female Count",
       "next_farmer_training_date" => "Next Farmer Training Date",
-      "training_register_upload" => "Training Register Upload",
-      "training_photo_upload_with_geo_tag" => "Training Photo Upload with Geo Tag"
+      "training_register_upload" => "Training Register Upload"
     }
 
     errors = missing_required_data_errors(data, required_fields)
+
+    # Photo required: either legacy field or any new section-wise photo field
+    photo_present = data["training_photo_upload_with_geo_tag"].present? ||
+      (defined?(TrainingEditApproval) && TrainingEditApproval::PHOTO_VIEW_FIELDS.keys.any? { |key| data[key].present? })
+    errors << "Training Photo Upload with Geo Tag required hai." unless photo_present
+
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
 
     farmer_count = whole_number_value(data["farmer_count"].presence || "0")

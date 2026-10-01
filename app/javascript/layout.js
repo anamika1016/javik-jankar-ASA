@@ -2898,9 +2898,16 @@ function initDeferredLayoutPage() {
       });
     });
 
+    const submitBtn = formShell.querySelector("form [type=submit]");
     formShell.querySelector("form")?.addEventListener("submit", (event) => {
       if (!validateTrainingCountSplit(true)) {
         event.preventDefault();
+        return;
+      }
+      // Show loading state on mobile to prevent double-submit
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Saving...";
       }
     });
 	  });
@@ -7462,6 +7469,11 @@ const bootLayoutPage = () => {
       scheduleDeferredLayoutInit();
     }
     return;
+  }
+
+  const alertElem = document.querySelector(".app-alert, .app-notice");
+  if (alertElem) {
+    alertElem.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   initFastNavigation();
