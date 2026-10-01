@@ -458,7 +458,11 @@
             <span>User Name <em>*</em></span>
             <select name="module_record[user_name]" required data-office-user-select>
               <option value="">Select User Name</option>
-              <% approver_options.each do |option| %>
+              <% user_name_options = approver_options %>
+              <% if selected_user_name.present? && !user_name_options.include?(selected_user_name) %>
+                <% user_name_options = [selected_user_name] + user_name_options %>
+              <% end %>
+              <% user_name_options.each do |option| %>
                 <option value="<%= option %>" <%= "selected" if option == selected_user_name %>><%= option == "FFS" ? "Exposer" : option %></option>
               <% end %>
             </select>
@@ -485,7 +489,11 @@
                 <input type="hidden" name="module_record[approval_steps][<%= row[:row_key] %>][approval_level]" value="<%= row[:level] %>">
                 <select name="module_record[approval_steps][<%= row[:row_key] %>][approver_approved_by]">
                   <option value="">Select approval user</option>
-                  <% approver_options.each do |option| %>
+                  <% step_options = approver_options %>
+                  <% if row[:approver].present? && !step_options.include?(row[:approver]) %>
+                    <% step_options = [row[:approver]] + step_options %>
+                  <% end %>
+                  <% step_options.each do |option| %>
                     <option value="<%= option %>" <%= "selected" if option == row[:approver] %>><%= option == "FFS" ? "Exposer" : option %></option>
                   <% end %>
                 </select>
@@ -2264,7 +2272,7 @@
     <% other_target_form = ["seed-distribution-target", "papl360-target", "other-target"].include?(@slug) %>
     <% add_farmer_form = @slug == "add-farmer-form" %>
     <% seed_target_form = @slug == "seed-distribution-target" %>
-    <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if @slug == "parent-office-add" %>data-parent-office-form data-parent-office-map="<%= json_escape(parent_office_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-record-id="<%= @record&.id %>" data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_setup_mappings.to_json) %>" data-training-month-options="<%= json_escape(training_target_month_options.to_json) %>" data-training-farmers-url="<%= training_target_farmers_module_path(@slug) %>"<% end %> <% if other_target_form %>data-seed-target-form data-seed-target-map="<%= json_escape(seed_distribution_target_mappings.to_json) %>" data-seed-month-options="<%= json_escape(seed_distribution_target_month_options.to_json) %>" data-seed-current-vrp-option="<%= json_escape(current_seed_target_vrp_option.to_json) %>" data-seed-farmers-url="<%= seed_target_farmers_module_path(@slug) %>"<% end %> <% if add_farmer_form %>data-add-farmer-form data-add-farmer-map="<%= json_escape(add_farmer_form_mappings.to_json) %>"<% end %>>
+    <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if @slug == "parent-office-add" %>data-parent-office-form data-parent-office-map="<%= json_escape(parent_office_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-record-id="<%= @record&.id %>" data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_setup_mappings.to_json) %>" data-training-month-options="<%= json_escape(training_target_month_options.to_json) %>" data-training-farmers-url="<%= training_target_farmers_module_path(@slug) %>" data-user-hierarchy-cc-map="<%= json_escape(user_hierarchy_cc_to_head_map.to_json) %>"<% end %> <% if other_target_form %>data-seed-target-form data-seed-target-map="<%= json_escape(seed_distribution_target_mappings.to_json) %>" data-seed-month-options="<%= json_escape(seed_distribution_target_month_options.to_json) %>" data-seed-current-vrp-option="<%= json_escape(current_seed_target_vrp_option.to_json) %>" data-seed-farmers-url="<%= seed_target_farmers_module_path(@slug) %>"<% end %> <% if add_farmer_form %>data-add-farmer-form data-add-farmer-map="<%= json_escape(add_farmer_form_mappings.to_json) %>"<% end %>>
       <div class="module-card-header" style="display:flex;justify-content:space-between;align-items:center;">
         <h2><%= @slug == "new-user" ? "Registration" : (@record.present? ? "Edit Record" : "Fields") %></h2>
         <% if @slug == "training-form" && @record.present? && @training_edit_revision && TrainingEditApproval.can_decide?(@training_edit_revision, current_app_user) %>
@@ -2558,7 +2566,8 @@
                   when "Total Farmer Count"
                     "data-training-total-farmer-count-input readonly"
                   end %>
-                <input name="module_record[<%= field_key %>]" type="number" min="0" step="1" placeholder="Enter <%= field_label %>" value="<%= field_value %>" <%= required_attr %> <%= training_count_attr&.html_safe %>>
+                <% count_required = form_required && !["Farmer Count", "Total Farmer Count"].include?(field) %>
+                <input name="module_record[<%= field_key %>]" type="number" min="0" step="1" placeholder="Enter <%= field_label %>" value="<%= field_value %>" <%= count_required ? "required" : nil %> <%= training_count_attr&.html_safe %>>
               <% elsif other_target_form && field == "Farmer Count" %>
                 <input name="module_record[<%= field_key %>]" type="number" min="0" step="1" placeholder="Selected Farmer Count" value="<%= field_value %>" data-seed-farmer-count-input readonly required>
               <% elsif other_target_form && field == "Contact Number" %>

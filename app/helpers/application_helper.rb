@@ -402,8 +402,11 @@ module ApplicationHelper
   def compute_sidebar_pending_flags
     flags = {}
     if defined?(TrainingEditApproval) && current_app_user.present?
-      has_pending = TrainingEditApproval.summaries_for(current_app_user, pending_only: true)
-        .any? { |revision| TrainingEditApproval.can_decide?(revision, current_app_user) }
+      cache_key = ["sidebar_pending", current_app_user["id"]]
+      has_pending = Rails.cache.fetch(cache_key, expires_in: 2.minutes) do
+        TrainingEditApproval.summaries_for(current_app_user, pending_only: true)
+          .any? { |revision| TrainingEditApproval.can_decide?(revision, current_app_user) }
+      end
       flags["Training Form List"] = has_pending
     end
     flags

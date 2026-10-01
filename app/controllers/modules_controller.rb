@@ -12,7 +12,7 @@ class ModulesController < ApplicationController
   helper_method :module_field_options, :module_select_field?, :static_field_options, :role_management_mappings,
                 :access_control_role_mappings, :access_control_field_options,
                 :location_hierarchy_mappings, :office_category_mappings, :training_target_mappings,
-                :training_activity_setup_mappings, :training_target_month_options,
+                :training_activity_setup_mappings, :training_target_month_options, :user_hierarchy_cc_to_head_map,
                 :training_activity_mappings, :approval_user_mappings, :approval_user_options,
                 :parent_office_mappings, :user_hierarchy_list_rows, :jeevika_jankar_cluster_rows,
                 :jeevika_bill_status_label, :jeevika_bill_status_class, :jeevika_bill_rows,
@@ -9262,7 +9262,7 @@ class ModulesController < ApplicationController
     return [] unless ModuleRecord.table_exists?
 
     records_scope = ModuleRecord.where(module_slug: record_source_slug)
-    records_scope = records_scope.order(created_at: :desc).limit(200) if @slug == "training-form-list" && request.format.html? && params[:all].blank?
+    records_scope = records_scope.order(created_at: :desc).limit(100) if @slug == "training-form-list" && request.format.html? && params[:all].blank?
     records = records_scope.to_a
     if record_source_slug == "jeevika-jankar-bill-process"
       records = if ["jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail"].include?(@slug) && jeevika_jankar_payment_module_access?(@slug)
@@ -13308,9 +13308,87 @@ class ModulesController < ApplicationController
   end
 
   def agronomist_options
-    return training_people_options_for_current_vrp(:agronomist) if vrp_login_user?
+    selected_cc = @record&.data&.[]("cluster_coordinator_name").presence || @record&.data&.[]("internal_trainer_name_1").presence
+    selected_cc ||= current_vrp_record&.cluster_incharge if vrp_login_user?
 
-    registered_user_options_matching(/agronomist/i).compact_blank.uniq.unshift("N/A").uniq
+    mapped_head = user_hierarchy_head_for_cc(selected_cc) if selected_cc.present?
+    options = []
+    options << mapped_head if mapped_head.present?
+    if vrp_login_user?
+      options += training_people_options_for_current_vrp(:agronomist)
+    else
+      options += registered_user_options_matching(/agronomist|specialist/i)
+    end
+    options.compact_blank.uniq.unshift("N/A").uniq
+  end
+
+  def normalize_cc_name_for_lookup(name)
+    name.to_s.sub(/\s*\([^)]*\)\s*\z/, "").gsub(/[^a-z0-9]+/i, " ").squish.downcase
+  end
+
+  def user_hierarchy_head_for_cc(cc_name)
+    return nil if cc_name.blank?
+
+    norm_cc = normalize_cc_name_for_lookup(cc_name)
+    return nil if norm_cc.blank?
+    return nil unless model_ready?(:ModuleRecord)
+
+    records = active_module_records_scope("user-hierarchy-mapping").order(created_at: :desc).to_a
+    visited = Set.new
+    current_target = norm_cc
+
+    loop do
+      break if visited.include?(current_target)
+      visited.add(current_target)
+
+      match = records.find do |r|
+        users = collapsed_hierarchy_users(
+          r.data["level_2_users"].presence || r.data["level_2_user"],
+          r.data["level_3_users"].presence || r.data["level_3_user"]
+        )
+        users.any? { |u| normalize_cc_name_for_lookup(u) == current_target }
+      end
+
+      break unless match
+
+      head = match.data["level_1_user"].to_s.strip
+      return head if head.downcase.include?("agricultural specialist") || head.downcase.include?("agronomist")
+
+      current_target = normalize_cc_name_for_lookup(head)
+    end
+
+    direct_match = records.find do |r|
+      users = collapsed_hierarchy_users(
+        r.data["level_2_users"].presence || r.data["level_2_user"],
+        r.data["level_3_users"].presence || r.data["level_3_user"]
+      )
+      users.any? { |u| normalize_cc_name_for_lookup(u) == norm_cc }
+    end
+    direct_match&.data&.[]("level_1_user")&.to_s&.strip
+  end
+
+  def user_hierarchy_cc_to_head_map
+    return {} unless model_ready?(:ModuleRecord)
+
+    records = active_module_records_scope("user-hierarchy-mapping").order(created_at: :desc).to_a
+    mapping = {}
+
+    records.each do |r|
+      ccs = collapsed_hierarchy_users(
+        r.data["level_2_users"].presence || r.data["level_2_user"],
+        r.data["level_3_users"].presence || r.data["level_3_user"]
+      )
+      ccs.each do |cc|
+        next if cc.blank?
+
+        norm_cc = normalize_cc_name_for_lookup(cc)
+        next if norm_cc.blank? || mapping.key?(norm_cc)
+
+        mapping[norm_cc] = user_hierarchy_head_for_cc(cc)
+      end
+    end
+
+    mapping
   end
 
   def papl_staff_options
@@ -13332,7 +13410,8 @@ class ModulesController < ApplicationController
     when :cluster_coordinator
       values << vrp&.cluster_incharge
     when :agronomist
-      values << current_vrp_creator_name(vrp)
+      mapped = user_hierarchy_head_for_cc(vrp&.cluster_incharge)
+      values << (mapped.presence || current_vrp_creator_name(vrp))
     when :papl_staff
       values << current_app_user&.dig("name").presence || current_app_user&.dig("username")
     end

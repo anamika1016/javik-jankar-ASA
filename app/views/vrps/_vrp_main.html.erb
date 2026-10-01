@@ -131,13 +131,13 @@
     <label class="form-label">TO</label>
     <% current_user_to_value = mapped_office_name?(@current_user_office_name) ? @current_user_office_name : nil %>
     <% to_value = f.object.to_name.presence || current_user_to_value.presence || (((@to_options || []).one?) ? @to_options.first.last : nil) %>
-    <% to_value = nil if to_value.present? && !mapped_office_name?(to_value) %>
-    <%= f.select :to_name, options_for_select(@to_options || [], to_value), { prompt: "Select TO" }, class: "form-select", data: { vrp_office_name: true, selected_value: to_value, strict_options: true } %>
+    <% to_value = nil if to_value.present? && !f.object.persisted? && !mapped_office_name?(to_value) %>
+    <%= f.select :to_name, options_for_select(@to_options || [], to_value), { prompt: "Select TO" }, class: "form-select", data: { vrp_office_name: true, selected_value: to_value } %>
   </div>
 
   <div class="col-md-3 mb-3">
     <label class="form-label">Cluster Incharge</label>
-    <%= f.select :cluster_incharge, options_for_select(@cluster_incharge_options || [], f.object.cluster_incharge), { prompt: "Select Cluster Incharge" }, class: "form-select", data: { vrp_cluster_incharge: true, selected_value: f.object.cluster_incharge, strict_options: true } %>
+    <%= f.select :cluster_incharge, options_for_select(@cluster_incharge_options || [], f.object.cluster_incharge), { prompt: "Select Cluster Incharge" }, class: "form-select", data: { vrp_cluster_incharge: true, selected_value: f.object.cluster_incharge } %>
   </div>
 
   <div class="vrp-section-title">
@@ -148,17 +148,20 @@
     <% profile = t.object %>
     <div class="col-md-3 mb-3">
     <label class="form-label required">State</label>
-    <%= t.select :state_id, options_for_select(@state_options || [], profile&.state_id), { prompt: 'Select State', required: true }, class: 'form-select fstates ofs', label: false, data: { location_level: "state", selected_value: profile&.state_id } %>
+    <% state_val = @selected_state.presence || profile&.state_id %>
+    <%= t.select :state_id, options_for_select(@state_options || [], state_val), { prompt: 'Select State', required: true }, class: 'form-select fstates ofs', label: false, data: { location_level: "state", selected_value: state_val } %>
     </div>
 
     <div class="col-md-3 mb-3">
     <label class="form-label required">District</label>
-    <%= t.select :district_id, options_for_select(@district_options || [], profile&.district_id), { prompt: 'Select District' }, { class: 'form-select fdistricts ofs', label: false, data: { location_level: "district", selected_value: profile&.district_id } } %>
+    <% district_val = @selected_district.presence || profile&.district_id %>
+    <%= t.select :district_id, options_for_select(@district_options || [], district_val), { prompt: 'Select District' }, { class: 'form-select fdistricts ofs', label: false, data: { location_level: "district", selected_value: district_val } } %>
     </div>
 
     <div class="col-md-3 mb-3">
     <label class="form-label required">Block</label>
-    <%= t.select :block_id, options_for_select(@block_options || [], profile&.block_id), { prompt: 'Select Block ' }, class: 'form-select fblocks ofs', label: false, data: { location_level: "block", selected_value: profile&.block_id } %>
+    <% block_val = @selected_block.presence || profile&.block_id %>
+    <%= t.select :block_id, options_for_select(@block_options || [], block_val), { prompt: 'Select Block ' }, class: 'form-select fblocks ofs', label: false, data: { location_level: "block", selected_value: block_val } %>
     </div>
 
     <div class="col-md-3 mb-3">
@@ -167,7 +170,7 @@
       <span class="location-select-all"><input type="checkbox" data-chip-select-all-for="gram-panchayat"> Select all</span>
     </label>
     <%= t.hidden_field :gram_panchayat_id, data: { location_primary: "gram-panchayat" } %>
-    <% selected_gram_panchayat_ids = Array(f.object.gram_panchayat_ids).presence || [profile&.gram_panchayat_id].compact %>
+    <% selected_gram_panchayat_ids = @selected_gram_panchayats.presence || Array(f.object.gram_panchayat_ids).presence || [profile&.gram_panchayat_id].compact %>
     <%= select_tag "vrp[gram_panchayat_ids][]", options_for_select(@gram_panchayat_options || [], selected_gram_panchayat_ids), multiple: true, class: 'form-select fgram_panchayats ofs', data: { location_level: "gram-panchayat", selected_values: selected_gram_panchayat_ids.to_json, chip_multiselect: true, placeholder: "Select Gram Panchyat", required_message: "Please select Gram Panchayat." } %>
     </div>
 
@@ -177,7 +180,7 @@
       <span class="location-select-all"><input type="checkbox" data-chip-select-all-for="village"> Select all</span>
     </label>
     <%= t.hidden_field :village_id, data: { location_primary: "village" } %>
-    <% selected_village_ids = Array(f.object.village_ids).presence || [profile&.village_id].compact %>
+    <% selected_village_ids = @selected_villages.presence || Array(f.object.village_ids).presence || [profile&.village_id].compact %>
     <%= select_tag "vrp[village_ids][]", options_for_select(@village_options || [], selected_village_ids), multiple: true, class: 'form-select fvillage ofs', data: { location_level: "village", selected_values: selected_village_ids.to_json, chip_multiselect: true, placeholder: "Select Village", required_message: "Please select Village." } %>
     </div>
   <% end %>

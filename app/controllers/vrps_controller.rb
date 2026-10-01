@@ -1312,9 +1312,28 @@ class VrpsController < ApplicationController
     @state_options = location_state_options
     @district_options = editing_vrp ? location_district_options : []
     @block_options = editing_vrp ? location_block_options : []
-    @location_hierarchy_mappings = []
-    @gram_panchayat_options = @vrp&.persisted? ? location_gram_panchayat_options : []
-    @village_options = @vrp&.persisted? ? location_village_options : []
+    @location_hierarchy_mappings = location_hierarchy_mappings
+    @gram_panchayat_options = editing_vrp ? location_gram_panchayat_options : []
+    @village_options = editing_vrp ? location_village_options : []
+
+    if editing_vrp
+      context = vrp_saved_location_names(@vrp)
+      @selected_state = context[:state]
+      @selected_district = context[:district]
+      @selected_block = context[:block]
+      @selected_gram_panchayats = vrp_saved_gp_names(@vrp)
+      @selected_villages = vrp_saved_village_names(@vrp)
+
+      if @vrp.cluster_incharge.present? && !@cluster_incharge_options.any? { |opt| Array(opt).first == @vrp.cluster_incharge || Array(opt).last == @vrp.cluster_incharge }
+        @cluster_incharge_options.unshift([@vrp.cluster_incharge, @vrp.cluster_incharge])
+      end
+      if @vrp.to_name.present? && !@to_options.any? { |opt| Array(opt).first == @vrp.to_name || Array(opt).last == @vrp.to_name }
+        @to_options.unshift([@vrp.to_name, @vrp.to_name])
+      end
+      if @vrp.fcoc.present? && !@fcoc_options.any? { |opt| Array(opt).first == @vrp.fcoc || Array(opt).last == @vrp.fcoc }
+        @fcoc_options.unshift([@vrp.fcoc, @vrp.fcoc])
+      end
+    end
   end
 
   def vrp_type_options
@@ -2036,6 +2055,86 @@ class VrpsController < ApplicationController
 
   def location_village_options
     distinct_lg_directory_values("village_name", "village").map { |label| [label, label] }
+  end
+
+  def vrp_saved_gp_names(vrp)
+    return [] unless vrp
+
+    gp_ids = Array(vrp.gram_panchayat_ids).compact_blank
+    return [] if gp_ids.blank?
+
+    gp_ids.map do |id|
+      if id.to_s.match?(/\A\d+\z/)
+        rec = ModuleRecord.find_by(id: id)
+        rec ? (rec.data["gram_panchayat_name"].presence || rec.data["gram_panchayat"].presence || rec.data["gp_name"].presence || id.to_s) : id.to_s
+      else
+        id.to_s
+      end
+    end.compact_blank.uniq
+  end
+
+  def vrp_saved_village_names(vrp)
+    return [] unless vrp
+
+    village_ids = Array(vrp.village_ids).compact_blank
+    return [] if village_ids.blank?
+
+    village_ids.map do |id|
+      if id.to_s.match?(/\A\d+\z/)
+        rec = ModuleRecord.find_by(id: id)
+        rec ? (rec.data["village_name"].presence || rec.data["village"].presence || rec.data["name"].presence || id.to_s) : id.to_s
+      else
+        id.to_s
+      end
+    end.compact_blank.uniq
+  end
+
+  def vrp_saved_location_names(vrp)
+    return {} unless vrp
+
+    profile = vrp.vrp_profile
+    state_rec = profile&.state_id.present? ? ModuleRecord.find_by(id: profile.state_id) : nil
+    district_rec = profile&.district_id.present? ? ModuleRecord.find_by(id: profile.district_id) : nil
+    block_rec = profile&.block_id.present? ? ModuleRecord.find_by(id: profile.block_id) : nil
+
+    state_name = state_rec ? (state_rec.data["state_name"].presence || state_rec.data["state"]) : (profile&.state_id.to_s.match?(/\A\d+\z/) ? nil : profile&.state_id)
+    district_name = district_rec ? (district_rec.data["district_name"].presence || district_rec.data["district"]) : (profile&.district_id.to_s.match?(/\A\d+\z/) ? nil : profile&.district_id)
+    block_name = block_rec ? (block_rec.data["cd_block_name"].presence || block_rec.data["block_name"].presence || block_rec.data["block"]) : (profile&.block_id.to_s.match?(/\A\d+\z/) ? nil : profile&.block_id)
+
+    gp_ids = Array(vrp.gram_panchayat_ids).compact_blank
+    village_ids = Array(vrp.village_ids).compact_blank
+
+    id_candidates = (gp_ids + village_ids).select { |v| v.to_s.match?(/\A\d+\z/) }
+    if id_candidates.any?
+      recs = ModuleRecord.where(id: id_candidates).to_a
+      state_name ||= recs.filter_map { |r| r.data["state_name"].presence || r.data["state"] }.first
+      district_name ||= recs.filter_map { |r| r.data["district_name"].presence || r.data["district"] }.first
+      block_name ||= recs.filter_map { |r| r.data["cd_block_name"].presence || r.data["block_name"].presence || r.data["block"] }.first
+    end
+
+    name_candidates = (gp_ids + village_ids).reject { |v| v.to_s.match?(/\A\d+\z/) }
+    if name_candidates.any? && (state_name.blank? || district_name.blank? || block_name.blank?)
+      normalized = name_candidates.map { |n| n.to_s.strip.downcase }
+      conn = ActiveRecord::Base.connection
+      clauses = %w[gram_panchayat_name gp_name gram_name village_name village].map { |key| "LOWER(TRIM(data::jsonb ->> #{conn.quote(key)})) IN (?)" }
+      record = ModuleRecord
+        .where(module_slug: %w[lg-directory-list gram-panchayat-master village-master])
+        .where("LOWER(TRIM(COALESCE(data::jsonb ->> 'status', ''))) IN ('', 'active')")
+        .where("(#{clauses.join(' OR ')})", *Array.new(clauses.length, normalized))
+        .first
+      if record
+        data = record.data.is_a?(Hash) ? record.data : (JSON.parse(record.data) rescue {})
+        state_name ||= [data["state_name"], data["state"]].find(&:present?)&.strip
+        district_name ||= [data["district_name"], data["district"]].find(&:present?)&.strip
+        block_name ||= [data["cd_block_name"], data["block_name"], data["block"]].find(&:present?)&.strip
+      end
+    end
+
+    {
+      state: state_name&.strip,
+      district: district_name&.strip,
+      block: block_name&.strip
+    }
   end
 
   def gram_panchayat_name_from_record(record)

@@ -2196,6 +2196,12 @@ function initDeferredLayoutPage() {
     } catch (_error) {
       monthOptions = [];
     }
+    let userHierarchyCcMap = {};
+    try {
+      userHierarchyCcMap = JSON.parse(formShell.dataset.userHierarchyCcMap || "{}");
+    } catch (_error) {
+      userHierarchyCcMap = {};
+    }
     mappings = mappings.filter((mapping) => normalizeOption(mapping.main_activity_type || "Training") === normalizeOption("Training"));
     activityMappings = activityMappings.filter((mapping) => normalizeOption(mapping.main_activity_type || "Training") === normalizeOption("Training"));
 
@@ -2598,7 +2604,10 @@ function initDeferredLayoutPage() {
 	      if (!invalidInput) return true;
 
 	      invalidInput?.setCustomValidity(message);
-	      if (report) invalidInput?.reportValidity();
+	      if (report) {
+	        invalidInput?.reportValidity();
+	        alert(message);
+	      }
 	      return false;
 	    };
 
@@ -2846,6 +2855,38 @@ function initDeferredLayoutPage() {
 	      renderTrainingFarmers();
 	    });
 
+    const ccSelect = formShell.querySelector('select[name="module_record[cluster_coordinator_name]"], select[name="module_record[internal_trainer_name_1]"], input[name="module_record[cluster_coordinator_name]"]');
+    const agronomistSelect = formShell.querySelector('select[name="module_record[agronomist_name]"], select[name="module_record[internal_trainer_name_2]"], input[name="module_record[agronomist_name]"]');
+
+    const autoFillAgronomistFromCC = () => {
+      if (!ccSelect || !agronomistSelect) return;
+      const ccVal = (ccSelect.value || ccSelect.dataset.selectedValue || "").trim();
+      if (!ccVal) return;
+
+      const normalizedCc = ccVal.replace(/\s*\([^)]*\)\s*$/, "").replace(/\s+/g, " ").trim().toLowerCase();
+      const mappedHead = userHierarchyCcMap[normalizedCc];
+      if (mappedHead) {
+        if (agronomistSelect.tagName === "SELECT") {
+          let matchedOpt = Array.from(agronomistSelect.options).find((opt) =>
+            opt.value.replace(/\s*\([^)]*\)\s*$/, "").replace(/\s+/g, " ").trim().toLowerCase() === mappedHead.replace(/\s*\([^)]*\)\s*$/, "").replace(/\s+/g, " ").trim().toLowerCase()
+          );
+          if (!matchedOpt) {
+            matchedOpt = new Option(mappedHead, mappedHead);
+            agronomistSelect.add(matchedOpt);
+          }
+          agronomistSelect.value = matchedOpt.value;
+          agronomistSelect.dataset.selectedValue = matchedOpt.value;
+        } else {
+          agronomistSelect.value = mappedHead;
+        }
+      }
+    };
+
+    ccSelect?.addEventListener("change", autoFillAgronomistFromCC);
+    if (ccSelect && (!agronomistSelect?.value || agronomistSelect?.value === "N/A")) {
+      autoFillAgronomistFromCC();
+    }
+
     [maleCountInput, femaleCountInput].forEach((input) => {
       input?.addEventListener("input", () => {
         updateFarmerCount();
@@ -2858,9 +2899,9 @@ function initDeferredLayoutPage() {
     });
 
     formShell.querySelector("form")?.addEventListener("submit", (event) => {
-      if (validateTrainingCountSplit(true)) return;
-
-      event.preventDefault();
+      if (!validateTrainingCountSplit(true)) {
+        event.preventDefault();
+      }
     });
 	  });
 
