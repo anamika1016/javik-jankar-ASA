@@ -9262,7 +9262,11 @@ class ModulesController < ApplicationController
     return [] unless ModuleRecord.table_exists?
 
     records_scope = ModuleRecord.where(module_slug: record_source_slug)
-    records_scope = records_scope.order(created_at: :desc).limit(100) if @slug == "training-form-list" && request.format.html? && params[:all].blank?
+    # The newest-first cap is applied *after* the visibility filter below. Capping
+    # in SQL discarded rows before we knew who owned them, so a user whose records
+    # fell outside the newest N overall saw only the few that happened to land in it.
+    limit_training_list = @slug == "training-form-list" && request.format.html? && params[:all].blank?
+    records_scope = records_scope.order(created_at: :desc) if limit_training_list
     records = records_scope.to_a
     if record_source_slug == "jeevika-jankar-bill-process"
       records = if ["jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail"].include?(@slug) && jeevika_jankar_payment_module_access?(@slug)
@@ -9275,11 +9279,12 @@ class ModulesController < ApplicationController
     records = records.select { |record| target_record_visible?(record) } if target_record_source?
     if @slug == "training-form-list"
       @training_edit_revision_record_ids = records.map { |record| record.id.to_s }
-      return records.sort_by { |record|
+      sorted = records.sort_by { |record|
         revision = training_edit_revision_for(record, skip_auto_assign: true)
         pending = revision && revision.data["status"] == "Pending" ? 0 : 1
         [pending, -(record.created_at || Time.at(0)).to_i, -record.id.to_i]
       }
+      return limit_training_list ? sorted.first(100) : sorted
     end
     return records.sort_by { |record| jeevika_bill_list_sort_value(record) } if @slug == "jeevika-jankar-bill-list"
 
