@@ -9355,24 +9355,30 @@ class ModulesController < ApplicationController
     # 1. Created by current user
     return true if target_record_created_by_current_user?(record)
 
-    # 2. Record CC / staff labels match current user
+    # 2. Record CC / staff labels match current user (CC login)
     return true if target_record_matches_cc_labels?(record)
 
-    # 3. Check VRP association
+    # 3. FCO user sees records where fco_name / trainee_department matches their office
+    return true if target_record_matches_fco_labels?(record)
+
+    # 4. Agronomist sees records where agronomist_name matches
+    return true if target_record_matches_agronomist_labels?(record)
+
+    # 5. Check VRP association
     vrp = target_record_vrp_for_visibility(record)
     if vrp
       return true if module_cluster_vrp_visible?(vrp)
       return true if jeevika_bill_vrp_registered_by_current_user?(vrp)
-      return true if jeevika_bill_vrp_office_visible?(vrp)
+      # Office-based visibility only applies to bill/invoice records, not training forms
+      if %w[jeevika-jankar-bill-process jeevika-jankar-bill-list].include?(record.module_slug)
+        return true if jeevika_bill_vrp_office_visible?(vrp)
+      end
       return true if module_cluster_visible_vrp_id_strings.include?(vrp.id.to_s)
       return true if training_supervised_vrp_ids.include?(vrp.id.to_s)
     end
 
-    # 4. Visible VRPs in cluster match record
+    # 6. Visible VRPs in cluster match record (CC login fallback)
     return true if module_cluster_visible_vrps.any? { |visible_vrp| target_record_matches_vrp?(record, visible_vrp) }
-
-    # 5. Non-VRP logged in users accessing training form / other target list views
-    return true if %w[training-form-list other-target-list training-form other-target].include?(@slug.to_s) || %w[training-form other-target].include?(record.module_slug)
 
     false
   end
@@ -9381,14 +9387,15 @@ class ModulesController < ApplicationController
     labels = current_cluster_incharge_labels.compact_blank.uniq
     return false if labels.blank?
 
+    # CC matches when the JJ's cluster_incharge (or a known CC label) maps to this user
+    vrp = target_record_vrp_for_visibility(record)
+    return true if vrp && module_cluster_vrp_visible?(vrp)
+
+    # Also match directly on any explicit CC/cluster fields stored in the record
     data_values = [
       record.data["cluster_coordinator_name"],
       record.data["cc_name"],
-      record.data["cluster_incharge"],
-      record.data["trainer_name"],
-      record.data["agronomist_name"],
-      record.data["papl_staff_name"],
-      record.data["created_by_name"]
+      record.data["cluster_incharge"]
     ].compact_blank.uniq
 
     return false if data_values.blank?
@@ -9396,6 +9403,57 @@ class ModulesController < ApplicationController
     labels.any? do |label|
       data_values.any? { |val| cluster_label_matches?(label, val) }
     end
+  end
+
+  def target_record_matches_fco_labels?(record)
+    return false unless current_user_is_fco?
+
+    user_office = [
+      current_app_user&.dig("office_name"),
+      current_app_user&.dig("fcoc"),
+      current_app_user&.dig("fcoc_name"),
+      current_app_user&.dig("parent_office")
+    ].compact_blank
+    return false if user_office.blank?
+
+    record_fco_vals = [
+      record.data["fco_name"],
+      record.data["trainee_department"]
+    ].compact_blank
+    return false if record_fco_vals.blank?
+
+    user_office.any? do |office|
+      record_fco_vals.any? { |val| normalize_dashboard_user_label(office) == normalize_dashboard_user_label(val) }
+    end
+  end
+
+  def target_record_matches_agronomist_labels?(record)
+    labels = [
+      current_app_user&.dig("name"),
+      current_app_user&.dig("username"),
+      current_app_user&.dig("user_name")
+    ].compact_blank.uniq
+    return false if labels.blank?
+
+    agronomist = record.data["agronomist_name"].to_s.strip
+    return false if agronomist.blank?
+
+    labels.any? { |label| cluster_label_matches?(label, agronomist) }
+  end
+
+  def current_user_is_fco?
+    return false if admin_dashboard_user? || vrp_login_user? || module_cluster_incharge_login?
+
+    role_vals = [
+      current_app_user&.dig("role"),
+      current_app_user&.dig("stakeholder_role"),
+      current_app_user&.dig("role_name"),
+      current_app_user&.dig("office_category")
+    ].compact_blank.join(" ").downcase
+
+    role_vals.include?("fco") || role_vals.include?("field coordinator") ||
+      role_vals.match?(/agri.*specialist|specialist/i) ||
+      current_app_user&.dig("office_name").to_s.upcase.include?("FCO")
   end
 
   def training_approver_record_ids
@@ -10417,7 +10475,24 @@ class ModulesController < ApplicationController
     block_name = village_records.filter_map do |rec|
       rec.data["block_name"].presence || rec.data["cd_block_name"].presence
     end.first
-    block_name.presence || "-"
+    return block_name if block_name.present?
+
+    # Fallback: check ICS master records for block info
+    ics_ids = Array(vrp.ics_master_ids).reject(&:blank?)
+    if ics_ids.any?
+      ics_name = module_record_labels_for_dashboard("ics-master", ics_ids, "block_name").presence ||
+        module_record_labels_for_dashboard("ics-master", ics_ids, "cd_block_name").presence
+      return ics_name if ics_name.present?
+    end
+
+    # Fallback: check cluster_incharge user's block field
+    cc_name = vrp.cluster_incharge.to_s.strip
+    if cc_name.present?
+      cc_user = User.all.find { |u| cluster_label_matches?(u.full_name, cc_name) || cluster_label_matches?(u.user_name, cc_name) }
+      return cc_user.block.presence if cc_user&.respond_to?(:block) && cc_user.block.present?
+    end
+
+    "-"
   end
 
   def jeevika_jankar_bill_total_payment(record = nil)
@@ -10859,8 +10934,7 @@ class ModulesController < ApplicationController
   def approved_vrp_id_options
     return [] unless model_ready?(:Vrp)
 
-    scope = Vrp.all
-    scope = scope.where(is_active: true) if Vrp.column_names.include?("is_active")
+    scope = Vrp.where(status: 55)
     scope = scope.where(id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
 
     if module_mapped_vrp_scope_active?
