@@ -50,7 +50,7 @@
             <p>JJ Worksheet ID: #<%= detail_record.id %></p>
             <p>Invoice Date: <%= bill_display_date(detail_record.data["invoice_date"].presence || detail_record.created_at) %></p>
             <p>Invoice Month: <%= detail_record.data["bill_month"].presence || "-" %></p>
-            <p>FCO: <%= detail_summary[:fco].presence || "-" %>, TO: <%= detail_summary[:to].presence || "-" %>, Block: <%= (bill_vrp&.vrp_profile&.block_id).presence || "-" %></p>
+            <p>FCO: <%= detail_summary[:fco].presence || "-" %>, TO: <%= detail_summary[:to].presence || "-" %>, Block: <%= jeevika_bill_block_name(detail_record) %></p>
             <p>CC Name: <%= jeevika_bill_cc_name(detail_record) %></p>
           </div>
         </div>
@@ -111,7 +111,24 @@
           <div class="bill-print-approved">
             <strong>Approver and Verification Details</strong>
             <span>Prepared by ==> <%= prepared_by[:name] %> <%= prepared_by[:at] %></span>
-            <% if approved_rows.any? %>
+            <% print_approval_steps = jeevika_bill_approval_steps(detail_record) %>
+            <% total_steps = print_approval_steps.size %>
+            <% if print_approval_steps.any? %>
+              <% print_approval_steps.each_with_index do |step, idx| %>
+                <% seq = approval_sequence_from_level(step.data["approval_level"]) %>
+                <% is_last = (idx == total_steps - 1) %>
+                <% label = is_last ? "Financial Approver" : approval_level_label_for_sequence(seq).sub(" Approval", " Approver") %>
+                <% step_hist = jeevika_bill_approval_history(detail_record).find { |h| approval_sequence_from_level(h.data["approval_level"]) == seq && ["Approved", "Rejected", "Returned"].include?(h.data["action"]) } %>
+                <% approver_name = step.data["approver_approved_by"].presence || "-" %>
+                <% role_label = step.data["approval_level"].to_s.sub(/\A(first|second|third|fourth|fifth)\s+approval\z/i, "").strip.presence %>
+                <% display_label = role_label.present? && !is_last ? "#{label} (#{role_label})" : label %>
+                <% if step_hist %>
+                  <span><%= display_label %> ==> <%= step_hist.data["action_by"].presence || approver_name %> <%= step_hist.data["action_at"] %></span>
+                <% else %>
+                  <span><%= display_label %> ==> <%= approver_name %> (Pending)</span>
+                <% end %>
+              <% end %>
+            <% elsif approved_rows.any? %>
               <% approved_rows.each do |level, approver, at, action_by| %>
                 <span><%= level %> ==> <%= action_by.presence || approver %> <%= at %></span>
               <% end %>
@@ -221,6 +238,25 @@
           </thead>
           <tbody>
             <% detail_items.each_with_index do |item, index| %>
+              <%
+                stored_achievement = item["achievement_count"].to_f
+                # Dynamically recalculate: count farmer_details with non-pending status or use stored count
+                farmer_details = item["farmer_details"]
+                farmer_details = farmer_details.values if farmer_details.is_a?(Hash)
+                completed_farmers = Array(farmer_details).select { |f| f.is_a?(Hash) && !f["status"].to_s.match?(/\Apending\z/i) }
+                is_other = item["main_activity_type"].to_s.downcase == "other"
+                dynamic_achievement = if is_other
+                  stored_achievement
+                elsif completed_farmers.any?
+                  [completed_farmers.size, item["assigned_count"].to_f].max == 0 ? stored_achievement : completed_farmers.size
+                else
+                  stored_achievement
+                end
+                achievement_display = dynamic_achievement.to_i == dynamic_achievement ? dynamic_achievement.to_i : dynamic_achievement
+                assigned = item["assigned_count"].to_f
+                pending_display = [assigned > 0 ? assigned - dynamic_achievement : item["target_quantity"].to_f - dynamic_achievement, 0].max
+                pending_display = pending_display.to_i == pending_display ? pending_display.to_i : pending_display
+              %>
               <tr>
                 <td><%= index + 1 %></td>
                 <td><%= item["ics"].presence || "-" %></td>
@@ -228,8 +264,8 @@
                 <td><%= item["main_activity"].presence || "-" %></td>
                 <td><%= item["activity"].presence || "-" %></td>
                 <td><%= item["target_quantity"].presence || "0" %></td>
-                <td><%= item["achievement_count"].presence || "0" %></td>
-                <td><%= item["pending_count"].presence || "0" %></td>
+                <td><%= achievement_display %></td>
+                <td><%= pending_display %></td>
                 <td><%= item["rate"].presence || "0.00" %></td>
                 <td><%= item["amount"].presence || "0.00" %></td>
               </tr>
@@ -358,19 +394,26 @@
       <div class="approval-progress-section no-print">
         <h2>Jeevika Jankar Bill Approval Progress</h2>
         <div class="approval-progress-grid">
-          <% jeevika_bill_approval_steps(detail_record).each do |step| %>
-            <% step_history = jeevika_bill_approval_history(detail_record).find { |history| approval_sequence_from_level(history.data["approval_level"]) == approval_sequence_from_level(step.data["approval_level"]) && ["Approved", "Rejected", "Returned"].include?(history.data["action"]) } %>
+          <% print_approval_steps = jeevika_bill_approval_steps(detail_record) %>
+          <% total_steps = print_approval_steps.size %>
+          <% print_approval_steps.each_with_index do |step, idx| %>
+            <% seq = approval_sequence_from_level(step.data["approval_level"]) %>
+            <% is_last = (idx == total_steps - 1) %>
+            <% ordinal_label = is_last ? "Financial Approver" : approval_level_label_for_sequence(seq).sub(" Approval", " Approver") %>
+            <% step_history = jeevika_bill_approval_history(detail_record).find { |history| approval_sequence_from_level(history.data["approval_level"]) == seq && ["Approved", "Rejected", "Returned"].include?(history.data["action"]) } %>
             <% closing_action = step_history&.data&.[]("action") %>
             <% state = ["Rejected", "Returned"].include?(closing_action) ? "rejected" : (step_history ? "approved" : (jeevika_bill_current_approval_step(detail_record)&.id == step.id ? "current" : "pending")) %>
             <div class="approval-progress-card <%= state %>">
               <div class="approval-progress-icon"><%= state == "approved" ? "✓" : (closing_action == "Returned" ? "↩" : (state == "rejected" ? "×" : "•")) %></div>
-              <h3><%= step.data["approval_level"] %></h3>
+              <h3><%= ordinal_label %></h3>
               <p><%= step.data["approver_approved_by"].presence || "-" %></p>
               <% if step_history %>
                 <small><%= step_history.data["action"] %> at <%= step_history.data["action_at"] %></small>
                 <% if step_history.data["remarks"].present? %>
                   <p><strong>Remarks:</strong> <%= step_history.data["remarks"] %></p>
                 <% end %>
+              <% else %>
+                <small class="approval-pending-label">Waiting for approval</small>
               <% end %>
             </div>
           <% end %>

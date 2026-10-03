@@ -21,6 +21,7 @@ class ModulesController < ApplicationController
                 :jeevika_bill_approval_steps, :jeevika_bill_summary,
                 :jeevika_bill_attachment_rows, :jeevika_jankar_display_name,
                 :jeevika_jankar_vrp_label, :jeevika_bill_time_slot_rows,
+                :jeevika_bill_block_name,
                 :jeevika_bill_description_rows, :jeevika_bill_bank_rows,
                 :jeevika_bill_prepared_by, :jeevika_bill_approved_by_rows,
                 :jeevika_bill_payment_month_options, :jeevika_bill_payment_rows,
@@ -9351,29 +9352,50 @@ class ModulesController < ApplicationController
       return target_record_matches_vrp?(record, current_vrp_record)
     end
 
-    if record.module_slug == "training-form"
-      return true if training_approver_record_ids.include?(record.id.to_s)
-
-      vrp = target_record_vrp_for_visibility(record)
-      return false unless vrp
-      return true if module_cluster_vrp_visible?(vrp)
-      return true if training_supervised_vrp_ids.include?(vrp.id.to_s)
-
-      return false
-    end
-
+    # 1. Created by current user
     return true if target_record_created_by_current_user?(record)
 
+    # 2. Record CC / staff labels match current user
+    return true if target_record_matches_cc_labels?(record)
+
+    # 3. Check VRP association
     vrp = target_record_vrp_for_visibility(record)
     if vrp
+      return true if module_cluster_vrp_visible?(vrp)
       return true if jeevika_bill_vrp_registered_by_current_user?(vrp)
       return true if jeevika_bill_vrp_office_visible?(vrp)
       return true if module_cluster_visible_vrp_id_strings.include?(vrp.id.to_s)
+      return true if training_supervised_vrp_ids.include?(vrp.id.to_s)
     end
 
-    return false unless module_mapped_vrp_scope_active?
+    # 4. Visible VRPs in cluster match record
+    return true if module_cluster_visible_vrps.any? { |visible_vrp| target_record_matches_vrp?(record, visible_vrp) }
 
-    module_cluster_visible_vrps.any? { |visible_vrp| target_record_matches_vrp?(record, visible_vrp) }
+    # 5. Non-VRP logged in users accessing training form / other target list views
+    return true if %w[training-form-list other-target-list training-form other-target].include?(@slug.to_s) || %w[training-form other-target].include?(record.module_slug)
+
+    false
+  end
+
+  def target_record_matches_cc_labels?(record)
+    labels = current_cluster_incharge_labels.compact_blank.uniq
+    return false if labels.blank?
+
+    data_values = [
+      record.data["cluster_coordinator_name"],
+      record.data["cc_name"],
+      record.data["cluster_incharge"],
+      record.data["trainer_name"],
+      record.data["agronomist_name"],
+      record.data["papl_staff_name"],
+      record.data["created_by_name"]
+    ].compact_blank.uniq
+
+    return false if data_values.blank?
+
+    labels.any? do |label|
+      data_values.any? { |val| cluster_label_matches?(label, val) }
+    end
   end
 
   def training_approver_record_ids
@@ -10359,10 +10381,15 @@ class ModulesController < ApplicationController
     amount = jeevika_jankar_bill_total_payment(record)
     deduction = data["deduction_amount"].presence || data["deduction"].presence
     payable = amount.to_f - deduction.to_f
+    vrp = jeevika_bill_vrp(record)
 
     {
-      to: first_present_data(data, "to", "to_name", "to_office").presence || first_present_from_items(items, "to", "to_name", "to_office"),
-      fco: first_present_data(data, "fco", "fco_name").presence || first_present_from_items(items, "fco", "fco_name"),
+      to: first_present_data(data, "to", "to_name", "to_office").presence ||
+            first_present_from_items(items, "to", "to_name", "to_office").presence ||
+            vrp&.to_name.presence,
+      fco: first_present_data(data, "fco", "fco_name").presence ||
+             first_present_from_items(items, "fco", "fco_name").presence ||
+             vrp&.fcoc.presence,
       projects: first_present_data(data, "projects", "project", "select_project").presence || first_present_from_items(items, "project", "projects"),
       activity_groups: items.filter_map { |item| item["main_activity"].presence }.uniq.join(", "),
       activity_names: items.filter_map { |item| item["activity"].presence }.uniq.join(", "),
@@ -10370,6 +10397,27 @@ class ModulesController < ApplicationController
       deduction_amount: deduction,
       total_payable: payable
     }
+  end
+
+  def jeevika_bill_block_name(record)
+    vrp = jeevika_bill_vrp(record)
+    return "-" unless vrp
+
+    block_id = vrp.vrp_profile&.block_id
+    if block_id.present?
+      name = module_record_label_for_dashboard("block-master", block_id, "block_name")
+      return name if name.present?
+    end
+
+    # Fallback: resolve from village-based location records
+    village_ids = Array(vrp.village_ids).reject(&:blank?)
+    village_records = active_records_for_location("village-master").select do |rec|
+      village_ids.any? { |vid| rec.data["id"].to_s == vid.to_s || rec.data["village_id"].to_s == vid.to_s }
+    end
+    block_name = village_records.filter_map do |rec|
+      rec.data["block_name"].presence || rec.data["cd_block_name"].presence
+    end.first
+    block_name.presence || "-"
   end
 
   def jeevika_jankar_bill_total_payment(record = nil)
@@ -10478,12 +10526,13 @@ class ModulesController < ApplicationController
     vrp_record_name = jeevika_bill_vrp(record)&.name.presence
     creator = bill_creator_user(record.data) unless record.data["created_by_record_type"] == "ModuleRecord"
     creator_record = bill_creator_module_record(record.data) unless creator
-    prepared_name = [sent_history&.data&.[]("action_by"), record.data["created_by_name"],
-      creator&.full_name, creator_record&.data&.[]("name"), creator_record&.data&.[]("full_name"),
-      record.data["created_by_username"], creator&.user_name, creator_record&.data&.[]("user_name"),
-      vrp_record_name, vrp_name].map { |value| value.to_s.strip }.reject { |value| value.blank? || value.match?(/\A(?:-|null|nil)\z/i) }.first || "-"
-    prepared_at = sent_history&.data&.[]("action_at").presence ||
-      first_history&.data&.[]("action_at").presence ||
+    prepared_name = [record.data["created_by_name"], creator&.full_name,
+      creator_record&.data&.[]("name"), creator_record&.data&.[]("full_name"),
+      vrp_record_name, vrp_name, sent_history&.data&.[]("action_by"),
+      record.data["created_by_username"], creator&.user_name, creator_record&.data&.[]("user_name")
+    ].map { |value| value.to_s.strip }.reject { |value| value.blank? || value.match?(/\A(?:-|null|nil)\z/i) }.first || "-"
+    prepared_at = first_history&.data&.[]("action_at").presence ||
+      sent_history&.data&.[]("action_at").presence ||
       record.created_at
     {
       name: prepared_name,
@@ -10810,10 +10859,14 @@ class ModulesController < ApplicationController
   def approved_vrp_id_options
     return [] unless model_ready?(:Vrp)
 
-    scope = Vrp.where(status: 55)
+    scope = Vrp.all
     scope = scope.where(is_active: true) if Vrp.column_names.include?("is_active")
     scope = scope.where(id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
-    scope = scope.where(id: module_cluster_visible_vrp_ids) if module_mapped_vrp_scope_active?
+
+    if module_mapped_vrp_scope_active?
+      visible_ids = module_cluster_visible_vrp_ids
+      scope = scope.where(id: visible_ids) if visible_ids.any?
+    end
 
     vrps = scope.order(:name).to_a
 
@@ -10841,7 +10894,7 @@ class ModulesController < ApplicationController
     labels = current_cluster_incharge_labels.compact_blank.uniq
     return false if labels.blank?
 
-    labels.any? { |label| (cluster_label_match_values(label) & cluster_label_match_values(vrp.cluster_incharge)).any? }
+    labels.any? { |label| cluster_label_matches?(label, vrp.cluster_incharge) }
   end
 
   def module_mapped_vrp_scope_active?
@@ -10866,9 +10919,15 @@ class ModulesController < ApplicationController
       .select { |vrp| module_cluster_vrp_visible?(vrp) }
 
     hierarchy_mapped_vrps = module_cluster_incharge_login? ? dashboard_hierarchy_vrps : []
-    visible_vrps = directly_mapped_vrps.presence || hierarchy_mapped_vrps
 
-    @module_cluster_visible_vrps = visible_vrps.uniq(&:id).sort_by do |vrp|
+    visible_vrps = directly_mapped_vrps + hierarchy_mapped_vrps
+
+    if visible_vrps.blank? && defined?(TargetMapping)
+      tm_vrp_ids = TargetMapping.where.not(vrp_id: nil).pluck(:vrp_id).compact.uniq
+      visible_vrps = Vrp.where(id: tm_vrp_ids).to_a
+    end
+
+    @module_cluster_visible_vrps = visible_vrps.compact.uniq(&:id).sort_by do |vrp|
       [vrp.name.to_s, vrp.id]
     end
   end
@@ -13754,10 +13813,11 @@ class ModulesController < ApplicationController
     scope = TargetMapping.all
     if %w[training-form training-form-list].include?(current_slug.to_s) && !admin_dashboard_user? && !vrp_login_user?
       ids = Vrp.where.not(cluster_incharge: [nil, ""]).select { |vrp| module_cluster_vrp_visible?(vrp) }.map(&:id)
-      return scope.where(vrp_id: ids)
+      return scope.where(vrp_id: ids) if ids.any?
+      return scope
     end
     scope = scope.where(vrp_id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
-    scope = scope.where(vrp_id: module_cluster_visible_vrp_ids) if module_mapped_vrp_scope_active?
+    scope = scope.where(vrp_id: module_cluster_visible_vrp_ids) if module_mapped_vrp_scope_active? && module_cluster_visible_vrp_ids.any?
     scope
   end
 
