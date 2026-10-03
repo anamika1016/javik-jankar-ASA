@@ -10994,12 +10994,9 @@ class ModulesController < ApplicationController
 
     hierarchy_mapped_vrps = module_cluster_incharge_login? ? dashboard_hierarchy_vrps : []
 
+    # An empty cluster mapping stays empty. Falling back to "every VRP that has
+    # a target mapping" showed one cluster incharge the whole organisation.
     visible_vrps = directly_mapped_vrps + hierarchy_mapped_vrps
-
-    if visible_vrps.blank? && defined?(TargetMapping)
-      tm_vrp_ids = TargetMapping.where.not(vrp_id: nil).pluck(:vrp_id).compact.uniq
-      visible_vrps = Vrp.where(id: tm_vrp_ids).to_a
-    end
 
     @module_cluster_visible_vrps = visible_vrps.compact.uniq(&:id).sort_by do |vrp|
       [vrp.name.to_s, vrp.id]
