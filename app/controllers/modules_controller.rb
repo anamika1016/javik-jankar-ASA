@@ -11203,8 +11203,12 @@ class ModulesController < ApplicationController
     return false if truthy_module_flag?(record.data["deleted"]) ||
       truthy_module_flag?(record.data["is_deleted"]) ||
       truthy_module_flag?(record.data["discarded"])
+    return false if record.data["record_state"].to_s.casecmp("Inactive").zero?
 
-    record.data["record_state"].to_s.casecmp("Inactive") != 0
+    # A rejected or returned bill is finished, so that month has to be billable
+    # again. jeevika_bill_status_label keeps these words in the stored status,
+    # which avoids an approval-history lookup per bill here.
+    !record.data["status"].to_s.downcase.match?(/reject|return/)
   end
 
   def approved_other_target_achievement_index
