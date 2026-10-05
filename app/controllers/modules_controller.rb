@@ -11438,10 +11438,12 @@ class ModulesController < ApplicationController
     targets = targets.where(vrp_id: selected_vrp_ids) if selected_vrp_ids.present?
     targets = targets.none if vrp_id.present? && selected_vrp_ids.blank?
     targets = targets.where("LOWER(BTRIM(month_name)) = ?", month_name.to_s.strip.downcase) if month_name.present?
+    targets = targets.order(:month_name, :vrp_id, :village_name, :main_activity_name, :activity_name, :id).load
     if vrp_id.present? && targets.none?
       targets = TargetMapping.includes(:vrp)
       targets = selected_vrp_ids.present? ? targets.where(vrp_id: selected_vrp_ids) : targets.none
       targets = targets.where("LOWER(BTRIM(month_name)) = ?", month_name.to_s.strip.downcase) if month_name.present?
+      targets = targets.order(:month_name, :vrp_id, :village_name, :main_activity_name, :activity_name, :id).load
     end
     if month_name.present? && targets.none? && selected_vrp_ids.present?
       month_numbers = month_number_candidates(month_name)
@@ -11451,7 +11453,7 @@ class ModulesController < ApplicationController
         targets = TargetMapping.includes(:vrp).where(id: target_ids)
       end
     end
-    targets = targets.order(:month_name, :vrp_id, :village_name, :main_activity_name, :activity_name, :id).to_a
+    targets = targets.loaded? ? targets.to_a : targets.order(:month_name, :vrp_id, :village_name, :main_activity_name, :activity_name, :id).to_a
     @other_target_candidate_targets = targets
     @other_target_candidate_targets_by_id = targets.index_by { |target| target.id.to_s }
     farmers_by_id = totals_only ? {} : jeevika_jankar_farmers_by_id(targets)
@@ -12054,7 +12056,8 @@ class ModulesController < ApplicationController
     return nil if field.blank?
     return village_master_gram_panchayat_name(record) if record.module_slug == "village-master" && field == "Gram Panchayat"
 
-    keys = [
+    @module_record_field_keys ||= {}
+    keys = @module_record_field_keys[field] ||= [
       field.parameterize(separator: "_"),
       *module_field_aliases(field)
     ].compact.uniq
@@ -12121,7 +12124,7 @@ class ModulesController < ApplicationController
   end
 
   def module_field_aliases(field)
-    {
+    @module_field_aliases ||= {
       "GP Code" => ["gp_code", "gram_code"],
       "Gram Code" => ["gp_code", "gram_code"],
       "Gram Panchayat Name" => ["gram_panchayat_name", "gram_panchayat", "gram_name"],
@@ -12148,7 +12151,8 @@ class ModulesController < ApplicationController
       "Training Major Work Indicator Photo" => ["photo_back_view", "training_major_work_indicator_photo"],
       "Farmer Interaction Photo" => ["photo_close_up_view", "farmer_interaction_photo"],
       "Wide Group Photo" => ["photo_long_shot", "wide_group_photo"]
-    }.fetch(field.to_s, [])
+    }
+    @module_field_aliases.fetch(field.to_s, [])
   end
 
   def module_record_params
@@ -13592,6 +13596,23 @@ class ModulesController < ApplicationController
     name.to_s.sub(/\s*\([^)]*\)\s*\z/, "").gsub(/[^a-z0-9]+/i, " ").squish.downcase
   end
 
+  def training_user_hierarchy_records
+    @training_user_hierarchy_records ||= active_module_records_scope("user-hierarchy-mapping")
+      .order(created_at: :desc).to_a
+  end
+
+  def training_user_hierarchy_by_member
+    @training_user_hierarchy_by_member ||= training_user_hierarchy_records.each_with_object({}) do |record, index|
+      collapsed_hierarchy_users(
+        record.data["level_2_users"].presence || record.data["level_2_user"],
+        record.data["level_3_users"].presence || record.data["level_3_user"]
+      ).each do |member|
+        key = normalize_cc_name_for_lookup(member)
+        index[key] ||= record
+      end
+    end
+  end
+
   def user_hierarchy_head_for_cc(cc_name)
     return nil if cc_name.blank?
 
@@ -13599,22 +13620,14 @@ class ModulesController < ApplicationController
     return nil if norm_cc.blank?
     return nil unless model_ready?(:ModuleRecord)
 
-    records = active_module_records_scope("user-hierarchy-mapping").order(created_at: :desc).to_a
+    index = training_user_hierarchy_by_member
     visited = Set.new
     current_target = norm_cc
 
     loop do
       break if visited.include?(current_target)
       visited.add(current_target)
-
-      match = records.find do |r|
-        users = collapsed_hierarchy_users(
-          r.data["level_2_users"].presence || r.data["level_2_user"],
-          r.data["level_3_users"].presence || r.data["level_3_user"]
-        )
-        users.any? { |u| normalize_cc_name_for_lookup(u) == current_target }
-      end
-
+      match = index[current_target]
       break unless match
 
       head = match.data["level_1_user"].to_s.strip
@@ -13623,38 +13636,17 @@ class ModulesController < ApplicationController
       current_target = normalize_cc_name_for_lookup(head)
     end
 
-    direct_match = records.find do |r|
-      users = collapsed_hierarchy_users(
-        r.data["level_2_users"].presence || r.data["level_2_user"],
-        r.data["level_3_users"].presence || r.data["level_3_user"]
-      )
-      users.any? { |u| normalize_cc_name_for_lookup(u) == norm_cc }
-    end
-    direct_match&.data&.[]("level_1_user")&.to_s&.strip
+    index[norm_cc]&.data&.[]("level_1_user")&.to_s&.strip
   end
 
   def user_hierarchy_cc_to_head_map
     return {} unless model_ready?(:ModuleRecord)
 
-    records = active_module_records_scope("user-hierarchy-mapping").order(created_at: :desc).to_a
-    mapping = {}
+    @user_hierarchy_cc_to_head_map ||= training_user_hierarchy_by_member.keys.each_with_object({}) do |key, mapping|
+      next if key.blank?
 
-    records.each do |r|
-      ccs = collapsed_hierarchy_users(
-        r.data["level_2_users"].presence || r.data["level_2_user"],
-        r.data["level_3_users"].presence || r.data["level_3_user"]
-      )
-      ccs.each do |cc|
-        next if cc.blank?
-
-        norm_cc = normalize_cc_name_for_lookup(cc)
-        next if norm_cc.blank? || mapping.key?(norm_cc)
-
-        mapping[norm_cc] = user_hierarchy_head_for_cc(cc)
-      end
+      mapping[key] = user_hierarchy_head_for_cc(key)
     end
-
-    mapping
   end
 
   def papl_staff_options
@@ -14662,7 +14654,7 @@ class ModulesController < ApplicationController
   end
 
   def field_sources
-    {
+    @field_sources ||= {
       "State" => { module: "state-master", field: "state_name" },
       "District" => { module: "district-master", field: "district_name" },
       "Block" => { module: "block-master", field: "block_name" },

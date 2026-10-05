@@ -19,4 +19,20 @@ SELECT relname, indexrelname, idx_scan, idx_tup_read, idx_tup_fetch
 FROM pg_stat_user_indexes
 WHERE relname IN ('module_records', 'target_mappings', 'vrps', 'afls', 'users')
 ORDER BY relname, indexrelname;
+-- Verify the actual deployed indexes, including interrupted concurrent builds.
+SELECT tab.relname AS table_name, idx.relname AS index_name,
+       pi.indisvalid, pi.indisready, pg_get_indexdef(pi.indexrelid) AS definition
+FROM pg_index pi
+JOIN pg_class idx ON idx.oid = pi.indexrelid
+JOIN pg_class tab ON tab.oid = pi.indrelid
+JOIN pg_namespace ns ON ns.oid = tab.relnamespace
+WHERE ns.nspname = 'public'
+  AND tab.relname IN ('module_records', 'target_mappings', 'vrps', 'afls', 'users')
+ORDER BY tab.relname, idx.relname;
+SELECT version FROM schema_migrations
+WHERE version IN ('20261005130000', '20261005140000') ORDER BY version;
+SELECT relname, pg_size_pretty(pg_relation_size(relid)) AS heap_size,
+       pg_size_pretty(pg_total_relation_size(relid)) AS total_size
+FROM pg_stat_user_tables
+WHERE relname IN ('module_records', 'target_mappings', 'vrps', 'afls', 'users');
 COMMIT;

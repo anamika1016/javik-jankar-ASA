@@ -104,6 +104,8 @@ class ModuleLookupPerformanceTest < ActiveSupport::TestCase
     relation.define_singleton_method(:where) { |*_| self }
     relation.define_singleton_method(:none?) { false }
     relation.define_singleton_method(:order) { |*_| self }
+    relation.define_singleton_method(:load) { self }
+    relation.define_singleton_method(:loaded?) { true }
     relation.define_singleton_method(:to_a) { [target] }
     progress = { target_record: target, target_mapping_id: "9002", month: "August", target: 10,
       completed: 4, pending: 6, assigned_farmer_ids: [], completed_farmer_ids: [] }

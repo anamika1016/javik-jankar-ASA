@@ -762,6 +762,8 @@ class VrpsController < ApplicationController
   end
 
   def approver_labels
+    return @approver_labels if defined?(@approver_labels)
+
     name = current_app_user&.dig("name").to_s
     username = current_app_user&.dig("username").to_s
     role = current_app_user&.dig("role").to_s
@@ -777,9 +779,7 @@ class VrpsController < ApplicationController
     labels.concat(user_model_approver_labels)
     labels.concat(legacy_user_approver_labels)
 
-    labels
-      .compact_blank
-      .uniq
+    @approver_labels = labels.compact_blank.uniq
   end
 
   def user_model_approver_labels
