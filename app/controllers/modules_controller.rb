@@ -7,6 +7,11 @@ require "uri"
 
 class ModulesController < ApplicationController
   LocationRecord = Struct.new(:id, :data)
+  LOCATION_ALIAS_KEYS = %w[state_name state_id state_code district_name district_id district_code
+       block_name cd_block_name block_id block_code cd_block_code
+       gram_panchayat_name gram_panchayat_id gram_panchayat_code gp_code gram_code
+       gp_name gram_name village_name village_id village_code].to_h { |key| [key.freeze, key.to_sym] }.freeze
+  LOCATION_MODULE_SLUGS = %w[state-master district-master block-master gram-panchayat-master village-master lg-directory-list].freeze
   before_action :authorize_farmer_target_access
   before_action :authorize_jeevika_payment_module_access
 
@@ -12001,6 +12006,8 @@ class ModulesController < ApplicationController
   def gram_panchayat_name_lookup
     @gram_panchayat_name_lookup ||= ModuleRecord
       .where(module_slug: ["gram-panchayat-master", "lg-directory-list", "village-master"])
+      .pluck(:id, :data)
+      .map { |id, data| LocationRecord.new(id, data) }
       .select { |record| active_module_record?(record) }
       .each_with_object({}) do |record, lookup|
         label = gram_panchayat_name_from_record(record)
@@ -12954,6 +12961,8 @@ class ModulesController < ApplicationController
   def gram_panchayat_location_records
     @gram_panchayat_location_records ||= ModuleRecord
       .where(module_slug: ["gram-panchayat-master", "lg-directory-list"])
+      .pluck(:id, :data)
+      .map { |id, data| LocationRecord.new(id, data) }
       .select { |candidate| active_module_record?(candidate) }
   end
 
@@ -14448,6 +14457,7 @@ class ModulesController < ApplicationController
     return @location_hierarchy_mappings if defined?(@location_hierarchy_mappings)
     return [] unless model_ready?(:ModuleRecord)
 
+    preload_location_records!(LOCATION_MODULE_SLUGS)
     states = active_records_for_location("state-master").map do |record|
       location_row(record, state: first_present_data(record, "state_name"))
     end
@@ -14494,6 +14504,21 @@ class ModulesController < ApplicationController
     @location_hierarchy_mappings = states + districts + blocks + gram_panchayats + villages + lg_directory_rows
   end
 
+  # Batch the same ordered datasets; keep Ruby filtering so legacy whitespace,
+  # flags and JSON types retain the existing behavior.
+  def preload_location_records!(slugs)
+    @active_records_for_location ||= {}
+    missing = slugs.reject { |slug| @active_records_for_location.key?(slug) }
+    return if missing.empty?
+
+    missing.each { |slug| @active_records_for_location[slug] = [] }
+    ModuleRecord.where(module_slug: missing).order(created_at: :desc)
+      .pluck(:module_slug, :id, :data).each do |slug, id, data|
+        record = LocationRecord.new(id, data)
+        @active_records_for_location[slug] << record if active_module_record?(record)
+      end
+  end
+
   def active_records_for_location(module_slug)
     @active_records_for_location ||= {}
     @active_records_for_location[module_slug] ||= ModuleRecord
@@ -14507,11 +14532,8 @@ class ModulesController < ApplicationController
   def location_row(record, values)
     row = { id: record.id.to_s }
     # Keep imported names and codes available when a parent select stores either.
-    %w[state_name state_id state_code district_name district_id district_code
-       block_name cd_block_name block_id block_code cd_block_code
-       gram_panchayat_name gram_panchayat_id gram_panchayat_code gp_code gram_code
-       gp_name gram_name village_name village_id village_code].each do |key|
-      row[key.to_sym] = record.data[key].to_s.strip if record.data[key].present?
+    LOCATION_ALIAS_KEYS.each do |key, attribute|
+      row[attribute] = record.data[key].to_s.strip if record.data[key].present?
     end
     values.each { |key, value| row[key] = value.to_s.strip if value.present? }
     row

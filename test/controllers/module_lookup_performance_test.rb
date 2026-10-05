@@ -151,6 +151,42 @@ class ModuleLookupPerformanceTest < ActiveSupport::TestCase
     assert_equal 1, queries.size
   end
 
+  test "batched location catalogue preserves full payload and executes one query" do
+    ModulesController::LOCATION_MODULE_SLUGS.each_with_index do |slug, index|
+      ModuleRecord.create!(module_slug: slug, created_at: index.minutes.ago, data: {
+        "state_name" => "State", "state_code" => "01", "district_name" => "District",
+        "district_code" => "02", "block_name" => "Block", "cd_block_code" => "03",
+        "gram_name" => "Gram", "gp_code" => "04", "village_name" => "Village",
+        "village_code" => "05", "status" => " Active ", "extra" => [1, false] })
+      ModuleRecord.create!(module_slug: slug, data: { "name" => "Deleted", "discarded" => " yes " })
+    end
+    legacy = ModulesController.new
+    legacy.define_singleton_method(:preload_location_records!) { |_| }
+    expected = legacy.send(:location_hierarchy_mappings)
+    controller = ModulesController.new
+    queries = capture_queries("module_records") do
+      2.times { assert_equal expected, controller.send(:location_hierarchy_mappings) }
+    end
+    assert_equal 1, queries.size
+  end
+
+  test "gram label lookup retains active aliases without instantiating full records" do
+    ModuleRecord.create!(module_slug: "gram-panchayat-master", data: { "gp_code" => "991", "gram_name" => "Lookup Gram" })
+    ModuleRecord.create!(module_slug: "lg-directory-list", data: { "gp_code" => "992", "gp_name" => "Directory Gram" })
+    ModuleRecord.create!(module_slug: "village-master", data: { "gp_code" => "993", "gram_name" => "Deleted Gram", "is_deleted" => "TRUE" })
+    controller = ModulesController.new
+    instantiated = 0
+    subscriber = ->(*args) { instantiated += args.last[:record_count] }
+    ActiveSupport::Notifications.subscribed(subscriber, "instantiation.active_record") do
+      lookup = controller.send(:gram_panchayat_name_lookup)
+      assert_equal "Lookup Gram", lookup["991"]
+      assert_equal "Directory Gram", lookup["992"]
+      assert_nil lookup["993"]
+      assert_equal 2, controller.send(:gram_panchayat_location_records).size
+    end
+    assert_equal 0, instantiated
+  end
+
   private
 
   def capture_queries(table)
