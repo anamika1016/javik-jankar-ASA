@@ -6,6 +6,7 @@ require "net/http"
 require "uri"
 
 class ModulesController < ApplicationController
+  LocationRecord = Struct.new(:id, :data)
   before_action :authorize_farmer_target_access
   before_action :authorize_jeevika_payment_module_access
 
@@ -9068,15 +9069,25 @@ class ModulesController < ApplicationController
     vrp = cached_vrps_by_id[key]
     unless vrp
       normalized_vrp = normalize_dashboard_text(vrp_id)
-      vrp = cached_vrps_by_id.values.find do |candidate|
-        candidate.name.to_s == vrp_id.to_s ||
-          candidate.user_name.to_s == vrp_id.to_s ||
-          candidate.mobile_no.to_s == vrp_id.to_s ||
-          candidate.name.to_s.downcase == normalized_vrp.downcase
-      end
+      exact, names = cached_vrp_label_indexes
+      matches = [exact[key], names[normalized_vrp.downcase]].compact
+      vrp = matches.min_by(&:first)&.last
     end
 
     @cached_vrp_lookup[key] = vrp
+  end
+
+  def cached_vrp_label_indexes
+    @cached_vrp_label_indexes ||= begin
+      exact = {}
+      names = {}
+      cached_vrps_by_id.each_value.with_index do |vrp, position|
+        entry = [position, vrp]
+        [vrp.name, vrp.user_name, vrp.mobile_no].each { |label| exact[label.to_s] ||= entry }
+        names[vrp.name.to_s.downcase] ||= entry
+      end
+      [exact, names]
+    end
   end
 
   def user_dashboard_identity(user)
@@ -10242,6 +10253,7 @@ class ModulesController < ApplicationController
         (selected_month.blank? || record.data["bill_month"].to_s.strip.casecmp(selected_month.to_s.strip).zero?)
     end
 
+    preload_jeevika_payment_passbooks!(filtered_records)
     filtered_by_id = filtered_records.index_by(&:id)
     jeevika_bill_rows(filtered_records).map do |row|
       record = filtered_by_id[row[:id]]
@@ -10255,6 +10267,15 @@ class ModulesController < ApplicationController
         passbook_attachment: vrp&.bank_passbook_upload
       )
     end
+  end
+
+  def preload_jeevika_payment_passbooks!(records)
+    vrps = Array(records).filter_map { |record| jeevika_bill_vrp(record) }.uniq(&:id)
+    return if vrps.empty?
+
+    ActiveRecord::Associations::Preloader.new(
+      records: vrps, associations: { bank_passbook_upload_attachment: :blob }
+    ).call
   end
 
   def jeevika_payment_transaction_types
@@ -11328,7 +11349,7 @@ class ModulesController < ApplicationController
     normalized_status == "active" || normalized_status.include?("approved")
   end
 
-  def jeevika_jankar_bill_rows(vrp_id: nil, month_name: nil)
+  def jeevika_jankar_bill_rows(vrp_id: nil, month_name: nil, totals_only: false)
     return [] unless model_ready?(:TargetMapping)
 
     selected_vrp_ids = jeevika_jankar_bill_selected_vrp_ids(vrp_id)
@@ -11354,8 +11375,10 @@ class ModulesController < ApplicationController
     targets = targets.order(:month_name, :vrp_id, :village_name, :main_activity_name, :activity_name, :id).to_a
     @other_target_candidate_targets = targets
     @other_target_candidate_targets_by_id = targets.index_by { |target| target.id.to_s }
-    farmers_by_id = jeevika_jankar_farmers_by_id(targets)
-    training_index = if @bill_list_batch_totals
+    farmers_by_id = totals_only ? {} : jeevika_jankar_farmers_by_id(targets)
+    training_index = if totals_only
+      {}
+    elsif @bill_list_batch_totals
       targets.group_by(&:vrp_id).each_value.each_with_object({}) do |vrp_targets, index|
         index.merge!(jeevika_jankar_training_index(vrp_targets))
       end
@@ -11370,6 +11393,16 @@ class ModulesController < ApplicationController
     # the bill totals and its detail rows. Training sessions are evidence, not targets.
     rows = vrp_dashboard_target_progress_rows(targets, []).map do |progress|
       target = progress[:target_record]
+      if totals_only
+        next {
+          target_mapping_id: progress[:target_mapping_id],
+          vrp_id: target.vrp_id.to_s,
+          month_name: progress[:month],
+          target_quantity: progress[:target],
+          assigned_count: progress[:target],
+          achievement_count: progress[:completed]
+        }
+      end
       activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
       main_activity_type = activity_setting&.dig(:main_activity_type).presence || "Training"
       completed_ids = Array(progress[:completed_farmer_ids]).map(&:to_s).to_set
@@ -13071,10 +13104,11 @@ class ModulesController < ApplicationController
     return [] unless record
 
     data = record.data
-    ModuleRecord
+    @approval_channel_records ||= ModuleRecord
       .where(module_slug: "approval-master")
       .order(created_at: :asc)
-      .select { |approval_record| same_approval_channel?(approval_record.data, data) }
+      .to_a
+    @approval_channel_records.select { |approval_record| same_approval_channel?(approval_record.data, data) }
   end
 
   def same_approval_channel?(left_data, right_data)
@@ -13675,6 +13709,10 @@ class ModulesController < ApplicationController
   end
 
   def training_target_mappings
+    @training_target_mappings ||= build_training_target_mappings
+  end
+
+  def build_training_target_mappings
     return [] unless model_ready?(:TargetMapping)
 
     activity_settings = jeevika_jankar_main_activity_settings
@@ -13738,6 +13776,10 @@ class ModulesController < ApplicationController
   end
 
   def seed_distribution_target_mappings
+    @seed_distribution_target_mappings ||= build_seed_distribution_target_mappings
+  end
+
+  def build_seed_distribution_target_mappings
     return [] unless model_ready?(:TargetMapping)
 
     activity_settings = jeevika_jankar_main_activity_settings
@@ -13835,6 +13877,10 @@ class ModulesController < ApplicationController
   end
 
   def training_target_month_options
+    @training_target_month_options ||= build_training_target_month_options
+  end
+
+  def build_training_target_month_options
     target_months = if model_ready?(:TargetMapping)
       training_target_scope
         .where.not(month_name: [nil, ""])
@@ -13855,6 +13901,10 @@ class ModulesController < ApplicationController
   end
 
   def seed_distribution_target_month_options
+    @seed_distribution_target_month_options ||= build_seed_distribution_target_month_options
+  end
+
+  def build_seed_distribution_target_month_options
     target_months = if model_ready?(:TargetMapping)
       training_target_scope
         .where.not(month_name: [nil, ""])
@@ -14395,6 +14445,7 @@ class ModulesController < ApplicationController
   end
 
   def location_hierarchy_mappings
+    return @location_hierarchy_mappings if defined?(@location_hierarchy_mappings)
     return [] unless model_ready?(:ModuleRecord)
 
     states = active_records_for_location("state-master").map do |record|
@@ -14440,13 +14491,16 @@ class ModulesController < ApplicationController
         village: first_present_data(record, "village", "village_name"))
     end
 
-    states + districts + blocks + gram_panchayats + villages + lg_directory_rows
+    @location_hierarchy_mappings = states + districts + blocks + gram_panchayats + villages + lg_directory_rows
   end
 
   def active_records_for_location(module_slug)
-    ModuleRecord
+    @active_records_for_location ||= {}
+    @active_records_for_location[module_slug] ||= ModuleRecord
       .where(module_slug: module_slug)
       .order(created_at: :desc)
+      .pluck(:id, :data)
+      .map { |id, data| LocationRecord.new(id, data) }
       .select { |record| active_module_record?(record) }
   end
 
@@ -14804,6 +14858,10 @@ class ModulesController < ApplicationController
   end
 
   def approver_options
+    @approver_options ||= build_approver_options
+  end
+
+  def build_approver_options
     user_options = []
     if model_ready?(:User)
       user_options = User.order(created_at: :desc).filter_map do |user|
@@ -14939,7 +14997,7 @@ class ModulesController < ApplicationController
 
     previous_summary = @jeevika_jankar_target_summary
     begin
-      jeevika_jankar_bill_rows(vrp_id: vrp_id, month_name: month)
+      jeevika_jankar_bill_rows(vrp_id: vrp_id, month_name: month, totals_only: true)
       ids = jeevika_jankar_bill_selected_vrp_ids(vrp_id)
       @jeevika_bill_process_totals[key] = @jeevika_jankar_target_summary&.dig(ids.first, key.last)
     ensure

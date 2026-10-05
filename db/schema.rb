@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_29_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_05_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -332,6 +332,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_120000) do
     t.text "data", null: false
     t.string "module_slug", null: false
     t.datetime "updated_at", null: false
+    t.index "(((data)::jsonb ->> 'bill_id'::text))", name: "index_jj_bill_history_on_bill_id", where: "((module_slug)::text = 'jeevika-jankar-bill-approval-history'::text)"
     t.index "(((data)::jsonb ->> 'mobile_no'::text))", name: "index_module_records_new_users_on_mobile_no", where: "((module_slug)::text = 'new-user'::text)"
     t.index "(((data)::jsonb ->> 'record_id'::text))", name: "index_training_edits_on_record_id", where: "((module_slug)::text = 'training-form-edit-request'::text)"
     t.index "(((data)::jsonb ->> 'status'::text))", name: "index_training_edits_on_status", where: "((module_slug)::text = 'training-form-edit-request'::text)"
@@ -476,6 +477,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_120000) do
     t.integer "week_4_target"
     t.decimal "week_wise_opg_target", precision: 18, scale: 4
     t.index "lower(btrim((month_name)::text))", name: "index_target_mappings_on_normalized_month"
+    t.index "vrp_id, lower(btrim((month_name)::text))", name: "index_target_mappings_on_owner_normalized_month"
     t.index ["created_by_type", "created_by_id", "updated_at"], name: "index_target_mappings_on_creator_and_updated_at", order: { updated_at: :desc }
     t.index ["created_by_type", "created_by_id"], name: "index_target_mappings_on_creator"
     t.index ["fco_id", "ics_id", "village_id", "main_activity_name", "activity_name"], name: "index_target_mappings_on_activity_scope"
