@@ -10556,17 +10556,18 @@ class ModulesController < ApplicationController
           base.merge(working_date: bill_display_date(date), number: ids.size)
         end
       end
-      farmers_by_date = farmers.group_by { |farmer| bill_display_date(farmer["training_date"]) }
-      # Split only when the saved attendance accounts for the entire achievement.
-      # Legacy/aggregate entries have no reliable per-date allocation: display
-      # their working period together instead of repeating the total each day.
-      if farmers.any? && farmers.size == achievement
-        farmers_by_date.map do |date, attendees|
-          base.merge(working_date: date, number: attendees.size)
-        end
-      else
-        [base.merge(working_date: dates.presence&.join(", ") || "-", number: dashboard_quantity(achievement))]
+      # One row per training date, counting the farmers actually trained that day.
+      # This used to also require farmers.size == achievement, so a JJ who ran
+      # three sessions had all three collapsed onto a single invoice line.
+      if farmers.any?
+        next farmers
+          .group_by { |farmer| farmer["training_date"] }
+          .sort_by { |date, _attendees| parse_module_date(date) || Date.new(1900, 1, 1) }
+          .map { |date, attendees| base.merge(working_date: bill_display_date(date), number: attendees.size) }
       end
+
+      # Legacy items store no per-farmer dates, so there is nothing to split on.
+      [base.merge(working_date: dates.presence&.join(", ") || "-", number: dashboard_quantity(achievement))]
     end
   end
 
