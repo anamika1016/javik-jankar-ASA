@@ -123,7 +123,7 @@
                 <% role_label = step.data["approval_level"].to_s.sub(/\A(first|second|third|fourth|fifth)\s+approval\z/i, "").strip.presence %>
                 <% display_label = role_label.present? && !is_last ? "#{label} (#{role_label})" : label %>
                 <% if step_hist %>
-                  <span><%= display_label %> ==> <%= step_hist.data["action_by"].presence || approver_name %> <%= step_hist.data["action_at"] %></span>
+                  <span><%= display_label %> ==> <%= step_hist.data["action_by"].presence || approver_name %> <%= bill_display_datetime(step_hist.data["action_at"]) %></span>
                 <% else %>
                   <span><%= display_label %> ==> <%= approver_name %> (Pending)</span>
                 <% end %>
