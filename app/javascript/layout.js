@@ -1,8 +1,51 @@
-const farmerIdentityMeta = (farmer) => [["Village", farmer.village_name || farmer.village], ["Father", farmer.father_name], ["Tracenet", farmer.tracenet_no]]
-  .map(([label, raw]) => {
-    const value = String(raw ?? "").trim();
-    return `${label}: ${!value || /^(null|nil|undefined)$/i.test(value) ? "-" : value}`;
-  }).join(" | ");
+const unpackTrainingTargetMappings = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  return (payload.mappings || []).map(({ farmer_indexes, ...mapping }) => ({
+    ...mapping,
+    farmers: (farmer_indexes || []).map((index) => ({ ...payload.farmers[index] }))
+  }));
+};
+
+// Delegation keeps Delete available after Turbo navigation and table updates.
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest?.("[data-module-delete-selected]");
+  if (!button || button.dataset.deleting === "true") return;
+  event.preventDefault();
+  const scope = button.closest(".module-card") || document;
+  const paths = [...new Set(Array.from(scope.querySelectorAll("[data-module-row-select]:checked")).flatMap((checkbox) => {
+    let paths = [checkbox.value];
+    try {
+      const grouped = JSON.parse(checkbox.dataset.moduleRowPaths || "[]");
+      if (Array.isArray(grouped) && grouped.length) paths = grouped;
+    } catch (_error) { /* Older rows contain only the edit URL. */ }
+    return paths.map((path) => path.replace(/\/edit$/, ""));
+  }))];
+  if (!paths.length) return window.alert("Please select at least one record");
+  if (!window.confirm("Delete selected record(s)?")) return;
+  button.dataset.deleting = "true";
+  button.disabled = true;
+  const label = button.textContent;
+  button.textContent = "Deleting…";
+  try {
+    for (const path of paths) {
+      const response = await fetch(path, {
+        method: "DELETE",
+        headers: { "X-CSRF-Token": document.querySelector("meta[name='csrf-token']")?.content || "", "Accept": "application/json" }
+      });
+      if (!response.ok || response.redirected) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error || "Delete failed. Please check your login and try again.");
+      }
+    }
+    window.location.reload();
+  } catch (error) {
+    window.alert(error.message || "Delete failed. Please try again.");
+  } finally {
+    delete button.dataset.deleting;
+    button.disabled = false;
+    button.textContent = label;
+  }
+});
 
 const closeOpenChipMultiControls = (event) => {
   const eventPath = typeof event.composedPath === "function" ? event.composedPath() : [];
@@ -157,101 +200,109 @@ const initPasswordToggles = () => {
   });
 };
 
-const initClipboardButtons = () => {
-  document.querySelectorAll("[data-copy-to-clipboard]").forEach((button) => {
-    if (button.dataset.copyBound === "true") return;
-
-    button.dataset.copyBound = "true";
-    button.addEventListener("click", async () => {
-      const text = button.dataset.copyToClipboard || "";
-      if (!text) return;
-
-      const originalText = button.textContent;
-      try {
-        await navigator.clipboard.writeText(text);
-        button.textContent = "Copied";
-        window.setTimeout(() => {
-          button.textContent = originalText;
-        }, 1600);
-      } catch (_error) {
-        window.prompt("Copy exam link", text);
-      }
-    });
-  });
+const showClipboardButtonStatus = (button, message) => {
+  const originalLabel = button.dataset.originalLabel || button.textContent.trim();
+  button.dataset.originalLabel = originalLabel;
+  button.textContent = message;
+  window.clearTimeout(button._clipboardStatusTimer);
+  button._clipboardStatusTimer = window.setTimeout(() => {
+    button.textContent = originalLabel;
+  }, 1800);
 };
 
-const svgToPngBlob = (svg) => new Promise((resolve, reject) => {
-  const source = new XMLSerializer().serializeToString(svg);
-  const svgBlob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
-  const url = URL.createObjectURL(svgBlob);
-  const image = new Image();
-  const width = Number(svg.getAttribute("width")) || svg.viewBox?.baseVal?.width || 320;
-  const height = Number(svg.getAttribute("height")) || svg.viewBox?.baseVal?.height || width;
+const writeTextToClipboard = async (text) => {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
 
-  image.onload = () => {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+};
+
+const svgToPngBlob = async (svg) => {
+  const clone = svg.cloneNode(true);
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+
+  const width = Number(clone.getAttribute("width") || svg.getBoundingClientRect().width || 240);
+  const height = Number(clone.getAttribute("height") || svg.getBoundingClientRect().height || width);
+  clone.setAttribute("width", width);
+  clone.setAttribute("height", height);
+
+  const svgText = new XMLSerializer().serializeToString(clone);
+  const url = URL.createObjectURL(new Blob([svgText], { type: "image/svg+xml;charset=utf-8" }));
+
+  try {
+    const image = new Image();
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = reject;
+      image.src = url;
+    });
+
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
     const context = canvas.getContext("2d");
-    if (!context) {
-      URL.revokeObjectURL(url);
-      reject(new Error("Could not render QR image"));
-      return;
-    }
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, width, height);
     context.drawImage(image, 0, 0, width, height);
-    URL.revokeObjectURL(url);
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error("Could not prepare QR image"));
-    }, "image/png");
-  };
-  image.onerror = () => {
-    URL.revokeObjectURL(url);
-    reject(new Error("Could not load QR image"));
-  };
-  image.src = url;
-});
 
-const initQrCopyButtons = () => {
-  document.querySelectorAll("[data-copy-qr-image]").forEach((button) => {
-    if (button.dataset.qrCopyBound === "true") return;
+    return await new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("QR image could not be prepared."));
+      }, "image/png");
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+};
 
-    button.dataset.qrCopyBound = "true";
+const initClipboardActions = () => {
+  document.querySelectorAll("[data-copy-to-clipboard]").forEach((button) => {
+    if (button.dataset.copyClipboardBound === "true") return;
+
+    button.dataset.copyClipboardBound = "true";
     button.addEventListener("click", async () => {
-      const selector = button.dataset.copyQrImage || ".jj-qr-svg";
-      const scope = button.closest(".jj-admin-qr-panel, .jj-qr-panel, .jj-qr-card") || document;
-      const svg = scope.querySelector(selector);
-      const fallbackText = button.dataset.copyFallbackText || "";
-      const originalText = button.textContent;
-      const setTemporaryLabel = (label) => {
-        button.textContent = label;
-        window.setTimeout(() => {
-          button.textContent = originalText;
-        }, 1800);
-      };
-
-      if (!svg) return;
-      if (!navigator.clipboard) {
-        if (fallbackText) window.prompt("Copy exam link", fallbackText);
-        return;
+      try {
+        await writeTextToClipboard(button.dataset.copyToClipboard || "");
+        showClipboardButtonStatus(button, "Copied");
+      } catch (_error) {
+        showClipboardButtonStatus(button, "Copy Failed");
       }
+    });
+  });
+
+  document.querySelectorAll("[data-copy-qr-image]").forEach((button) => {
+    if (button.dataset.copyQrBound === "true") return;
+
+    button.dataset.copyQrBound = "true";
+    button.addEventListener("click", async () => {
+      const qrSvg = button.closest(".jj-admin-qr-box")?.querySelector(".jj-qr-svg");
+      const fallbackText = button.dataset.copyQrFallback || "";
 
       try {
-        if (!window.ClipboardItem || !navigator.clipboard.write) throw new Error("Image clipboard is not available");
+        if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+          throw new Error("Image clipboard is not supported.");
+        }
 
-        const pngBlob = await svgToPngBlob(svg);
-        await navigator.clipboard.write([new ClipboardItem({ "image/png": pngBlob })]);
-        setTemporaryLabel(button.dataset.copySuccessLabel || "QR Copied");
+        const qrBlob = await svgToPngBlob(qrSvg);
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": qrBlob })]);
+        showClipboardButtonStatus(button, "QR Copied");
       } catch (_error) {
-        if (!fallbackText) return;
-
         try {
-          await navigator.clipboard.writeText(fallbackText);
-          setTemporaryLabel(button.dataset.copyFallbackLabel || "Link Copied");
+          await writeTextToClipboard(fallbackText);
+          showClipboardButtonStatus(button, "Link Copied");
         } catch (_fallbackError) {
-          window.prompt("Copy exam link", fallbackText);
+          showClipboardButtonStatus(button, "Copy Failed");
         }
       }
     });
@@ -295,6 +346,47 @@ document.addEventListener("turbo:click", () => {
 });
 
 function initDeferredLayoutPage() {
+  initClipboardActions();
+
+  // Card detail popup: a small trigger box opens that card's detail inside a modal dialog.
+  const cardPopup = document.querySelector("[data-card-popup]");
+  if (cardPopup && cardPopup.dataset.cardPopupBound !== "true") {
+    cardPopup.dataset.cardPopupBound = "true";
+    const popupTitle = cardPopup.querySelector("[data-card-popup-title]");
+    const popupBody = cardPopup.querySelector("[data-card-popup-body]");
+    const closeCardPopup = () => {
+      if (typeof cardPopup.close === "function") cardPopup.close();
+      else cardPopup.removeAttribute("open");
+    };
+
+    document.querySelectorAll("[data-card-popup-trigger]").forEach((trigger) => {
+      if (trigger.dataset.cardPopupTriggerBound === "true") return;
+      trigger.dataset.cardPopupTriggerBound = "true";
+      trigger.addEventListener("click", () => {
+        const card = trigger.closest(".metric-card-group");
+        if (!card) return;
+        const title = card.querySelector(".metric-card-group-title");
+        const titleText = title ? title.textContent.trim() : "";
+        const detail = card.querySelector(".cc-jj-status-groups, .metric-card-group-items");
+        if (popupTitle) popupTitle.textContent = titleText;
+        if (popupBody) {
+          popupBody.innerHTML = "";
+          if (detail) popupBody.appendChild(detail.cloneNode(true));
+          // FCO-wise JJ Requirement: 3 boxes per row so Sausar is row 1 and Turekela is row 2.
+          const grid = popupBody.querySelector(".metric-card-group-items");
+          if (grid) grid.style.gridTemplateColumns = `repeat(${/requirement/i.test(titleText) ? 3 : 2}, minmax(0, 1fr))`;
+        }
+        if (typeof cardPopup.showModal === "function") cardPopup.showModal();
+        else cardPopup.setAttribute("open", "");
+      });
+    });
+
+    cardPopup.querySelectorAll("[data-card-popup-close]").forEach((btn) => btn.addEventListener("click", closeCardPopup));
+    cardPopup.addEventListener("click", (event) => {
+      if (event.target === cardPopup) closeCardPopup();
+    });
+  }
+
   document.querySelectorAll("[data-participation-filter-form]").forEach((form) => {
     if (form.dataset.participationFilterBound === "true") return;
 
@@ -392,7 +484,8 @@ function initDeferredLayoutPage() {
           const name = document.createElement("strong");
           name.textContent = farmer.farmer_name || `Farmer #${farmer.id}`;
           const meta = document.createElement("small");
-          meta.textContent = farmerIdentityMeta(farmer);
+          meta.textContent = [`Village: ${farmer.village_name || "-"}`, `Father: ${farmer.father_name || "-"}`, `Tracenet: ${farmer.tracenet_no || "-"}`]
+            .filter(Boolean).join(" | ");
           content.append(name, meta);
           item.append(content);
           fragment.append(item);
@@ -661,7 +754,7 @@ function initDeferredLayoutPage() {
 
         if (farmer.father_name) {
           const fatherName = document.createElement("small");
-          fatherName.textContent = farmerIdentityMeta(farmer);
+          fatherName.textContent = `Father: ${farmer.father_name}`;
           farmerCell.appendChild(fatherName);
         }
 
@@ -902,9 +995,7 @@ function initDeferredLayoutPage() {
   if (aflListTable) {
     const aflSelectAll = aflListTable.querySelector("[data-afl-select-all]");
     const aflDeleteButton = document.querySelector("[data-afl-delete-selected]");
-    // The bulk delete scopes itself to this query, so it must point at the real
-    // search box — not at a filter that no longer exists.
-    const aflQueryInput = document.querySelector("[data-afl-search], [data-table-search='afl_list']");
+    const aflQueryInput = document.querySelector("[data-table-search='afl_list']");
     const aflRows = () => Array.from(aflListTable.querySelectorAll("[data-afl-row-select]"));
     const aflSelectAllKey = () => `afl-list-select-all:${(aflQueryInput?.value || "").trim().toLowerCase()}`;
     const restoreAflSelection = () => {
@@ -927,23 +1018,6 @@ function initDeferredLayoutPage() {
     };
 
     restoreAflSelection();
-
-    // Search as you type. The list pages on the server, so this submits the
-    // form after a short pause instead of filtering the rows on screen.
-    if (aflQueryInput?.form) {
-      let aflSearchTimer;
-      aflQueryInput.addEventListener("input", () => {
-        window.clearTimeout(aflSearchTimer);
-        aflSearchTimer = window.setTimeout(() => aflQueryInput.form.requestSubmit(), 450);
-      });
-
-      // The submit reloads the page, so put the cursor back to keep typing.
-      if (aflQueryInput.value && new URLSearchParams(window.location.search).has("q")) {
-        const caret = aflQueryInput.value.length;
-        aflQueryInput.focus();
-        aflQueryInput.setSelectionRange?.(caret, caret);
-      }
-    }
 
     aflSelectAll?.addEventListener("change", () => {
       if (aflSelectAll.checked) {
@@ -1058,17 +1132,6 @@ function initDeferredLayoutPage() {
       }
 
       window.location.href = selected[0].value;
-    });
-  }
-
-  const moduleDeleteButton = document.querySelector("[data-module-delete-selected]");
-  if (moduleDeleteButton) {
-    moduleDeleteButton.addEventListener("click", () => {
-      const paths = Array.from(document.querySelectorAll("[data-module-row-select]:checked"))
-        .flatMap((checkbox) => moduleRowPaths(checkbox))
-        .map((path) => path.replace(/\/edit$/, ""));
-
-      deleteSelected(paths, "Delete selected record(s)?");
     });
   }
 
@@ -1788,80 +1851,137 @@ function initDeferredLayoutPage() {
     refreshClusterIncharges();
   });
 
-  document.querySelectorAll("[data-max-size-mb]").forEach((input) => {
-    input.addEventListener("change", () => {
-      const maxSizeMb = Number(input.dataset.maxSizeMb || 0);
-      const maxFiles = Number(input.dataset.maxFiles || 0);
-      const files = Array.from(input.files || []);
-      if (files.length === 0) return;
+  // Phone cameras produce 3-8 MB photos, which are over the 5 MB per-photo
+  // limit enforced below. The size check then cleared the input, and because
+  // the training photo fields are `required`, the browser silently refused to
+  // submit the whole form -- so a training form filled in on a phone never
+  // reached the server at all, while desktop uploads (small scanned files)
+  // went through. Downscale photos in the browser first so they fit, which
+  // also keeps the multipart body small enough for the web server's own
+  // upload limit and makes uploading over mobile data far quicker.
+  const MAX_IMAGE_DIMENSION = 1600;
+  const IMAGE_QUALITY = 0.82;
 
-      if (maxFiles && files.length > maxFiles) {
-        window.alert(`Maximum ${maxFiles} photos can be selected for this field.`);
+  const compressImageFile = (file) => new Promise((resolve) => {
+    // Anything we cannot safely re-encode (PDF, HEIC a browser cannot decode,
+    // an unsupported codec) resolves to the untouched original.
+    if (!file.type || !file.type.startsWith("image/") || typeof DataTransfer === "undefined") {
+      resolve(file);
+      return;
+    }
+
+    let objectUrl;
+    try {
+      objectUrl = URL.createObjectURL(file);
+    } catch (_error) {
+      resolve(file);
+      return;
+    }
+
+    const image = new Image();
+    const finish = (result) => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(result);
+    };
+
+    image.onerror = () => finish(file);
+    image.onload = () => {
+      try {
+        const scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(image.width, image.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+          // Keep the original whenever re-encoding failed or did not help.
+          if (!blob || blob.size >= file.size) {
+            finish(file);
+            return;
+          }
+          const name = `${file.name.replace(/\.[^.]+$/, "")}.jpg`;
+          finish(new File([blob], name, { type: "image/jpeg", lastModified: Date.now() }));
+        }, "image/jpeg", IMAGE_QUALITY);
+      } catch (_error) {
+        finish(file);
+      }
+    };
+    image.src = objectUrl;
+  });
+
+  document.addEventListener("change", async (event) => {
+    const input = event.target;
+    if (!input || !(input instanceof HTMLInputElement) || input.type !== "file") return;
+
+    const maxSizeMb = Number(input.dataset.maxSizeMb || 0);
+    const maxFiles = Number(input.dataset.maxFiles || 0);
+    let files = Array.from(input.files || []);
+    if (files.length === 0) return;
+
+    if (input.dataset.pdfOnly === "true") {
+      const nonPdfFiles = files.filter((file) => !file.name.toLowerCase().endsWith(".pdf") || file.type !== "application/pdf");
+      if (nonPdfFiles.length > 0) {
+        window.alert("Evidence/Documentation PDF mein sirf PDF file upload karein.");
         input.value = "";
         return;
       }
+    }
 
-      if (maxSizeMb) {
-        const oversizedFiles = files.filter((file) => file.size > maxSizeMb * 1024 * 1024);
-        if (oversizedFiles.length > 0) {
-          window.alert(`Each photo must be ${maxSizeMb} MB or smaller. Please reselect the photos.`);
-          input.value = "";
-        }
-      }
-    });
-  });
-
-  document.querySelectorAll("[data-allowed-extensions]").forEach((input) => {
-    const allowed = String(input.dataset.allowedExtensions || "")
-      .split(",")
-      .map((extension) => extension.trim().toLowerCase())
-      .filter(Boolean);
-    if (!allowed.length) return;
-
-    input.addEventListener("change", () => {
-      const files = Array.from(input.files || []);
-      const invalid = files.filter((file) => !allowed.includes(file.name.split(".").pop().toLowerCase()));
-      if (!invalid.length) return;
-
-      window.alert(`Only ${allowed.join(", ").toUpperCase()} files are allowed here. Please reselect.`);
+    if (maxFiles > 0 && files.length > maxFiles) {
+      window.alert(`Maximum ${maxFiles} photos allowed. 5 photo se jada upload n kar paayen.`);
       input.value = "";
-    });
-  });
+      return;
+    }
 
-  // Dashboard summary cards stay short; the ↗ button reopens the same card
-  // contents full size in a popup.
-  const cardPopup = document.querySelector("[data-card-popup]");
-  const cardPopupTitle = cardPopup?.querySelector("[data-card-popup-title]");
-  const cardPopupBody = cardPopup?.querySelector("[data-card-popup-body]");
-
-  const closeCardPopup = () => {
-    if (typeof cardPopup?.close === "function") cardPopup.close();
-    else cardPopup?.removeAttribute("open");
-  };
-
-  document.querySelectorAll("[data-card-popup-trigger]").forEach((trigger) => {
-    trigger.addEventListener("click", () => {
-      const card = trigger.closest(".metric-card-group");
-      if (!card || !cardPopup || !cardPopupBody) return;
-
-      if (cardPopupTitle) {
-        cardPopupTitle.textContent = card.querySelector(".metric-card-group-title")?.textContent.trim() || "Details";
+    // Shrink oversized photos instead of rejecting them. Assigning to
+    // input.files does not re-fire `change`, so this cannot loop.
+    if (maxSizeMb > 0 && files.some((file) => file.size > maxSizeMb * 1024 * 1024)) {
+      input.dataset.compressing = "true";
+      try {
+        const compressed = await Promise.all(files.map(compressImageFile));
+        const transfer = new DataTransfer();
+        compressed.forEach((file) => transfer.items.add(file));
+        input.files = transfer.files;
+        files = Array.from(input.files || []);
+      } catch (_error) {
+        // Leave the originally selected files in place; the size check below
+        // still protects the upload.
+      } finally {
+        delete input.dataset.compressing;
       }
+    }
 
-      // Copy everything except the heading and the button itself.
-      const content = Array.from(card.children)
-        .filter((child) => !child.matches(".metric-card-group-title, [data-card-popup-trigger]"))
-        .map((child) => child.cloneNode(true));
-      cardPopupBody.replaceChildren(...content);
-
-      if (typeof cardPopup.showModal === "function") cardPopup.showModal();
-      else cardPopup.setAttribute("open", "open");
-    });
+    if (maxSizeMb > 0) {
+      const oversizedFiles = files.filter((file) => file.size > maxSizeMb * 1024 * 1024);
+      if (oversizedFiles.length > 0) {
+        window.alert(`Each photo must be ${maxSizeMb} MB or smaller. Please reselect the photos.`);
+        input.value = "";
+      }
+    }
   });
 
-  cardPopup?.querySelector("[data-card-popup-close]")?.addEventListener("click", closeCardPopup);
-  cardPopup?.addEventListener("click", (event) => {
-    if (event.target === cardPopup) closeCardPopup();
+  document.addEventListener("submit", (event) => {
+    const form = event.target;
+    if (!form || !(form instanceof HTMLFormElement)) return;
+
+    // Submitting while a photo is still being downscaled would send the
+    // original oversized file, so hold the submit until it finishes.
+    if (form.querySelector("input[type='file'][data-compressing='true']")) {
+      event.preventDefault();
+      window.alert("Photos taiyaar ho rahi hain, ek pal rukein aur phir Save karein.");
+      return false;
+    }
+
+    const fileInputs = form.querySelectorAll("input[type='file'][data-max-files]");
+    for (const input of fileInputs) {
+      const maxFiles = Number(input.dataset.maxFiles || 0);
+      const files = Array.from(input.files || []);
+      if (maxFiles > 0 && files.length > maxFiles) {
+        event.preventDefault();
+        window.alert(`Maximum ${maxFiles} photos allowed. 5 photo se jada upload n kar paayen.`);
+        input.value = "";
+        return false;
+      }
+    }
   });
 
   const uploadGalleryModal = document.querySelector("[data-upload-gallery-modal]");
@@ -1928,11 +2048,11 @@ function initDeferredLayoutPage() {
     "village": ["state", "district", "block", "gram-panchayat"]
   };
   const locationAliasKeys = {
-    state: ["state", "state_name", "state_id", "state_code"],
-    district: ["district", "district_name", "district_id", "district_code"],
-    block: ["block", "block_name", "cd_block_name", "block_id", "block_code", "cd_block_code"],
-    gram_panchayat: ["gram_panchayat", "gram_panchayat_name", "gram_panchayat_id", "gram_panchayat_code", "gp_code", "gram_code", "gp_name", "gram_name"],
-    village: ["village", "village_name", "village_id", "village_code"]
+    state: ["state", "state_id", "state_code"],
+    district: ["district", "district_id", "district_code"],
+    block: ["block", "block_id", "block_code"],
+    gram_panchayat: ["gram_panchayat", "gram_panchayat_id", "gram_panchayat_code", "gp_code", "gram_code", "gp_name", "gram_name"],
+    village: ["village", "village_id", "village_code"]
   };
 
   const locationSelectedValuesFromDataset = (select) => {
@@ -1985,7 +2105,7 @@ function initDeferredLayoutPage() {
     const key = locationKeys[level];
     return [row.id].concat(locationRowValues(row, key)).some((value) => {
       return normalizeOption(value) === normalizeOption(option.value) ||
-        normalizeOption(value) === normalizeOption(option.label || option.textContent);
+        normalizeOption(value) === normalizeOption(option.textContent);
     });
   };
 
@@ -1994,20 +2114,9 @@ function initDeferredLayoutPage() {
 
     const selectedValues = uniquePresent(locationSelectedValuesFromDataset(select).concat(selectedLocationValues(select)));
     const blankOption = originalOptions.find((option) => option.value === "") || { value: "", label: `Select ${level}` };
-    const rowValues = allowedRows.map((row) => [row.id].concat(locationRowValues(row, locationKeys[level])).map(normalizeOption));
-    const allowedValues = new Set(rowValues.flat());
     const filteredOptions = originalOptions.filter((option) => {
       if (option.value === "") return false;
-      return allowedValues.has(normalizeOption(option.value)) || allowedValues.has(normalizeOption(option.label || option.textContent));
-    });
-    const matchedValues = new Set(filteredOptions.flatMap((option) => [normalizeOption(option.value), normalizeOption(option.label || option.textContent)]));
-
-    // Directory rows can contain locations absent from the separate master options.
-    allowedRows.forEach((row, index) => {
-      const label = row[locationKeys[level]];
-      if (!label || rowValues[index].some((value) => matchedValues.has(value))) return;
-      filteredOptions.push({ value: label, label });
-      matchedValues.add(normalizeOption(label));
+      return allowedRows.some((row) => optionMatchesLocationRow(option, row, level));
     });
 
     const parentSelected = (locationParents[level] || []).every((parentLevel) => {
@@ -2069,76 +2178,6 @@ function initDeferredLayoutPage() {
       Object.keys(selects).forEach(syncLocationPrimary);
     };
 
-    // JJ registration loads its hierarchy on demand instead of embedding the directory.
-    if (formShell.dataset.locationOptionsUrl) {
-      let revision = 0;
-      const fillOptions = (level, options, selected = [], promptText = null) => {
-        const select = selects[level];
-        if (!select) return;
-        select.replaceChildren();
-        const prompt = document.createElement("option");
-        prompt.value = "";
-        prompt.textContent = promptText || originalOptions[level].find((option) => !option.value)?.label || `Select ${level}`;
-        select.appendChild(prompt);
-        options.forEach(({ value, label }) => {
-          const option = document.createElement("option");
-          option.value = value;
-          option.textContent = label;
-          option.selected = selected.some((item) => normalizeOption(item) === normalizeOption(value));
-          select.appendChild(option);
-        });
-        select.dispatchEvent(new Event("chip:refresh"));
-        syncLocationPrimary(level);
-      };
-
-      const loadChildren = async (parent, preserve = false) => {
-        const requestRevision = ++revision;
-        const children = locationLevels.slice(locationLevels.indexOf(parent) + 1);
-        const saved = {};
-        children.forEach((level) => {
-          if (!selects[level]) return;
-          saved[level] = preserve
-            ? uniquePresent(locationSelectedValuesFromDataset(selects[level]).concat(selectedLocationValues(selects[level])))
-            : [];
-          delete selects[level].dataset.selectedValue;
-          delete selects[level].dataset.selectedValues;
-          fillOptions(level, []);
-        });
-        for (const level of children) {
-          if (!selects[level]) continue;
-          const parents = locationParents[level] || [];
-          if (parents.some((key) => selectedLocationValues(selects[key]).length === 0)) break;
-          const url = new URL(formShell.dataset.locationOptionsUrl, window.location.origin);
-          url.searchParams.set("level", level);
-          parents.forEach((key) => {
-            url.searchParams.set(locationKeys[key], JSON.stringify(selectedLocationValues(selects[key])));
-          });
-          fillOptions(level, [], [], "Loading...");
-          try {
-            const response = await fetch(url, { headers: { Accept: "application/json" } });
-            if (!response.ok) throw new Error("Location options request failed");
-            const payload = await response.json();
-            if (requestRevision !== revision) return;
-            fillOptions(level, payload.options || [], saved[level]);
-          } catch (_error) {
-            if (requestRevision !== revision) return;
-            fillOptions(level, [], [], "Unable to load. Reselect parent to retry.");
-            break;
-          }
-        }
-      };
-
-      locationLevels.forEach((level) => {
-        selects[level]?.addEventListener("change", () => {
-          syncLocationPrimary(level);
-          loadChildren(level);
-        });
-      });
-      loadChildren("state", true);
-      syncLocationPrimaries();
-      return;
-    }
-
     const refreshLocationLevel = (level) => {
       if (!selects[level]) return;
 
@@ -2182,7 +2221,7 @@ function initDeferredLayoutPage() {
     let activityMappings = [];
     let monthOptions = [];
     try {
-      mappings = JSON.parse(formShell.dataset.trainingTargetMap || "[]");
+      mappings = unpackTrainingTargetMappings(JSON.parse(formShell.dataset.trainingTargetMap || "[]"));
     } catch (_error) {
       mappings = [];
     }
@@ -2195,12 +2234,6 @@ function initDeferredLayoutPage() {
       monthOptions = JSON.parse(formShell.dataset.trainingMonthOptions || "[]");
     } catch (_error) {
       monthOptions = [];
-    }
-    let userHierarchyCcMap = {};
-    try {
-      userHierarchyCcMap = JSON.parse(formShell.dataset.userHierarchyCcMap || "{}");
-    } catch (_error) {
-      userHierarchyCcMap = {};
     }
     mappings = mappings.filter((mapping) => normalizeOption(mapping.main_activity_type || "Training") === normalizeOption("Training"));
     activityMappings = activityMappings.filter((mapping) => normalizeOption(mapping.main_activity_type || "Training") === normalizeOption("Training"));
@@ -2226,6 +2259,7 @@ function initDeferredLayoutPage() {
 	    const geoLongitudeInput = formShell.querySelector("[data-training-geo-longitude]");
 	    if (!icsSelect || !villageSelect) return;
 	    const selectedFarmerIds = new Set(JSON.parse(farmerPanel?.dataset.selectedFarmerIds || "[]").map(String));
+    const savedFarmers = JSON.parse(farmerPanel?.dataset.savedFarmers || "[]");
     const farmersUrl = formShell.dataset.trainingFarmersUrl;
     const trainingFarmerCache = new Map();
     let activeFarmerLoadKey = "";
@@ -2239,6 +2273,14 @@ function initDeferredLayoutPage() {
 	    let subActivityChips = null;
 	    if (subActivitySelect) {
 	      subActivitySelect.classList.add("training-sub-activity-native");
+	      // Once clipped to 1x1 the browser cannot focus this control, so a
+	      // `required` miss aborts submit without reporting anything -- the form
+	      // just looks frozen, which is what mobile users hit. Carry the rule in
+	      // a data attribute and enforce it ourselves with a visible message.
+	      if (subActivitySelect.required) {
+	        subActivitySelect.dataset.requiredWhenHidden = "true";
+	        subActivitySelect.required = false;
+	      }
 	      subActivityChips = document.createElement("div");
 	      subActivityChips.className = "training-sub-activity-chips";
 	      subActivityChips.setAttribute("aria-live", "polite");
@@ -2259,10 +2301,17 @@ function initDeferredLayoutPage() {
         normalizeOption(label) === normalizeOption(selected);
     };
 
+    let initializingTraining = true;
     const fillTrainingSelect = (select, options, placeholder) => {
       const selected = select.multiple
         ? (() => { try { return JSON.parse(select.dataset.selectedValues || "[]"); } catch (_error) { return []; } })()
         : (select.dataset.selectedValue || select.value);
+      if (initializingTraining) {
+        options = options.slice();
+        (Array.isArray(selected) ? selected : [selected]).filter(Boolean).forEach((value) => {
+          if (!options.some((option) => normalizeOption(optionValue(option)) === normalizeOption(value))) options.push(value);
+        });
+      }
       select.innerHTML = "";
 
       const blank = document.createElement("option");
@@ -2366,20 +2415,49 @@ function initDeferredLayoutPage() {
       });
     };
 
-    const autoSelectMappedSubActivities = () => {
+    const storedSelectedValues = (select) => {
+      try { return JSON.parse(select.dataset.selectedValues || "[]"); } catch (_error) { return []; }
+    };
+
+    // Only the target-mapping cascade may pre-tick activities. Until a month /
+    // ICS / Gram is chosen the cascade yields nothing and the select still holds
+    // the server's full catalogue, so ticking every option would invent
+    // activities that were never mapped. In that case fall back to whatever the
+    // record already had saved.
+    const applyMappedSelection = (select, mappedOptions) => {
+      const allowed = (mappedOptions.length ? mappedOptions.map(optionValue) : storedSelectedValues(select))
+        .map(normalizeOption)
+        .filter(Boolean);
+      Array.from(select.options).forEach((option) => {
+        option.selected = Boolean(option.value) && allowed.includes(normalizeOption(option.value));
+      });
+      select.dataset.selectedValues = JSON.stringify(
+        Array.from(select.selectedOptions).map((option) => option.value).filter(Boolean)
+      );
+    };
+
+    const autoSelectMappedSubActivities = (mappedOptions = []) => {
       if (!subActivitySelect || !mainActivitySelect?.value) {
         renderSubActivityChips();
         return;
       }
-      Array.from(subActivitySelect.options).forEach((option) => { option.selected = Boolean(option.value); });
-      subActivitySelect.dataset.selectedValues = JSON.stringify(selectedSubActivityValues());
+      applyMappedSelection(subActivitySelect, mappedOptions);
+      // This select is required but clipped to 1x1, and its chips are the only
+      // UI -- there is no way for anyone to tick a value by hand. Leaving it
+      // empty makes the browser refuse to submit without reporting anything, so
+      // the form just looks frozen. Once a Main Activity is chosen, fall back to
+      // whatever the control actually offers. A blank form still selects
+      // nothing, because the guard above returns before reaching here.
+      if (!selectedSubActivityValues().length) {
+        Array.from(subActivitySelect.options).forEach((option) => { option.selected = Boolean(option.value); });
+        subActivitySelect.dataset.selectedValues = JSON.stringify(selectedSubActivityValues());
+      }
       renderSubActivityChips();
     };
 
-    const autoSelectMappedMainActivities = () => {
+    const autoSelectMappedMainActivities = (mappedOptions = []) => {
       if (!mainActivitySelect) return;
-      Array.from(mainActivitySelect.options).forEach((option) => { option.selected = Boolean(option.value); });
-      mainActivitySelect.dataset.selectedValues = JSON.stringify(selectedMainActivityValues());
+      applyMappedSelection(mainActivitySelect, mappedOptions);
       renderMainActivityChips();
     };
 
@@ -2417,17 +2495,17 @@ function initDeferredLayoutPage() {
     const mappedMonthOptions = () => uniqueOptions(
       monthOptions.concat(mappings.map((mapping) => mapping.month)).map((month) => makeOption(month, month))
     ).map(optionValue);
-    const mappedIcsOptions = () => uniqueOptions(mappings.filter((mapping) => !monthSelect?.value || normalizeOption(mapping.month) === normalizeOption(monthSelect.value)).map((mapping) => makeOption(mapping.ics, mapping.ics))).map(optionValue);
+    const mappedIcsOptions = () => uniqueOptions(targetRowsForSelection().map((mapping) => makeOption(mapping.ics, mapping.ics))).map(optionValue);
     const mappedMainActivityOptions = () => uniqueOptions(
-      targetRowsForSelection({ requireMonth: true, requireVillage: true, includeMainActivity: false, includeSubActivity: false })
+      targetRowsForSelection({ requireVillage: true, includeMainActivity: false })
         .map((mapping) => makeOption(mapping.main_activity, mapping.main_activity))
     ).map(optionValue);
     const mappedSubActivityOptions = () => {
-      const rows = targetRowsForSelection({ requireMonth: true, requireVillage: true, requireMainActivity: true, includeSubActivity: false });
+      const rows = targetRowsForSelection({ requireVillage: true, requireMainActivity: true, includeSubActivity: false });
       const selectedMainActivities = selectedMainActivityValues().map(normalizeOption);
       const configured = activityMappings
         .filter((mapping) => selectedMainActivities.includes(normalizeOption(mapping.main_activity)))
-        .flatMap((mapping) => mapping.sub_activities || []);
+        .flatMap((mapping) => Array(mapping.sub_activities || []));
       const values = rows.flatMap((mapping) => {
         const rawValue = String(mapping.sub_activity || "").trim();
         const matchingConfigured = configured.filter((subActivity) => {
@@ -2441,7 +2519,7 @@ function initDeferredLayoutPage() {
       return uniqueOptions(values.map((value) => makeOption(value, value))).map(optionValue);
     };
 	    const mappedVillageOptions = () => {
-	      const rows = mappings.filter((mapping) => (!monthSelect?.value || normalizeOption(mapping.month) === normalizeOption(monthSelect.value)) && (!icsSelect.value || normalizeOption(mapping.ics) === normalizeOption(icsSelect.value)));
+	      const rows = targetRowsForSelection();
 
 	      return uniqueOptions(rows.map((mapping) => makeOption(mapping.village, mapping.village))).map(optionValue);
 	    };
@@ -2485,20 +2563,14 @@ function initDeferredLayoutPage() {
       .join(",");
 
     const mappedFarmers = async () => {
-      let rows = selectedTrainingTargetRows();
-      if (!rows.length) {
-        const savedMappingIds = Array.from(formShell.querySelectorAll('input[name="module_record[target_mapping_ids][]"], input[name="module_record[target_mapping_id]"]'))
-          .map((input) => String(input.value || "").trim()).filter(Boolean);
-        rows = mappings.filter((mapping) => savedMappingIds.includes(String(mapping.target_mapping_id || "")));
-      }
+      const rows = selectedTrainingTargetRows();
       if (!rows.length) return [];
 
       const key = targetRowsKey(rows);
       if (!key) return [];
       if (trainingFarmerCache.has(key)) return trainingFarmerCache.get(key);
 
-      const inlineFarmers = rows.flatMap((mapping) => mapping.farmers || []);
-      if (inlineFarmers.length || !farmersUrl) {
+      if (!farmersUrl) {
         const farmersById = new Map();
         rows.forEach((mapping) => {
           const includedFarmerIds = new Set((mapping.completed_farmer_ids || []).map(String));
@@ -2519,7 +2591,9 @@ function initDeferredLayoutPage() {
 
       const url = new URL(farmersUrl, window.location.origin);
       url.searchParams.set("target_mapping_ids", key);
-      if (formShell.dataset.trainingRecordId) url.searchParams.set("record_id", formShell.dataset.trainingRecordId);
+      if (selectedFarmerIds.size) {
+        url.searchParams.set("existing_farmer_ids", Array.from(selectedFarmerIds).join(","));
+      }
       const data = await fetchJson(url.toString());
       const farmers = Array.isArray(data.farmers) ? data.farmers : [];
       trainingFarmerCache.set(key, farmers);
@@ -2548,16 +2622,16 @@ function initDeferredLayoutPage() {
 	      if (!totalFarmerCountInput) return;
 
 	      const total = numberValue(maleCountInput) + numberValue(femaleCountInput);
-	      totalFarmerCountInput.value = total ? String(total) : "";
+	      totalFarmerCountInput.value = String(total);
 	    };
 
-    const syncIcsFarmerCountSplit = () => {};
 
 	    const updateFarmerCount = () => {
 	      const count = selectedFarmerBoxes().length;
 	      const boxes = farmerBoxes();
 	      const mappedCount = allFarmerBoxes().length;
-	      if (farmerCount) farmerCount.textContent = `${count} selected / ${mappedCount} mapped farmers • ${farmerList.querySelectorAll(".already-included").length} completed`;
+	      const completedCount = farmerList.querySelectorAll(".already-included").length;
+      if (farmerCount) farmerCount.textContent = `${count} selected / ${mappedCount} mapped farmers • ${completedCount} completed • ${mappedCount - completedCount} pending`;
 	      if (farmerCountInput) farmerCountInput.value = String(count);
 	      if (farmerSelectAll) {
 	        farmerSelectAll.checked = boxes.length > 0 && count === boxes.length;
@@ -2568,7 +2642,6 @@ function initDeferredLayoutPage() {
 	        farmerSelectAllButton.disabled = boxes.length === 0;
 	        farmerSelectAllButton.textContent = boxes.length > 0 && count === boxes.length ? "Clear all" : "Select all";
 	      }
-      syncIcsFarmerCountSplit();
 	      syncTotalFarmerCount();
 	      validateTrainingCountSplit(false);
 	    };
@@ -2601,13 +2674,16 @@ function initDeferredLayoutPage() {
 	        message = "Female Count 0 se kam nahi ho sakta.";
 	      }
 
+          // Male + Female only feeds Total Farmer Count; it need not match Farmer Count.
+          if (!invalidInput && (!Number.isInteger(maleCountValue) || !Number.isInteger(femaleCountValue))) {
+            invalidInput = femaleCountInput;
+            message = "Male Count aur Female Count poore number hone chahiye.";
+          }
+
 	      if (!invalidInput) return true;
 
 	      invalidInput?.setCustomValidity(message);
-	      if (report) {
-	        invalidInput?.reportValidity();
-	        alert(message);
-	      }
+	      if (report) invalidInput?.reportValidity();
 	      return false;
 	    };
 
@@ -2616,29 +2692,31 @@ function initDeferredLayoutPage() {
 	      if (farmerSearchEmpty) farmerSearchEmpty.hidden = true;
       const targetRows = selectedTrainingTargetRows();
       const loadKey = targetRowsKey(targetRows);
+      const retainedFarmers = savedFarmers.filter((farmer) => selectedFarmerIds.has(String(farmer.id)));
+      activeFarmerLoadKey = loadKey;
 
-	      if (monthSelect && !monthSelect.value) {
+	      if (monthSelect && !monthSelect.value && !retainedFarmers.length) {
 	        farmerList.textContent = "Select Month to load target farmers.";
 	        if (farmerSelectAll) farmerSelectAll.checked = false;
 	        updateFarmerCount();
 	        return;
 	      }
 
-	      if (!villageSelect.value) {
+	      if (!villageSelect.value && !retainedFarmers.length) {
 	        farmerList.textContent = "Select Village Name to load target farmers.";
 	        if (farmerSelectAll) farmerSelectAll.checked = false;
 	        updateFarmerCount();
 	        return;
 	      }
 
-      if (mainActivityTypeSelect && !mainActivityTypeSelect.value) {
+      if (mainActivityTypeSelect && !mainActivityTypeSelect.value && !retainedFarmers.length) {
         farmerList.textContent = "Select Main Activity Type to load target farmers.";
         if (farmerSelectAll) farmerSelectAll.checked = false;
         updateFarmerCount();
         return;
       }
 
-      if (!selectedMainActivityValues().length) {
+      if (!selectedMainActivityValues().length && !retainedFarmers.length) {
         farmerList.textContent = "Select Main Activity to load target farmers.";
         if (farmerSelectAll) farmerSelectAll.checked = false;
         updateFarmerCount();
@@ -2652,7 +2730,7 @@ function initDeferredLayoutPage() {
         farmerList.textContent = "Select Sub Activity to narrow the target farmers.";
       }
 
-      if (!targetRows.length) {
+      if (!targetRows.length && !retainedFarmers.length) {
         farmerList.textContent = "No target farmers found for selected activity.";
         if (farmerSelectAll) farmerSelectAll.checked = false;
         updateFarmerCount();
@@ -2665,13 +2743,15 @@ function initDeferredLayoutPage() {
       try {
         farmers = await mappedFarmers();
       } catch (_error) {
-        if (activeFarmerLoadKey === loadKey) {
+        if (!retainedFarmers.length && activeFarmerLoadKey === loadKey) {
           farmerList.textContent = "Target farmers load failed. Please try again.";
           updateFarmerCount();
+          return;
         }
-        return;
       }
       if (activeFarmerLoadKey !== loadKey) return;
+      const loadedIds = new Set(farmers.map((farmer) => String(farmer.id)));
+      farmers = farmers.concat(retainedFarmers.filter((farmer) => !loadedIds.has(String(farmer.id))));
 
       if (!farmers.length) {
         farmerList.textContent = "No target farmers found for selected activity.";
@@ -2681,7 +2761,11 @@ function initDeferredLayoutPage() {
 	      }
 
 	      farmerList.innerHTML = farmers.map((farmer) => {
-	        const meta = farmerIdentityMeta(farmer);
+	        const meta = [
+	          `Village: ${farmer.village_name || "-"}`,
+	          `Father: ${farmer.father_name || "-"}`,
+	          `Tracenet: ${farmer.tracenet_no || "-"}`
+	        ].filter(Boolean).join(" | ");
 	        const isSelected = selectedFarmerIds.has(String(farmer.id));
 	        const checked = isSelected ? " checked" : "";
 	        const includedClass = farmer.already_included ? " already-included" : "";
@@ -2740,19 +2824,34 @@ function initDeferredLayoutPage() {
 	    });
 
 	    if (monthSelect) fillTrainingSelect(monthSelect, mappedMonthOptions(), "Select Month");
+	    // On first paint the server has already rendered the saved ICS / Gram
+	    // options. If the mapping payload is empty (missing or unparseable
+	    // data-training-target-map) do not overwrite them with "No ... saved yet"
+	    // -- that turns a working form into a blank one. Cascade updates below
+	    // still clear the selects normally.
+	    const hasServerOptions = (select) => Array.from(select.options).some((option) => option.value);
+	    const fillUnlessServerAlreadyHas = (select, options, placeholder) => {
+	      if (!options.length && hasServerOptions(select)) return;
+
+	      fillTrainingSelect(select, options, placeholder);
+	      setOnlyTrainingOption(select, options);
+	    };
 	    const initialIcsOptions = mappedIcsOptions();
-	    fillTrainingSelect(icsSelect, initialIcsOptions, "Select ICS Name/Block Name");
-	    setOnlyTrainingOption(icsSelect, initialIcsOptions);
+	    fillUnlessServerAlreadyHas(icsSelect, initialIcsOptions, "Select ICS Name");
 	    const initialVillageOptions = mappedVillageOptions();
-	    fillTrainingSelect(villageSelect, initialVillageOptions, "Select Village Name");
-	    setOnlyTrainingOption(villageSelect, initialVillageOptions);
+	    fillUnlessServerAlreadyHas(villageSelect, initialVillageOptions, "Select Village Name");
 	    const initialMainOptions = mappedMainActivityOptions();
-	    if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, initialMainOptions, "Select Main Activity");
-	    if (!selectedMainActivityValues().length) autoSelectMappedMainActivities();
+	    if (mainActivitySelect && !(initialMainOptions.length === 0 && hasServerOptions(mainActivitySelect))) {
+	      fillTrainingSelect(mainActivitySelect, initialMainOptions, "Select Main Activity");
+	    }
+	    if (!selectedMainActivityValues().length) autoSelectMappedMainActivities(initialMainOptions);
 	    else renderMainActivityChips();
 	    const initialSubOptions = mappedSubActivityOptions();
-	    if (subActivitySelect) fillTrainingSelect(subActivitySelect, initialSubOptions, "Select Sub Activity");
-	    if (selectedSubActivityValues().length) renderSubActivityChips(); else autoSelectMappedSubActivities();
+	    if (subActivitySelect && !(initialSubOptions.length === 0 && hasServerOptions(subActivitySelect))) {
+	      fillTrainingSelect(subActivitySelect, initialSubOptions, "Select Sub Activity");
+	    }
+	    if (selectedSubActivityValues().length) renderSubActivityChips(); else autoSelectMappedSubActivities(initialSubOptions);
+	    initializingTraining = false;
 	    renderTrainingFarmers();
 
 	    if (geoLatitudeInput && geoLongitudeInput && navigator.geolocation) {
@@ -2768,21 +2867,22 @@ function initDeferredLayoutPage() {
 	      icsSelect.value = "";
 	      villageSelect.value = "";
 	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValue = "";
+	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValues = "[]";
 	      if (subActivitySelect) subActivitySelect.dataset.selectedValues = "[]";
 	      if (mainActivitySelect) mainActivitySelect.value = "";
 	      if (subActivitySelect) subActivitySelect.value = "";
 	      const icsOptions = mappedIcsOptions();
-	      fillTrainingSelect(icsSelect, icsOptions, "Select ICS Name/Block Name");
+	      fillTrainingSelect(icsSelect, icsOptions, "Select ICS Name");
 	      setOnlyTrainingOption(icsSelect, icsOptions);
 	      const villageOptions = mappedVillageOptions();
 	      fillTrainingSelect(villageSelect, villageOptions, "Select Village Name");
 	      setOnlyTrainingOption(villageSelect, villageOptions);
 	      const mainOptions = mappedMainActivityOptions();
 	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mainOptions, "Select Main Activity");
-	      autoSelectMappedMainActivities();
+	      autoSelectMappedMainActivities(mainOptions);
 	      const subOptions = mappedSubActivityOptions();
 	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
-	      autoSelectMappedSubActivities();
+	      autoSelectMappedSubActivities(subOptions);
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    };
@@ -2793,6 +2893,7 @@ function initDeferredLayoutPage() {
 	      villageSelect.dataset.selectedValue = "";
 	      villageSelect.value = "";
 	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValue = "";
+	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValues = "[]";
 	      if (subActivitySelect) subActivitySelect.dataset.selectedValues = "[]";
 	      if (mainActivitySelect) mainActivitySelect.value = "";
 	      if (subActivitySelect) subActivitySelect.value = "";
@@ -2801,38 +2902,40 @@ function initDeferredLayoutPage() {
 	      setOnlyTrainingOption(villageSelect, villageOptions);
 	      const mainOptions = mappedMainActivityOptions();
 	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mainOptions, "Select Main Activity");
-	      autoSelectMappedMainActivities();
+	      autoSelectMappedMainActivities(mainOptions);
 	      const subOptions = mappedSubActivityOptions();
 	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
-	      autoSelectMappedSubActivities();
+	      autoSelectMappedSubActivities(subOptions);
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    });
 	    villageSelect.addEventListener("change", () => {
 	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValue = "";
+	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValues = "[]";
 	      if (subActivitySelect) subActivitySelect.dataset.selectedValues = "[]";
 	      if (mainActivitySelect) mainActivitySelect.value = "";
 	      if (subActivitySelect) subActivitySelect.value = "";
 	      const mainOptions = mappedMainActivityOptions();
 	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mainOptions, "Select Main Activity");
-	      autoSelectMappedMainActivities();
+	      autoSelectMappedMainActivities(mainOptions);
 	      const subOptions = mappedSubActivityOptions();
 	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
-	      autoSelectMappedSubActivities();
+	      autoSelectMappedSubActivities(subOptions);
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    });
 	    mainActivityTypeSelect?.addEventListener("change", () => {
 	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValue = "";
+	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValues = "[]";
 	      if (subActivitySelect) subActivitySelect.dataset.selectedValues = "[]";
 	      if (mainActivitySelect) mainActivitySelect.value = "";
 	      if (subActivitySelect) subActivitySelect.value = "";
 	      const mainOptions = mappedMainActivityOptions();
 	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mainOptions, "Select Main Activity");
-	      autoSelectMappedMainActivities();
+	      autoSelectMappedMainActivities(mainOptions);
 	      const subOptions = mappedSubActivityOptions();
 	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
-	      autoSelectMappedSubActivities();
+	      autoSelectMappedSubActivities(subOptions);
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    });
@@ -2842,8 +2945,9 @@ function initDeferredLayoutPage() {
 	      if (subActivitySelect) subActivitySelect.dataset.selectedValues = "[]";
 	      if (subActivitySelect) subActivitySelect.value = "";
 	      if (subActivitySelect) {
-	        fillTrainingSelect(subActivitySelect, mappedSubActivityOptions(), "Select Sub Activity");
-	        autoSelectMappedSubActivities();
+	        const subOptions = mappedSubActivityOptions();
+	        fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
+	        autoSelectMappedSubActivities(subOptions);
 	      }
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
@@ -2854,38 +2958,6 @@ function initDeferredLayoutPage() {
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    });
-
-    const ccSelect = formShell.querySelector('select[name="module_record[cluster_coordinator_name]"], select[name="module_record[internal_trainer_name_1]"], input[name="module_record[cluster_coordinator_name]"]');
-    const agronomistSelect = formShell.querySelector('select[name="module_record[agronomist_name]"], select[name="module_record[internal_trainer_name_2]"], input[name="module_record[agronomist_name]"]');
-
-    const autoFillAgronomistFromCC = () => {
-      if (!ccSelect || !agronomistSelect) return;
-      const ccVal = (ccSelect.value || ccSelect.dataset.selectedValue || "").trim();
-      if (!ccVal) return;
-
-      const normalizedCc = ccVal.replace(/\s*\([^)]*\)\s*$/, "").replace(/\s+/g, " ").trim().toLowerCase();
-      const mappedHead = userHierarchyCcMap[normalizedCc];
-      if (mappedHead) {
-        if (agronomistSelect.tagName === "SELECT") {
-          let matchedOpt = Array.from(agronomistSelect.options).find((opt) =>
-            opt.value.replace(/\s*\([^)]*\)\s*$/, "").replace(/\s+/g, " ").trim().toLowerCase() === mappedHead.replace(/\s*\([^)]*\)\s*$/, "").replace(/\s+/g, " ").trim().toLowerCase()
-          );
-          if (!matchedOpt) {
-            matchedOpt = new Option(mappedHead, mappedHead);
-            agronomistSelect.add(matchedOpt);
-          }
-          agronomistSelect.value = matchedOpt.value;
-          agronomistSelect.dataset.selectedValue = matchedOpt.value;
-        } else {
-          agronomistSelect.value = mappedHead;
-        }
-      }
-    };
-
-    ccSelect?.addEventListener("change", autoFillAgronomistFromCC);
-    if (ccSelect && (!agronomistSelect?.value || agronomistSelect?.value === "N/A")) {
-      autoFillAgronomistFromCC();
-    }
 
     [maleCountInput, femaleCountInput].forEach((input) => {
       input?.addEventListener("input", () => {
@@ -2898,17 +2970,43 @@ function initDeferredLayoutPage() {
       });
     });
 
-    const submitBtn = formShell.querySelector("form [type=submit]");
+    // A required control that is visually hidden -- the chip-backed Sub Activity
+    // select is clipped to 1x1 -- cannot be focused, so the browser refuses to
+    // submit and reports nothing at all: the form just looks frozen. Find any
+    // such control ourselves and say which field is missing.
+    const hiddenInvalidControl = (form) => Array.from(form.elements).find((element) => {
+      if (!element.willValidate || element.checkValidity()) return false;
+
+      return element.offsetParent === null || element.getClientRects().length === 0;
+    });
+
+    const controlLabel = (element) => {
+      const text = element.closest("label")?.querySelector("span")?.textContent ||
+        element.closest(".training-field")?.querySelector("span")?.textContent || "";
+      return text.replace(/\*/g, "").trim() || "a required field";
+    };
+
     formShell.querySelector("form")?.addEventListener("submit", (event) => {
       if (!validateTrainingCountSplit(true)) {
         event.preventDefault();
         return;
       }
-      // Show loading state on mobile to prevent double-submit
-      if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.textContent = "Saving...";
+
+      // Sub Activity is required but hidden behind its chips, so the browser
+      // cannot report it. Say what is missing instead of dying silently.
+      if (subActivitySelect?.dataset.requiredWhenHidden === "true" && !selectedSubActivityValues().length) {
+        event.preventDefault();
+        window.alert("Sub Major Work Indicator select karein. Pehle Month, ICS, Gram aur Main Major Work Indicator chunein.");
+        (subActivityChips || subActivitySelect).scrollIntoView({ block: "center", behavior: "smooth" });
+        return;
       }
+
+      const blocked = hiddenInvalidControl(event.currentTarget);
+      if (!blocked) return;
+
+      event.preventDefault();
+      window.alert(`${controlLabel(blocked)} select karein. Ye field required hai.`);
+      (blocked.closest("label") || blocked).scrollIntoView({ block: "center", behavior: "smooth" });
     });
 	  });
 
@@ -3207,7 +3305,12 @@ function initDeferredLayoutPage() {
       farmerList.innerHTML = farmerRows.map(({ farmer, farmerId, completed, checked: isChecked }) => {
         const checked = isChecked ? " checked" : "";
         const disabled = completed ? " disabled" : "";
-        const meta = farmerIdentityMeta(farmer);
+        const meta = [
+          `Village: ${farmer.village_name || "-"}`,
+          `Father: ${farmer.father_name || "-"}`,
+          `Tracenet: ${farmer.tracenet_no || "-"}`,
+          completed ? "Already submitted" : ""
+        ].filter(Boolean).join(" | ");
 
         return `
           <label class="vrp-ics-farmer-item${completed ? " disabled" : ""}">
@@ -3521,7 +3624,11 @@ function initDeferredLayoutPage() {
       }
 
       farmersList.innerHTML = farmers.map((farmer) => {
-        const meta = farmerIdentityMeta(farmer);
+        const meta = [
+          `Village: ${farmer.village_name || "-"}`,
+          `Father: ${farmer.father_name || "-"}`,
+          `Tracenet: ${farmer.tracenet_no || "-"}`
+        ].filter(Boolean).join(" | ");
 
         return `
           <label class="vrp-ics-farmer-item${farmer.mapped_to_other ? " disabled" : ""}">
@@ -3633,16 +3740,12 @@ function initDeferredLayoutPage() {
 
     const vrpSelect = shell.querySelector("[data-target-vrp]");
     const fcoSelect = shell.querySelector("[data-target-fco]");
-    const targetEntryModeSelect = shell.querySelector("[data-target-entry-mode]");
-    const blockSelect = shell.querySelector("[data-target-block]");
     const icsSelect = shell.querySelector("[data-target-ics]");
-    const icsHidden = shell.querySelector("[data-target-ics-hidden]");
     const villageSelect = shell.querySelector("[data-target-village]");
     const villageHidden = shell.querySelector("[data-target-village-hidden]");
     const monthSelect = shell.querySelector("select[name='target_mapping[month_name]']");
     const targetTypeSelect = shell.querySelector("[data-target-type]");
     const mainActivitySelect = shell.querySelector("[data-target-main-activity]");
-    const mainActivityField = mainActivitySelect?.closest(".target-village-field");
     const subActivitySelect = shell.querySelector("[data-target-sub-activity]");
     const subActivityField = shell.querySelector("[data-target-sub-activity-field]");
     const standardQuantityFields = Array.from(shell.querySelectorAll("[data-target-standard-quantity-fields]"));
@@ -3674,21 +3777,7 @@ function initDeferredLayoutPage() {
     const farmerDialogSave = shell.querySelector("[data-target-dialog-save]");
     const farmerDialogSaveStatus = shell.querySelector("[data-target-dialog-save-status]");
     const form = shell.querySelector("form");
-    const ccTargetInput = shell.querySelector("[data-cc-target-input]");
-    const validateCcTarget = () => {
-      if (!ccTargetInput) return "";
-      ccTargetInput.setCustomValidity("");
-      if (ccTargetInput.disabled) return "";
-      const opgInput = trainingTargetInputs().find((input) => input.dataset.trainingActivityName === "OPG Training");
-      ccTargetInput.max = opgInput?.value.trim() || "0";
-      if (!ccTargetInput.value.trim()) return "";
-      const value = Number(ccTargetInput.value);
-      const message = !Number.isInteger(value) || value < 0
-        ? "CC Target must be a non-negative whole number."
-        : (!opgInput?.value.trim() || value > Number(opgInput.value) ? "CC Target cannot exceed OPG Training." : "");
-      ccTargetInput.setCustomValidity(message);
-      return message;
-    };
+
     const validateOpgBreakdown = (strict = false) => {
       const inputs = trainingTargetInputs().filter((input) => !input.disabled);
       const opgInput = inputs.find((input) => input.dataset.trainingActivityName === "OPG Training");
@@ -3696,8 +3785,10 @@ function initDeferredLayoutPage() {
       const breakdown = breakdownInputs.reduce((sum, input) => sum + (Number(input.value) || 0), 0);
       const opg = Number(opgInput?.value);
       let message = opgInput?.value.trim() && (breakdown > opg || (strict && breakdown !== opg))
-        ? `General Training/Meeting, Input Demo INM, Input Demo PM aur Exposer ka total (${breakdown}) OPG Training (${opg}) ke equal hona chahiye; usse zyada nahi ho sakta.` : "";
+        ? `General Training/Meeting, Input Demo INM, Input Demo PM aur FFS ka total (${breakdown}) OPG Training (${opg}) ke equal hona chahiye; usse zyada nahi ho sakta.` : "";
       if (strict && opgInput && !opgInput.value.trim() && breakdown > 0) message = "Please enter OPG Training before allocating the four training targets.";
+      const missing = inputs.filter((input) => !input.value.trim());
+      if (missing.length) message = `Please fill ${missing.map((input) => input.dataset.trainingActivityName === "FFS" ? "FFS Exposure" : input.dataset.trainingActivityName).join(", ")}. Enter 0 for sub-targets with no allocation.`;
       trainingTargetInputs().forEach((input) => input.setCustomValidity(""));
       if (message) opgInput.setCustomValidity(message);
       const warning = shell.querySelector("[data-opg-validation-message]");
@@ -3705,11 +3796,48 @@ function initDeferredLayoutPage() {
         warning.textContent = message || (opgInput?.value.trim() ? `${breakdown} / ${opg} OPG Training allocated` : "");
         warning.hidden = !warning.textContent;
       }
-      return message || validateCcTarget();
+      return message;
     };
-    ccTargetInput?.addEventListener("input", validateCcTarget);
-    trainingTargetInputs().forEach((input) => input.addEventListener("input", () => validateOpgBreakdown(false)));
+
+    const ccTargetInput = shell.querySelector("[data-cc-target-input]");
+    let ccTargetWarning = shell.querySelector("[data-cc-target-validation-message]");
+    if (!ccTargetWarning && ccTargetInput) {
+      ccTargetWarning = document.createElement("p");
+      ccTargetWarning.setAttribute("data-cc-target-validation-message", "");
+      ccTargetWarning.setAttribute("role", "alert");
+      ccTargetWarning.hidden = true;
+      ccTargetWarning.style.cssText = "color:#c0392b;font-size:0.85rem;font-weight:600;margin:4px 0 0;";
+      ccTargetInput.closest("label")?.insertAdjacentElement("afterend", ccTargetWarning);
+    }
+
+    const validateCcTarget = () => {
+      if (!ccTargetInput || ccTargetInput.disabled) return "";
+      const opgInput = trainingTargetInputs().find((input) => input.dataset.trainingActivityName === "OPG Training");
+      const ccVal = ccTargetInput.value.trim();
+      if (!ccVal) { ccTargetInput.setCustomValidity(""); if (ccTargetWarning) ccTargetWarning.hidden = true; return ""; }
+      const cc = Number(ccVal);
+      const opg = Number(opgInput?.value || 0);
+      if (opgInput?.value.trim() && cc > opg) {
+        const msg = `CC Target (${cc}) OPG Training (${opg}) se zyada nahi ho sakta.`;
+        ccTargetInput.setCustomValidity(msg);
+        if (ccTargetWarning) { ccTargetWarning.textContent = msg; ccTargetWarning.hidden = false; }
+        return msg;
+      }
+      ccTargetInput.setCustomValidity("");
+      if (ccTargetWarning) ccTargetWarning.hidden = true;
+      return "";
+    };
+    ccTargetInput?.addEventListener("input", () => validateCcTarget());
+    trainingTargetInputs().forEach((input) => {
+      if (input.dataset.trainingActivityName === "OPG Training") {
+        input.addEventListener("input", () => validateCcTarget());
+      }
+    });
+
+    trainingTargetInputs().forEach((input) => input.addEventListener("input", () => validateOpgBreakdown(true)));
     form?.addEventListener("submit", (event) => {
+      const ccMsg = validateCcTarget();
+      if (ccMsg) { event.preventDefault(); ccTargetInput?.reportValidity(); return; }
       const message = validateOpgBreakdown(true);
       if (!message) return;
       event.preventDefault();
@@ -3720,18 +3848,14 @@ function initDeferredLayoutPage() {
       const ids = Array.from(shell.querySelectorAll("[data-edit-saved-target-farmer-id]"))
         .map((input) => String(input.value || ""))
         .filter(Boolean);
-      if (ids.length) return [...new Set(ids)];
-
-      return [].concat(editTarget.afl_ids || []).map((id) => String(id)).filter(Boolean);
+      const payloadIds = Array.isArray(editTarget.afl_ids) ? editTarget.afl_ids : [];
+      return [...new Set([...ids, ...payloadIds].map((id) => String(id)).filter(Boolean))];
     };
     let editTarget = {};
     let targetSubActivityRows = [];
     let mainActivityTypeRows = [];
-    let blockFcoOptions = [];
-    let blockOptionsByFco = {};
-    let targetBlockOptions = [];
     let targetLoadRequestId = 0;
-    let targetCountRequestId = 0;
+    let targetLoadAbortController;
     let activeFarmerDialogRowKey = "";
     const weeklyPlanValues = {};
     const weeklyPlanFarmerIds = {};
@@ -3750,16 +3874,6 @@ function initDeferredLayoutPage() {
       mainActivityTypeRows = JSON.parse(shell.dataset.mainActivityTypeMap || "[]");
     } catch (_error) {
       mainActivityTypeRows = [];
-    }
-    try {
-      blockFcoOptions = JSON.parse(shell.dataset.blockFcoOptions || "[]");
-    } catch (_error) {
-      blockFcoOptions = [];
-    }
-    try {
-      blockOptionsByFco = JSON.parse(shell.dataset.blockOptionsByFco || "{}");
-    } catch (_error) {
-      blockOptionsByFco = {};
     }
     if (mainActivitySelect && !mainActivitySelect.dataset.originalOptions) {
       mainActivitySelect.dataset.originalOptions = JSON.stringify(Array.from(mainActivitySelect.options || []).map((option) => ({
@@ -3801,32 +3915,8 @@ function initDeferredLayoutPage() {
       targetInput.disabled = manualMode && !villageTargetMode();
       targetInput.required = !manualMode || villageTargetMode();
       targetInput.setCustomValidity("");
-
-      // Manual quantity does not require activities, but keeps any chosen activities usable.
-      [mainActivityField, subActivityField].forEach((field) => {
-        if (!field) return;
-        const skipActivities = manualMode && !villageTargetMode();
-        field.hidden = false;
-        field.classList.remove("target-new-farmer-activity-hidden");
-        field.querySelectorAll("select, input").forEach((input) => {
-          input.disabled = false;
-          input.required = !skipActivities && input.tagName === "SELECT";
-          if (skipActivities) input.setCustomValidity?.("");
-        });
-      });
-
-      [mainActivitySelect, subActivitySelect].forEach((select) => {
-        select?.dispatchEvent(new Event("chip:refresh"));
-      });
     };
-    const locationValueParts = (value) => {
-      const rawValue = `${value || ""}`.trim();
-      const parts = rawValue.split("||");
-      if (parts.length > 1) return parts;
-      const displayMatch = rawValue.match(/^(.*)\s-\s(\d+)$/);
-      if (displayMatch) return [displayMatch[2], displayMatch[1]];
-      return [rawValue, ""];
-    };
+    const locationValueParts = (value) => `${value || ""}`.split("||");
     const targetOptionMatches = (optionValueText, selectedValueText) => {
       const optionParts = locationValueParts(optionValueText);
       const selectedParts = locationValueParts(selectedValueText);
@@ -3861,34 +3951,8 @@ function initDeferredLayoutPage() {
 
       villageHidden.value = JSON.stringify(targetSelectedValues(villageSelect));
     };
-    const targetBlockWiseMode = () => (targetEntryModeSelect?.value || "").trim() === "block_wise";
-    const selectedTargetFcoId = () => locationValueParts(fcoSelect?.value || fcoSelect?.dataset.selectedValue)[0];
-    const blockOptionsForSelectedFco = () => blockOptionsByFco[selectedTargetFcoId()] || [];
-    const selectedTargetIcsValue = () => targetBlockWiseMode()
-      ? (blockSelect?.value || "")
-      : (icsSelect?.value || icsSelect?.dataset.selectedValue || "");
-    const syncTargetIcsHidden = () => {
-      if (icsHidden) icsHidden.value = selectedTargetIcsValue();
-    };
-    const syncTargetEntryMode = () => {
-      const blockWise = targetBlockWiseMode();
 
-      if (blockSelect) {
-        const hasBlocks = targetBlockOptions.length > 0 || Array.from(blockSelect.options || []).some((option) => option.value);
-        // In Block Wise mode it becomes selectable as soon as an FCO is chosen.
-        // The Office List mapping fills its options immediately after that.
-        blockSelect.disabled = !blockWise || (!selectedTargetFcoId() && !hasBlocks);
-        blockSelect.required = blockWise;
-      }
-      if (icsSelect) {
-        const hasIcs = Array.from(icsSelect.options || []).some((option) => option.value);
-        icsSelect.disabled = blockWise || !hasIcs;
-        icsSelect.required = !blockWise;
-      }
-      syncTargetIcsHidden();
-    };
-
-    const fillTargetSelect = (select, options, placeholder, emptyLabel = "") => {
+    const fillTargetSelect = (select, options, placeholder) => {
       if (!select) return;
 
       const selectedValues = targetSelectedValues(select);
@@ -3896,7 +3960,7 @@ function initDeferredLayoutPage() {
 
       const blank = document.createElement("option");
       blank.value = "";
-      blank.textContent = options.length ? placeholder : (emptyLabel || `No ${placeholder.replace(/^Select\s+/i, "")} saved yet`);
+      blank.textContent = options.length ? placeholder : `No ${placeholder.replace(/^Select\s+/i, "")} saved yet`;
       select.appendChild(blank);
 
       options.forEach((optionData) => {
@@ -3911,7 +3975,6 @@ function initDeferredLayoutPage() {
       delete select.dataset.selectedValues;
       select.disabled = options.length === 0;
       select.dispatchEvent(new Event("chip:refresh"));
-      syncTargetEntryMode();
     };
     const clearTargetVillageSelection = () => {
       if (!villageSelect) return;
@@ -3927,7 +3990,7 @@ function initDeferredLayoutPage() {
     const selectedSubActivityNames = () => targetSelectedValues(subActivitySelect);
     const mainActivityTypeFor = (mainActivityName) => {
       const match = mainActivityTypeRows.find((row) => normalizeOption(row.main_activity) === normalizeOption(mainActivityName));
-      return normalizeOption(match?.main_activity_type || "Training");
+      return normalizeOption(match?.main_activity_type || "Other");
     };
     const trainingActivityTypeSelected = () => {
       const selected = selectedMainActivityNames();
@@ -3942,8 +4005,10 @@ function initDeferredLayoutPage() {
       const selectedValues = resetSelection ? [] : targetSelectedValues(mainActivitySelect);
       const filteredOptions = originalMainActivityOptions.filter((option) => {
         if (!option.value) return true;
-        const requiredType = villageTargetMode() ? "Other" : "Training";
-        return mainActivityTypeFor(option.value) === normalizeOption(requiredType);
+        const activityType = mainActivityTypeFor(option.value);
+        return villageTargetMode()
+          ? activityType === normalizeOption("Other")
+          : activityType === normalizeOption("Training");
       });
 
       mainActivitySelect.innerHTML = "";
@@ -3982,15 +4047,15 @@ function initDeferredLayoutPage() {
         subActivityField.removeAttribute("hidden");
       }
       if (subActivitySelect) {
-        subActivitySelect.required = true;
+        subActivitySelect.dataset.chipRequired = "true";
+        subActivitySelect.required = false;
         // Keep enabled unless options are empty — refreshTargetSubActivities manages that.
       }
 
+      // Keep the source farmer list hidden in the form. Its checkboxes feed the
+      // Activity Wise Plan farmer dialog and are still submitted with the form.
       if (farmerPanel) {
-        // The farmer panel is an internal data source for the Activity Wise Plan
-        // dialog — it should never be visible on the page directly.
         farmerPanel.hidden = true;
-        farmerPanel.style.display = "none";
       }
 
       standardQuantityFields.forEach((field) => {
@@ -4019,41 +4084,14 @@ function initDeferredLayoutPage() {
 
       trainingTargetInputs().forEach((input) => {
         input.disabled = !trainingMode || villageMode;
-        input.required = trainingMode && !villageMode;
+        input.required = !input.disabled;
+        if (input.disabled) input.setCustomValidity("");
         if ((!trainingMode || villageMode) && !editTarget.id) input.value = "";
       });
 
-      if (ccTargetInput) {
-        ccTargetInput.disabled = !trainingMode || villageMode;
-        if (ccTargetInput.disabled && !editTarget.id) ccTargetInput.value = "";
-        validateCcTarget();
-      }
-
+      validateOpgBreakdown(true);
       syncNewFarmerTargetMode();
     };
-
-    const validateOPGSubTotal = () => {
-      const allInputs = trainingTargetInputs();
-      const inputByName = (name) => allInputs.find((el) => el.dataset.trainingActivityName === name);
-      const opgInput = inputByName("OPG Training");
-      const subInputs = ["General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS"].map(inputByName).filter(Boolean);
-      const opgTotal = Number(opgInput?.value || 0);
-      if (!opgTotal || opgTotal <= 0) {
-        subInputs.forEach((input) => { input.max = ""; input.setCustomValidity(""); });
-        return;
-      }
-      const subTotal = subInputs.reduce((sum, input) => sum + Number(input.value || 0), 0);
-      if (subTotal > opgTotal) {
-        subInputs.forEach((input) => {
-          if (Number(input.value || 0) > 0) input.setCustomValidity(`Total (${subTotal}) OPG Training (${opgTotal}) se zyada hai`);
-        });
-      } else {
-        subInputs.forEach((input) => input.setCustomValidity(""));
-      }
-    };
-    trainingTargetInputs().forEach((input) => {
-      input.addEventListener("input", validateOPGSubTotal);
-    });
 
     const refreshTargetSubActivities = (resetSelection = false) => {
       if (!subActivitySelect) return;
@@ -4124,17 +4162,13 @@ function initDeferredLayoutPage() {
     };
 
     const weeklyRowKey = (row) => `${row.mainActivity || ""}`;
-    // The plan renders every selected activity as one combined row keyed
-    // "__common__", so a saved target's farmers belong to that row.
-    const editRowMatchesKey = (rowKey) => {
-      if (!editTarget.id) return false;
-
-      const key = normalizeOption(String(rowKey || ""));
-      return key === "__common__" || key === normalizeOption(editTarget.main_activity_names?.[0]);
-    };
     const farmerIdsForRow = (rowKey) => {
+      const mainActivity = String(rowKey || "");
       const savedFarmerIds = savedEditFarmerIds();
-      const editRowMatches = editRowMatchesKey(rowKey);
+      const editRowMatches = editTarget.id && (
+        mainActivity === "__common__" ||
+        normalizeOption(mainActivity) === normalizeOption(editTarget.main_activity_names?.[0])
+      );
 
       if (editRowMatches && savedFarmerIds.length && !weeklyPlanFarmerIdsDirty.has(rowKey)) {
         weeklyPlanFarmerIds[rowKey] = new Set(savedFarmerIds);
@@ -4149,7 +4183,10 @@ function initDeferredLayoutPage() {
       const savedFarmerIds = savedEditFarmerIds();
       if (!savedFarmerIds.length || !rows.length) return;
 
-      const matchingRow = rows.find((row) => editRowMatchesKey(weeklyRowKey(row)));
+      const matchingRow = rows.find((row) => (
+        row.mainActivity === "__common__" ||
+        normalizeOption(row.mainActivity) === normalizeOption(editTarget.main_activity_names?.[0])
+      )) || rows[0];
       if (!matchingRow) return;
 
       weeklyPlanFarmerIds[weeklyRowKey(matchingRow)] = new Set(savedFarmerIds);
@@ -4157,16 +4194,8 @@ function initDeferredLayoutPage() {
     };
     const selectedFarmerIdsForActiveRow = () => farmerIdsForRow(activeFarmerDialogRowKey);
     const totalActivityFarmerSelections = () => Object.values(weeklyPlanFarmerIds).reduce((total, ids) => total + ids.size, 0);
-    // While editing, the stored Monthly/Week split is the starting point; it is
-    // only used until the row is touched, after which weeklyPlanValues wins.
-    const savedEditWeeklyValue = (field) => {
-      if (!editTarget.id) return undefined;
-
-      const saved = editTarget.weekly_plan?.[field];
-      return String(saved ?? "").trim() === "" ? undefined : String(saved);
-    };
     const weeklyPlanValue = (row, field, fallback = "") => {
-      const savedValue = weeklyPlanValues[weeklyRowKey(row)]?.[field] ?? savedEditWeeklyValue(field);
+      const savedValue = weeklyPlanValues[weeklyRowKey(row)]?.[field];
       return savedValue === undefined ? fallback : savedValue;
     };
     const weeklyMonthlyLimit = (rowKey) => {
@@ -4194,9 +4223,6 @@ function initDeferredLayoutPage() {
     const renderTargetWeeklySummary = () => {
       if (!weeklySummary || !weeklyRows) return;
 
-      // Every mode plans week wise once an activity is chosen.  With a New
-      // Farmer Target the Monthly column seeds from that number instead of the
-      // farmer selection (see selectedFarmerMonthlyCount).
       const rows = targetActivitySummaryRows();
       restoreEditFarmerSelections(rows);
       const monthlyCount = selectedFarmerMonthlyCount();
@@ -4206,8 +4232,7 @@ function initDeferredLayoutPage() {
       const totalHeader = weeklyHeaderRow?.querySelector("th:nth-last-child(2)");
       if (totalHeader) totalHeader.hidden = villageTargetMode();
 
-      weeklySummary.hidden = false;
-      weeklySummary.style.display = "";
+      weeklySummary.hidden = rows.length === 0;
       weeklySummary.classList.toggle("target-weekly-village-mode", villageTargetMode());
       if (!rows.length) {
         weeklyRows.innerHTML = `<tr><td colspan="${villageTargetMode() ? 6 : 8}">Select Main Activity to view weekly plan.</td></tr>`;
@@ -4217,9 +4242,7 @@ function initDeferredLayoutPage() {
       weeklyRows.innerHTML = rows.map((row, index) => {
         const rowKey = weeklyRowKey(row);
         const selectedIds = farmerIdsForRow(rowKey);
-        // Village mode has no farmer selection to derive the monthly count
-        // from, so start blank and let the user type it.
-        const rowMonthlyCount = trainingMonthlyTargetFor(row) || (villageTargetMode() ? "" : monthlyCount);
+        const rowMonthlyCount = trainingMonthlyTargetFor(row) || monthlyCount;
         const rowWeeklyCounts = weeklyCountsFor(rowMonthlyCount);
         const farmerInputs = villageTargetMode() ? "" : Array.from(selectedIds).map((id) => `<input type="hidden" name="target_mapping[weekly_plan][${index}][afl_ids][]" value="${escapeHtml(id)}">`).join("");
         const viewCell = villageTargetMode() ? "" : `<td><div class="target-weekly-cell-center"><button type="button" class="table-action" data-target-weekly-view="${index}" data-weekly-row-key="${escapeHtml(weeklyRowKey(row))}" data-activity-label="${escapeHtml(row.label)}">View</button></div></td>`;
@@ -4303,14 +4326,8 @@ function initDeferredLayoutPage() {
 
           if (dialogBox.checked) selectedIds.add(String(dialogBox.value));
           else selectedIds.delete(String(dialogBox.value));
-          // Keep the source checkbox in sync as well.  The hidden weekly
-          // inputs submit the activity-wise selection, while this source
-          // checkbox keeps the selected count and regular farmer selection
-          // state accurate for the user.
-          sourceBox.checked = dialogBox.checked;
           if (dialogBox.checked) clearNewFarmerTargetForSelection();
           weeklyPlanFarmerIdsDirty.add(activeFarmerDialogRowKey);
-          updateTargetFarmerCount();
           syncDialogFarmerTotals();
           renderTargetWeeklySummary();
         });
@@ -4341,7 +4358,7 @@ function initDeferredLayoutPage() {
       const availableCount = availableBoxes.length;
       const visibleSelectedCount = availableBoxes.filter((checkbox) => checkbox.checked).length;
       if (farmerCountLabel) farmerCountLabel.textContent = `${selectedCount} farmer selected`;
-      if (registeredCountInput && !targetBlockWiseMode()) registeredCountInput.value = String(totalCount);
+      if (registeredCountInput) registeredCountInput.value = String(totalCount);
       if (targetInput) targetInput.value = villageTargetMode() ? String(totalCount) : String(selectedCount);
       if (targetInput) targetInput.max = String(availableTargetBoxes().length || selectedCount || totalCount || 1);
       syncNewFarmerTargetMode();
@@ -4371,45 +4388,10 @@ function initDeferredLayoutPage() {
       updateTargetFarmerCount();
     };
 
-    const clearTargetFarmers = (message = "") => {
-      const displayMessage = message || (
-        targetBlockWiseMode() && fcoSelect?.value && blockSelect?.value
-          ? "Select Village to load farmers."
-          : "Select FCO Name, ICS and Village to load farmers."
-      );
-      if (farmerList) farmerList.textContent = displayMessage;
+    const clearTargetFarmers = (message = "Select FCO Name, ICS and Village to load farmers.") => {
+      if (farmerList) farmerList.textContent = message;
       if (farmerSearchEmpty) farmerSearchEmpty.hidden = true;
       updateTargetFarmerCount();
-    };
-    const targetFarmerCountCache = new Map();
-    const loadTargetFarmerCount = async () => {
-      const requestId = ++targetCountRequestId;
-      if (!targetBlockWiseMode() || !shell.dataset.villageFarmersUrl) return;
-
-      const villageValues = targetSelectedValues(villageSelect);
-      if (!villageValues.length) {
-        if (registeredCountInput) registeredCountInput.value = "0";
-        return;
-      }
-      const cacheKey = JSON.stringify([...villageValues].sort());
-      const cached = targetFarmerCountCache.get(cacheKey);
-      if (cached && Date.now() - cached.at < 60000) {
-        if (registeredCountInput) registeredCountInput.value = String(cached.count);
-        return;
-      }
-      if (registeredCountInput) registeredCountInput.value = "Loading...";
-      try {
-        const data = await fetchJson(shell.dataset.villageFarmersUrl, {
-          data_type: "short",
-          village_ids: JSON.stringify(villageValues)
-        });
-        if (requestId !== targetCountRequestId) return;
-        targetFarmerCountCache.set(cacheKey, { count: data.count || 0, at: Date.now() });
-        if (registeredCountInput) registeredCountInput.value = String(data.count || 0);
-      } catch (_error) {
-        if (requestId !== targetCountRequestId) return;
-        if (registeredCountInput) registeredCountInput.value = "Unavailable";
-      }
     };
 
     const renderTargetFarmers = (farmers) => {
@@ -4423,7 +4405,11 @@ function initDeferredLayoutPage() {
       }
 
       farmerList.innerHTML = farmers.map((farmer) => {
-        const meta = farmerIdentityMeta(farmer);
+        const meta = [
+          `Village: ${farmer.village_name || "-"}`,
+          `Father: ${farmer.father_name || "-"}`,
+          `Tracenet: ${farmer.tracenet_no || "-"}`
+        ].filter(Boolean).join(" | ");
         const alreadyMapped = farmer.already_mapped;
         const checked = farmer.selected ? " checked" : "";
 
@@ -4446,38 +4432,23 @@ function initDeferredLayoutPage() {
           if (farmerDialog?.open) renderDialogFarmers();
         });
       });
-
-      // After rendering, sync pre-selected (edit mode) farmer IDs into weeklyPlanFarmerIds
-      // so the TOTAL column and farmer dialog reflect the correct pre-selected count.
-      if (editTarget.id) {
-        const rows = targetActivitySummaryRows();
-        rows.forEach((row) => {
-          const rowKey = weeklyRowKey(row);
-          if (weeklyPlanFarmerIdsDirty.has(rowKey)) return; // user already changed this row
-          const preChecked = Array.from(farmerList.querySelectorAll("[data-target-farmer-checkbox]:checked"))
-            .map((cb) => String(cb.value)).filter(Boolean);
-          if (preChecked.length > 0) {
-            weeklyPlanFarmerIds[rowKey] = new Set(preChecked);
-          }
-        });
-      }
-
       updateTargetFarmerCount();
     };
 
     const loadTargetData = async () => {
-      loadTargetFarmerCount();
       const requestId = ++targetLoadRequestId;
+      targetLoadAbortController?.abort();
+      targetLoadAbortController = new AbortController();
+      const signal = targetLoadAbortController.signal;
+      const status = shell.querySelector("[data-target-load-status]");
+      if (status) { status.hidden = false; status.textContent = "Loading mapping options..."; }
       const url = new URL(shell.dataset.mappingsUrl, window.location.origin);
       if (vrpSelect?.value) url.searchParams.set("vrp_id", vrpSelect.value);
       const fcoValue = fcoSelect?.value || fcoSelect?.dataset.selectedValue;
-      const blockValue = blockSelect?.value || "";
-      const icsValue = selectedTargetIcsValue();
+      const icsValue = icsSelect?.value || icsSelect?.dataset.selectedValue;
       const villageValues = targetSelectedValues(villageSelect);
-      if (targetEntryModeSelect?.value) url.searchParams.set("target_entry_mode", targetEntryModeSelect.value);
       if (fcoValue) url.searchParams.set("fco_id", fcoValue);
-      if (blockValue) url.searchParams.set("block_id", blockValue);
-      if (!targetBlockWiseMode() && icsValue) url.searchParams.set("ics_id", icsValue);
+      if (icsValue) url.searchParams.set("ics_id", icsValue);
       if (villageValues.length) url.searchParams.set("village_ids", JSON.stringify(villageValues));
       if (monthSelect?.value) url.searchParams.set("month_name", monthSelect.value);
       const mainActivityValues = targetSelectedValues(mainActivitySelect);
@@ -4488,31 +4459,16 @@ function initDeferredLayoutPage() {
       if (editTarget.id) url.searchParams.set("edit_id", editTarget.id);
 
       try {
-        const response = await fetch(url, { headers: { Accept: "application/json" } });
+        const response = await fetch(url, { headers: { Accept: "application/json" }, signal });
         if (!response.ok) throw new Error("Request failed");
         const data = await response.json();
         if (requestId !== targetLoadRequestId) return;
 
-        // Block-wise FCOs always come from Office List. Keep this client-side
-        // source authoritative so a late/stale AFL response cannot replace it.
-        fillTargetSelect(fcoSelect, targetBlockWiseMode() ? blockFcoOptions : (data.fco_options || []), "Select FCO Name");
-        if (targetBlockWiseMode()) {
-          targetBlockOptions = Array.isArray(data.block_options) ? data.block_options : [];
-          fillTargetSelect(blockSelect, targetBlockOptions, "Select Block");
-        }
-        fillTargetSelect(icsSelect, targetBlockWiseMode() ? [] : (data.ics_options || []), "Select ICS");
-        fillTargetSelect(
-          villageSelect,
-          data.village_options || [],
-          "Select Village",
-          targetBlockWiseMode() && blockSelect?.value ? "No villages found for this Block" : ""
-        );
-        if (targetBlockWiseMode() && blockSelect?.value && villageSelect) {
-          villageSelect.disabled = false;
-          villageSelect.dispatchEvent(new Event("chip:refresh"));
-        }
+        if (status) status.hidden = true;
+        fillTargetSelect(fcoSelect, data.fco_options || [], "Select FCO Name");
+        fillTargetSelect(icsSelect, data.ics_options || [], "Select ICS");
+        fillTargetSelect(villageSelect, data.village_options || [], "Select Village");
         syncTargetVillageHidden();
-        syncTargetEntryMode();
 
         if (targetSelectedValues(villageSelect).length) {
           renderTargetFarmers(data.farmers || []);
@@ -4522,6 +4478,15 @@ function initDeferredLayoutPage() {
       } catch (_error) {
         if (requestId !== targetLoadRequestId) return;
 
+        if (status) {
+          status.textContent = "Mapping options could not load. ";
+          const retry = document.createElement("button");
+          retry.type = "button";
+          retry.className = "list-btn";
+          retry.textContent = "Retry";
+          retry.addEventListener("click", loadTargetData);
+          status.append(retry);
+        }
         console.error("Target farmers load failed", _error);
         clearTargetFarmers("Farmers load nahi ho paye.");
       }
@@ -4550,18 +4515,6 @@ function initDeferredLayoutPage() {
       weeklyPlanValues[input.dataset.weeklyRowKey][input.dataset.weeklyField] = input.value;
 
       if (input.dataset.weeklyField === "monthly") {
-        // Keep the four weeks in step with Monthly so the totals always match;
-        // each week can still be fine tuned afterwards.
-        const rowKey = input.dataset.weeklyRowKey;
-        weeklyCountsFor(Number(input.value || 0)).forEach((count, index) => {
-          const field = `week_${index + 1}`;
-          const weekInput = weeklyRows.querySelector(`[data-weekly-row-key="${CSS.escape(rowKey)}"][data-weekly-field="${field}"]`);
-          if (!weekInput) return;
-
-          weekInput.value = String(count);
-          weeklyPlanValues[rowKey][field] = weekInput.value;
-        });
-
         const limit = Number(input.value || 0);
         const selectedIds = farmerIdsForRow(input.dataset.weeklyRowKey);
         if (Number.isInteger(limit) && limit >= 0 && selectedIds.size > limit) {
@@ -4585,16 +4538,11 @@ function initDeferredLayoutPage() {
       const available = availableTargetBoxes();
       const selectedIds = selectedFarmerIdsForActiveRow();
       selectedIds.clear();
-      available.forEach((checkbox) => { checkbox.checked = false; });
       available.forEach((checkbox, index) => {
-        if (!Number.isInteger(limit) || limit < 0 || index < limit) {
-          selectedIds.add(String(checkbox.value));
-          checkbox.checked = true;
-        }
+        if (!Number.isInteger(limit) || limit < 0 || index < limit) selectedIds.add(String(checkbox.value));
       });
       if (selectedIds.size) clearNewFarmerTargetForSelection();
       weeklyPlanFarmerIdsDirty.add(activeFarmerDialogRowKey);
-      updateTargetFarmerCount();
       renderTargetWeeklySummary();
       renderDialogFarmers();
       if (Number.isInteger(limit) && limit >= 0 && available.length > limit) {
@@ -4603,9 +4551,7 @@ function initDeferredLayoutPage() {
     });
     farmerDialogClear?.addEventListener("click", () => {
       selectedFarmerIdsForActiveRow().clear();
-      targetBoxes().forEach((checkbox) => { checkbox.checked = false; });
       weeklyPlanFarmerIdsDirty.add(activeFarmerDialogRowKey);
-      updateTargetFarmerCount();
       renderTargetWeeklySummary();
       renderDialogFarmers();
     });
@@ -4624,7 +4570,6 @@ function initDeferredLayoutPage() {
     newFarmerTargetInput?.addEventListener("input", () => {
       syncNewFarmerTargetMode();
       updateTargetFarmerCount();
-      renderTargetWeeklySummary();
     });
     trainingTargetInputs().forEach((input) => {
       input.addEventListener("input", renderTargetWeeklySummary);
@@ -4632,7 +4577,6 @@ function initDeferredLayoutPage() {
 
     form?.addEventListener("submit", (event) => {
       syncTargetVillageHidden();
-      syncTargetIcsHidden();
       syncNewFarmerTargetMode();
 
       const weeklyInputs = Array.from(weeklyRows?.querySelectorAll("[data-target-weekly-input]") || []);
@@ -4657,39 +4601,14 @@ function initDeferredLayoutPage() {
       }
 
       if (trainingActivityTypeSelected() && !villageTargetMode()) {
-        const missing = trainingTargetInputs().find((input) => !input.value.trim());
-        if (missing) {
-          event.preventDefault();
-          missing.focus();
-          window.alert("Please fill all five Training Monthly Target fields. Enter 0 for sub-targets with no allocation.");
-          return;
-        }
         const filled = filledTrainingTargets();
-        const opgInput = trainingTargetInputs().find((input) => input.dataset.trainingActivityName === "OPG Training");
         const invalid = filled.find((input) => {
           const value = Number(input.value || 0);
-          // OPG Training itself must be > 0; the 4 sub-boxes can be 0
-          if (input === opgInput) return !Number.isInteger(value) || value <= 0;
           return !Number.isInteger(value) || value < 0;
         });
         if (invalid) {
           event.preventDefault();
-          window.alert("Training target values must be whole numbers. OPG Training must be greater than 0; the 4 sub-boxes can be 0.");
-          return;
-        }
-      }
-
-      if (trainingActivityTypeSelected()) {
-        const allInputs = trainingTargetInputs();
-        const trainingVal = (name) => {
-          const input = allInputs.find((el) => el.dataset.trainingActivityName === name);
-          return Number(input?.value || 0);
-        };
-        const opgTotal = trainingVal("OPG Training");
-        const subTotal = trainingVal("General Training/Meeting") + trainingVal("Input Demo INM") + trainingVal("Input Demo PM") + trainingVal("FFS");
-        if (opgTotal > 0 && subTotal !== opgTotal) {
-          event.preventDefault();
-          window.alert(`General Training/Meeting + Input Demo INM + Input Demo PM + Exposer ka total (${subTotal}) OPG Training (${opgTotal}) ke equal hona chahiye.`);
+          window.alert("Training target values must be non-negative whole numbers.");
           return;
         }
       }
@@ -4720,34 +4639,12 @@ function initDeferredLayoutPage() {
 
     fcoSelect?.addEventListener("change", () => {
       fcoSelect.dataset.selectedValue = "";
-      if (blockSelect) blockSelect.value = "";
       if (icsSelect) icsSelect.dataset.selectedValue = "";
       if (villageSelect) villageSelect.dataset.selectedValue = "";
       if (villageSelect) villageSelect.dataset.selectedValues = "[]";
       if (icsSelect) icsSelect.value = "";
-      if (targetBlockWiseMode()) {
-        targetBlockOptions = blockOptionsForSelectedFco();
-        fillTargetSelect(blockSelect, targetBlockOptions, "Select Block");
-      }
       clearTargetVillageSelection();
       syncTargetVillageHidden();
-      syncTargetIcsHidden();
-      clearTargetFarmers();
-      loadTargetData();
-    });
-    blockSelect?.addEventListener("change", () => {
-      if (icsSelect) icsSelect.dataset.selectedValue = "";
-      if (villageSelect) villageSelect.dataset.selectedValue = "";
-      if (villageSelect) villageSelect.dataset.selectedValues = "[]";
-      if (icsSelect) icsSelect.value = "";
-      if (targetBlockWiseMode() && blockSelect.value && villageSelect) {
-        villageSelect.innerHTML = '<option value="">Loading villages...</option>';
-        villageSelect.disabled = false;
-        villageSelect.dispatchEvent(new Event("chip:refresh"));
-      }
-      clearTargetVillageSelection();
-      syncTargetVillageHidden();
-      syncTargetIcsHidden();
       clearTargetFarmers();
       loadTargetData();
     });
@@ -4757,7 +4654,6 @@ function initDeferredLayoutPage() {
       if (villageSelect) villageSelect.dataset.selectedValues = "[]";
       clearTargetVillageSelection();
       syncTargetVillageHidden();
-      syncTargetIcsHidden();
       clearTargetFarmers();
       loadTargetData();
     });
@@ -4767,48 +4663,22 @@ function initDeferredLayoutPage() {
       loadTargetData();
     });
     vrpSelect?.addEventListener("change", loadTargetData);
-    monthSelect?.addEventListener("change", () => { if (!targetBlockWiseMode()) loadTargetData(); });
+    monthSelect?.addEventListener("change", loadTargetData);
     mainActivitySelect?.addEventListener("change", () => {
-      refreshTargetSubActivities(false);
+      refreshTargetSubActivities(true);
       syncTargetActivityMode();
       renderTargetWeeklySummary();
-      if (!targetBlockWiseMode()) loadTargetData();
+      loadTargetData();
     });
     subActivitySelect?.addEventListener("change", () => {
       renderTargetWeeklySummary();
-      if (!targetBlockWiseMode()) loadTargetData();
+      loadTargetData();
     });
     targetTypeSelect?.addEventListener("change", () => {
-      refreshMainActivityOptionsForTargetType(false);
-      refreshTargetSubActivities(false);
+      refreshMainActivityOptionsForTargetType(true);
+      refreshTargetSubActivities(true);
       syncTargetActivityMode();
       renderTargetWeeklySummary();
-      if (!targetBlockWiseMode()) loadTargetData();
-    });
-    targetEntryModeSelect?.addEventListener("change", () => {
-      if (fcoSelect) {
-        fcoSelect.value = "";
-        fcoSelect.dataset.selectedValue = "";
-      }
-      if (targetBlockWiseMode()) {
-        if (icsSelect) icsSelect.value = "";
-      } else if (blockSelect) {
-        blockSelect.value = "";
-      }
-      if (icsSelect) icsSelect.dataset.selectedValue = "";
-      if (villageSelect) {
-        villageSelect.dataset.selectedValue = "";
-        villageSelect.dataset.selectedValues = "[]";
-      }
-      if (targetBlockWiseMode()) {
-        targetBlockOptions = blockOptionsForSelectedFco();
-        fillTargetSelect(blockSelect, targetBlockOptions, "Select Block");
-        fillTargetSelect(fcoSelect, blockFcoOptions, "Select FCO Name");
-      }
-      clearTargetVillageSelection();
-      syncTargetVillageHidden();
-      syncTargetEntryMode();
-      clearTargetFarmers();
       loadTargetData();
     });
 
@@ -4817,8 +4687,6 @@ function initDeferredLayoutPage() {
     syncTargetActivityMode();
     syncTargetVillageHidden();
     syncNewFarmerTargetMode();
-    syncTargetEntryMode();
-    syncTargetIcsHidden();
     renderTargetWeeklySummary();
     loadTargetData();
   });
@@ -5128,7 +4996,7 @@ function initDeferredLayoutPage() {
       if (!globalMatch) return false;
 
       return Object.entries(columnFilters).every(([columnIndex, filter]) => {
-        const cellText = (row.children[Number(columnIndex)]?.innerText || "").toLowerCase();
+        const cellText = (row.children[Number(columnIndex)]?.textContent || "").toLowerCase();
         const filterValue = (filter.value || "").toLowerCase();
         if (!filterValue) return true;
 
@@ -5344,6 +5212,21 @@ function initDeferredLayoutPage() {
     input.addEventListener("input", () => {
       const table = document.getElementById(input.dataset.tableSearch);
       if (table) paginateTable(table, 1);
+    });
+  });
+
+  // Simple client-side row filter for report tables (Demonstration Method / CC and JJ lists).
+  document.querySelectorAll("[data-report-search]").forEach((input) => {
+    if (input.dataset.reportSearchBound === "true") return;
+    input.dataset.reportSearchBound = "true";
+    input.addEventListener("input", () => {
+      const query = input.value.trim().toLowerCase();
+      const scope = input.closest("section") || document;
+      const table = scope.querySelector("[data-report-search-table]") || document.querySelector("[data-report-search-table]");
+      if (!table) return;
+      table.querySelectorAll("tbody tr").forEach((tr) => {
+        tr.style.display = tr.textContent.toLowerCase().includes(query) ? "" : "none";
+      });
     });
   });
 
@@ -5593,7 +5476,8 @@ function initDeferredLayoutPage() {
       control.click();
     });
 
-    select.addEventListener("change", () => render());
+    select.addEventListener("change", render);
+    select.addEventListener("chip:refresh", render);
 
     render();
   });
@@ -6123,7 +6007,9 @@ function initDeferredLayoutPage() {
 
       const rows = farmers.map((farmer) => `
         <tr>
-          <td>${escapeHtml(farmer.name)}<small>${escapeHtml(farmerIdentityMeta(farmer))}</small></td>
+          <td>${escapeHtml(farmer.name)}</td>
+          <td>${escapeHtml(farmer.father_name || "-")}</td>
+          <td>${escapeHtml(farmer.mobile_no || "-")}</td>
           <td>${escapeHtml(farmer.department || "-")}</td>
           <td>${escapeHtml(farmer.training_topic || "-")}</td>
           <td>${escapeHtml(farmer.training_subject || "-")}</td>
@@ -6137,6 +6023,8 @@ function initDeferredLayoutPage() {
             <thead>
               <tr>
                 <th>Farmer</th>
+                <th>Father</th>
+                <th>Mobile</th>
                 <th>Department</th>
                 <th>Main Activity</th>
                 <th>Sub Activity</th>
@@ -6151,11 +6039,10 @@ function initDeferredLayoutPage() {
 
     const hiddenInput = (name, value) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`;
 
-    const JEEVIKA_BILL_FIXED_TOTAL = 5000;
-
     const recalculateJeevikaBill = () => {
       let totalTarget = 0;
       let totalAchievement = 0;
+      let grandTotal = 0;
       const totalsByTarget = new Map();
       rowInputs().forEach((row) => {
         const target = numberValue(row.dataset.targetQuantity);
@@ -6165,6 +6052,9 @@ function initDeferredLayoutPage() {
         const achievement = manualAchievement ? numberValue(achievementInput?.value) : numberValue(row.dataset.achievementCount);
         const pendingBase = row.dataset.mainActivityType === "other" ? target : (assigned > 0 ? assigned : target);
         const pending = Math.max(pendingBase - achievement, 0);
+        const rate = numberValue(row.querySelector("[data-jeevika-rate]")?.value);
+        const amount = achievement * rate;
+        const amountInput = row.querySelector("[data-jeevika-amount]");
         const achievementDisplay = row.querySelector("[data-jeevika-achievement-display]");
         const pendingDisplay = row.querySelector("[data-jeevika-pending-display]");
         const pendingInput = row.querySelector("[data-jeevika-pending-input]");
@@ -6175,11 +6065,13 @@ function initDeferredLayoutPage() {
         groupedTotal.target = Math.max(groupedTotal.target, pendingBase);
         groupedTotal.achievement += achievement;
         totalsByTarget.set(targetKey, groupedTotal);
+        grandTotal += amount;
         row.dataset.currentAchievement = String(achievement);
         if (achievementDisplay) achievementDisplay.textContent = String(achievement);
         if (pendingDisplay) pendingDisplay.textContent = String(pending);
         if (pendingInput) pendingInput.value = String(pending);
         if (farmerSummaryCount) farmerSummaryCount.textContent = String(achievement);
+        if (amountInput) amountInput.value = amount.toFixed(2);
       });
 
       totalsByTarget.forEach((groupedTotal) => {
@@ -6199,7 +6091,8 @@ function initDeferredLayoutPage() {
 
       if (totalTargetInput) totalTargetInput.value = String(totalTarget);
       if (totalAchievementInput) totalAchievementInput.value = String(totalAchievement);
-      if (grandTotalInput && !grandTotalInput.dataset.userEdited && grandTotalInput.value) grandTotalInput.value = grandTotalInput.value;
+      // Total Payment is a manually entered amount, not derived from the
+      // removed Rate/Amount columns, so it is no longer auto-overwritten here.
       syncPaymentRemarks();
     };
 
@@ -6239,28 +6132,28 @@ function initDeferredLayoutPage() {
       const selectedMonth = normalizedMonth(selectedMonthValue);
 
       if (!selectedMonth) {
-        rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="7">Select Bill Month to load Jeevika Jankar Name.</td></tr>`;
+        rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">Select Bill Month to load Jeevika Jankar Name.</td></tr>`;
         recalculateJeevikaBill();
         return;
       }
 
       if (!selectedVrp) {
         if (vrpSelect) vrpSelect.selectedIndex = 0;
-        rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="7">Select Jeevika Jankar Name to load target achievement list.</td></tr>`;
+        rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">Select Jeevika Jankar Name to load target achievement list.</td></tr>`;
         recalculateJeevikaBill();
         return;
       }
 
       const loadKey = billRowsKey(selectedVrp, selectedMonthValue);
       activeBillRowsKey = loadKey;
-      rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="7">Loading target achievement list...</td></tr>`;
+      rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">Loading target achievement list...</td></tr>`;
 
       let loadedData = { rows: [] };
       try {
         loadedData = await loadBillRowsForSelection(selectedVrp, selectedMonthValue);
       } catch (_error) {
         if (activeBillRowsKey === loadKey) {
-          rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="7">Target achievement list load failed. Please try again.</td></tr>`;
+          rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">Target achievement list load failed. Please try again.</td></tr>`;
           recalculateJeevikaBill();
         }
         return;
@@ -6272,7 +6165,7 @@ function initDeferredLayoutPage() {
       targetSummary = loadedData.targetSummary || targetSummary || {};
 
       if (!rows.length) {
-        rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="7">No target mapping found for selected Jeevika Jankar.</td></tr>`;
+        rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">No target mapping found for selected Jeevika Jankar.</td></tr>`;
         recalculateJeevikaBill();
         return;
       }
@@ -6325,9 +6218,10 @@ function initDeferredLayoutPage() {
                 ? `<input type="number" min="0" step="any" name="${inputPrefix}[achievement_count]" value="${escapeHtml(achievementCount)}" data-jeevika-achievement>`
                 : `<span data-jeevika-achievement-display>${escapeHtml(achievementCount)}</span>`}
             </td>
-            <td><span data-jeevika-pending-display>${escapeHtml(pendingCount)}</span></td>
-            ${hiddenInput(`${inputPrefix}[rate]`, rate)}
-            ${hiddenInput(`${inputPrefix}[amount]`, savedItem.amount || "0.00")}
+            <td><span data-jeevika-pending-display>${escapeHtml(pendingCount)}</span>
+              <input type="hidden" name="${inputPrefix}[rate]" value="${escapeHtml(rate)}" data-jeevika-rate>
+              <input type="hidden" name="${inputPrefix}[amount]" value="${escapeHtml(savedItem.amount || "0.00")}" data-jeevika-amount>
+            </td>
           </tr>
           <tr class="jeevika-farmer-row">
             <td colspan="7">
@@ -6344,12 +6238,9 @@ function initDeferredLayoutPage() {
     };
 
     rowsBody?.addEventListener("input", (event) => {
-      if (event.target.matches("[data-jeevika-achievement]")) recalculateJeevikaBill();
+      if (event.target.matches("[data-jeevika-rate], [data-jeevika-achievement]")) recalculateJeevikaBill();
     });
-    grandTotalInput?.addEventListener("input", () => {
-      grandTotalInput.dataset.userEdited = "true";
-      syncPaymentRemarks();
-    });
+    grandTotalInput?.addEventListener("input", syncPaymentRemarks);
     billForm.querySelector("form")?.addEventListener("submit", (event) => {
       if (rowInputs().length > 0) return;
 
@@ -6594,10 +6485,12 @@ function initDeferredLayoutPage() {
   });
 
   const initializeLanguageSwitcher = () => {
+    const boundLanguageButtons = window.__vrpBoundLanguageButtons ||= new WeakSet();
     const unboundSignatureShell = document.querySelector(
       "[data-agreement-signature-shell]:not([data-agreement-signature-bound])"
     );
-    const unboundLanguageButton = document.querySelector("[data-language-option]:not([data-language-bound='true'])");
+    const unboundLanguageButton = Array.from(document.querySelectorAll("[data-language-option]"))
+      .find((button) => !boundLanguageButtons.has(button));
 
     if (window.__vrpLanguageSwitcherInitialized && !unboundSignatureShell && !unboundLanguageButton) {
       const language = localStorage.getItem("vrp_language") || "en";
@@ -6613,6 +6506,7 @@ function initDeferredLayoutPage() {
     const originalText = window.__vrpOriginalText ||= new WeakMap();
     const attributeNames = ["placeholder", "title", "aria-label", "data-turbo-confirm"];
     const translations = {
+      "Language": "भाषा",
       "Observation Parameter": "ऑब्ज़र्वेशन पैरामीटर",
       "Observation List": "ऑब्ज़र्वेशन सूची",
       "Jeevika Jankar Observation List": "जीविका जानकार ऑब्ज़र्वेशन सूची",
@@ -6626,7 +6520,16 @@ function initDeferredLayoutPage() {
       "Overall": "कुल",
       "Average": "औसत",
       "Poor": "कमजोर",
-      "Language": "भाषा",
+      "Timing": "समय",
+      "Farmer Behaviour": "किसानों के साथ व्यवहार",
+      "Subject Clarity": "विषय की स्पष्टता",
+      "IEC Material": "IEC सामग्री",
+      "Technology": "तकनीकी",
+      "Delivery target / training was started and completed at the scheduled time": "प्रदाय टारगेट/ प्रशिक्षण निर्धारित समय पर शुरू एवं समाप्त किया गया |",
+      "Behaviour with farmers was good and local, simple language was used in question-answer / discussion": "किसानों के साथ व्यवहार अच्छा रहा तथा प्रश्न-जवाब/चर्चा में स्थानीय एवं सरल भाषा का उपयोग किया गया |",
+      "Subject information was explained clearly and correctly as per the given target / topic, and by asking questions / discussing with farmers it was ensured that they understood the main subject": "दिए गए टारगेट/विषय के अनुसार विषय की जानकारी स्पष्ट एवं सही तरीके से समझाई गई और किसानों से प्रश्न पूछकर/चर्चा करके यह सुनिश्चित किया गया कि उन्होंने मुख्य विषय को समझा है |",
+      "Required IEC material / poster / flip chart / other material was used effectively as per the given target / topic and, where necessary, farmers were explained through subject related Practical / Field Demonstration": "दिए गए टारगेट/विषय के अनुसार आवश्यक IEC सामग्री/पोस्टर/फ्लिप चार्ट/अन्य सामग्री का प्रभावी उपयोग एवं जहाँ आवश्यक हो, विषय से संबंधित Practical/Field Demonstration करके किसानों को समझाया गया |",
+      "Status of JJ in operating technology (all APP / Web / Mobile / Scanner / Photo Capture) etc.": "तकनीकी (सभी APP/वेब/मोबाइल/स्कैनर/फोटो केप्चर) आदि के सञ्चालन में JJ की स्थिति |",
       "Dashboard": "डैशबोर्ड",
       "No Activity Mapping": "कुल मेप नहीं किये गये किसान",
       "No Training Mapping": "कुल फार्मर ट्रेनिंग से मेप नहीं किये गये किसान",
@@ -6799,6 +6702,10 @@ function initDeferredLayoutPage() {
       "Next Farmer Training Date": "अगली किसान प्रशिक्षण तारीख",
       "Training Register Upload": "प्रशिक्षण रजिस्टर अपलोड",
       "Training Photo Upload with Geo Tag": "जियो टैग के साथ प्रशिक्षण फोटो अपलोड",
+      "Photo Front View": "फोटो - फ्रंट व्यू",
+      "Photo Back View": "फोटो - बैक व्यू",
+      "Photo Close-up View": "फोटो - क्लोज़-अप व्यू",
+      "Photo Long Shot": "फोटो - लॉन्ग शॉट",
       "State": "राज्य",
       "State Name": "राज्य नाम",
       "State Code": "राज्य कोड",
@@ -6929,21 +6836,10 @@ function initDeferredLayoutPage() {
       "VRP type add karne ke liye.": "वीआरपी प्रकार जोड़ने के लिए।",
       "Saved access control records dekhne ke liye.": "सेव एक्सेस कंट्रोल रिकॉर्ड देखने के लिए।",
       "Live VRP, bill, payment, target, activity, aur training summary.": "वीआरपी, बिल, भुगतान, लक्ष्य, गतिविधि और प्रशिक्षण का लाइव सारांश।",
-      "Your mapped farmers, villages, assigned targets, and completed work summary.": "आपके मैप किसान, गांव, दिए गए लक्ष्य और पूर्ण कार्य का सारांश।",
-      "Jeevika Jankar First Login": "जीविका जनकार पहला लॉगिन",
-      "Digital Signature": "डिजिटल हस्ताक्षर",
-      "Draw your signature before accepting.": "स्वीकार करने से पहले अपना हस्ताक्षर करें।",
-      "Clear Signature": "हस्ताक्षर मिटाएं",
-      "Decline": "अस्वीकार",
-      "Agree": "सहमत",
-      "Name": "नाम",
-      "Village": "गाँव",
-      "Mobile Number": "मोबाइल नंबर",
-      "Date": "तारीख"
+      "Your mapped farmers, villages, assigned targets, and completed work summary.": "आपके मैप किसान, गांव, दिए गए लक्ष्य और पूर्ण कार्य का सारांश।"
     };
     const englishAliases = {
       "ट्रेनिंग प्रपत्र": "Training Form",
-      "कृषि जानकार (VRP) के रूप में संलग्नता हेतु घोषणा एवं स्वीकृति पत्र": "Declaration and Acceptance for Engagement as Jeevika Jankar (VRP)",
       "VRP training details save karne ke liye.": "Save VRP training details.",
       "Saved training records dekhne ke liye.": "View saved training records.",
       "Training documents/videos upload karna.": "Upload training documents/videos.",
@@ -7033,17 +6929,7 @@ function initDeferredLayoutPage() {
 	      "Select Village Name to load mapped farmers.": "मॅप केलेले किसान लोड करण्यासाठी गाव नाव निवडा.",
 	      "Select Village Name to load target farmers.": "लक्षित किसान लोड करण्यासाठी गाव नाव निवडा.",
 	      "No mapped farmers found for selected village.": "निवडलेल्या गावासाठी कोणतेही मॅप किसान सापडले नाहीत.",
-	      "No target farmers found for selected village.": "निवडलेल्या गावासाठी कोणतेही लक्षित किसान सापडले नाहीत.",
-	      "Jeevika Jankar First Login": "जीविका जनकार पहिले लॉगिन",
-	      "Digital Signature": "डिजिटल स्वाक्षरी",
-	      "Draw your signature before accepting.": "स्वीकार करण्यापूर्वी आपली स्वाक्षरी करा.",
-	      "Clear Signature": "स्वाक्षरी पुसा",
-	      "Decline": "नकार",
-	      "Agree": "सहमत",
-	      "Name": "नाव",
-	      "Village": "गाव",
-	      "Mobile Number": "मोबाईल नंबर",
-	      "Date": "तारीख"
+	      "No target farmers found for selected village.": "निवडलेल्या गावासाठी कोणतेही लक्षित किसान सापडले नाहीत."
 	    };
 	    const odiaTranslations = {
 	      "Language": "ଭାଷା",
@@ -7114,17 +7000,7 @@ function initDeferredLayoutPage() {
 	      "Select Village Name to load mapped farmers.": "ମ୍ୟାପ୍ ହୋଇଥିବା କୃଷକ ଲୋଡ୍ କରିବାକୁ ଗ୍ରାମ ନାମ ବାଛନ୍ତୁ.",
 	      "Select Village Name to load target farmers.": "ଲକ୍ଷ୍ୟ କୃଷକ ଲୋଡ୍ କରିବାକୁ ଗ୍ରାମ ନାମ ବାଛନ୍ତୁ.",
 	      "No mapped farmers found for selected village.": "ବାଛିଥିବା ଗ୍ରାମ ପାଇଁ କୌଣସି ମ୍ୟାପ୍ କୃଷକ ମିଳିଲେ ନାହିଁ.",
-	      "No target farmers found for selected village.": "ବାଛିଥିବା ଗ୍ରାମ ପାଇଁ କୌଣସି ଲକ୍ଷ୍ୟ କୃଷକ ମିଳିଲେ ନାହିଁ.",
-	      "Jeevika Jankar First Login": "ଜୀବିକା ଜନକାର ପ୍ରଥମ ଲଗଇନ୍",
-	      "Digital Signature": "ଡିଜିଟାଲ୍ ସ୍ୱାକ୍ଷର",
-	      "Draw your signature before accepting.": "ଗ୍ରହଣ କରିବା ପୂର୍ବରୁ ଆପଣଙ୍କ ସ୍ୱାକ୍ଷର କରନ୍ତୁ.",
-	      "Clear Signature": "ସ୍ୱାକ୍ଷର ସଫା କରନ୍ତୁ",
-	      "Decline": "ପ୍ରତ୍ୟାଖ୍ୟାନ",
-	      "Agree": "ସହମତ",
-	      "Name": "ନାମ",
-	      "Village": "ଗ୍ରାମ",
-	      "Mobile Number": "ମୋବାଇଲ୍ ନମ୍ବର",
-	      "Date": "ତାରିଖ"
+	      "No target farmers found for selected village.": "ବାଛିଥିବା ଗ୍ରାମ ପାଇଁ କୌଣସି ଲକ୍ଷ୍ୟ କୃଷକ ମିଳିଲେ ନାହିଁ."
 	    };
 	    const languageTranslations = {
 	      hi: translations,
@@ -7138,69 +7014,61 @@ function initDeferredLayoutPage() {
       document.cookie = `googtrans=${value};path=/`;
       document.cookie = `googtrans=${value};path=/;domain=${window.location.hostname}`;
     };
-    // Returning to English is a revert, not a translation. The cookie has to be
-    // removed, otherwise Google translates the page again on the next load.
-    const clearGoogleTranslateCookie = () => {
-      const expired = "expires=Thu, 01 Jan 1970 00:00:00 GMT";
-      [
-        "path=/",
-        `path=/;domain=${window.location.hostname}`,
-        `path=/;domain=.${window.location.hostname}`
-      ].forEach((scope) => {
-        document.cookie = `googtrans=;${scope};${expired}`;
-      });
-    };
-    // Google attaches its select only after its callback fires, so every switch
-    // retries briefly instead of silently doing nothing.
-    const selectGoogleLanguage = (value, attempt = 0) => {
-      const combo = document.querySelector(".goog-te-combo");
-      if (!combo) {
-        if (attempt < 20) window.setTimeout(() => selectGoogleLanguage(value, attempt + 1), 100);
-        return;
-      }
-
-      combo.value = value;
-      combo.dispatchEvent(new Event("change"));
+    const initializeGoogleTranslate = () => {
+      const holder = document.getElementById("google_translate_element");
+      if (!holder || holder.dataset.googleInitialized === "true") return;
+      if (!window.google?.translate?.TranslateElement) return;
+      holder.dataset.googleInitialized = "true";
+      new window.google.translate.TranslateElement({
+        pageLanguage: "en", includedLanguages: "en,hi,mr,or,gu", autoDisplay: false
+      }, "google_translate_element");
     };
     const loadGoogleTranslate = () => {
-      if (window.google?.translate?.TranslateElement) return Promise.resolve();
+      if (window.google?.translate?.TranslateElement) {
+        initializeGoogleTranslate();
+        return Promise.resolve();
+      }
       if (window.__vrpGoogleTranslateLoading) return window.__vrpGoogleTranslateLoading;
 
       window.__vrpGoogleTranslateLoading = new Promise((resolve) => {
         window.googleTranslateElementInit = () => {
-          if (window.google?.translate?.TranslateElement) {
-            new window.google.translate.TranslateElement({
-              pageLanguage: "en",
-              includedLanguages: "en,hi,mr,or,gu",
-              autoDisplay: false
-            }, "google_translate_element");
-          }
+          initializeGoogleTranslate();
           resolve();
         };
 
         const script = document.createElement("script");
         script.src = "https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit";
         script.async = true;
-        script.onerror = () => resolve();
+        script.onerror = () => {
+          window.__vrpGoogleTranslateLoading = null;
+          script.remove();
+          resolve();
+        };
         document.head.appendChild(script);
       });
 
       return window.__vrpGoogleTranslateLoading;
     };
     const applyGoogleLanguage = (language) => {
-      if (language === "en") {
-        clearGoogleTranslateCookie();
-        // Nothing to undo unless Google actually translated the page.
-        if (!document.documentElement.className.includes("translated")) return;
-
-        // Selecting the page language is Google's own "show original" action.
-        // The empty placeholder value leaves the page translated.
-        loadGoogleTranslate().then(() => selectGoogleLanguage("en"));
-        return;
-      }
-
+      const requestId = window.__vrpGoogleLanguageRequest = (window.__vrpGoogleLanguageRequest || 0) + 1;
       setGoogleTranslateCookie(language);
-      loadGoogleTranslate().then(() => selectGoogleLanguage(googleLanguageCodes[language] || "en"));
+      if (language === "en" && !window.google?.translate?.TranslateElement && !window.__vrpGoogleTranslateLoading) return;
+
+      loadGoogleTranslate().then(() => {
+        // The script callback can run before Google has populated its select.
+        const applyWhenReady = (attempt = 0) => {
+          if (requestId !== window.__vrpGoogleLanguageRequest) return;
+          const combo = document.querySelector(".goog-te-combo");
+          const code = googleLanguageCodes[language] || "en";
+          if (combo && Array.from(combo.options).some((option) => option.value === code)) {
+            combo.value = code;
+            combo.dispatchEvent(new Event("change", { bubbles: true }));
+          } else if (attempt < 100) {
+            setTimeout(() => applyWhenReady(attempt + 1), 100);
+          }
+        };
+        applyWhenReady();
+      });
     };
 
     const preserveSpacing = (original, replacement) => {
@@ -7256,11 +7124,14 @@ function initDeferredLayoutPage() {
     const translateTextNode = (node, language) => {
       if (!node.nodeValue.trim()) return;
       const parent = node.parentElement;
-      if (!parent || parent.closest("script, style, textarea, code, pre")) return;
+      if (!parent || parent.closest("script, style, textarea, code, pre, .skiptranslate, #google_translate_element, font[style]")) return;
 
       const original = originalText.get(node) || node.nodeValue;
       originalText.set(node, original);
-      node.nodeValue = replaceVrpUiText(translatePhrase(original, language));
+      // An option without an explicit value derives its submitted value from its text.
+      if (parent.tagName === "OPTION" && !parent.hasAttribute("value")) parent.setAttribute("value", parent.textContent);
+      const translated = replaceVrpUiText(translatePhrase(original, language));
+      if (node.nodeValue !== translated) node.nodeValue = translated;
     };
 
     const translateAttributes = (element, language) => {
@@ -7271,7 +7142,8 @@ function initDeferredLayoutPage() {
         const dataKey = `i18nOriginal${attribute.replace(/(^|-)([a-z])/g, (_match, _dash, letter) => letter.toUpperCase())}`;
         const original = element.dataset[dataKey] || value;
         element.dataset[dataKey] = original;
-        element.setAttribute(attribute, replaceVrpUiText(translatePhrase(original, language)));
+        const translated = replaceVrpUiText(translatePhrase(original, language));
+        if (element.getAttribute(attribute) !== translated) element.setAttribute(attribute, translated);
       });
 
       if ((element.matches("input[type='submit'], input[type='button']")) && element.value) {
@@ -7280,7 +7152,6 @@ function initDeferredLayoutPage() {
       }
     };
 
-    let languageMutationTimer = null;
     let languageApplying = false;
 	    const applyLanguage = (language, root = document.body) => {
       languageApplying = true;
@@ -7313,20 +7184,30 @@ function initDeferredLayoutPage() {
 
       window.__vrpApplyLanguage = applyLanguage;
 
-	    const setLanguage = (language, fromPageLoad) => {
+	    const setLanguage = (language) => {
       const nextLanguage = ["en", "hi", "mr", "or", "gu"].includes(language) ? language : "en";
       localStorage.setItem("vrp_language", nextLanguage);
-      // Restore the original DOM immediately. A full reload was especially
-      // disruptive on the agreement page and made English much slower than
-      // every other language.
-      applyLanguage(nextLanguage);
+      // Google Translate rewrites the DOM into <font> wrappers that the custom
+      // translator cannot fully undo, so switching back to English after a
+      // Google-translated language used to need a manual refresh. When Google's
+      // translation is active (it adds a translated-ltr/rtl class on <html>) and
+      // English is chosen, reset the cookie and reload once for a clean English page.
+      const googleActive = document.documentElement.classList.contains("translated-ltr") ||
+        document.documentElement.classList.contains("translated-rtl");
+      if (nextLanguage === "en" && googleActive) {
+        setGoogleTranslateCookie("en");
+        window.location.reload();
+        return;
+      }
       applyGoogleLanguage(nextLanguage);
+      applyLanguage(nextLanguage);
     };
 
     if (switcher) {
       languageButtons.forEach((button) => {
-        if (button.dataset.languageBound === "true") return;
+        if (boundLanguageButtons.has(button)) return;
 
+        boundLanguageButtons.add(button);
         button.dataset.languageBound = "true";
         button.addEventListener("click", () => setLanguage(button.dataset.languageOption));
       });
@@ -7363,12 +7244,19 @@ function initDeferredLayoutPage() {
         const { width, height } = canvas.getBoundingClientRect();
         if (!width || !height) return;
 
-        canvas.width = Math.floor(width);
-        canvas.height = Math.floor(height);
-        context.clearRect(0, 0, canvas.width, canvas.height);
-        input.value = "";
-        signatureDrawn = false;
-        if (acceptButton) acceptButton.disabled = true;
+        const nextWidth = Math.floor(width);
+        const nextHeight = Math.floor(height);
+        if (canvas.width === nextWidth && canvas.height === nextHeight) return;
+        const saved = document.createElement("canvas");
+        saved.width = canvas.width;
+        saved.height = canvas.height;
+        saved.getContext("2d").drawImage(canvas, 0, 0);
+        canvas.width = nextWidth;
+        canvas.height = nextHeight;
+        if (signatureDrawn) {
+          context.drawImage(saved, 0, 0, nextWidth, nextHeight);
+          input.value = canvas.toDataURL("image/png");
+        }
         applyPenStyle();
       };
 
@@ -7440,23 +7328,29 @@ function initDeferredLayoutPage() {
       });
     });
 
-    setLanguage(localStorage.getItem("vrp_language") || "en", true);
+    setLanguage(localStorage.getItem("vrp_language") || "en");
 
-    if (!window.__vrpLanguageObserver) {
-      const observeTarget = () => document.querySelector(".app-main") || document.body;
-      window.__vrpLanguageObserver = new MutationObserver(() => {
-        if (languageApplying) return;
-
-        const language = localStorage.getItem("vrp_language") || "en";
-        if (language === "en" && !window.__vrpHadNonEnglishLanguage) return;
-
-        clearTimeout(languageMutationTimer);
-        languageMutationTimer = setTimeout(() => {
-          window.__vrpApplyLanguage(language, observeTarget());
-        }, 250);
-      });
-      window.__vrpLanguageObserver.observe(observeTarget(), { childList: true, subtree: true });
-    }
+    window.__vrpLanguageObserver?.disconnect();
+    window.__vrpLanguageObserver = new MutationObserver((mutations) => {
+      if (languageApplying) return;
+      const language = localStorage.getItem("vrp_language") || "en";
+      // Translate inserted UI only; rescanning the page would overwrite Google's
+      // translated text and repeatedly walk large, paginated tables.
+      mutations.forEach((mutation) => mutation.addedNodes.forEach((node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          if (!originalText.has(node)) translateTextNode(node, language);
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          if (node.closest(".skiptranslate, #google_translate_element, font[style]")) return;
+          translateAttributes(node, language);
+          const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+          while (walker.nextNode()) {
+            if (!originalText.has(walker.currentNode)) translateTextNode(walker.currentNode, language);
+          }
+          node.querySelectorAll("[placeholder], [title], [aria-label], [data-turbo-confirm]").forEach((element) => translateAttributes(element, language));
+        }
+      }));
+    });
+    window.__vrpLanguageObserver.observe(document.body, { childList: true, subtree: true });
   };
 
   initializeLanguageSwitcher();
@@ -7465,21 +7359,12 @@ function initDeferredLayoutPage() {
 const bootLayoutPage = () => {
   if (document.querySelector(".login-page")) {
     initPasswordToggles();
-    if (document.querySelector(".agreement-login-page")) {
-      scheduleDeferredLayoutInit();
-    }
+    if (document.querySelector("[data-agreement-signature-shell]")) initDeferredLayoutPage();
     return;
-  }
-
-  const alertElem = document.querySelector(".app-alert, .app-notice");
-  if (alertElem) {
-    alertElem.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   initFastNavigation();
   initAflFarmerMapping();
-  initClipboardButtons();
-  initQrCopyButtons();
   scheduleDeferredLayoutInit();
 };
 

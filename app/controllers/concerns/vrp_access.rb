@@ -28,14 +28,27 @@ module VrpAccess
     emails = current_app_user_emails
     return [] if username.blank? && emails.blank?
 
-    ModuleRecord.where(module_slug: "new-user").select do |record|
-      record.data["user_name"].to_s == username ||
-        emails.include?(record.data["email"].to_s.strip.downcase)
-    end.map(&:id)
+    legacy_user_ids_for_username_or_emails(username, emails)
   end
 
   def admin_user?
     current_app_user&.dig("user_type").to_s.casecmp("admin").zero?
+  end
+
+  def legacy_user_ids_for_username_or_emails(username, emails)
+    scope = ModuleRecord.where(module_slug: "new-user")
+    predicates = []
+    binds = []
+    if username.present?
+      predicates << "data::jsonb ->> 'user_name' = ?"
+      binds << username
+    end
+    if emails.any?
+      predicates << "LOWER(BTRIM(data::jsonb ->> 'email')) IN (?)"
+      binds << emails
+    end
+
+    predicates.any? ? scope.where(predicates.join(" OR "), *binds).pluck(:id) : []
   end
 
   def own_vrps
@@ -89,29 +102,84 @@ module VrpAccess
     return @registered_by_user_cache[cache_key] if @registered_by_user_cache.key?(cache_key)
 
     if vrp.created_by_id.present? && vrp.respond_to?(:created_by_type) && vrp.created_by_type.present?
-      creator_class = { "User" => User, "ModuleRecord" => ModuleRecord }[vrp.created_by_type]
-      creator = creator_class.find_by(id: vrp.created_by_id) if creator_class&.respond_to?(:find_by)
+      creator = case vrp.created_by_type
+      when "User" then @preloaded_creator_users_by_id&.[](vrp.created_by_id)
+      when "ModuleRecord" then @preloaded_creator_records_by_id&.[](vrp.created_by_id)
+      end
+      if creator.blank?
+        creator_class = { "User" => User, "ModuleRecord" => ModuleRecord }[vrp.created_by_type]
+        creator = creator_class.find_by(id: vrp.created_by_id) if creator_class&.respond_to?(:find_by)
+      end
       return @registered_by_user_cache[cache_key] = creator if creator
     end
 
     if vrp.created_by_id.present?
-      user = User.find_by(id: vrp.created_by_id) if model_ready?(:User)
-      record = ModuleRecord.find_by(id: vrp.created_by_id) if model_ready?(:ModuleRecord)
+      user = @preloaded_creator_users_by_id&.[](vrp.created_by_id)
+      user ||= User.find_by(id: vrp.created_by_id) if model_ready?(:User)
+      record = @preloaded_creator_records_by_id&.[](vrp.created_by_id)
+      record ||= ModuleRecord.find_by(id: vrp.created_by_id) if model_ready?(:ModuleRecord)
       creator = legacy_registered_by_candidate(vrp, user, record)
       return @registered_by_user_cache[cache_key] = creator if creator
     end
 
     if model_ready?(:User)
-      user = User.find_by("LOWER(email) = ?", vrp.email.to_s.strip.downcase)
+      email_key = vrp.email.to_s.strip.downcase
+      user = @preloaded_creator_users_by_email&.[](email_key)
+      user ||= User.find_by("LOWER(email) = ?", email_key)
       return @registered_by_user_cache[cache_key] = user if user
     end
 
     return unless model_ready?(:ModuleRecord)
 
-    @registered_by_user_cache[cache_key] = ModuleRecord.where(module_slug: "new-user")
-      .where("LOWER(COALESCE(data->>'email', '')) = ?", vrp.email.to_s.strip.downcase)
-      .order(created_at: :desc)
-      .first
+    email_key = vrp.email.to_s.strip.downcase
+    @registered_by_user_cache[cache_key] = @preloaded_creator_records_by_email&.[](email_key) ||
+      ModuleRecord.where(module_slug: "new-user")
+        .where("LOWER(COALESCE(data->>'email', '')) = ?", email_key)
+        .order(created_at: :desc)
+        .first
+  end
+
+  def preload_vrp_access_lookup_data!(vrps)
+    vrps = Array(vrps)
+    preload_vrp_creator_lookup_data!(vrps)
+    preload_vrp_approval_history_lookup_data!(vrps)
+    cached_vrp_approval_master_records
+  end
+
+  def preload_vrp_creator_lookup_data!(vrps)
+    creator_ids = vrps.filter_map(&:created_by_id).uniq
+    emails = vrps.filter_map { |vrp| vrp.email.to_s.strip.downcase.presence }.uniq
+
+    users = model_ready?(:User) ? User.where(id: creator_ids).or(User.where("LOWER(email) IN (?)", emails.presence || [""])).to_a : []
+    records = if model_ready?(:ModuleRecord)
+      ModuleRecord
+        .where(module_slug: "new-user")
+        .where("id IN (:ids) OR LOWER(COALESCE(data::jsonb->>'email', '')) IN (:emails)", ids: creator_ids.presence || [0], emails: emails.presence || [""])
+        .order(created_at: :desc)
+        .to_a
+    else
+      []
+    end
+
+    @preloaded_creator_users_by_id = users.index_by(&:id)
+    @preloaded_creator_records_by_id = records.index_by(&:id)
+    @preloaded_creator_users_by_email = users.index_by { |user| user.email.to_s.strip.downcase }
+    @preloaded_creator_records_by_email = records.reverse_each.to_a.index_by { |record| record.data["email"].to_s.strip.downcase }
+  end
+
+  def preload_vrp_approval_history_lookup_data!(vrps)
+    ids = vrps.map { |vrp| vrp.id.to_s }.uniq
+    @approval_history_for_cache ||= {}
+    return if ids.blank? || !model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "vrp-approval-history")
+      .where("data::jsonb ->> 'vrp_id' IN (?)", ids)
+      .order(created_at: :asc)
+      .to_a
+      .group_by { |record| record.data["vrp_id"].to_s }
+      .each { |vrp_id, records| @approval_history_for_cache[vrp_id.to_i] = records }
+    ids.each { |vrp_id| @approval_history_for_cache[vrp_id.to_i] ||= [] }
   end
 
   def legacy_registered_by_candidate(vrp, user, record)
@@ -134,15 +202,7 @@ module VrpAccess
   def visible_vrps
     return Vrp.all if current_app_user.blank? || admin_user?
 
-    mapped_vrps = cluster_mapped_vrps.to_a
-    own_records = own_vrps.to_a
-    base_vrps = if cluster_incharge_login? || mapped_vrps.any?
-      own_records + mapped_vrps
-    else
-      own_records
-    end
-
-    (base_vrps + approval_related_vrps).uniq
+    own_vrps
   end
 
   def find_visible_vrp(id)
@@ -306,10 +366,7 @@ module VrpAccess
     creator_identities = vrp_creator_identities(vrp)
     return @approval_steps_for_cache[cache_key] = [] if creator_identities.blank?
 
-    matching_records = ModuleRecord
-      .where(module_slug: "approval-master")
-      .order(created_at: :asc)
-      .select do |record|
+    matching_records = cached_vrp_approval_master_records.select do |record|
         record_stakeholder = record.data["stakeholder_name"].to_s
         record_vrp_name = record.data["vrp_name"].to_s
 
@@ -322,18 +379,20 @@ module VrpAccess
           end
       end
 
-    selected_channel = matching_records
-      .group_by { |record| approval_channel_key(record) }
-      .values
-      .max_by { |records| approval_channel_priority(records) } || []
-
-    steps = selected_channel
+    matching_records
       .group_by { |record| approval_sequence(record) }
       .values
       .map { |records| records.max_by { |record| approval_record_priority(record) } }
       .sort_by { |record| approval_sequence(record) }
 
-    @approval_steps_for_cache[cache_key] = steps
+    @approval_steps_for_cache[cache_key] = matching_records
+  end
+
+  def cached_vrp_approval_master_records
+    @cached_vrp_approval_master_records ||= ModuleRecord
+      .where(module_slug: "approval-master")
+      .order(created_at: :asc)
+      .to_a
   end
 
   def approval_sequence(record)
@@ -383,6 +442,8 @@ module VrpAccess
   end
 
   def approver_labels
+    return @approver_labels if defined?(@approver_labels)
+
     name = current_app_user&.dig("name").to_s
     username = current_app_user&.dig("username").to_s
     role = current_app_user&.dig("role").to_s
@@ -398,9 +459,7 @@ module VrpAccess
     labels.concat(user_model_approver_labels)
     labels.concat(legacy_user_approver_labels)
 
-    labels
-      .compact_blank
-      .uniq
+    @approver_labels = labels.compact_blank.uniq
   end
 
   def user_model_approver_labels
@@ -564,44 +623,6 @@ module VrpAccess
     [(record.data["user_name"].present? || record.data["vrp_name"].present?) ? 1 : 0, record.id]
   end
 
-  def approval_channel_key(record)
-    data = record.data
-    [
-      data["module_name"],
-      data["stakeholder_name"],
-      data["user_name"],
-      data["status"],
-      data["role"].presence || data["role_name"],
-      data["stakeholder_role"],
-      data["user_management_role"],
-      data["person_type"],
-      approval_record_office(record),
-      data["office_category"],
-      data["vrp_name"]
-    ].map { |value| normalize_approver_label(value) }
-  end
-
-  def approval_channel_priority(records)
-    [
-      records.sum { |record| approval_channel_specificity(record) },
-      records.map(&:id).compact.max.to_i
-    ]
-  end
-
-  def approval_channel_specificity(record)
-    data = record.data
-    [
-      data["user_name"],
-      data["vrp_name"],
-      data["role"].presence || data["role_name"],
-      data["stakeholder_role"],
-      data["user_management_role"],
-      data["person_type"],
-      approval_record_office(record),
-      data["office_category"]
-    ].count(&:present?)
-  end
-
   def vrp_status_label(vrp)
     return "Rejected" if vrp.status.to_i == 99 || approval_rejected?(vrp)
     return "Final Approved" if vrp.status.to_i == 55 || approval_complete?(vrp)
@@ -622,13 +643,13 @@ module VrpAccess
     return current_app_user&.dig("role") if vrp.created_by_id.blank?
 
     if model_ready?(:User)
-      role = User.find_by(id: vrp.created_by_id)&.role
+      role = cached_vrp_creator_user(vrp.created_by_id)&.role
       return role if role.present?
     end
 
     return current_app_user&.dig("role") unless model_ready?(:ModuleRecord)
 
-    ModuleRecord.find_by(id: vrp.created_by_id)&.data&.[]("role").presence ||
+    cached_vrp_creator_record(vrp.created_by_id)&.data&.[]("role").presence ||
       current_app_user&.dig("role")
   end
 
@@ -636,39 +657,39 @@ module VrpAccess
     return current_app_user&.dig("stakeholder") if vrp.created_by_id.blank?
 
     if model_ready?(:User)
-      stakeholder = User.find_by(id: vrp.created_by_id)&.stakeholder
+      stakeholder = cached_vrp_creator_user(vrp.created_by_id)&.stakeholder
       return stakeholder if stakeholder.present?
     end
 
     return current_app_user&.dig("stakeholder") unless model_ready?(:ModuleRecord)
 
-    ModuleRecord.find_by(id: vrp.created_by_id)&.data&.[]("stakeholder").presence || current_app_user&.dig("stakeholder")
+    cached_vrp_creator_record(vrp.created_by_id)&.data&.[]("stakeholder").presence || current_app_user&.dig("stakeholder")
   end
 
   def vrp_creator_identities(vrp)
     identities = []
 
     if vrp.created_by_id.present? && model_ready?(:User)
-      user = User.find_by(id: vrp.created_by_id)
+      user = cached_vrp_creator_user(vrp.created_by_id)
       identities << user_approval_identity(user) if user
     end
 
     if model_ready?(:User)
       matched_users = []
-      matched_users << User.find_by(email: vrp.email) if vrp.email.present?
-      matched_users << User.find_by(mobile_no: vrp.mobile_no) if vrp.mobile_no.present?
+      matched_users << cached_vrp_creator_user_by(email: vrp.email) if vrp.email.present?
+      matched_users << cached_vrp_creator_user_by(mobile_no: vrp.mobile_no) if vrp.mobile_no.present?
       matched_users.compact.uniq.each do |user|
         identities << user_approval_identity(user)
       end
     end
 
     if vrp.created_by_id.present? && model_ready?(:ModuleRecord)
-      record = ModuleRecord.find_by(id: vrp.created_by_id)
+      record = cached_vrp_creator_record(vrp.created_by_id)
       identities << record_approval_identity(record) if record
     end
 
     if model_ready?(:ModuleRecord)
-      matched_records = ModuleRecord.where(module_slug: "new-user").select do |record|
+      matched_records = cached_vrp_creator_records.select do |record|
         (vrp.email.present? && record.data["email"].to_s.casecmp(vrp.email.to_s).zero?) ||
           (vrp.mobile_no.present? && record.data["mobile_no"].to_s == vrp.mobile_no.to_s)
       end
@@ -682,6 +703,34 @@ module VrpAccess
     identities
       .select { |identity| identity[:stakeholder].present? && (identity[:role].present? || identity_user_name_values(identity).present?) }
       .uniq
+  end
+
+  def cached_vrp_creator_user(id)
+    @cached_vrp_creator_users ||= {}
+    key = id.to_s
+    return @cached_vrp_creator_users[key] if @cached_vrp_creator_users.key?(key)
+
+    @cached_vrp_creator_users[key] = User.find_by(id: id)
+  end
+
+  def cached_vrp_creator_user_by(attributes)
+    @cached_vrp_creator_users_by ||= {}
+    key = attributes.to_a.sort_by { |name, _value| name.to_s }
+    return @cached_vrp_creator_users_by[key] if @cached_vrp_creator_users_by.key?(key)
+
+    @cached_vrp_creator_users_by[key] = User.find_by(attributes)
+  end
+
+  def cached_vrp_creator_record(id)
+    @cached_vrp_creator_records_by_id ||= {}
+    key = id.to_s
+    return @cached_vrp_creator_records_by_id[key] if @cached_vrp_creator_records_by_id.key?(key)
+
+    @cached_vrp_creator_records_by_id[key] = ModuleRecord.find_by(id: id)
+  end
+
+  def cached_vrp_creator_records
+    @cached_vrp_creator_records ||= ModuleRecord.where(module_slug: "new-user").to_a
   end
 
   def current_approval_identity
@@ -859,10 +908,10 @@ module VrpAccess
     @cluster_incharge_options = cluster_incharge_options
     @state_options = module_record_options("state-master", "state_name")
     @district_options = module_record_options("district-master", "district_name")
-    @block_options = location_block_options
+    @block_options = module_record_options("block-master", "block_name")
     @location_hierarchy_mappings = location_hierarchy_mappings
-    @gram_panchayat_options = @vrp&.persisted? ? location_gram_panchayat_options : []
-    @village_options = @vrp&.persisted? ? location_village_options : []
+    @gram_panchayat_options = location_gram_panchayat_options
+    @village_options = module_record_options("village-master", "village_name")
   end
 
   def vrp_type_options
@@ -1063,9 +1112,8 @@ module VrpAccess
   def enrich_cluster_mapping_from_user(mapping)
     return mapping unless model_ready?(:User)
 
-    user = User
-      .order(:first_name, :last_name, :user_name)
-      .detect do |candidate|
+    @cluster_mapping_users ||= User.order(:first_name, :last_name, :user_name).to_a
+    user = @cluster_mapping_users.detect do |candidate|
         candidate_status = candidate.respond_to?(:status) ? candidate.status : nil
         next false unless candidate_status.blank? || candidate_status.to_s.casecmp("Active").zero?
 
@@ -1207,7 +1255,8 @@ module VrpAccess
     return false unless model_ready?(:User)
 
     normalized_label = normalize_approver_label(label)
-    User.order(:first_name, :last_name, :user_name).any? do |user|
+    @cluster_mapping_users ||= User.order(:first_name, :last_name, :user_name).to_a
+    @cluster_mapping_users.any? do |user|
       name = (user.respond_to?(:full_name) ? user.full_name : nil).presence ||
         (user.respond_to?(:user_name) ? user.user_name : nil)
       next false unless normalize_approver_label(name) == normalized_label ||
@@ -1396,68 +1445,47 @@ module VrpAccess
     return [] unless model_ready?(:ModuleRecord)
 
     states = active_records_for_location("state-master").map do |record|
-      location_row(record,
-        state: first_present_data(record, "state_name"),
-        state_code: first_present_data(record, "state_code"))
+      location_row(record, state: first_present_data(record, "state_name"))
     end
 
     districts = active_records_for_location("district-master").map do |record|
       location_row(record,
         state: location_name_from_record(record, "state_name", "state", "state_id", "state_code"),
-        state_code: first_present_data(record, "state_code", "state_id"),
-        district: first_present_data(record, "district_name"),
-        district_code: first_present_data(record, "district_code", "district_id"))
+        district: first_present_data(record, "district_name"))
     end
 
     blocks = active_records_for_location("block-master").map do |record|
       location_row(record,
         state: location_name_from_record(record, "state_name", "state", "state_id", "state_code"),
-        state_code: first_present_data(record, "state_code", "state_id"),
         district: location_name_from_record(record, "district_name", "district", "district_id", "district_code"),
-        district_code: first_present_data(record, "district_code", "district_id"),
-        block: first_present_data(record, "block_name"),
-        block_code: first_present_data(record, "block_code", "block_id"))
+        block: first_present_data(record, "block_name"))
     end
 
     gram_panchayats = active_records_for_location("gram-panchayat-master").map do |record|
       location_row(record,
         state: location_name_from_record(record, "state_name", "state", "state_id", "state_code"),
-        state_code: first_present_data(record, "state_code", "state_id"),
         district: location_name_from_record(record, "district_name", "district", "district_id", "district_code"),
-        district_code: first_present_data(record, "district_code", "district_id"),
         block: location_name_from_record(record, "block_name", "block", "block_id", "block_code"),
-        block_code: first_present_data(record, "block_code", "block_id"),
-        gram_panchayat: gram_panchayat_name_from_record(record),
-        gp_code: first_present_data(record, "gp_code", "gram_code", "gram_panchayat_code", "gram_panchayat_id"))
+        gram_panchayat: gram_panchayat_name_from_record(record))
     end
 
     villages = active_records_for_location("village-master").map do |record|
       location_row(record,
         state: location_name_from_record(record, "state_name", "state", "state_id", "state_code"),
-        state_code: first_present_data(record, "state_code", "state_id"),
         district: location_name_from_record(record, "district_name", "district", "district_id", "district_code"),
-        district_code: first_present_data(record, "district_code", "district_id"),
         block: location_name_from_record(record, "block_name", "block", "block_id", "block_code"),
-        block_code: first_present_data(record, "block_code", "block_id"),
         gram_panchayat: gram_panchayat_name_from_record(record),
-        gp_code: first_present_data(record, "gp_code", "gram_code", "gram_panchayat_code", "gram_panchayat_id"),
-        village: first_present_data(record, "village_name", "village", "name"),
-        village_code: first_present_data(record, "village_code", "village_id"))
+        village: first_present_data(record, "village_name", "village", "name"))
     end
 
-	    lg_directory_rows = active_records_for_location("lg-directory-list").map do |record|
-	      location_row(record,
-	        state: location_name_from_record(record, "state_name", "state", "state_code"),
-	        state_code: first_present_data(record, "state_code"),
-	        district: location_name_from_record(record, "district_name", "district", "district_code"),
-	        district_code: first_present_data(record, "district_code"),
-	        block: location_name_from_record(record, "block_name", "block", "cd_block_name", "block_code"),
-	        block_code: first_present_data(record, "block_code", "cd_block_code"),
-	        gram_panchayat: gram_panchayat_name_from_record(record),
-	        gp_code: first_present_data(record, "gp_code", "gram_code", "gram_panchayat_code"),
-	        village: first_present_data(record, "village_name", "village"),
-	        village_code: first_present_data(record, "village_code"))
-	    end
+    lg_directory_rows = active_records_for_location("lg-directory-list").map do |record|
+      location_row(record,
+        state: first_present_data(record, "state", "state_name"),
+        district: first_present_data(record, "district", "district_name"),
+        block: first_present_data(record, "block", "cd_block_name"),
+        gram_panchayat: gram_panchayat_name_from_record(record),
+        village: first_present_data(record, "village", "village_name"))
+    end
 
     states + districts + blocks + gram_panchayats + villages + lg_directory_rows
   end
@@ -1475,40 +1503,12 @@ module VrpAccess
     row
   end
 
-  def location_block_options
-    return [] unless model_ready?(:ModuleRecord)
-
-    active_records_for_location(["block-master", "lg-directory-list"])
-      .filter_map do |record|
-        label = first_present_data(record, "block_name", "block", "cd_block_name")
-        next if label.blank? || code_like_location_value?(label)
-
-        [label, record.id]
-      end
-      .uniq { |label, _value| label.to_s.downcase }
-      .sort_by { |label, _value| label.to_s.downcase }
-  end
-
   def location_gram_panchayat_options
     return [] unless model_ready?(:ModuleRecord)
 
     active_records_for_location(["gram-panchayat-master", "lg-directory-list", "village-master"])
       .filter_map do |record|
         label = gram_panchayat_name_from_record(record)
-        next if label.blank? || code_like_location_value?(label)
-
-        [label, record.id]
-      end
-      .uniq { |label, _value| label.to_s.downcase }
-      .sort_by { |label, _value| label.to_s.downcase }
-  end
-
-  def location_village_options
-    return [] unless model_ready?(:ModuleRecord)
-
-    active_records_for_location(["village-master", "lg-directory-list"])
-      .filter_map do |record|
-        label = first_present_data(record, "village_name", "village", "name")
         next if label.blank? || code_like_location_value?(label)
 
         [label, record.id]
@@ -1675,7 +1675,7 @@ module VrpAccess
       districts: options_as_hashes(module_record_options("district-master", "district_name")),
       blocks: options_as_hashes(module_record_options("block-master", "block_name")),
       gram_panchayats: options_as_hashes(location_gram_panchayat_options),
-      villages: options_as_hashes(location_village_options),
+      villages: options_as_hashes(module_record_options("village-master", "village_name")),
       banks: bank_options_payload,
       fcoc_options: options_as_hashes(fcoc_options_for_api(office_mappings)),
       to_options: options_as_hashes(to_options_for_api(office_mappings)),
@@ -1756,6 +1756,7 @@ module VrpAccess
 
   def detail_payload(vrp)
     profile = vrp.vrp_profile
+    progress = approval_progress_payload(vrp)
     list_row_payload(vrp).merge(
       aadhar_no_full: vrp.aadhar_no,
       branch: vrp.branch,
@@ -1767,9 +1768,10 @@ module VrpAccess
       person_type: vrp.person_type,
       can_approve: current_user_can_approve?(vrp),
       can_send_for_approval: own_vrps.exists?(id: vrp.id) && !approval_sent?(vrp) && ![31, 32, 55].include?(vrp.status.to_i),
-      approval_steps: approval_steps_for(vrp).map { |step| approval_step_payload(step, vrp) },
+      approval_steps: progress[:steps],
       approval_history: approval_history_for(vrp).map { |record| approval_history_payload(record) },
       current_approval_step: (step = current_approval_step(vrp)) && approval_step_payload(step, vrp),
+      approval_progress: progress,
       profile: profile && {
         id: profile.id,
         state_id: profile.state_id,
@@ -1802,12 +1804,50 @@ module VrpAccess
   end
 
   def approval_step_payload(step, vrp)
+    closing = closing_approval_history(vrp, step)
+    current = current_approval_step(vrp)
+    action = closing&.data&.[]("action")
+    state = if action == "Rejected"
+      "rejected"
+    elsif closing.present?
+      "approved"
+    elsif current&.id == step.id
+      "current"
+    else
+      "pending"
+    end
+
     {
       id: step.id,
       approval_level: step.data["approval_level"],
       approver: approval_approver_name(step),
       sequence: approval_sequence(step),
-      closed: approval_step_closed?(vrp, step)
+      closed: closing.present?,
+      state: state,
+      action: action,
+      action_by: closing&.data&.[]("action_by"),
+      remarks: closing&.data&.[]("remarks"),
+      action_at: closing&.created_at&.iso8601,
+      action_date: closing&.created_at&.in_time_zone("Asia/Kolkata")&.strftime("%d-%m-%Y"),
+      action_time: closing&.created_at&.in_time_zone("Asia/Kolkata")&.strftime("%I:%M %p"),
+      action_datetime: closing&.created_at&.in_time_zone("Asia/Kolkata")&.strftime("%d-%m-%Y %I:%M %p")
+    }
+  end
+
+  def approval_progress_payload(vrp)
+    steps = approval_steps_for(vrp).map { |step| approval_step_payload(step, vrp) }
+    status_label = vrp_status_label(vrp)
+    final_approved = vrp.status.to_i == 55 || approval_complete?(vrp)
+    rejected = vrp.status.to_i == 99 || approval_rejected?(vrp)
+
+    {
+      status: status_label,
+      final_approved: final_approved,
+      rejected: rejected,
+      completed_steps: steps.count { |step| step[:state] == "approved" },
+      total_steps: steps.size,
+      current_step: steps.find { |step| step[:state] == "current" },
+      steps: steps
     }
   end
 
@@ -1820,7 +1860,10 @@ module VrpAccess
       remarks: record.data["remarks"],
       status: record.data["status"],
       action_by: record.data["action_by"],
-      created_at: record.created_at
+      created_at: record.created_at&.iso8601,
+      action_date: record.created_at&.in_time_zone("Asia/Kolkata")&.strftime("%d-%m-%Y"),
+      action_time: record.created_at&.in_time_zone("Asia/Kolkata")&.strftime("%I:%M %p"),
+      action_datetime: record.created_at&.in_time_zone("Asia/Kolkata")&.strftime("%d-%m-%Y %I:%M %p")
     }
   end
 

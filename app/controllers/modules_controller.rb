@@ -45,7 +45,7 @@ class ModulesController < ApplicationController
                 :seed_distribution_target_month_options, :current_seed_target_vrp_option,
                 :add_farmer_form_mappings, :dashboard_vrp_previous_status, :dashboard_vrp_status_label,
                 :training_edit_revision_for, :dashboard_weekly_report_filter_params,
-                :jeevika_bill_observation_row
+                :jeevika_bill_observation_row, :jeevika_bill_fcoc_name, :training_target_browser_payload
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
   OTHER_TARGET_MODULE_SLUGS = ["seed-distribution-target", "papl360-target", "other-target"].freeze
@@ -181,6 +181,7 @@ class ModulesController < ApplicationController
       purpose: "Saved farmer target records dekhne ke liye.",
       fields: [
         "Month",
+        "FCO Name",
         "ICS / Block",
         "Gram Name",
         "Trainer Name",
@@ -10231,6 +10232,7 @@ class ModulesController < ApplicationController
         bill_id: record.id,
         vrp_id: data["select_vrp"],
         name: jeevika_jankar_display_name(data["select_vrp_name"].presence || jeevika_jankar_vrp_label(data["select_vrp"])),
+        fcoc_name: jeevika_bill_fcoc_name(record),
         financial_year: data["financial_year"].presence || "-",
         bill_month: data["bill_month"].presence || "-",
         activity_groups: summary[:activity_groups].presence || "-",
@@ -12567,9 +12569,49 @@ class ModulesController < ApplicationController
     nil
   end
 
+  def jeevika_bill_staff_scope
+    return nil if admin_dashboard_user? || vrp_login_user? || dashboard_global_view_user?
+
+    return @jeevika_bill_staff_scope if defined?(@jeevika_bill_staff_scope)
+
+    @jeevika_bill_staff_scope = begin
+      roles = %w[role role_name stakeholder_role user_management_role person_type designation]
+        .filter_map { |key| current_app_user&.dig(key).presence }
+        .map { |role| AgreementVrpScope.normalize_text(role) }
+      if roles.any? { |role| role.match?(/\A(?:cc|cluster)(?:\s|\z)/) }
+        :cluster
+      elsif dashboard_agronomics_login? || dashboard_source_fcoc_login?
+        :office
+      elsif module_cluster_incharge_login?
+        :cluster
+      end
+    end
+  end
+
+  def jeevika_bill_staff_vrp_ids
+    @jeevika_bill_staff_vrp_ids ||= if jeevika_bill_staff_scope == :cluster
+      module_cluster_visible_vrp_ids.map(&:to_s).to_set
+    else
+      offices = AgreementVrpScope.user_office_keys(current_app_user)
+      Vrp.select(:id, :fcoc).filter_map do |vrp|
+        key = AgreementVrpScope.office_key(vrp.fcoc)
+        vrp.id.to_s if key.present? && offices.include?(key)
+      end.to_set
+    end
+  end
+
+  def jeevika_bill_fcoc_name(record)
+    jeevika_bill_vrp_for_visibility(record)&.fcoc.to_s.strip.presence ||
+      first_present_data(record, "fcoc", "fcoc_name", "fco_name", "trainee_department").presence || "-"
+  end
+
   def jeevika_jankar_bill_record_visible?(record)
     return true if admin_dashboard_user?
     return false unless record&.data.present?
+    if jeevika_bill_staff_scope.present?
+      vrp = jeevika_bill_vrp_for_visibility(record)
+      return vrp.present? && jeevika_bill_staff_vrp_ids.include?(vrp.id.to_s)
+    end
     return true if jeevika_bill_created_by_current_user?(record)
     return true if jeevika_bill_approver_visible?(record)
 
@@ -13785,6 +13827,22 @@ class ModulesController < ApplicationController
 
   def training_target_mappings
     @training_target_mappings ||= build_training_target_mappings
+  end
+
+  def training_target_browser_payload
+    farmers = []
+    farmer_indexes = {}
+    mappings = training_target_mappings.map do |mapping|
+      indexes = Array(mapping[:farmers]).map do |farmer|
+        farmer_indexes.fetch(farmer) do
+          index = farmers.size
+          farmers << farmer
+          farmer_indexes[farmer] = index
+        end
+      end
+      mapping.except(:farmers).merge(farmer_indexes: indexes)
+    end
+    { mappings: mappings, farmers: farmers }
   end
 
   def build_training_target_mappings

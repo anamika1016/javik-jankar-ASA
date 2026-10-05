@@ -1988,6 +1988,7 @@
               <th>Jeevika Jankar ID</th>
               <th>Status</th>
               <th>Name</th>
+              <th>FCOC Name</th>
               <th>Financial Year</th>
               <th>Bill Month</th>
               <th>Activity Group</th>
@@ -2028,6 +2029,7 @@
                   <td><%= row[:vrp_id].presence || "-" %></td>
                   <td><span class="grid-status <%= row[:status_class] %>"><%= row[:status] %></span></td>
                   <td><%= row[:name].presence || "-" %></td>
+                  <td><%= row[:fcoc_name] %></td>
                   <td><%= row[:financial_year] %></td>
                   <td><%= row[:bill_month] %></td>
                   <td><%= row[:activity_groups] %></td>
@@ -2051,7 +2053,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="16">No Jeevika Jankar bill saved yet.</td>
+                <td colspan="17">No Jeevika Jankar bill saved yet.</td>
               </tr>
             <% end %>
           </tbody>
@@ -2315,7 +2317,7 @@
     <% other_target_form = ["seed-distribution-target", "papl360-target", "other-target"].include?(@slug) %>
     <% add_farmer_form = @slug == "add-farmer-form" %>
     <% seed_target_form = @slug == "seed-distribution-target" %>
-    <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if @slug == "parent-office-add" %>data-parent-office-form data-parent-office-map="<%= json_escape(parent_office_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-record-id="<%= @record&.id %>" data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_setup_mappings.to_json) %>" data-training-month-options="<%= json_escape(training_target_month_options.to_json) %>" data-training-farmers-url="<%= training_target_farmers_module_path(@slug) %>" data-user-hierarchy-cc-map="<%= json_escape(user_hierarchy_cc_to_head_map.to_json) %>"<% end %> <% if other_target_form %>data-seed-target-form data-seed-target-map="<%= json_escape(seed_distribution_target_mappings.to_json) %>" data-seed-month-options="<%= json_escape(seed_distribution_target_month_options.to_json) %>" data-seed-current-vrp-option="<%= json_escape(current_seed_target_vrp_option.to_json) %>" data-seed-farmers-url="<%= seed_target_farmers_module_path(@slug) %>"<% end %> <% if add_farmer_form %>data-add-farmer-form data-add-farmer-map="<%= json_escape(add_farmer_form_mappings.to_json) %>"<% end %>>
+    <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if @slug == "parent-office-add" %>data-parent-office-form data-parent-office-map="<%= json_escape(parent_office_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-record-id="<%= @record&.id %>" data-training-target-map="<%= json_escape(training_target_browser_payload.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_setup_mappings.to_json) %>" data-training-month-options="<%= json_escape(training_target_month_options.to_json) %>" data-training-farmers-url="<%= training_target_farmers_module_path(@slug) %>" data-user-hierarchy-cc-map="<%= json_escape(user_hierarchy_cc_to_head_map.to_json) %>"<% end %> <% if other_target_form %>data-seed-target-form data-seed-target-map="<%= json_escape(seed_distribution_target_mappings.to_json) %>" data-seed-month-options="<%= json_escape(seed_distribution_target_month_options.to_json) %>" data-seed-current-vrp-option="<%= json_escape(current_seed_target_vrp_option.to_json) %>" data-seed-farmers-url="<%= seed_target_farmers_module_path(@slug) %>"<% end %> <% if add_farmer_form %>data-add-farmer-form data-add-farmer-map="<%= json_escape(add_farmer_form_mappings.to_json) %>"<% end %>>
       <div class="module-card-header" style="display:flex;justify-content:space-between;align-items:center;">
         <h2><%= @slug == "new-user" ? "Registration" : (@record.present? ? "Edit Record" : "Fields") %></h2>
         <% if @slug == "training-form" && @record.present? && @training_edit_revision && TrainingEditApproval.can_decide?(@training_edit_revision, current_app_user) %>
