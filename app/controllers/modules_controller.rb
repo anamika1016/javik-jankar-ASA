@@ -10536,39 +10536,112 @@ class ModulesController < ApplicationController
     ]
   end
 
+  # The worksheet lists the work the JJ actually did, so every training session
+  # submitted for the billed month gets its own line. The bill items it is
+  # derived from are grouped per target, which collapsed a JJ's three sessions
+  # into a single row whenever they shared the same farmers.
   def jeevika_bill_time_slot_rows(record)
-    jeevika_bill_detail_rows(record).flat_map do |item|
-      achievement = dashboard_numeric(item["achievement_count"])
-      farmers = Array(item["farmer_details"]).select do |farmer|
-        farmer["training_date"].present? && !farmer["status"].to_s.match?(/pending|rejected|returned/i)
-      end.uniq { |farmer| farmer["id"].presence || farmer }
-      dates = item["timesheet_dates"].to_s.split(",").map(&:strip).reject(&:blank?)
-      dates = farmers.map { |farmer| farmer["training_date"] }.uniq if dates.empty?
-      dates = dates.map { |date| bill_display_date(date) }.uniq
-      base = {
-        village: item["village"].presence || "-",
-        activity: item["activity"].presence || "-",
-        tci: item["main_activity"].presence || "-"
-      }
-      attendance = jeevika_bill_training_attendance_by_date(item)
-      if attendance.any?
-        next attendance.sort_by { |date, _ids| date }.map do |date, ids|
-          base.merge(working_date: bill_display_date(date), number: ids.size)
-        end
-      end
-      # One row per training date, counting the farmers actually trained that day.
-      # This used to also require farmers.size == achievement, so a JJ who ran
-      # three sessions had all three collapsed onto a single invoice line.
-      if farmers.any?
-        next farmers
-          .group_by { |farmer| farmer["training_date"] }
-          .sort_by { |date, _attendees| parse_module_date(date) || Date.new(1900, 1, 1) }
-          .map { |date, attendees| base.merge(working_date: bill_display_date(date), number: attendees.size) }
-      end
-
-      # Legacy items store no per-farmer dates, so there is nothing to split on.
-      [base.merge(working_date: dates.presence&.join(", ") || "-", number: dashboard_quantity(achievement))]
+    training_items, other_items = jeevika_bill_detail_rows(record).partition do |item|
+      training_main_activity_type?(item["main_activity_type"].presence || "Training")
     end
+
+    # Only the training half is rebuilt from sessions. Seed distribution and
+    # other non-training items have no training form behind them, so they stay
+    # on the item-derived rows instead of dropping off the invoice.
+    session_rows = jeevika_bill_training_session_rows(record)
+    covered = session_rows.map { |row| normalize_dashboard_text(row[:tci]) }.to_set
+
+    # A training item whose activity no session covers keeps its original row, so
+    # billable work can never vanish just because no form carries that label.
+    leftover_items = training_items.reject do |item|
+      covered.include?(normalize_dashboard_text(item["main_activity"]))
+    end
+
+    session_rows +
+      (leftover_items + other_items).flat_map { |item| jeevika_bill_time_slot_rows_for_item(item) }
+  end
+
+  def jeevika_bill_training_session_rows(record)
+    jeevika_bill_month_training_records(record).map do |training|
+      summary = training_summary(training)
+      data = training.data
+      farmer_count = training_record_selected_farmer_ids(training).size
+      farmer_count = dashboard_numeric(data["farmer_count"]).to_i if farmer_count.zero?
+
+      {
+        working_date: bill_display_date(summary[:training_date]),
+        village: (data["gram_name"].presence || data["village_name"].presence || data["training_location"].presence || "-"),
+        activity: summary[:training_subject].presence || "-",
+        tci: summary[:training_topic].presence || "-",
+        number: farmer_count.to_s
+      }
+    end
+  end
+
+  # Training forms the billed JJ submitted inside the invoice month.
+  def jeevika_bill_month_training_records(record)
+    return [] unless model_ready?(:ModuleRecord)
+
+    vrp = jeevika_bill_vrp(record)
+    return [] unless vrp
+
+    month_number = month_number_value(
+      record.data["bill_month"].presence ||
+        record.data["invoice_month"].presence ||
+        record.data["select_bill_month"]
+    )
+
+    ModuleRecord
+      .where(module_slug: "training-form")
+      .select { |training| active_module_record?(training) && training_record_vrp_scope_matches?(training, vrp) }
+      .filter_map do |training|
+        summary = training_summary(training)
+        date = parse_module_date(summary[:training_date])
+        next unless date
+
+        # Trust the month the JJ picked on the form; fall back to the date it
+        # happened on, which is what `summary[:month]` already derives.
+        if month_number.present?
+          next if (month_number_value(summary[:month]) || date.month) != month_number
+        end
+
+        [date, training]
+      end
+      .sort_by { |date, training| [date, training.id] }
+      .map(&:last)
+  end
+
+  def jeevika_bill_time_slot_rows_for_item(item)
+    achievement = dashboard_numeric(item["achievement_count"])
+    farmers = Array(item["farmer_details"]).select do |farmer|
+      farmer["training_date"].present? && !farmer["status"].to_s.match?(/pending|rejected|returned/i)
+    end.uniq { |farmer| farmer["id"].presence || farmer }
+    dates = item["timesheet_dates"].to_s.split(",").map(&:strip).reject(&:blank?)
+    dates = farmers.map { |farmer| farmer["training_date"] }.uniq if dates.empty?
+    dates = dates.map { |date| bill_display_date(date) }.uniq
+    base = {
+      village: item["village"].presence || "-",
+      activity: item["activity"].presence || "-",
+      tci: item["main_activity"].presence || "-"
+    }
+    attendance = jeevika_bill_training_attendance_by_date(item)
+    if attendance.any?
+      return attendance.sort_by { |date, _ids| date }.map do |date, ids|
+        base.merge(working_date: bill_display_date(date), number: ids.size)
+      end
+    end
+    # One row per training date, counting the farmers actually trained that day.
+    # This used to also require farmers.size == achievement, so a JJ who ran
+    # three sessions had all three collapsed onto a single invoice line.
+    if farmers.any?
+      return farmers
+        .group_by { |farmer| farmer["training_date"] }
+        .sort_by { |date, _attendees| parse_module_date(date) || Date.new(1900, 1, 1) }
+        .map { |date, attendees| base.merge(working_date: bill_display_date(date), number: attendees.size) }
+    end
+
+    # Legacy items store no per-farmer dates, so there is nothing to split on.
+    [base.merge(working_date: dates.presence&.join(", ") || "-", number: dashboard_quantity(achievement))]
   end
 
   def jeevika_bill_training_attendance_by_date(item)
