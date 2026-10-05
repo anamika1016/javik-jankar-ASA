@@ -1509,7 +1509,9 @@ class VrpsController < ApplicationController
   end
 
   def cluster_incharge_user_mappings
-    hierarchy_cluster_incharge_labels
+    return @cluster_incharge_user_mappings if defined?(@cluster_incharge_user_mappings)
+
+    @cluster_incharge_user_mappings = hierarchy_cluster_incharge_labels
       .filter_map { |label| cluster_mapping_from_hierarchy_label(label) }
       .map { |mapping| enrich_cluster_mapping_from_user(mapping) }
       .uniq { |mapping| normalize_approver_label(mapping[:value]) }
@@ -1534,9 +1536,8 @@ class VrpsController < ApplicationController
   def enrich_cluster_mapping_from_user(mapping)
     return mapping unless model_ready?(:User)
 
-    user = User
-      .order(:first_name, :last_name, :user_name)
-      .detect do |candidate|
+    @cluster_mapping_users ||= User.order(:first_name, :last_name, :user_name).to_a
+    user = @cluster_mapping_users.detect do |candidate|
         candidate_status = candidate.respond_to?(:status) ? candidate.status : nil
         next false unless candidate_status.blank? || candidate_status.to_s.casecmp("Active").zero?
 
@@ -1866,6 +1867,8 @@ class VrpsController < ApplicationController
   def location_hierarchy_mappings
     return [] unless model_ready?(:ModuleRecord)
 
+    return @location_hierarchy_mappings if defined?(@location_hierarchy_mappings)
+
     states = active_records_for_location("state-master").map do |record|
       location_row(record,
         state: first_present_data(record, "state_name"),
@@ -1930,7 +1933,7 @@ class VrpsController < ApplicationController
 	        village_code: first_present_data(record, "village_code"))
 	    end
 
-    deduplicate_location_rows(states + districts + blocks + gram_panchayats + villages + lg_directory_rows)
+    @location_hierarchy_mappings = deduplicate_location_rows(states + districts + blocks + gram_panchayats + villages + lg_directory_rows)
   end
 
   def deduplicate_location_rows(rows)
@@ -2201,11 +2204,13 @@ class VrpsController < ApplicationController
   def module_record_label(module_slug, id, field_key)
     return "" if id.blank? || !model_ready?(:ModuleRecord)
 
+    @module_record_labels_cache ||= {}
+    cache_key = [module_slug, id, field_key]
+    return @module_record_labels_cache[cache_key] if @module_record_labels_cache.key?(cache_key)
+
     record = ModuleRecord.find_by(module_slug: module_slug, id: id)
     label = module_record_display_label(module_slug, record, field_key)
-    return label if label.present?
-
-    id.to_s.match?(/\A\d+\z/) ? "" : id.to_s
+    @module_record_labels_cache[cache_key] = label.present? ? label : (id.to_s.match?(/\A\d+\z/) ? "" : id.to_s)
   end
 
   def module_record_labels(module_slug, ids, field_key)

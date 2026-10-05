@@ -7,7 +7,7 @@ module Api
         vrp = current_dashboard_vrp
         return render json: { success: false, message: "Valid Jeevika Jankar login required." }, status: :unprocessable_entity unless vrp
 
-        targets = TargetMapping.where(vrp_id: vrp.id).order(:month_name, :main_activity_name, :activity_name, :id).to_a
+        targets = TargetMapping.includes(:vrp).where(vrp_id: vrp.id).order(:month_name, :main_activity_name, :activity_name, :id).to_a
         months = targets.filter_map { |target| target.month_name.to_s.strip.presence }.uniq
         selected_month = params[:month].presence || params[:training_month].presence || default_month(months)
         targets = targets.select { |target| same_text?(target.month_name, selected_month) } if selected_month.present?
@@ -228,6 +228,8 @@ module Api
       # completion deadlines, approved Other targets, and the bill fallback.
       def web_parity_progress(targets, vrp)
         calculator = ModulesController.new
+        calculator.request = request
+        calculator.instance_variable_set(:@current_app_user, current_api_user_payload)
         bills = calculator.send(:vrp_dashboard_bills, vrp)
         rows = calculator.send(:vrp_dashboard_target_progress_rows, targets, bills)
 
