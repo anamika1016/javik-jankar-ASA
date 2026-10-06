@@ -10089,6 +10089,7 @@ class ModulesController < ApplicationController
     @jeevika_jankar_target_summary ||= jeevika_jankar_target_summary_from_rows(@jeevika_jankar_bill_rows)
     @jeevika_jankar_saved_items = jeevika_jankar_saved_items
     @jeevika_jankar_existing_bills = jeevika_jankar_existing_bill_keys
+    @jeevika_jankar_achievement_keys = jeevika_jankar_achievement_keys
   end
 
   def prepare_jeevika_jankar_bill_list
@@ -11050,6 +11051,44 @@ class ModulesController < ApplicationController
       label = vrp.name.presence || vrp.user_name.presence
       [label.presence || "VRP ##{vrp.id}", vrp.id.to_s]
     end
+  end
+
+  # "vrp_id|month" keys for every JJ that finished at least one activity with at
+  # least one farmer. A JJ with nothing completed has nothing to bill, so the
+  # bill form's JJ dropdown hides them for that month.
+  def jeevika_jankar_achievement_keys
+    return [] unless model_ready?(:ModuleRecord)
+
+    keys = Set.new
+
+    ModuleRecord.where(module_slug: TARGET_RECORD_MODULE_SLUGS).find_each do |record|
+      next unless active_module_record?(record)
+
+      data = record.data
+      vrp_id = data["jeevika_jankar_id"].presence || data["vrp_id"].presence || data["select_vrp"].presence
+      vrp_id ||= data["created_by_id"] if data["created_by_record_type"] == "Vrp"
+      next if vrp_id.blank?
+
+      month = data["month"].presence || parse_module_date(data["training_date"])&.strftime("%B")
+      next if month.blank?
+
+      next unless jeevika_jankar_record_has_achievement?(record, data)
+
+      keys << "#{vrp_id.to_s.strip}|#{month.to_s.strip.downcase}"
+    end
+
+    keys.to_a
+  end
+
+  def jeevika_jankar_record_has_achievement?(record, data)
+    return true if Array(data["selected_farmer_ids"]).compact_blank.any?
+
+    # Other-target forms record a quantity rather than a farmer list.
+    return true if dashboard_numeric(data["achievement"]).positive?
+    return true if dashboard_numeric(data["achievement_count"]).positive?
+    return true if dashboard_numeric(data["farmer_count"]).positive?
+
+    false
   end
 
   def module_cluster_incharge_login?

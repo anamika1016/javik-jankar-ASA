@@ -6145,18 +6145,22 @@ function initDeferredLayoutPage() {
     let activeBillRowsKey = "";
     const initialVrpValue = String(vrpSelect?.value || "");
 
+    let achievementKeys = new Set();
+
     try {
       billRows = JSON.parse(billForm.dataset.billRows || "[]");
       savedItems = JSON.parse(billForm.dataset.savedItems || "[]");
       existingBills = JSON.parse(billForm.dataset.existingBills || "[]");
       achievementSummary = JSON.parse(billForm.dataset.achievementSummary || "{}");
       targetSummary = JSON.parse(billForm.dataset.targetSummary || "{}");
+      achievementKeys = new Set(JSON.parse(billForm.dataset.achievementKeys || "[]"));
     } catch (_error) {
       billRows = [];
       savedItems = [];
       existingBills = [];
       achievementSummary = {};
       targetSummary = {};
+      achievementKeys = new Set();
     }
 
     const escapeHtml = (value) => String(value ?? "")
@@ -6237,9 +6241,16 @@ function initDeferredLayoutPage() {
         return;
       }
 
+      // A JJ who completed no activity that month has nothing to bill, so keep
+      // them out of the list. The JJ already on a saved bill always stays.
+      const hasAchievement = (vrpId) => {
+        if (!achievementKeys.size) return true;
+        return achievementKeys.has(`${String(vrpId || "").trim()}|${selectedMonth}`);
+      };
+
       const availableOptions = originalVrpOptions.filter((option) => {
         if (initialVrpValue && String(option.value) === initialVrpValue) return true;
-        return !billExistsFor(option.value, selectedMonth);
+        return !billExistsFor(option.value, selectedMonth) && hasAchievement(option.value);
       });
       availableOptions.forEach((optionData) => {
         const option = document.createElement("option");
@@ -6259,7 +6270,10 @@ function initDeferredLayoutPage() {
       }
 
       if (!availableOptions.length) {
-        blank.textContent = "Selected month ke liye sabhi bills ban chuke hain";
+        const anyBillable = originalVrpOptions.some((option) => hasAchievement(option.value));
+        blank.textContent = anyBillable
+          ? "Selected month ke liye sabhi bills ban chuke hain"
+          : "Is month me kisi Jeevika Jankar ne koi activity complete nahi ki";
       }
     };
 

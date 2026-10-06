@@ -911,7 +911,8 @@
       data-achievement-summary="<%= json_escape(@jeevika_jankar_achievement_summary.to_json) %>"
       data-target-summary="<%= json_escape(@jeevika_jankar_target_summary.to_json) %>"
       data-saved-items="<%= json_escape(@jeevika_jankar_saved_items.to_json) %>"
-      data-existing-bills="<%= json_escape(@jeevika_jankar_existing_bills.to_json) %>">
+      data-existing-bills="<%= json_escape(@jeevika_jankar_existing_bills.to_json) %>"
+      data-achievement-keys="<%= json_escape((@jeevika_jankar_achievement_keys || []).to_json) %>">
       <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form" } do %>
         <div class="module-form-grid user-registration-grid">
           <label>
