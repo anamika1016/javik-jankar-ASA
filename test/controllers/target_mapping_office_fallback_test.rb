@@ -10,6 +10,25 @@ class TargetMappingOfficeFallbackTest < ActiveSupport::TestCase
     assert_equal [], controller.send(:office_list_fco_options)
   end
 
+  test "an unavailable office response does not prevent a later request from recovering" do
+    Rails.cache.clear
+    attempts = 0
+    offices = [{ "id" => 18, "name" => "Ranapur - FCO" }]
+    build_controller = lambda do
+      controller = TargetMappingsController.new
+      controller.define_singleton_method(:office_list_api_urls) { ["https://example.test/offices"] }
+      controller.define_singleton_method(:fetch_office_list_items) do |_url|
+        attempts += 1
+        attempts == 1 ? [] : offices
+      end
+      controller
+    end
+    assert_empty build_controller.call.send(:office_list_items)
+    assert_equal offices, build_controller.call.send(:office_list_items)
+    assert_equal offices, build_controller.call.send(:office_list_items)
+    assert_operator attempts, :>=, 2
+  end
+
   test "block options contain only the selected FCO territory without repeated block IDs" do
     controller = TargetMappingsController.new
     blocks = %w[Jhabua Meghnagar Petlawad Rama Ranapur Thandla].each_with_index.map do |name, index|

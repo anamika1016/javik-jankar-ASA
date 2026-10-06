@@ -212,7 +212,7 @@ class TargetMappingsController < ApplicationController
     block_wise = target_entry_mode_block_wise?
     village_value = target_village_param
     render json: {
-      fco_options: block_wise ? office_fco_options : fco_options(params[:vrp_id]),
+      fco_options: block_wise ? filtered_office_fco_options : fco_options(params[:vrp_id]),
       block_options: block_wise ? office_block_options(params[:fco_id]) : [],
       ics_options: ics_options_for(params[:fco_id], params[:vrp_id]),
       village_options: block_wise ? office_village_options(params[:fco_id], params[:block_id]) : village_options_for(params[:fco_id], params[:ics_id], params[:vrp_id]),
@@ -1184,10 +1184,10 @@ end
   def office_list_items
     return @office_list_items if defined?(@office_list_items)
 
-    @office_list_items = Rails.cache.fetch("office-list-api-items-v3", expires_in: 10.minutes) do
+    @office_list_items = Rails.cache.fetch("office-list-api-items-v4", expires_in: 10.minutes, skip_nil: true) do
       office_list_api_urls.lazy.map { |url| fetch_office_list_items(url) }
-        .find(&:present?) || []
-    end
+        .find(&:present?)
+    end || []
   end
 
   def fetch_office_list_items(url)
