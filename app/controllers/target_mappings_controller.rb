@@ -1341,14 +1341,31 @@ end
       next if [fco_id, fco_name].any? { |value| value.casecmp("null").zero? }
 
       normalized = option_hash(fco_id, fco_name)
-      key = fco_name.downcase
+      key = normalized_fco_key(fco_name)
       current = unique[key]
       current_id, current_name = parse_location_value(current&.dig(:value))
       current_has_code = current.present? && current_id.present? && !current_id.casecmp(current_name.to_s).zero?
       candidate_has_code = !fco_id.casecmp(fco_name).zero?
+      # Same office under two spellings ("Bhawanipatna" vs "Bhawanipatna - FCO"):
+      # keep the shorter label so the suffixed duplicate does not win.
+      candidate_is_cleaner = current.present? && current_has_code && candidate_has_code &&
+        fco_name.length < current_name.to_s.length
 
-      unique[key] = normalized if current.blank? || (!current_has_code && candidate_has_code)
+      unique[key] = normalized if current.blank? ||
+        (!current_has_code && candidate_has_code) ||
+        candidate_is_cleaner
     end.values
+  end
+
+  # The Office List API returns the same FCO both bare and with a trailing
+  # "- FCO"/"PAPL" marker, which used to key as two separate offices and list
+  # the office twice.
+  def normalized_fco_key(fco_name)
+    stripped = fco_name.to_s.downcase.strip
+      .sub(/[-\s]*(papl|fco(?:[-\s]*c)?)\s*\z/i, "")
+      .strip
+
+    stripped.presence || fco_name.to_s.downcase.strip
   end
 
   def mapping_location_options(scope, id_column, name_column)
