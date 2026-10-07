@@ -1038,31 +1038,34 @@ class TargetMappingsController < ApplicationController
       fco_by_id[o["id"].to_s] = o
     end
 
+    # The user's own office names their FCO, so it has to decide before the
+    # block or district does. A block can sit under a different FCO in the
+    # office list, and it used to win and point the form at that other FCO.
     keywords = [
-      current_app_user["block"],
-      current_app_user["district"],
+      current_app_user["office_name"]&.gsub(/\AFCO[-\s]*C?\s*/i, ""),
       current_app_user["sub_office_name"]&.gsub(/\ATO\s*[-]\s*/i, ""),
-      current_app_user["office_name"]&.gsub(/\AFCO[-\s]*C?\s*/i, "")
+      current_app_user["block"],
+      current_app_user["district"]
     ].map { |v| v.to_s.strip.downcase }.reject(&:blank?).uniq
 
     return nil if keywords.blank?
 
-    items.each do |o|
-      parent_id = o.dig("parent", "id").to_s
-      next unless fco_ids.include?(parent_id)
-
-      child_name = o["name"].to_s.strip.downcase
-        .gsub(/[-\s]*(to|fpc|ics|fpo)\s*\z/i, "").strip
-      keywords.each do |kw|
-        return parent_id if child_name.present? && (child_name.include?(kw) || kw.include?(child_name))
-      end
-    end
-
-    keywords.each do |kw|
+    # Resolve one keyword completely before trying the next, so the highest
+    # priority keyword decides instead of whichever office is listed first.
+    keywords.each do |keyword|
       fco_by_id.each do |id, fco|
         fco_name = fco["name"].to_s.strip.downcase
           .gsub(/[-\s]*(papl|fco)\s*\z/i, "").strip
-        return id if fco_name.present? && (fco_name.include?(kw) || kw.include?(fco_name))
+        return id if fco_name.present? && (fco_name.include?(keyword) || keyword.include?(fco_name))
+      end
+
+      items.each do |office|
+        parent_id = office.dig("parent", "id").to_s
+        next unless fco_ids.include?(parent_id)
+
+        child_name = office["name"].to_s.strip.downcase
+          .gsub(/[-\s]*(to|fpc|ics|fpo)\s*\z/i, "").strip
+        return parent_id if child_name.present? && (child_name.include?(keyword) || keyword.include?(child_name))
       end
     end
 
