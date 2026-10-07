@@ -11057,42 +11057,25 @@ class ModulesController < ApplicationController
     end
   end
 
-  # "vrp_id|month" keys for every JJ that finished at least one activity with at
-  # least one farmer. A JJ with nothing completed has nothing to bill, so the
-  # bill form's JJ dropdown hides them for that month.
+  # "vrp_id|month" keys for every JJ that has achieved something against a
+  # target that month -- even one farmer out of a hundred counts. A JJ whose
+  # targets are all still fully pending has nothing to bill, so the bill form's
+  # JJ dropdown leaves them out for that month.
+  #
+  # Built from the bill's own totals so the dropdown and the bill it opens can
+  # never disagree about whether there is anything to bill.
   def jeevika_jankar_achievement_keys
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:TargetMapping)
 
-    keys = Set.new
+    jeevika_jankar_bill_rows(totals_only: true).filter_map do |row|
+      next unless dashboard_numeric(row[:achievement_count]).positive?
 
-    ModuleRecord.where(module_slug: TARGET_RECORD_MODULE_SLUGS).find_each do |record|
-      next unless active_module_record?(record)
+      vrp_id = row[:vrp_id].to_s.strip
+      month = row[:month_name].to_s.strip.downcase
+      next if vrp_id.blank? || month.blank?
 
-      data = record.data
-      vrp_id = data["jeevika_jankar_id"].presence || data["vrp_id"].presence || data["select_vrp"].presence
-      vrp_id ||= data["created_by_id"] if data["created_by_record_type"] == "Vrp"
-      next if vrp_id.blank?
-
-      month = data["month"].presence || parse_module_date(data["training_date"])&.strftime("%B")
-      next if month.blank?
-
-      next unless jeevika_jankar_record_has_achievement?(record, data)
-
-      keys << "#{vrp_id.to_s.strip}|#{month.to_s.strip.downcase}"
-    end
-
-    keys.to_a
-  end
-
-  def jeevika_jankar_record_has_achievement?(record, data)
-    return true if Array(data["selected_farmer_ids"]).compact_blank.any?
-
-    # Other-target forms record a quantity rather than a farmer list.
-    return true if dashboard_numeric(data["achievement"]).positive?
-    return true if dashboard_numeric(data["achievement_count"]).positive?
-    return true if dashboard_numeric(data["farmer_count"]).positive?
-
-    false
+      "#{vrp_id}|#{month}"
+    end.uniq
   end
 
   def module_cluster_incharge_login?

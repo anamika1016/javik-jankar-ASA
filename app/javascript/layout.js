@@ -6243,11 +6243,16 @@ function initDeferredLayoutPage() {
 
       // A JJ who completed no activity that month has nothing to bill, so keep
       // them out of the list. The JJ already on a saved bill always stays.
+      // The month is lower-cased to match the keys the server builds; selectedMonth
+      // here is the raw option text ("September"), which never matched.
       const hasAchievement = (vrpId) => {
         if (!achievementKeys.size) return true;
-        return achievementKeys.has(`${String(vrpId || "").trim()}|${selectedMonth}`);
+        return achievementKeys.has(`${String(vrpId || "").trim()}|${normalizedMonth(selectedMonth)}`);
       };
 
+      // Nobody qualifying this month is a real answer, so the list is allowed to
+      // come out empty. hasAchievement only waves everyone through when the
+      // index itself is missing, never when it simply has no match.
       const availableOptions = originalVrpOptions.filter((option) => {
         if (initialVrpValue && String(option.value) === initialVrpValue) return true;
         return !billExistsFor(option.value, selectedMonth) && hasAchievement(option.value);
@@ -6270,10 +6275,10 @@ function initDeferredLayoutPage() {
       }
 
       if (!availableOptions.length) {
-        const anyBillable = originalVrpOptions.some((option) => hasAchievement(option.value));
-        blank.textContent = anyBillable
-          ? "Selected month ke liye sabhi bills ban chuke hain"
-          : "Is month me kisi Jeevika Jankar ne koi activity complete nahi ki";
+        const anyUnbilled = originalVrpOptions.some((option) => !billExistsFor(option.value, selectedMonth));
+        blank.textContent = anyUnbilled
+          ? "Is month me kisi Jeevika Jankar ne koi target complete nahi kiya"
+          : "Selected month ke liye sabhi bills ban chuke hain";
       }
     };
 
