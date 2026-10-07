@@ -910,8 +910,12 @@ class TargetMappingsController < ApplicationController
     target_mapping_params[:new_farmer_target_quantity].to_s.strip
   end
 
+  # The location alone identifies the farmers, so the list loads as soon as FCO,
+  # ICS and Village are chosen -- the same point at which Block Wise shows its
+  # farmers. A Jeevika Jankar only narrows the list to its mapped AFLs when one
+  # is picked; requiring it up front left ICS Wise showing nothing.
   def target_farmers_for(vrp_id:, fco_id:, ics_id:, village_id:, month_name:, main_activity_name:, activity_name:, edit_target: nil)
-    return [] if vrp_id.blank? || fco_id.blank? || ics_id.blank? || village_id.blank?
+    return [] if fco_id.blank? || ics_id.blank? || village_id.blank?
     return [] unless defined?(Afl) && Afl.table_exists?
 
     assigned_ids = assigned_farmer_ids_for_location(
