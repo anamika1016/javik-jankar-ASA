@@ -1052,20 +1052,26 @@ class TargetMappingsController < ApplicationController
 
     # Resolve one keyword completely before trying the next, so the highest
     # priority keyword decides instead of whichever office is listed first.
+    # Within a keyword an exact name wins over a loose one: "FCO-Betul" has to
+    # land on "Betul-FCO" and not on "ASA Betul", which merely contains it.
     keywords.each do |keyword|
-      fco_by_id.each do |id, fco|
-        fco_name = fco["name"].to_s.strip.downcase
-          .gsub(/[-\s]*(papl|fco)\s*\z/i, "").strip
-        return id if fco_name.present? && (fco_name.include?(keyword) || keyword.include?(fco_name))
-      end
+      [true, false].each do |exact|
+        fco_by_id.each do |id, fco|
+          fco_name = fco["name"].to_s.strip.downcase
+            .gsub(/[-\s]*(papl|fco)\s*\z/i, "").strip
+          next if fco_name.blank?
+          return id if exact ? fco_name == keyword : (fco_name.include?(keyword) || keyword.include?(fco_name))
+        end
 
-      items.each do |office|
-        parent_id = office.dig("parent", "id").to_s
-        next unless fco_ids.include?(parent_id)
+        items.each do |office|
+          parent_id = office.dig("parent", "id").to_s
+          next unless fco_ids.include?(parent_id)
 
-        child_name = office["name"].to_s.strip.downcase
-          .gsub(/[-\s]*(to|fpc|ics|fpo)\s*\z/i, "").strip
-        return parent_id if child_name.present? && (child_name.include?(keyword) || keyword.include?(child_name))
+          child_name = office["name"].to_s.strip.downcase
+            .gsub(/[-\s]*(to|fpc|ics|fpo)\s*\z/i, "").strip
+          next if child_name.blank?
+          return parent_id if exact ? child_name == keyword : (child_name.include?(keyword) || keyword.include?(child_name))
+        end
       end
     end
 
