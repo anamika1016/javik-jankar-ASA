@@ -6142,6 +6142,7 @@ function initDeferredLayoutPage() {
     let achievementSummary = {};
     let targetSummary = {};
     const billRowsCache = new Map();
+    const pendingBillRows = new Map();
     let activeBillRowsKey = "";
     const initialVrpValue = String(vrpSelect?.value || "");
 
@@ -6188,13 +6189,14 @@ function initDeferredLayoutPage() {
     const normalizedMonth = (value) => String(value || "").trim().toLowerCase();
     const billRowsKey = (vrpId, month) => `${String(vrpId || "").trim()}|${normalizedMonth(month)}`;
     const selectedVrpValue = () => {
+      if (!vrpSelect || vrpSelect.selectedIndex <= 0) return "";
       const value = String(vrpSelect?.value || "").trim();
       if (value) return value;
 
       const selectedOption = vrpSelect?.selectedOptions?.[0];
       const optionText = String(selectedOption?.textContent || "").trim();
       const matchingOption = originalVrpOptions.find((option) => option.label === optionText);
-      return String(selectedOption?.dataset?.vrpId || matchingOption?.value || selectedOption?.value || optionText).trim();
+      return String(selectedOption?.dataset?.vrpId || matchingOption?.value || selectedOption?.value || "").trim();
     };
     if (!billForm.dataset.originalVrpOptions) {
       const options = Array.from(vrpSelect?.options || [])
@@ -6379,6 +6381,7 @@ function initDeferredLayoutPage() {
     const loadBillRowsForSelection = async (selectedVrp, selectedMonth) => {
       const key = billRowsKey(selectedVrp, selectedMonth);
       if (billRowsCache.has(key)) return billRowsCache.get(key);
+      if (pendingBillRows.has(key)) return pendingBillRows.get(key);
 
       const inlineRows = billRows.filter((row) => {
         const vrpMatches = String(row.vrp_id || "") === String(selectedVrp || "");
@@ -6394,14 +6397,17 @@ function initDeferredLayoutPage() {
       const url = new URL(billRowsUrl, window.location.origin);
       url.searchParams.set("vrp_id", selectedVrp);
       url.searchParams.set("month", selectedMonth);
-      const data = await fetchJson(url.toString());
-      const result = {
-        rows: Array.isArray(data.rows) ? data.rows : [],
-        achievementSummary: data.achievement_summary || {},
-        targetSummary: data.target_summary || {}
-      };
-      billRowsCache.set(key, result);
-      return result;
+      const request = fetchJson(url.toString()).then((data) => {
+        const result = {
+          rows: Array.isArray(data.rows) ? data.rows : [],
+          achievementSummary: data.achievement_summary || {},
+          targetSummary: data.target_summary || {}
+        };
+        billRowsCache.set(key, result);
+        return result;
+      }).finally(() => pendingBillRows.delete(key));
+      pendingBillRows.set(key, request);
+      return request;
     };
 
     const renderJeevikaBillRows = async () => {

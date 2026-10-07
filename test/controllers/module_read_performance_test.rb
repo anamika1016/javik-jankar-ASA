@@ -6,6 +6,29 @@ class ModuleReadPerformanceTest < ActiveSupport::TestCase
     @controller.instance_variable_set(:@slug, "state-master")
   end
 
+  test "other achievement indexes reuse empty results and follow candidate scope changes" do
+    first = TargetMapping.new(id: 91001, month_name: "September")
+    second = TargetMapping.new(id: 91002, month_name: "October")
+    ModuleRecord.create!(module_slug: "other-target", data: {
+      "target_mapping_id" => second.id.to_s, "month" => "October", "achievement" => "3"
+    })
+    queries = []
+    subscriber = ->(*args) do
+      sql = args.last[:sql]
+      queries << sql if sql.start_with?("SELECT") && sql.include?('"module_records"."module_slug" IN')
+    end
+    ActiveSupport::Notifications.subscribed(subscriber, "sql.active_record") do
+      @controller.instance_variable_set(:@other_target_candidate_targets, [first])
+      3.times { assert_equal({}, @controller.send(:approved_other_target_achievement_index)) }
+      @controller.instance_variable_set(:@other_target_candidate_targets, [second])
+      @controller.instance_variable_set(:@other_target_candidate_targets_by_id, { second.id.to_s => second })
+      3.times { assert_equal 3.0, @controller.send(:approved_other_target_achievement_index).dig(second.id.to_s, :achievement) }
+      @controller.instance_variable_set(:@other_target_candidate_targets, [first])
+      assert_equal({}, @controller.send(:approved_other_target_achievement_index))
+    end
+    assert_equal 2, queries.size
+  end
+
   test "projected dropdowns preserve ordered values, JSON types, aliases and active filters" do
     payloads = [
       { "sample" => "First", "sample_name" => ["A", "B"], "sample_code" => 0 },

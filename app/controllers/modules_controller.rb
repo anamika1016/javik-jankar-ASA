@@ -2707,7 +2707,8 @@ class ModulesController < ApplicationController
     record_ids = farmer_ids.flat_map { |farmer_id| dashboard_training_form_record_ids_by_farmer_for_month(month)[farmer_id] }.compact.uniq
     return [] if record_ids.blank?
 
-    records_by_id = records.index_by(&:id)
+    @dashboard_training_form_records_index_by_month ||= {}
+    records_by_id = @dashboard_training_form_records_index_by_month[month] ||= records.index_by(&:id)
     record_ids.filter_map { |record_id| records_by_id[record_id] }
   end
 
@@ -11342,11 +11343,17 @@ class ModulesController < ApplicationController
   def approved_other_target_achievement_index
     return {} unless model_ready?(:ModuleRecord)
 
+    # The candidate set changes when a bill list moves to the next JJ/month.
+    # Reuse the index only for that exact set, including an empty result.
+    candidate_key = other_target_candidate_targets.map { |target| target.id.to_s }.sort
+    @approved_other_target_achievement_indexes ||= {}
+    return @approved_other_target_achievement_indexes[candidate_key] if @approved_other_target_achievement_indexes.key?(candidate_key)
+
     records = ModuleRecord.where(module_slug: OTHER_TARGET_MODULE_SLUGS)
     candidate_months = other_target_candidate_targets.map { |target| normalize_dashboard_text(target.month_name) }.reject(&:blank?).uniq
     records = records.where("LOWER(BTRIM(data::jsonb ->> 'month')) IN (?)", candidate_months) if candidate_months.present?
 
-    records
+    @approved_other_target_achievement_indexes[candidate_key] = records
       .order(updated_at: :desc)
       .select { |record| approved_other_target_record?(record) }
       .each_with_object({}) do |record, index|
@@ -11460,6 +11467,7 @@ class ModulesController < ApplicationController
     return [] unless model_ready?(:TargetMapping)
 
     selected_vrp_ids = jeevika_jankar_bill_selected_vrp_ids(vrp_id)
+    return [] if vrp_id.present? && selected_vrp_ids.blank?
     targets = TargetMapping.includes(:vrp)
     targets = targets.where(vrp_id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
     targets = targets.where(vrp_id: module_cluster_visible_vrp_ids) if module_mapped_vrp_scope_active?
