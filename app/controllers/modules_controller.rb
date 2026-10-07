@@ -9591,10 +9591,14 @@ class ModulesController < ApplicationController
     @office_list_rows = []
   end
 
+  # asa.ploughmanagro.com is the live Office Setup. The 144.76.19.201 host still
+  # answers but serves an older snapshot -- it was tried first, so every request
+  # took the stale copy and offices showed blank blocks. Keep it only as a
+  # fallback for when the live host is unreachable.
   def office_list_api_items
     [
-      "http://144.76.19.201:3003/api/get_office_detail_list",
-      "https://asa.ploughmanagro.com/api/get_office_detail_list"
+      "https://asa.ploughmanagro.com/api/get_office_detail_list",
+      "http://144.76.19.201:3003/api/get_office_detail_list"
     ].each do |url|
       uri = URI(url)
       response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https", open_timeout: 3, read_timeout: 8) { |http| http.get(uri.request_uri) }
