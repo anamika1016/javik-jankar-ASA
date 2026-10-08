@@ -2054,9 +2054,9 @@ function initDeferredLayoutPage() {
     "village": ["state", "district", "block", "gram-panchayat"]
   };
   const locationAliasKeys = {
-    state: ["state", "state_id", "state_code"],
-    district: ["district", "district_id", "district_code"],
-    block: ["block", "block_id", "block_code"],
+    state: ["state", "state_name", "state_id", "state_code"],
+    district: ["district", "district_name", "district_id", "district_code"],
+    block: ["block", "block_name", "cd_block_name", "block_id", "block_code", "cd_block_code"],
     gram_panchayat: ["gram_panchayat", "gram_panchayat_id", "gram_panchayat_code", "gp_code", "gram_code", "gp_name", "gram_name"],
     village: ["village", "village_id", "village_code"]
   };
@@ -2110,8 +2110,9 @@ function initDeferredLayoutPage() {
   const optionMatchesLocationRow = (option, row, level) => {
     const key = locationKeys[level];
     return [row.id].concat(locationRowValues(row, key)).some((value) => {
+      if (!value) return false;
       return normalizeOption(value) === normalizeOption(option.value) ||
-        normalizeOption(value) === normalizeOption(option.textContent);
+        normalizeOption(value) === normalizeOption(option.textContent ?? option.label);
     });
   };
 
@@ -2120,9 +2121,22 @@ function initDeferredLayoutPage() {
 
     const selectedValues = uniquePresent(locationSelectedValuesFromDataset(select).concat(selectedLocationValues(select)));
     const blankOption = originalOptions.find((option) => option.value === "") || { value: "", label: `Select ${level}` };
+    const allowedValues = new Set(allowedRows.flatMap((row) => [row.id].concat(locationRowValues(row, locationKeys[level])))
+      .filter(Boolean).map(normalizeOption));
     const filteredOptions = originalOptions.filter((option) => {
       if (option.value === "") return false;
-      return allowedRows.some((row) => optionMatchesLocationRow(option, row, level));
+      return allowedValues.has(normalizeOption(option.value)) || allowedValues.has(normalizeOption(option.label));
+    });
+    // New registration forms start with empty child dropdowns. Build their
+    // options from the matching directory rows as well as existing masters.
+    const representedValues = new Set(filteredOptions.flatMap((option) => [option.value, option.label]).map(normalizeOption));
+    allowedRows.forEach((row) => {
+      const values = [row.id].concat(locationRowValues(row, locationKeys[level])).filter(Boolean);
+      const label = row[locationKeys[level]];
+      if (!label || values.some((value) => representedValues.has(normalizeOption(value)))) return;
+
+      filteredOptions.push({ value: label, label });
+      representedValues.add(normalizeOption(label));
     });
 
     const parentSelected = (locationParents[level] || []).every((parentLevel) => {

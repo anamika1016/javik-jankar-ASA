@@ -16,7 +16,7 @@ const { replaceLocationOptions, locationRowMatchesParents, optionMatchesLocation
 const parent = (value) => ({ selectedOptions: [{ value, textContent: value }] });
 
 test('directory-only Panchayats and villages populate empty master dropdowns', () => {
-  for (const [level, key, label] of [['gram-panchayat', 'gram_panchayat', 'Pandhurna'], ['village', 'village', 'Ajangaon']]) {
+  for (const [level, key, label] of [['district', 'district', 'Ranchi'], ['block', 'block', 'Kanke'], ['gram-panchayat', 'gram_panchayat', 'Pandhurna'], ['village', 'village', 'Ajangaon']]) {
     const select = { dataset: {}, selectedOptions: [], children: [],
       closest: () => ({ querySelector: () => parent('selected') }),
       appendChild(option) { this.children.push(option); },
