@@ -5514,6 +5514,33 @@ function initDeferredLayoutPage() {
     });
   });
 
+  // Jeevika Jankar Transfer: the Jeevika Jankar list follows the FCO of the
+  // selected user, so you only ever hand over someone from that office.
+  document.querySelectorAll("[data-jj-transfer-jj]").forEach((jjSelect) => {
+    if (jjSelect.dataset.jjTransferBound === "true") return;
+
+    const userSelect = jjSelect.form?.querySelector("[data-jj-transfer-user]") ||
+      document.querySelector("[data-jj-transfer-user]");
+    if (!userSelect) return;
+
+    jjSelect.dataset.jjTransferBound = "true";
+
+    const applyOfficeFilter = () => {
+      const office = userSelect.selectedOptions?.[0]?.dataset.office || "";
+      Array.from(jjSelect.options).forEach((option) => {
+        if (!option.value) return;
+        // With no user chosen yet, keep every Jeevika Jankar available.
+        const matches = !office || option.dataset.office === office;
+        option.hidden = !matches;
+        if (!matches) option.selected = false;
+      });
+      jjSelect.dispatchEvent(new Event("chip:refresh"));
+    };
+
+    userSelect.addEventListener("change", applyOfficeFilter);
+    applyOfficeFilter();
+  });
+
   document.querySelectorAll("[data-chip-multiselect]").forEach((select) => {
     if (select.nextElementSibling?.classList.contains("chip-multi-control")) return;
 
@@ -5713,11 +5740,9 @@ function initDeferredLayoutPage() {
       else control.classList.toggle("open");
     });
 
-    control.addEventListener("focus", () => {
-      if (select.disabled) return;
-
-      control.classList.add("open");
-    });
+    // No open-on-focus: clicking the control focuses it first, so opening here
+    // meant the click that followed toggled it straight back shut. Keyboard
+    // users still open it with Enter/Space through the keydown handler below.
 
     if (select.dataset.chipHoverOpen === "true") {
       control.addEventListener("pointerenter", () => {

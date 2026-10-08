@@ -13,6 +13,12 @@ module ApplicationHelper
   # Farmer id lists are stored as raw ids. Show the same identity the Training
   # Form shows while selecting them -- name, father, tracenet -- so a reviewer
   # can tell who was added or removed. Ids with no AFL row stay as-is.
+  # A transfer option stores a trailing record id so the saved value can be
+  # resolved back to a Jeevika Jankar. Keep that out of what people read.
+  def jeevika_jankar_transfer_display(label)
+    label.to_s.sub(/\s*-\s*\d+\s*\z/, "").strip.presence || label.to_s
+  end
+
   def farmer_identity_meta(village, father, tracenet)
     [["Village", village], ["Father", father], ["Tracenet", tracenet]].map do |label, raw|
       value = raw.to_s.strip
@@ -259,7 +265,9 @@ module ApplicationHelper
       icon: "▧",
       links: [
         ["User Hierarchy Mapping", :module, "user-hierarchy-mapping"],
-        ["Cluster Incharge Under Jeevika Jankar User", :module, "user-hierarchy-list"]
+        ["Cluster Incharge Under Jeevika Jankar User", :module, "user-hierarchy-list"],
+        ["Jeevika Jankar Transfer", :module, "jeevika-jankar-transfer"],
+        ["Jeevika Jankar Transfer List", :module, "jeevika-jankar-transfer-list"]
       ]
     },
     {

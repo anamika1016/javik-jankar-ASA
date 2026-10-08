@@ -45,11 +45,19 @@ class ModulesController < ApplicationController
                 :seed_distribution_target_month_options, :current_seed_target_vrp_option,
                 :add_farmer_form_mappings, :dashboard_vrp_previous_status, :dashboard_vrp_status_label,
                 :training_edit_revision_for, :dashboard_weekly_report_filter_params,
-                :jeevika_bill_observation_row, :jeevika_bill_fcoc_name, :training_target_browser_payload
+                :jeevika_bill_observation_row, :jeevika_bill_fcoc_name, :training_target_browser_payload,
+                :jeevika_jankar_transfer_office_keys
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
   OTHER_TARGET_MODULE_SLUGS = ["seed-distribution-target", "papl360-target", "other-target"].freeze
   TARGET_RECORD_MODULE_SLUGS = (["training-form", "add-farmer-form"] + OTHER_TARGET_MODULE_SLUGS).freeze
+  # Columns of the "Main Major Work Indicator - Other" drill-down list.
+  OTHER_INDICATOR_LIST_HEADERS = {
+    "Jeevika Jankar" => "jeevika_jankar_name", "FCO Name" => "fco_name",
+    "Month" => "month", "Main Major Work Indicator" => "main_activity",
+    "Sub Major Work Indicator" => "sub_activity", "Target" => "target",
+    "Achievement" => "achievement"
+  }.freeze
   JEEVIKA_JANKAR_BILL_FIXED_TOTAL = 5000.0
   JEEVIKA_JANKAR_PAYMENT_DETAIL_SLUG = "jeevika-jankar-payment-detail".freeze
   JEEVIKA_PAYMENT_TRANSACTION_TYPES = ["NEFT", "RTGS", "IMPS"].freeze
@@ -571,6 +579,18 @@ class ModulesController < ApplicationController
       purpose: "Registered users dekhne ke liye.",
       fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "Person Type", "State", "District", "Block", "Gram Panchayat", "Village", "Office Name", "Sub Office Name", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "User Type", "Status"]
     },
+    "jeevika-jankar-transfer" => {
+      title: "Jeevika Jankar Transfer",
+      group: "User Mapping",
+      purpose: "Apne registered Jeevika Jankar kisi doosre user ko transfer karne ke liye, taaki wo unka target map kar sake.",
+      fields: ["Sidebar Menu", "Stakeholder Category", "User Name", "Jeevika Jankar Names", "Status"]
+    },
+    "jeevika-jankar-transfer-list" => {
+      title: "Jeevika Jankar Transfer List",
+      group: "User Mapping",
+      purpose: "Saved Jeevika Jankar transfer mappings dekhne ke liye.",
+      fields: ["Sidebar Menu", "Stakeholder Category", "User Name", "Jeevika Jankar Names", "Status"]
+    },
     "user-hierarchy-mapping" => {
       title: "User Hierarchy Mapping",
       group: "User Mapping",
@@ -643,6 +663,7 @@ class ModulesController < ApplicationController
     "papl360-target-list" => "papl360-target",
     "other-target-list" => "other-target",
     "user-hierarchy-list" => "user-hierarchy-mapping",
+    "jeevika-jankar-transfer-list" => "jeevika-jankar-transfer",
     "all-user" => "new-user"
   }.freeze
 
@@ -739,6 +760,20 @@ class ModulesController < ApplicationController
     afl_fcos = ModuleRecord.where(module_slug: "add-farmer-form").pluck(Arel.sql("data::jsonb ->> 'fco_name'"))
     all_fcos = (vrp_fcos + target_fcos + afl_fcos).compact_blank.map { |f| f.to_s.strip }.reject(&:blank?)
     @filter_fcoc_options = all_fcos.group_by { |f| normalize_dashboard_text(f.sub(/\Afco\s*-\s*c\s+/i, "")) }.map { |_key, names| names.max_by(&:length) }.sort
+    # A posted user only works in their own FCO, so the picker offers just that
+    # one and comes pre-selected. Admin keeps the full list.
+    unless dashboard_global_view_user?
+      own_office_keys = dashboard_current_user_office_keys
+      if own_office_keys.any?
+        own_options = @filter_fcoc_options.select do |name|
+          own_office_keys.include?(AgreementVrpScope.office_key(name))
+        end
+        # Their posting is authoritative: show it even when no Jeevika Jankar or
+        # target carries that office yet, otherwise the picker comes up empty.
+        own_options = dashboard_current_user_office_names if own_options.blank?
+        @filter_fcoc_options = own_options if own_options.any?
+      end
+    end
     default_visible_fcoc = dashboard_default_visible_fcoc(@filter_fcoc_options)
     @dashboard_fcoc_filter_value = dashboard_filter_param(:fcoc) || default_visible_fcoc
     if @dashboard_fcoc_filter_value.present?
@@ -773,7 +808,15 @@ class ModulesController < ApplicationController
     end
 
     # 4. ICS Filter
-    @filter_ics_options = t_scope.map { |t| t.ics_name.presence || t.ics_id }.uniq.compact_blank.sort
+    # Targets only cover mapped work, but the summary counts ICS from the farmer
+    # master, so offer every ICS the selected FCO has there as well.
+    afl_ics_options = if model_ready?(:Afl)
+      dashboard_total_afl_scope.where.not(ics_name: [nil, ""]).distinct.pluck(:ics_name)
+    else
+      []
+    end
+    @filter_ics_options = (t_scope.map { |t| t.ics_name.presence || t.ics_id } + afl_ics_options)
+      .uniq.compact_blank.sort
     selected_ics_filter = dashboard_filter_param(:ics)
     if selected_ics_filter.present?
       selected_ics = selected_ics_filter.to_s
@@ -830,6 +873,25 @@ class ModulesController < ApplicationController
           send_xlsx(headers: DemonstrationMethodReport::HEADERS,
             rows: @demonstration_method_rows.map { |row| DemonstrationMethodReport::HEADERS.map { |key| row[key] } },
             filename: "demonstration-method.xlsx", sheet_name: "Demonstration Method")
+        end
+      end
+      return
+    end
+    # View List behind the "Main Major Work Indicator - Other" box.
+    if params[:other_indicator_list] == "true"
+      @other_indicator_rows = dashboard_other_target_entry_rows
+      # Month dropdown comes from the Month Master, with any month that already
+      # has entries added so a saved record is never unreachable.
+      @other_indicator_month_options = (
+        month_master_month_options + @other_indicator_rows.filter_map { |row| row["month"].presence }
+      ).uniq { |month| normalize_dashboard_text(month) }.sort_by { |month| [dashboard_month_index(month) || 99, month] }
+      respond_to do |format|
+        format.html { render :other_indicator_list }
+        format.json { render json: { success: true, records: @other_indicator_rows, count: @other_indicator_rows.size } }
+        format.xlsx do
+          send_xlsx(headers: OTHER_INDICATOR_LIST_HEADERS.keys,
+            rows: @other_indicator_rows.map { |row| OTHER_INDICATOR_LIST_HEADERS.values.map { |key| row[key] } },
+            filename: "main-major-work-indicator-other.xlsx", sheet_name: "Other Indicator")
         end
       end
       return
@@ -1665,15 +1727,27 @@ class ModulesController < ApplicationController
     end
   end
 
+  # The Delete button fetches this and treats a redirect as failure, so JSON
+  # callers get a JSON answer. Redirecting at them deleted the record but still
+  # reported "Delete failed" and left the row on screen.
   def destroy
     load_module!
     record = ModuleRecord.find(params[:id])
     unless module_record_visible_for_current_context?(record)
-      redirect_to module_path(@slug), alert: "You are not allowed to delete this record.", status: :see_other
+      message = "You are not allowed to delete this record."
+      respond_to do |format|
+        format.json { render json: { error: message }, status: :forbidden }
+        # Turbo-stream and plain form posts both still want the redirect.
+        format.any { redirect_to module_path(@slug), alert: message, status: :see_other }
+      end
       return
     end
+
     record.destroy
-    redirect_to module_path(@slug), notice: "#{@module[:title]} deleted successfully.", status: :see_other
+    respond_to do |format|
+      format.json { render json: { ok: true } }
+      format.any { redirect_to module_path(@slug), notice: "#{@module[:title]} deleted successfully.", status: :see_other }
+    end
   end
 
   def selected_farmers
@@ -3862,6 +3936,60 @@ class ModulesController < ApplicationController
   # office is spelled "FCO-C Sausar", "FCO-Bhawanipatna" or "Bhawanipatna - FCO".
   # Comparing the shared office key makes every spelling resolve to the same
   # FCO. This works for every office -- there is no hard-coded FCO list.
+  # Rows behind the "Main Major Work Indicator - Other" box: the saved Other
+  # Target entries it totals, for the same month and FCO. No FCO is hard-coded
+  # here; the scope is simply the offices the signed-in user can already see.
+  def dashboard_other_target_entry_rows
+    return [] unless model_ready?(:ModuleRecord)
+
+    conditions = ["module_slug = 'other-target'"]
+    binds = {}
+
+    month = normalize_dashboard_text(@dashboard_month_filter_value)
+    if month.present?
+      conditions << "LOWER(BTRIM(data::jsonb->>'month')) = :month"
+      binds[:month] = month
+    end
+
+    selected_fco = dashboard_filter_param(:fcoc, :fco).presence || @dashboard_fcoc_filter_value
+    fco_values = dashboard_summary_fco_filter_values(selected_fco)
+    if fco_values.any?
+      # The office is stored as "Sausar", "FCO-C Sausar" or "FCO-Bhawanipatna",
+      # so compare the raw value, the prefix-stripped value and the shared
+      # office key. An empty list means "every office this user can see".
+      binds[:fco_values] = (
+        fco_values + fco_values.filter_map { |value| AgreementVrpScope.office_key(value).presence }
+      ).uniq
+      conditions << <<~COND.squish
+        (LOWER(BTRIM(REGEXP_REPLACE(COALESCE(data::jsonb->>'fcoc_name', ''), '^fco[- ]*c?[- ]*', '', 'i'))) IN (:fco_values)
+          OR LOWER(BTRIM(COALESCE(data::jsonb->>'fcoc_name', ''))) IN (:fco_values))
+      COND
+    end
+
+    sql = <<~SQL.squish
+      SELECT data::jsonb->>'jeevika_jankar_name' AS jeevika_jankar_name,
+             data::jsonb->>'fcoc_name' AS fco_name,
+             data::jsonb->>'month' AS month,
+             data::jsonb->>'main_activity' AS main_activity,
+             data::jsonb->>'sub_activity' AS sub_activity,
+             COALESCE(NULLIF(BTRIM(data::jsonb->>'target'), '')::numeric, 0) AS target,
+             COALESCE(NULLIF(BTRIM(data::jsonb->>'achievement'), '')::numeric, 0) AS achievement,
+             COALESCE(NULLIF(BTRIM(data::jsonb->>'approval_status'), ''),
+                      NULLIF(BTRIM(data::jsonb->>'status'), ''), '-') AS status,
+             data::jsonb->>'target_mapping_id' AS target_mapping_id
+      FROM module_records
+      WHERE #{conditions.join(' AND ')}
+      ORDER BY 2, 1, 4, 5
+    SQL
+
+    ActiveRecord::Base.connection.exec_query(
+      ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
+    ).to_a
+  rescue StandardError => e
+    Rails.logger.warn("Other target entry rows failed: #{e.class} - #{e.message}")
+    []
+  end
+
   def dashboard_afl_fco_pairs
     @dashboard_afl_fco_pairs ||= model_ready?(:Afl) ? Afl.distinct.pluck(:fco_id, :fco) : []
   end
@@ -8350,6 +8478,13 @@ class ModulesController < ApplicationController
     label.to_s.downcase.gsub(/[^a-z0-9]+/, " ").squish
   end
 
+  # Saved labels often carry the role in brackets ("Akash Mandal (FCO-C Turekela)").
+  # Match the same way VrpAccess does so a transfer saved on one screen is
+  # recognised on another.
+  def normalize_approver_label(label)
+    label.to_s.sub(/\s*\([^)]*\)\s*\z/, "").strip.downcase
+  end
+
   def vrp_declaration_acceptance_report
     rows = if model_ready?(:Vrp) && Vrp.column_names.include?("agreement_accepted_at")
       Vrp.where.not(agreement_accepted_at: nil)
@@ -8428,6 +8563,30 @@ class ModulesController < ApplicationController
       current_app_user&.dig("username").presence ||
       current_app_user&.dig("user_name").presence ||
       "Dashboard"
+  end
+
+  # The office labels on the signed-in user's own profile, best spelling first.
+  def dashboard_current_user_office_names
+    [
+      current_app_user&.dig("fcoc_name"),
+      current_app_user&.dig("fcoc"),
+      current_app_user&.dig("office_name"),
+      current_app_user&.dig("office"),
+      current_app_user&.dig("parent_office")
+    ].compact_blank.map { |value| value.to_s.strip }
+      .uniq { |value| AgreementVrpScope.office_key(value) }
+      .reject { |value| AgreementVrpScope.office_key(value).blank? }
+  end
+
+  # Every spelling of the signed-in user's own office, as shared office keys.
+  def dashboard_current_user_office_keys
+    @dashboard_current_user_office_keys ||= [
+      current_app_user&.dig("fcoc"),
+      current_app_user&.dig("fcoc_name"),
+      current_app_user&.dig("office_name"),
+      current_app_user&.dig("office"),
+      current_app_user&.dig("parent_office")
+    ].compact_blank.filter_map { |value| AgreementVrpScope.office_key(value).presence }.uniq
   end
 
   def dashboard_default_visible_fcoc(options)
@@ -11068,15 +11227,30 @@ class ModulesController < ApplicationController
   def jeevika_jankar_achievement_keys
     return [] unless model_ready?(:TargetMapping)
 
-    jeevika_jankar_bill_rows(totals_only: true).filter_map do |row|
-      next unless dashboard_numeric(row[:achievement_count]).positive?
+    # Walking every target is expensive enough to dominate the bill page, so the
+    # answer is cached per viewer -- the rows it is built from are already scoped
+    # to who is looking. The newest target/activity timestamp is part of the key,
+    # so a freshly submitted activity shows up on the next load rather than
+    # waiting for a TTL to lapse.
+    stamp = [
+      TargetMapping.maximum(:updated_at),
+      (ModuleRecord.where(module_slug: TARGET_RECORD_MODULE_SLUGS).maximum(:updated_at) if model_ready?(:ModuleRecord))
+    ].compact.max
 
-      vrp_id = row[:vrp_id].to_s.strip
-      month = row[:month_name].to_s.strip.downcase
-      next if vrp_id.blank? || month.blank?
+    Rails.cache.fetch(
+      ["jj-achievement-keys", current_app_user&.dig("record_type"), current_app_user&.dig("id"), stamp.to_i],
+      expires_in: 1.hour
+    ) do
+      jeevika_jankar_bill_rows(totals_only: true).filter_map do |row|
+        next unless dashboard_numeric(row[:achievement_count]).positive?
 
-      "#{vrp_id}|#{month}"
-    end.uniq
+        vrp_id = row[:vrp_id].to_s.strip
+        month = row[:month_name].to_s.strip.downcase
+        next if vrp_id.blank? || month.blank?
+
+        "#{vrp_id}|#{month}"
+      end.uniq
+    end
   end
 
   def module_cluster_incharge_login?
@@ -11114,7 +11288,10 @@ class ModulesController < ApplicationController
     return [] unless model_ready?(:Vrp)
     return @module_cluster_visible_vrps if defined?(@module_cluster_visible_vrps)
 
-    return @module_cluster_visible_vrps = [] if current_cluster_incharge_labels.blank?
+    transferred_vrps = jeevika_jankar_transferred_vrps
+    if current_cluster_incharge_labels.blank?
+      return @module_cluster_visible_vrps = transferred_vrps
+    end
 
     directly_mapped_vrps = Vrp
       .where.not(cluster_incharge: [nil, ""])
@@ -11125,11 +11302,48 @@ class ModulesController < ApplicationController
 
     # An empty cluster mapping stays empty. Falling back to "every VRP that has
     # a target mapping" showed one cluster incharge the whole organisation.
-    visible_vrps = directly_mapped_vrps + hierarchy_mapped_vrps
+    # Transferred Jeevika Jankars are added on top -- a transfer only ever grants
+    # access, it never takes any away.
+    visible_vrps = directly_mapped_vrps + hierarchy_mapped_vrps + transferred_vrps
 
     @module_cluster_visible_vrps = visible_vrps.compact.uniq(&:id).sort_by do |vrp|
       [vrp.name.to_s, vrp.id]
     end
+  end
+
+  # Jeevika Jankars handed to the signed-in user through the transfer form, for
+  # the screen they are currently on.
+  def jeevika_jankar_transferred_vrps
+    return @jeevika_jankar_transferred_vrps if defined?(@jeevika_jankar_transferred_vrps)
+    return @jeevika_jankar_transferred_vrps = [] unless model_ready?(:ModuleRecord) && model_ready?(:Vrp)
+    return @jeevika_jankar_transferred_vrps = [] if vrp_login_user?
+
+    labels = current_cluster_incharge_labels.map { |label| normalize_approver_label(label) }.compact_blank
+    return @jeevika_jankar_transferred_vrps = [] if labels.blank?
+
+    menu = current_sidebar_menu_title
+    ids = ModuleRecord
+      .where(module_slug: "jeevika-jankar-transfer")
+      .select { |record| active_module_record?(record) }
+      .select { |record| labels.include?(normalize_approver_label(record.data["user_name"])) }
+      .select { |record| menu.blank? || record.data["sidebar_menu"].to_s.strip.casecmp(menu).zero? }
+      .flat_map { |record| Array(record.data["jeevika_jankar_names"]) }
+      .filter_map { |label| label.to_s[/-\s*(\d+)\s*\z/, 1] }
+      .uniq
+
+    @jeevika_jankar_transferred_vrps = ids.any? ? Vrp.where(id: ids).order(:name, :id).to_a : []
+  end
+
+  # The sidebar label of the screen being rendered, so a transfer made for one
+  # menu does not leak access into another.
+  def current_sidebar_menu_title
+    slug = (@slug || current_slug).to_s
+    return "" if slug.blank?
+
+    ApplicationHelper::SIDEBAR_SECTIONS
+      .flat_map { |section| Array(section[:links]) }
+      .find { |_label, kind, link_slug| kind == :module && link_slug.to_s == slug }
+      &.first.to_s
   end
 
   def current_cluster_incharge_labels
@@ -12099,6 +12313,12 @@ class ModulesController < ApplicationController
     ].compact.uniq
     value = first_present_data(record, *keys)
     return approval_level_display_label(value) if field == "Approval Level"
+
+    # Saved transfers carry a trailing record id for lookup; read it as names.
+    if record.module_slug == "jeevika-jankar-transfer" && field == "Jeevika Jankar Names"
+      names = value.is_a?(Array) ? value : value.to_s.split(",")
+      return names.filter_map { |label| helpers.jeevika_jankar_transfer_display(label).presence }.join(", ")
+    end
 
     value
   end
@@ -13586,7 +13806,107 @@ class ModulesController < ApplicationController
     "/uploads/module_records/#{filename}"
   end
 
+  def jeevika_jankar_transfer_field?(field)
+    record_source_slug == "jeevika-jankar-transfer" &&
+      ["Sidebar Menu", "User Name", "Jeevika Jankar Names"].include?(field)
+  end
+
+  def jeevika_jankar_transfer_field_options(field)
+    case field
+    when "Sidebar Menu" then transferable_sidebar_menu_options
+    when "User Name" then approver_options
+    when "Jeevika Jankar Names" then transferable_jeevika_jankar_options
+    else []
+    end
+  end
+
+  # Only the screens where a transferred Jeevika Jankar is actually worked on.
+  # Matched by sidebar label because these sit behind both module and route
+  # links -- Target Mapping Master, the main case, is a route.
+  TRANSFERABLE_MENU_LABELS = [
+    "Target Mapping Master",
+    "Training Form",
+    "Training Form List",
+    "Other Target",
+    "Other Target List",
+    "Bill Process",
+    "Bill List"
+  ].freeze
+
+  def transferable_sidebar_menu_options
+    labels = ApplicationHelper::SIDEBAR_SECTIONS
+      .flat_map { |section| Array(section[:links]) }
+      .map { |label, _kind, _target| label.to_s }
+    TRANSFERABLE_MENU_LABELS.select { |label| labels.include?(label) }
+  end
+
+  # The Jeevika Jankars the signed-in user can hand over: the ones they can
+  # already see, which is exactly what "Registered By" shows them in the list.
+  def transferable_jeevika_jankar_options
+    return [] unless model_ready?(:Vrp)
+
+    transferable_jeevika_jankar_vrps.filter_map { |vrp| jeevika_jankar_transfer_label(vrp) }.uniq
+  end
+
+  def transferable_jeevika_jankar_vrps
+    return @transferable_jeevika_jankar_vrps if defined?(@transferable_jeevika_jankar_vrps)
+    return @transferable_jeevika_jankar_vrps = [] unless model_ready?(:Vrp)
+
+    scope = Vrp.where(status: 55).order(:name)
+    # Only transfer a Jeevika Jankar you registered. Falling back to the whole
+    # list when you registered none would let anyone transfer anyone.
+    @transferable_jeevika_jankar_vrps = if admin_dashboard_user?
+      scope.to_a
+    else
+      scope.select { |vrp| jeevika_bill_vrp_registered_by_current_user?(vrp) }
+    end
+  end
+
+  # The picker narrows Jeevika Jankars to the chosen user's FCO, so both
+  # dropdowns publish the same office key for the browser to compare.
+  def jeevika_jankar_transfer_office_keys(field)
+    case field
+    when "User Name" then transfer_user_office_keys
+    when "Jeevika Jankar Names" then transfer_jeevika_jankar_office_keys
+    else {}
+    end
+  end
+
+  def transfer_user_office_keys
+    return @transfer_user_office_keys if defined?(@transfer_user_office_keys)
+    return @transfer_user_office_keys = {} unless model_ready?(:User)
+
+    @transfer_user_office_keys = User.order(created_at: :desc).each_with_object({}) do |user, map|
+      full_name = user.full_name.presence || user.user_name.presence
+      next if full_name.blank?
+
+      label = user.role.present? ? "#{full_name} (#{user.role})" : full_name
+      # office_name is the real posting; role only sometimes carries the FCO.
+      key = AgreementVrpScope.office_key(user.office_name.presence || user.role)
+      map[label] ||= key if key.present?
+    end
+  end
+
+  def transfer_jeevika_jankar_office_keys
+    @transfer_jeevika_jankar_office_keys ||= transferable_jeevika_jankar_vrps.each_with_object({}) do |vrp, map|
+      label = jeevika_jankar_transfer_label(vrp)
+      key = AgreementVrpScope.office_key(vrp.fcoc)
+      map[label] = key if label.present? && key.present?
+    end
+  end
+
+  # jeevika_jankar_transferred_vrps reads the trailing id back out of the saved
+  # value, so it stays here. The mobile number sits in front of it to tell two
+  # Jeevika Jankars with the same name apart; the form hides the id itself.
+  def jeevika_jankar_transfer_label(vrp)
+    name = vrp.name.presence || vrp.user_name.presence
+    return nil if name.blank?
+
+    [name, vrp.mobile_no.presence, vrp.id].compact.join(" - ")
+  end
+
   def module_select_field?(field)
+    return true if jeevika_jankar_transfer_field?(field)
     return false if current_slug == "training-topic-mapping" && ["Department", "Training Topic", "Training Subject"].include?(field)
     return false if record_source_slug == "training-form" && ["Trainee Department", "FCO Name", "External Input", "PAPL Staff Name"].include?(field)
     return false if other_target_record_source? && field == "Department"
@@ -13601,6 +13921,7 @@ class ModulesController < ApplicationController
   end
 
   def module_field_options(field)
+    return jeevika_jankar_transfer_field_options(field) if jeevika_jankar_transfer_field?(field)
     return parent_office_parent_options if current_slug == "parent-office-add" && field == "Parent Office"
     return training_target_field_options(field) if training_target_field?(field)
     return training_people_field_options(field) if training_people_field?(field)

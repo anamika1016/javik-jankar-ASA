@@ -1,0 +1,61 @@
+<% content_for :title, "Main Major Work Indicator - Other View List" %>
+<% selected_month = @dashboard_month_filter_value.presence %>
+<% month_options = Array(@other_indicator_month_options).compact_blank %>
+<section class="dashboard-page">
+  <div class="dashboard-topbar">
+    <div>
+      <p class="vrp-eyebrow">Main Major Work Indicator - Other</p>
+      <h1>View List — <%= selected_month.presence || "All Months" %></h1>
+    </div>
+    <div class="dashboard-actions">
+      <%# Month picker keeps the other active filters (FCO, ICS) in the query. %>
+      <%= form_with url: other_indicator_list_path, method: :get, local: true do |form| %>
+        <% request.query_parameters.except("month", "format", "other_indicator_list").each do |key, value| %>
+          <%= hidden_field_tag key, value %>
+        <% end %>
+        <label for="other_indicator_month">Month</label>
+        <%= select_tag :month,
+              options_for_select([["All Months", ""]] + month_options.map { |month| [month, month] }, selected_month),
+              onchange: "this.form.submit()", id: "other_indicator_month", class: "form-select" %>
+      <% end %>
+      <%= link_to "Back to Dashboard", dashboard_path(request.query_parameters.except("format", "other_indicator_list")), class: "list-btn active" %>
+      <%= link_to "Export Excel", other_indicator_list_path(request.query_parameters.merge(format: :xlsx)), class: "list-btn export" %>
+    </div>
+  </div>
+
+  <section class="module-card">
+    <div class="list-controls">
+      <div class="list-search">
+        <span>⌕</span>
+        <input type="search" placeholder="Search Jeevika Jankar, FCO or indicator" data-table-search="other_indicator_table">
+      </div>
+      <p>Total: <%= @other_indicator_rows.size %></p>
+    </div>
+
+    <div class="table-shell">
+      <table class="module-table compact-table" id="other_indicator_table" data-paginated-table data-page-size="25">
+        <thead>
+          <tr>
+            <% ModulesController::OTHER_INDICATOR_LIST_HEADERS.each_key do |label| %>
+              <th><%= label %></th>
+            <% end %>
+          </tr>
+        </thead>
+        <tbody>
+          <% @other_indicator_rows.each do |row| %>
+            <tr>
+              <% ModulesController::OTHER_INDICATOR_LIST_HEADERS.each_value do |key| %>
+                <% value = row[key] %>
+                <%# Target and Achievement arrive as BigDecimal, which renders as
+                    "0.5e3" unless it is formatted. Whole numbers stay whole. %>
+                <% value = value.to_f == value.to_f.round ? value.to_i : value.to_f.round(2) if value.is_a?(Numeric) %>
+                <td><%= value.to_s.presence || "-" %></td>
+              <% end %>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-pagination" data-pagination-for="other_indicator_table"></div>
+  </section>
+</section>

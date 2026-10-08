@@ -146,6 +146,7 @@ Rails.application.routes.draw do
   get "dashboard", to: "modules#dashboard", as: :dashboard
   get "dashboard/cc-jj-work-status", to: "modules#dashboard", defaults: { work_status_list: "true" }, as: :cc_jj_work_status_list
   get "dashboard/demonstration-method", to: "modules#dashboard", defaults: { demonstration_list: "true" }, as: :demonstration_method_list
+  get "dashboard/other-indicator", to: "modules#dashboard", defaults: { other_indicator_list: "true" }, as: :other_indicator_list
   get "dashboard/vrp-list/:list_type", to: "modules#vrp_dashboard_list", as: :vrp_dashboard_list
   delete "dashboard/vrp-mapped-villages/:id", to: "modules#destroy_vrp_mapped_village", as: :destroy_vrp_mapped_village
   get "dashboard/farmer-training-participation", to: "modules#farmer_training_participation", as: :farmer_training_participation

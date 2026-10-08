@@ -16,7 +16,8 @@
   <% end %>
 
   <% list_only_slugs = ["activity-group-list", "vrp-activity-list", "task-completion-indicator-list", "approval-list", "access-control-list", "vrp-bill-list", "jeevika-jankar-bill-list", "jeevika-jankar-observation-list", "jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail", "jeevika-jankar-completed-payment-list", "training-form-list", "seed-distribution-target-list", "papl360-target-list", "other-target-list"] %>
-  <% entry_only_slugs = ["approval-master", "access-control", "vrp-bill-add", "jeevika-jankar-bill-process", "training-form"] %>
+  <%# Transfers have their own list screen, so the form stays entry-only. %>
+  <% entry_only_slugs = ["approval-master", "access-control", "vrp-bill-add", "jeevika-jankar-bill-process", "training-form", "jeevika-jankar-transfer"] %>
 
   <% if @slug == "jeevika-jankar-bill-list" && (@bill_print_mode || @bill_detail_record.present?) %>
     <% detail_record = @record || @bill_detail_record %>
@@ -2592,12 +2593,28 @@
                   when "Parent Office"
                     "data-parent-office-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
                   end if @slug == "parent-office-add" %>
-                <select name="module_record[<%= field_key %>]<%= "[]" if @slug == "training-form" && ["Main Activity", "Sub Activity"].include?(field) %>" <%= role_dependency_attr&.html_safe %> <%= location_dependency_attr&.html_safe %> <%= training_target_attr&.html_safe %> <%= seed_target_attr&.html_safe %> <%= parent_office_dependency_attr&.html_safe %> <%= required_attr %>>
-                  <option value=""><%= options.any? ? "Select #{field_label}" : "No #{field_label} saved yet" %></option>
+                <% jj_transfer_multi = @slug == "jeevika-jankar-transfer" && field == "Jeevika Jankar Names" %>
+                <% if jj_transfer_multi %>
+                  <% selected_jj = raw_field_value.is_a?(Array) ? raw_field_value.map(&:to_s) : field_value.to_s.split(",").map(&:strip) %>
+                <% end %>
+                <%# Both transfer dropdowns publish the same office key so the
+                    Jeevika Jankar list can follow the selected user's FCO. %>
+                <% transfer_field = @slug == "jeevika-jankar-transfer" && ["User Name", "Jeevika Jankar Names"].include?(field) %>
+                <% transfer_office_keys = transfer_field ? jeevika_jankar_transfer_office_keys(field) : {} %>
+                <% transfer_hook = (" data-jj-transfer-user" if transfer_field && field == "User Name") || (" data-jj-transfer-jj" if jj_transfer_multi) %>
+                <select name="module_record[<%= field_key %>]<%= "[]" if jj_transfer_multi || (@slug == "training-form" && ["Main Activity", "Sub Activity"].include?(field)) %>" <%= role_dependency_attr&.html_safe %> <%= location_dependency_attr&.html_safe %> <%= training_target_attr&.html_safe %> <%= seed_target_attr&.html_safe %> <%= parent_office_dependency_attr&.html_safe %> <%= required_attr %> <%= transfer_hook&.html_safe %> <%= 'multiple data-chip-multiselect data-placeholder="Select Jeevika Jankar"'.html_safe if jj_transfer_multi %>>
+                  <% unless jj_transfer_multi %>
+                    <option value=""><%= options.any? ? "Select #{field_label}" : "No #{field_label} saved yet" %></option>
+                  <% end %>
                   <% options.each do |option| %>
-                    <option value="<%= option %>" <%= "selected" if option == field_value %>><%= option == "FFS" ? "Exposer" : option %></option>
+                    <% is_selected = jj_transfer_multi ? selected_jj.include?(option.to_s) : option == field_value %>
+                    <% option_text = jj_transfer_multi ? jeevika_jankar_transfer_display(option) : (option == "FFS" ? "Exposer" : option) %>
+                    <option value="<%= option %>" <%= "selected" if is_selected %> <%= "data-office=\"#{ERB::Util.html_escape(transfer_office_keys[option])}\"".html_safe if transfer_office_keys[option].present? %>><%= option_text %></option>
                   <% end %>
                 </select>
+                <% if jj_transfer_multi && options.blank? %>
+                  <small class="field-hint">Aapke registered Jeevika Jankar hi transfer ho sakte hain.</small>
+                <% end %>
               <% elsif field.downcase.include?("remarks") || field.downcase.include?("address") %>
                 <textarea name="module_record[<%= field_key %>]" rows="3" placeholder="Enter <%= field %>" <%= required_attr %>><%= field_value %></textarea>
               <% elsif field.downcase.include?("password") %>

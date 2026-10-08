@@ -121,6 +121,7 @@
           <div>
             <h2>Main Major Work Indicator - Other</h2>
           </div>
+          <%= link_to "View List", other_indicator_list_path(request.query_parameters), class: "table-action" %>
         </div>
 
         <div class="training-participation-boxes dashboard-summary-boxes demonstration-method-boxes">
@@ -136,7 +137,7 @@
             <% end %>
           </div>
           <div class="training-participation-box total dashboard-summary-box">
-            <span>Mapped Farmer</span>
+            <span>Targeted Farmer</span>
             <strong><%= @dashboard_other_activity_totals[:mapped_farmer] %></strong>
           </div>
           <div class="training-participation-box total dashboard-summary-box">
@@ -523,10 +524,25 @@
     <%= render "farmer_training_dashboard" %>
   <% elsif @dashboard_other_activity_totals.present? %>
     <section class="module-card dashboard-summary-panel">
-      <div class="module-card-header"><h2><%= main_activity_filter_value.presence || "Activity" %> — <%= @dashboard_month_filter_value.presence || "All Months" %></h2></div>
+      <div class="module-card-header">
+        <h2><%= main_activity_filter_value.presence || "Activity" %> — <%= @dashboard_month_filter_value.presence || "All Months" %></h2>
+        <%= link_to "View List", other_indicator_list_path(request.query_parameters), class: "table-action" %>
+      </div>
       <div class="training-participation-boxes dashboard-summary-boxes">
-        <% { main_major_work_indicator: "Main Major Work Indicator", mapped_farmer: "Mapped Farmer", achievement_farmer: "Achievement Farmer", pending_farmer: "Pending Farmer", achieved: "Achieved (%)" }.each do |key, label| %>
-          <div class="training-participation-box total dashboard-summary-box"><span><%= label %></span><strong><%= key == :achieved ? "#{@dashboard_other_activity_totals[key].to_f.round(2)}%" : @dashboard_other_activity_totals[key] %></strong></div>
+        <% { main_major_work_indicator: "Main Major Work Indicator", mapped_farmer: "Targeted Farmer", achievement_farmer: "Achievement Farmer", pending_farmer: "Pending Farmer", achieved: "Achieved (%)" }.each do |key, label| %>
+          <div class="training-participation-box total dashboard-summary-box">
+            <span><%= label %></span>
+            <strong><%= key == :achieved ? "#{@dashboard_other_activity_totals[key].to_f.round(2)}%" : @dashboard_other_activity_totals[key] %></strong>
+            <%# This panel shows when the Main Activity filter is not Farmers' Training.
+                It needs the same per-FCO hover popup as the Farmers' Training one. %>
+            <% if key == :main_major_work_indicator && Array(@dashboard_other_activity_totals[:main_major_work_indicator_popups]).any? %>
+              <span class="dashboard-card-hover-popup" role="tooltip">
+                <% Array(@dashboard_other_activity_totals[:main_major_work_indicator_popups]).each do |item| %>
+                  <span><%= item %></span>
+                <% end %>
+              </span>
+            <% end %>
+          </div>
         <% end %>
       </div>
     </section>
@@ -552,6 +568,7 @@
       <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel demonstration-method-panel" id="other_major_work_indicator_boxes" style="margin-top: 20px;">
         <div class="module-card-header training-participation-status-header">
           <h2>Main Major Work Indicator - Other</h2>
+          <%= link_to "View List", other_indicator_list_path(request.query_parameters), class: "table-action" %>
         </div>
         <div class="training-participation-boxes dashboard-summary-boxes demonstration-method-boxes">
           <div class="training-participation-box total dashboard-summary-box">
@@ -566,7 +583,7 @@
             <% end %>
           </div>
           <div class="training-participation-box total dashboard-summary-box">
-            <span>Mapped Farmer</span>
+            <span>Targeted Farmer</span>
             <strong><%= @dashboard_other_activity_totals[:mapped_farmer] %></strong>
           </div>
           <div class="training-participation-box total dashboard-summary-box">
