@@ -13660,10 +13660,10 @@ class ModulesController < ApplicationController
 
     errors = missing_required_data_errors(data, required_fields)
 
-    # Photo required: either legacy field or any new section-wise photo field
-    photo_present = data["training_photo_upload_with_geo_tag"].present? ||
-      (defined?(TrainingEditApproval) && TrainingEditApproval::PHOTO_VIEW_FIELDS.keys.any? { |key| data[key].present? })
-    errors << "Training Photo Upload with Geo Tag required hai." unless photo_present
+    # Require one photo across the sections; the remaining sections are optional.
+    photo_keys = ["training_photo_upload_with_geo_tag"] + TrainingEditApproval::PHOTO_VIEW_FIELDS.keys
+    photo_present = photo_keys.any? { |key| Array(data[key]).compact_blank.any? }
+    errors << "Training photo ke kisi bhi ek field mein kam se kam 1 photo upload karein. Baaki photo fields optional hain." unless photo_present
 
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
 

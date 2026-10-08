@@ -2389,7 +2389,7 @@
                           </svg>
                         </span>
                         <div class="photo-info-tooltip-content">
-                          <div class="photo-info-tooltip-header">Training के दौरान कम से कम 5 प्रकार की फोटो इस प्रकार केप्चर करें</div>
+                          <div class="photo-info-tooltip-header">चार photo fields में से किसी भी एक में कम से कम 1 photo upload करें। बाकी photo fields optional हैं।</div>
                           <ul class="photo-info-tooltip-list">
                             <li><strong>Opening/Introduction Photo —</strong> Trainer सामने हो और किसान बैठे/खड़े होकर Training लेते दिखाई दें। कोशिश करें कि पूरा समूह फ्रेम में आए।</li>
                             <li><strong>Training Activity Photo —</strong> Trainer जिस विषय पर समझा रहा है, उसकी वास्तविक activity दिखे। जैसे INM/IPM, बीज उपचार, खाद/दवा का उपयोग, FFS या Field Demonstration हो तो सामग्री/फसल भी फोटो में आए।</li>
@@ -2403,6 +2403,9 @@
                     <% end %>
                   </div>
                   <p class="training-section-desc"><%= sec[:desc] %></p>
+                  <% if sec[:number] == "05" %>
+                    <p class="field-hint">चार photo fields में से किसी भी एक में कम से कम 1 photo upload करें। बाकी photo fields खाली छोड़ सकते हैं।</p>
+                  <% end %>
                 </div>
               </div>
             <% end %>
