@@ -222,7 +222,7 @@
       </div>
 
       <div class="table-shell">
-        <table class="module-table detail-table">
+        <table class="module-table detail-table bill-detail-activity-table">
           <thead>
             <tr>
               <th>Sl No.</th>
@@ -233,8 +233,7 @@
               <th>Target</th>
               <th>Achievement</th>
               <th>Pending</th>
-              <th>Rate</th>
-              <th>Total</th>
+              <th>Attachment</th>
             </tr>
           </thead>
           <tbody>
@@ -264,11 +263,37 @@
                 <td><%= item["village"].presence || "-" %></td>
                 <td><%= item["main_activity"].presence || "-" %></td>
                 <td><%= item["activity"].presence || "-" %></td>
-                <td><%= item["target_quantity"].presence || "0" %></td>
-                <td><%= achievement_display %></td>
-                <td><%= pending_display %></td>
-                <td><%= item["rate"].presence || "0.00" %></td>
-                <td><%= item["amount"].presence || "0.00" %></td>
+                <% [["Target", item["target_quantity"].presence || "0", Array(farmer_details).select { |farmer| farmer.is_a?(Hash) }],
+                    ["Achievement", achievement_display, completed_farmers],
+                    ["Pending", pending_display, Array(farmer_details).select { |farmer| farmer.is_a?(Hash) && farmer["status"].to_s.match?(/\Apending\z/i) }]].each do |label, count, farmers| %>
+                  <td>
+                    <% if is_other %>
+                      <%= count %>
+                    <% else %>
+                      <details class="jeevika-farmer-details">
+                        <summary aria-label="<%= label %> farmers"><%= count %></summary>
+                        <%= render "bill_count_farmers", farmers: farmers, item: item %>
+                      </details>
+                    <% end %>
+                  </td>
+                <% end %>
+                <td class="bill-activity-attachments">
+                  <% uploads = is_other ? jeevika_bill_other_activity_uploads(item) : jeevika_bill_training_uploads(item) %>
+                  <% if uploads.any? %>
+                    <div class="bill-attachment-links">
+                      <% uploads.each_with_index do |url, file_index| %>
+                        <% filename = File.basename(URI.parse(url).path) %>
+                        <% file_type = File.extname(filename).delete_prefix(".").upcase.presence || "FILE" %>
+                        <%= link_to url, target: "_blank", rel: "noopener", class: "bill-attachment-link", title: filename, aria: { label: "Open attachment: #{filename}" } do %>
+                          <span aria-hidden="true">↗</span>
+                          <span><%= file_type %><%= " #{file_index + 1}" if uploads.size > 1 %></span>
+                        <% end %>
+                      <% end %>
+                    </div>
+                  <% else %>
+                    <span class="bill-attachment-empty">—</span>
+                  <% end %>
+                </td>
               </tr>
             <% end %>
           </tbody>
@@ -2519,7 +2544,7 @@
                 <% end %>
                 <%# Evidence/Documentation only accepts a PDF, so the picker itself is limited to PDFs. %>
                 <% upload_accept = "accept=\"application/pdf,.pdf\" data-allowed-extensions=\"pdf\" data-max-size-mb=\"5\"" if @slug == "training-form" && field == "Training Register Upload" %>
-                <input name="module_record[<%= field_key %>]<%= "[]" if multiple_photo_upload || multiple_attachment_upload %>" type="file" <%= "multiple" if multiple_photo_upload || multiple_attachment_upload %> <%= upload_accept&.html_safe %> <%= "required" if form_required && field_value.blank? && !other_target_form %>>
+                <input name="module_record[<%= field_key %>]<%= "[]" if multiple_photo_upload || multiple_attachment_upload %>" type="file" <%= "multiple" if multiple_photo_upload || multiple_attachment_upload %> <%= upload_accept&.html_safe %> <%= "required" if form_required && Array(raw_field_value).compact_blank.empty? && (!other_target_form || ["Attachment Upload", "Field Photo"].include?(field)) %>>
                 <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
                   <input type="hidden" name="module_record[geo_latitude]" data-training-geo-latitude value="<%= @record&.data&.[]("geo_latitude") %>">
                   <input type="hidden" name="module_record[geo_longitude]" data-training-geo-longitude value="<%= @record&.data&.[]("geo_longitude") %>">

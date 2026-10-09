@@ -25,7 +25,7 @@ class ModulesController < ApplicationController
                 :jeevika_bill_detail_rows, :jeevika_bill_current_approval_step,
                 :jeevika_bill_approval_history, :jeevika_bill_current_approver?,
                 :jeevika_bill_approval_steps, :jeevika_bill_summary,
-                :jeevika_bill_attachment_rows, :jeevika_jankar_display_name,
+                :jeevika_bill_attachment_rows, :jeevika_bill_other_activity_uploads, :jeevika_bill_training_uploads, :jeevika_jankar_display_name,
                 :jeevika_jankar_vrp_label, :jeevika_bill_time_slot_rows,
                 :jeevika_bill_block_name,
                 :jeevika_bill_description_rows, :jeevika_bill_bank_rows,
@@ -10694,6 +10694,43 @@ class ModulesController < ApplicationController
     record.data["grand_total"].presence || "0.00"
   end
 
+  def jeevika_bill_training_uploads(item)
+    ids = (Array(item["target_mapping_ids"]) + [item["target_mapping_id"]]).compact_blank.uniq
+    return [] if ids.empty?
+
+    dates = item["timesheet_dates"].to_s.split(",").filter_map { |date| parse_module_date(date.strip) }
+    TargetMapping.includes(:vrp).where(id: ids).flat_map do |target|
+      matching_training_records_for_target(target, target_farmer_ids(target)).filter_map do |training|
+        date = parse_module_date(training_summary(training)[:training_date])
+        next if dates.any? && !dates.include?(date)
+
+        module_upload_public_urls(training.data["training_register_upload"])
+      end.flatten
+    end.uniq
+  end
+
+  def jeevika_bill_other_activity_uploads(item)
+    ids = (Array(item["target_mapping_ids"]) + [item["target_mapping_id"]]).compact_blank.map(&:to_s).uniq
+    return [] if ids.empty?
+
+    targets = TargetMapping.includes(:vrp).where(id: ids)
+    @bill_other_activity_records ||= ModuleRecord.where(module_slug: OTHER_TARGET_MODULE_SLUGS).to_a
+    @bill_other_activity_records.select do |record|
+      next false if module_record_soft_deleted?(record) || record.data["record_state"].to_s.casecmp("Inactive").zero?
+
+      data = record.data
+      ids.include?(data["target_mapping_id"].to_s) || targets.any? do |target|
+        values = [
+          data["jeevika_jankar_id"].presence || data["jeevika_jankar_name"].presence || data["select_vrp"],
+          data["month"], data["ics"], data["village"],
+          data["training_topic"].presence || data["main_activity"],
+          data["training_subject"].presence || data["sub_activity"]
+        ].map { |value| normalize_dashboard_text(value) }
+        values.none?(&:blank?) && other_target_record_matches_target?(target, *values)
+      end
+    end.flat_map { |record| module_upload_public_urls(record.data["attachment_upload"]) }.uniq
+  end
+
   def jeevika_bill_attachment_rows(record)
     vrp = jeevika_bill_vrp(record)
     [
@@ -13739,6 +13776,12 @@ class ModulesController < ApplicationController
       "target" => "Target",
       "achievement" => "Achievement"
     )
+
+    if record_source_slug == "other-target"
+      OTHER_TARGET_UPLOAD_FIELDS.each do |key, label|
+        errors << "#{label} required hai." if Array(data[key]).compact_blank.empty?
+      end
+    end
 
     target = decimal_value(data["target"])
     achievement = decimal_value(data["achievement"])

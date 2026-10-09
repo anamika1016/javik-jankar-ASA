@@ -5792,6 +5792,48 @@ body {
   min-width: 980px;
 }
 
+.bill-detail-activity-table > tbody > tr > td {
+  vertical-align: top;
+}
+
+.bill-activity-attachments {
+  min-width: 110px;
+}
+
+.bill-attachment-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bill-attachment-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid #c9ddbe;
+  border-radius: 6px;
+  background: #f1f7ed;
+  color: #39662b;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.bill-attachment-link:hover {
+  background: #e3efdc;
+}
+
+.bill-attachment-link:focus-visible {
+  outline: 2px solid #39662b;
+  outline-offset: 2px;
+}
+
+.bill-attachment-empty {
+  color: #718096;
+}
+
 .detail-table th {
   color: var(--vrp-text);
   text-transform: none;

@@ -1,0 +1,21 @@
+<div class="table-shell">
+  <table class="module-table detail-table">
+    <thead>
+      <tr><th>Farmer</th><th>Mobile</th><th>Village</th><th>Training Date</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      <% farmers.each do |farmer| %>
+        <tr>
+          <td><%= farmer["name"].presence || "-" %></td>
+          <td><%= farmer["mobile_no"].presence || "-" %></td>
+          <td><%= farmer["village_name"].presence || item["village"].presence || "-" %></td>
+          <td><%= farmer["training_date"].presence || "-" %></td>
+          <td><%= farmer["status"].presence || "-" %></td>
+        </tr>
+      <% end %>
+      <% if farmers.empty? %>
+        <tr><td colspan="5">No farmer details saved for this count.</td></tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>
