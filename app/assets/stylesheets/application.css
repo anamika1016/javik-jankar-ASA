@@ -5834,6 +5834,66 @@ body {
   color: #718096;
 }
 
+.bill-count-button {
+  border: 1px solid #c9ddbe;
+  border-radius: 6px;
+  padding: 6px 12px;
+  background: #f1f7ed;
+  color: #39662b;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.bill-count-button:hover { background: #e3efdc; }
+
+.bill-farmer-dialog {
+  width: min(640px, calc(100vw - 32px));
+  max-height: 80vh;
+  padding: 0;
+  border: 1px solid #d6e2d1;
+  border-radius: 14px;
+  box-shadow: 0 20px 60px #0003;
+  color: var(--vrp-text);
+  background: #fff;
+}
+
+.bill-farmer-dialog::backdrop { background: #13251b80; }
+
+.bill-farmer-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e1e8dd;
+  background: #f5f9f2;
+}
+
+.bill-farmer-dialog-close {
+  border: 0;
+  background: transparent;
+  font-size: 26px;
+  cursor: pointer;
+  color: #39662b;
+}
+
+.bill-farmer-list {
+  padding: 16px 20px;
+  max-height: 60vh;
+  overflow-y: auto;
+  white-space: normal;
+}
+
+.bill-farmer-card {
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  border: 1px solid #e1e8dd;
+  border-radius: 8px;
+}
+
+.bill-farmer-card strong { display: block; font-size: 15px; }
+.bill-farmer-card p { margin: 6px 0 0; color: #617066; font-size: 13px; overflow-wrap: anywhere; }
+
 .detail-table th {
   color: var(--vrp-text);
   text-transform: none;

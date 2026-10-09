@@ -1,6 +1,19 @@
 require "test_helper"
 
 class JeevikaBillOtherActivityUploadsTest < ActiveSupport::TestCase
+  test "bill farmer display resolves names without changing saved bill data" do
+    controller = ModulesController.new
+    profile = Struct.new(:farmer_name, :village_name, :father_name, :tracenet_no).new("ANTARBAI", "Kosduna", "INDARSINGH", "890816455307")
+    controller.define_singleton_method(:training_farmers_by_id) { |_ids| { "42" => profile } }
+    record = Struct.new(:data).new({ "bill_items" => [{ "farmer_details" => [{ "id" => "42", "name" => "Farmer #42" }] }] })
+    farmer = controller.send(:jeevika_bill_display_items, record).first["farmer_details"].first
+    assert_equal "ANTARBAI", farmer["name"]
+    assert_equal "Kosduna", farmer["village_name"]
+    assert_equal "INDARSINGH", farmer["father_name"]
+    assert_equal "890816455307", farmer["tracenet_no"]
+    assert_equal "Farmer #42", record.data["bill_items"].first["farmer_details"].first["name"]
+  end
+
   test "Other Target requires both upload fields including blank array submissions" do
     controller = ModulesController.new
     controller.define_singleton_method(:record_source_slug) { "other-target" }

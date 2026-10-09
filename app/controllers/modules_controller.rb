@@ -22,7 +22,7 @@ class ModulesController < ApplicationController
                 :training_activity_mappings, :approval_user_mappings, :approval_user_options,
                 :parent_office_mappings, :user_hierarchy_list_rows, :jeevika_jankar_cluster_rows,
                 :jeevika_bill_status_label, :jeevika_bill_status_class, :jeevika_bill_rows,
-                :jeevika_bill_detail_rows, :jeevika_bill_current_approval_step,
+                :jeevika_bill_detail_rows, :jeevika_bill_display_items, :jeevika_bill_current_approval_step,
                 :jeevika_bill_approval_history, :jeevika_bill_current_approver?,
                 :jeevika_bill_approval_steps, :jeevika_bill_summary,
                 :jeevika_bill_attachment_rows, :jeevika_bill_other_activity_uploads, :jeevika_bill_training_uploads, :jeevika_jankar_display_name,
@@ -10624,6 +10624,34 @@ class ModulesController < ApplicationController
     raw_items = record&.data&.[]("bill_items")
     raw_items = raw_items.values if raw_items.is_a?(Hash)
     Array(raw_items).select { |item| item.respond_to?(:[]) }
+  end
+
+  def jeevika_bill_display_items(record)
+    items = jeevika_bill_detail_rows(record).map(&:deep_dup)
+    farmers = items.flat_map do |item|
+      details = item["farmer_details"]
+      Array(details.is_a?(Hash) ? details.values : details).select { |farmer| farmer.is_a?(Hash) }
+    end
+    ids = farmers.map { |farmer| farmer["id"].to_s }.compact_blank.uniq
+    local = training_farmers_by_id(ids.select { |id| id.match?(/\A\d+\z/) })
+    unresolved = farmers.select do |farmer|
+      !local.key?(farmer["id"].to_s) && (farmer["name"].blank? || farmer["name"].to_s.match?(/\A(?:Mapped )?Farmer #/i))
+    end.map { |farmer| farmer["id"].to_s }.compact_blank.uniq
+    external = {}
+    if unresolved.any?
+      target_ids = items.flat_map { |item| Array(item["target_mapping_ids"]) + [item["target_mapping_id"]] }.compact_blank.uniq
+      village_ids = TargetMapping.where(id: target_ids).pluck(:village_id).compact_blank.uniq
+      external = fetch_training_external_farmer_names(village_ids, unresolved)
+    end
+    farmers.each do |farmer|
+      profile = local[farmer["id"].to_s]
+      details = external[farmer["id"].to_s] || {}
+      farmer["name"] = profile&.farmer_name.presence || details[:farmer_name].presence || farmer["farmer_name"].presence || farmer["name"].presence || "Name unavailable"
+      %w[village_name father_name tracenet_no].each do |key|
+        farmer[key] = profile&.public_send(key).presence || details[key.to_sym].presence || farmer[key]
+      end
+    end
+    items
   end
 
   def jeevika_bill_summary(record)

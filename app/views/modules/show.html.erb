@@ -21,7 +21,7 @@
 
   <% if @slug == "jeevika-jankar-bill-list" && (@bill_print_mode || @bill_detail_record.present?) %>
     <% detail_record = @record || @bill_detail_record %>
-    <% detail_items = jeevika_bill_detail_rows(detail_record) %>
+    <% detail_items = jeevika_bill_display_items(detail_record) %>
     <% detail_summary = jeevika_bill_summary(detail_record) %>
     <% stakeholder_profile = current_stakeholder_profile %>
     <% vrp_photo = jeevika_bill_attachment_rows(detail_record).first&.last %>
@@ -270,10 +270,15 @@
                     <% if is_other %>
                       <%= count %>
                     <% else %>
-                      <details class="jeevika-farmer-details">
-                        <summary aria-label="<%= label %> farmers"><%= count %></summary>
+                      <% dialog_id = "bill-farmers-#{detail_record.id}-#{index}-#{label.downcase}" %>
+                      <button type="button" class="bill-count-button" data-saved-target-farmers-open="<%= dialog_id %>" aria-label="View <%= label %> farmers"><%= count %></button>
+                      <dialog id="<%= dialog_id %>" class="bill-farmer-dialog" data-saved-target-farmers-dialog>
+                        <div class="bill-farmer-dialog-header">
+                          <strong><%= label %> Farmers</strong>
+                          <button type="button" class="bill-farmer-dialog-close" data-saved-target-farmers-close aria-label="Close farmer list">×</button>
+                        </div>
                         <%= render "bill_count_farmers", farmers: farmers, item: item %>
-                      </details>
+                      </dialog>
                     <% end %>
                   </td>
                 <% end %>
