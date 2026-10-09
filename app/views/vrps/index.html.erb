@@ -61,6 +61,7 @@
               <th>Status Changed By</th>
               <th>Status Changed At</th>
               <th>Registered By</th>
+              <th>Transfer By</th>
               <th>Mapped Cluster Name</th>
             </tr>
           </thead>
@@ -96,12 +97,13 @@
                   <td><%= vrp[:active_status_changed_by] %></td>
                   <td><%= vrp[:active_status_changed_at] %></td>
                   <td><%= vrp[:registered_by] %></td>
+                  <td><%= vrp[:transfer_by] %></td>
                   <td><%= vrp[:mapped_cluster_name] %></td>
                 </tr>
               <% end %>
             <% else %>
               <tr>
-                <td colspan="24">No Jeevika Jankar records saved yet.</td>
+                <td colspan="25">No Jeevika Jankar records saved yet.</td>
               </tr>
             <% end %>
           </tbody>

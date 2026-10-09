@@ -583,13 +583,13 @@ class ModulesController < ApplicationController
       title: "Jeevika Jankar Transfer",
       group: "User Mapping",
       purpose: "Apne registered Jeevika Jankar kisi doosre user ko transfer karne ke liye, taaki wo unka target map kar sake.",
-      fields: ["Sidebar Menu", "Stakeholder Category", "User Name", "Jeevika Jankar Names", "Status"]
+      fields: ["Sidebar Menu", "Stakeholder Category", "FCOC", "User Name", "Jeevika Jankar Names", "Status"]
     },
     "jeevika-jankar-transfer-list" => {
       title: "Jeevika Jankar Transfer List",
       group: "User Mapping",
       purpose: "Saved Jeevika Jankar transfer mappings dekhne ke liye.",
-      fields: ["Sidebar Menu", "Stakeholder Category", "User Name", "Jeevika Jankar Names", "Status"]
+      fields: ["Sidebar Menu", "Stakeholder Category", "FCOC", "User Name", "Jeevika Jankar Names", "Status"]
     },
     "user-hierarchy-mapping" => {
       title: "User Hierarchy Mapping",
@@ -12483,6 +12483,13 @@ class ModulesController < ApplicationController
   def normalized_module_data
     data = module_record_params.to_h.transform_values { |value| normalize_module_param_value(value) }
 
+    if record_source_slug == "jeevika-jankar-transfer"
+      actor = current_app_user || {}
+      data["transfer_by_name"] = actor["name"].presence || actor["username"].presence || actor["user_name"].to_s
+      data["transfer_by_id"] = actor["id"].to_s
+      data["transfer_by_record_type"] = actor["record_type"].to_s
+    end
+
     if record_source_slug == "training-form"
       photos = TrainingEditApproval::PHOTO_VIEW_FIELDS.keys.flat_map { |key| Array(data[key]) }.compact_blank
       if photos.any?
@@ -13690,6 +13697,8 @@ class ModulesController < ApplicationController
     case record_source_slug
     when "new-user"
       data["password"].to_s == data["confirmed_password"].to_s ? [] : ["Password and Confirmed Password must match."]
+    when "jeevika-jankar-transfer"
+      jeevika_jankar_transfer_error_messages(data)
     when "training-form"
       training_form_error_messages(data)
     when "add-farmer-form"
@@ -13876,14 +13885,28 @@ class ModulesController < ApplicationController
     "/uploads/module_records/#{filename}"
   end
 
+  def jeevika_jankar_transfer_error_messages(data)
+    errors = missing_required_data_errors(data, "fcoc" => "FCOC", "user_name" => "User Name", "sidebar_menu" => "Sidebar Menu")
+    names = Array(data["jeevika_jankar_names"]).compact_blank
+    errors << "Jeevika Jankar Names select karein." if names.empty?
+    office = transfer_user_office_keys[data["user_name"]]
+    errors << "Selected user ka FCOC posting required hai." if office.blank?
+    errors << "Selected user selected FCOC se related nahi hai." if office.present? && AgreementVrpScope.office_key(data["fcoc"]) != office
+    if names.any? { |name| office.blank? || transfer_jeevika_jankar_office_keys[name] != office }
+      errors << "Selected user ke FCOC ke Jeevika Jankar hi select karein."
+    end
+    errors
+  end
+
   def jeevika_jankar_transfer_field?(field)
     record_source_slug == "jeevika-jankar-transfer" &&
-      ["Sidebar Menu", "User Name", "Jeevika Jankar Names"].include?(field)
+      ["Sidebar Menu", "FCOC", "User Name", "Jeevika Jankar Names"].include?(field)
   end
 
   def jeevika_jankar_transfer_field_options(field)
     case field
     when "Sidebar Menu" then transferable_sidebar_menu_options
+    when "FCOC" then transfer_user_office_keys.values.compact_blank.uniq.sort.map { |key| "FCOC #{key.titleize}" }
     when "User Name" then approver_options
     when "Jeevika Jankar Names" then transferable_jeevika_jankar_options
     else []
@@ -13922,14 +13945,8 @@ class ModulesController < ApplicationController
     return @transferable_jeevika_jankar_vrps if defined?(@transferable_jeevika_jankar_vrps)
     return @transferable_jeevika_jankar_vrps = [] unless model_ready?(:Vrp)
 
-    scope = Vrp.where(status: 55).order(:name)
-    # Only transfer a Jeevika Jankar you registered. Falling back to the whole
-    # list when you registered none would let anyone transfer anyone.
-    @transferable_jeevika_jankar_vrps = if admin_dashboard_user?
-      scope.to_a
-    else
-      scope.select { |vrp| jeevika_bill_vrp_registered_by_current_user?(vrp) }
-    end
+    scope = Vrp.order(:name).where(is_active: [true, nil], is_deleted: [false, nil])
+    @transferable_jeevika_jankar_vrps = scope.to_a
   end
 
   # The picker narrows Jeevika Jankars to the chosen user's FCO, so both
@@ -13951,9 +13968,21 @@ class ModulesController < ApplicationController
       next if full_name.blank?
 
       label = user.role.present? ? "#{full_name} (#{user.role})" : full_name
-      # office_name is the real posting; role only sometimes carries the FCO.
-      key = AgreementVrpScope.office_key(user.office_name.presence || user.role)
+      legacy = transfer_legacy_user_data[user.user_name.to_s] || {}
+      candidates = [legacy["fcoc"], legacy["fcoc_name"], user.office_name, legacy["office_name"], legacy["office"], user.role, legacy["role"]].compact_blank
+      posting = candidates.find { |value| value.to_s.match?(/\bfco(?:c)?\b/i) } || candidates.first
+      key = AgreementVrpScope.office_key(posting)
       map[label] ||= key if key.present?
+    end
+  end
+
+  def transfer_legacy_user_data
+    @transfer_legacy_user_data ||= if model_ready?(:ModuleRecord)
+      ModuleRecord.where(module_slug: "new-user").order(updated_at: :desc).each_with_object({}) do |record, result|
+        result[record.data["user_name"].to_s] ||= record.data if active_module_record?(record)
+      end
+    else
+      {}
     end
   end
 

@@ -9,6 +9,22 @@ class VrpsController < ApplicationController
   before_action :set_form_dependencies, only: [:new, :create]
   before_action :set_edit_dependencies, only: [:edit, :update]
 
+  def vrp_transfer_by_names
+    @vrp_transfer_by_names ||= ModuleRecord.where(module_slug: "jeevika-jankar-transfer")
+      .order(updated_at: :desc, id: :desc).each_with_object({}) do |record, names|
+        data = record.data
+        next if %w[deleted is_deleted discarded].any? { |key| %w[1 true yes deleted].include?(data[key].to_s.downcase) }
+        next unless data["status"].blank? || data["status"].to_s.casecmp("Active").zero?
+
+        Array(data["jeevika_jankar_names"]).each do |label|
+          id = label.to_s[/-\s*(\d+)\s*\z/, 1]
+          next unless id && !names.key?(id)
+
+          names[id] = data["user_name"].to_s.sub(/\s*\([^)]*\)\s*\z/, "").strip.presence || "-"
+        end
+      end
+  end
+
   def index
     vrps = visible_vrps.to_a
     if params[:target_assignment] == "unassigned"
@@ -50,6 +66,7 @@ class VrpsController < ApplicationController
         fcoc: vrp.fcoc,
         to_name: vrp.to_name,
         registered_by: registered_by_name(vrp),
+        transfer_by: vrp_transfer_by_names[vrp.id.to_s].presence || "-",
         mapped_cluster_name: vrp.cluster_incharge.presence || "-",
         status_label: vrp_status_label(vrp),
         is_active: vrp.is_active,

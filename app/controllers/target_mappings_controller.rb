@@ -830,6 +830,7 @@ class TargetMappingsController < ApplicationController
     end
     # Jeevika Jankars handed over through the transfer form are worked on here
     # too, so they join the user's own registrations rather than replacing them.
+    scope = scope.where.not(id: target_mapping_transfer_recipients.keys)
     scope = scope.or(Vrp.where(id: transferred_ids)) if transferred_ids.any?
 
     scope
@@ -847,14 +848,27 @@ class TargetMappingsController < ApplicationController
     ].compact_blank.map { |label| normalize_transfer_label(label) }
     return @transferred_vrp_ids = [] if labels.blank?
 
-    @transferred_vrp_ids = ModuleRecord
-      .where(module_slug: "jeevika-jankar-transfer")
-      .select { |record| transfer_record_active?(record) }
-      .select { |record| labels.include?(normalize_transfer_label(record.data["user_name"])) }
-      .select { |record| record.data["sidebar_menu"].to_s.strip.casecmp("Target Mapping Master").zero? }
-      .flat_map { |record| Array(record.data["jeevika_jankar_names"]) }
-      .filter_map { |label| label.to_s[/-\s*(\d+)\s*\z/, 1] }
-      .uniq
+    @transferred_vrp_ids = target_mapping_transfer_recipients.select do |_id, recipient|
+      labels.include?(normalize_transfer_label(recipient))
+    end.keys
+  end
+
+  # The latest active handover owns access; original registration stays intact.
+  def target_mapping_transfer_recipients
+    return @target_mapping_transfer_recipients if defined?(@target_mapping_transfer_recipients)
+    return @target_mapping_transfer_recipients = {} unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+
+    @target_mapping_transfer_recipients = ModuleRecord.where(module_slug: "jeevika-jankar-transfer")
+      .order(updated_at: :desc, id: :desc).each_with_object({}) do |record, recipients|
+        next unless transfer_record_active?(record)
+        next unless ["target mapping", "target mapping master"].include?(record.data["sidebar_menu"].to_s.strip.downcase)
+        next if record.data["user_name"].blank?
+
+        Array(record.data["jeevika_jankar_names"]).each do |label|
+          id = label.to_s[/-\s*(\d+)\s*\z/, 1]
+          recipients[id] ||= record.data["user_name"] if id
+        end
+      end
   end
 
   def transfer_record_active?(record)
@@ -1861,7 +1875,9 @@ end
     return TargetMapping.all if admin_login?
     return TargetMapping.where(vrp_id: current_app_user["id"]) if non_admin_vrp_login?
 
-    TargetMapping.where(created_by_type: current_app_user["record_type"], created_by_id: current_app_user["id"])
+    own = TargetMapping.where(created_by_type: current_app_user["record_type"], created_by_id: current_app_user["id"])
+    own = own.where.not(vrp_id: target_mapping_transfer_recipients.keys)
+    own.or(TargetMapping.where(vrp_id: transferred_vrp_ids))
   end
 
   def dashboard_filtered_target_mappings(scope)

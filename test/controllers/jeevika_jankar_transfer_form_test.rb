@@ -98,8 +98,8 @@ class JeevikaJankarTransferFormTest < ActionDispatch::IntegrationTest
     assert_includes jj_select, 'data-office="turekela"'
   end
 
-  # A transfer hands over your own registration; it must not offer everyone's.
-  test "a non-admin is only offered the Jeevika Jankars they registered" do
+  # The selected recipient office filters all active registered JJs.
+  test "the transfer picker includes JJs registered by other users" do
     mine = create_vrp(name: "MINE JJ", mobile: "9000000001", created_by_id: nil)
     staff = User.create!(user_name: "jjt_staff", password: "secret", first_name: "Staff",
                          office_name: "FCO-Ratlam", user_type: "User", status: "Active")
@@ -110,7 +110,39 @@ class JeevikaJankarTransferFormTest < ActionDispatch::IntegrationTest
     assert_response :success
 
     assert_includes response.body, "MINE JJ"
-    assert_not_includes response.body, "TAPASWINI PUJARI",
-      "someone else's Jeevika Jankar must not be transferable"
+    assert_includes response.body, "TAPASWINI PUJARI"
   end
+  test "Target Mapping moves to the latest recipient without changing registration" do
+    owner = User.create!(user_name: "transfer_owner", password: "secret", first_name: "Owner", user_type: "User")
+    @vrp.update!(created_by_id: owner.id, created_by_type: "User")
+    first = ModuleRecord.create!(module_slug: "jeevika-jankar-transfer", data: {
+      "sidebar_menu" => "Target Mapping Master", "user_name" => "First Recipient",
+      "jeevika_jankar_names" => ["JJ - #{@vrp.id}"], "status" => "Active"
+    })
+    first.update_columns(updated_at: 1.day.ago)
+    ModuleRecord.create!(module_slug: "jeevika-jankar-transfer", data: {
+      "sidebar_menu" => "Target Mapping Master", "user_name" => "New Recipient (FCO)",
+      "jeevika_jankar_names" => ["JJ - #{@vrp.id}"], "status" => "Active"
+    })
+    owner_controller = TargetMappingsController.new
+    owner_controller.define_singleton_method(:current_app_user_ids) { [owner.id] }
+    owner_controller.define_singleton_method(:current_app_user) { { "name" => "Owner" } }
+    refute owner_controller.send(:own_registered_vrps).exists?(@vrp.id)
+    recipient_controller = TargetMappingsController.new
+    recipient_controller.define_singleton_method(:current_app_user_ids) { [] }
+    recipient_controller.define_singleton_method(:current_app_user) { { "name" => "New Recipient" } }
+    assert recipient_controller.send(:own_registered_vrps).exists?(@vrp.id)
+    assert_equal owner.id, @vrp.reload.created_by_id
+  end
+
+  test "transfer rejects JJs outside the selected recipient office" do
+    controller = ModulesController.new
+    controller.define_singleton_method(:transfer_user_office_keys) { { "Recipient" => "ratlam" } }
+    controller.define_singleton_method(:transfer_jeevika_jankar_office_keys) { { "JJ - 1" => "ratlam", "JJ - 2" => "sausar" } }
+    data = { "fcoc" => "FCOC Ratlam", "user_name" => "Recipient", "sidebar_menu" => "Target Mapping Master", "jeevika_jankar_names" => ["JJ - 1"] }
+    assert_empty controller.send(:jeevika_jankar_transfer_error_messages, data)
+    assert_includes controller.send(:jeevika_jankar_transfer_error_messages, data.merge("jeevika_jankar_names" => ["JJ - 2"])),
+      "Selected user ke FCOC ke Jeevika Jankar hi select karein."
+  end
+
 end

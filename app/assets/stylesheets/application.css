@@ -3111,6 +3111,30 @@ body {
   margin: 10px 0 0;
 }
 
+.bill-approval-remarks {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid #d5e2ce;
+  border-left: 4px solid #5b913f;
+  border-radius: 8px;
+  background: #f2f8ee;
+  color: #263d22;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.bill-approval-remarks > strong {
+  display: block;
+  font-size: 12px;
+  color: #456e33;
+}
+
+.approval-progress-card .bill-approval-remarks p {
+  margin: 6px 0 0;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
 .approval-card-actions {
   display: flex;
   justify-content: center;
