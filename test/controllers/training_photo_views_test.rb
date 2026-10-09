@@ -44,20 +44,17 @@ class TrainingPhotoViewsTest < ActiveSupport::TestCase
     assert_match "maximum 5 photos are allowed", @controller.flash.now[:alert]
   end
 
-  test "one photo in any section satisfies the shared photo requirement" do
+  test "every photo section requires a photo even when legacy photos exist" do
     keys = TrainingEditApproval::PHOTO_VIEW_FIELDS.keys
-    (keys + ["training_photo_upload_with_geo_tag"]).each do |photo_key|
-      data = keys.index_with { [""] }.merge(photo_key => ["/uploads/module_records/photo.png"])
-      errors = @controller.send(:training_form_error_messages, data)
-      refute errors.any? { |error| error.include?("photo") }, "Photo in #{photo_key} should be sufficient"
-    end
-  end
-
-  test "empty photo sections require at least one photo" do
-    [nil, "", [], ["", nil, " "]].each do |empty_value|
-      data = (TrainingEditApproval::PHOTO_VIEW_FIELDS.keys + ["training_photo_upload_with_geo_tag"]).index_with { empty_value }
-      errors = @controller.send(:training_form_error_messages, data)
-      assert_includes errors, "Training photo ke kisi bhi ek field mein kam se kam 1 photo upload karein. Baaki photo fields optional hain."
+    complete_data = keys.index_with { ["/uploads/module_records/photo.png"] }
+    errors = @controller.send(:training_form_error_messages, complete_data)
+    TrainingEditApproval::PHOTO_VIEW_FIELDS.each do |key, label|
+      message = "#{label} mein kam se kam 1 photo upload karein."
+      refute_includes errors, message
+      [nil, "", [], ["", nil, " "]].each do |empty_value|
+        data = complete_data.merge(key => empty_value, "training_photo_upload_with_geo_tag" => ["/uploads/module_records/legacy.png"])
+        assert_includes @controller.send(:training_form_error_messages, data), message
+      end
     end
   end
 end

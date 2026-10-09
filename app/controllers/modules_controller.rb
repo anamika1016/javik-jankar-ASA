@@ -13660,10 +13660,9 @@ class ModulesController < ApplicationController
 
     errors = missing_required_data_errors(data, required_fields)
 
-    # Require one photo across the sections; the remaining sections are optional.
-    photo_keys = ["training_photo_upload_with_geo_tag"] + TrainingEditApproval::PHOTO_VIEW_FIELDS.keys
-    photo_present = photo_keys.any? { |key| Array(data[key]).compact_blank.any? }
-    errors << "Training photo ke kisi bhi ek field mein kam se kam 1 photo upload karein. Baaki photo fields optional hain." unless photo_present
+    TrainingEditApproval::PHOTO_VIEW_FIELDS.each do |key, label|
+      errors << "#{label} mein kam se kam 1 photo upload karein." if Array(data[key]).compact_blank.empty?
+    end
 
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
 

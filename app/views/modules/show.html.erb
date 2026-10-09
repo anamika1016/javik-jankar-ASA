@@ -2389,7 +2389,7 @@
                           </svg>
                         </span>
                         <div class="photo-info-tooltip-content">
-                          <div class="photo-info-tooltip-header">चार photo fields में से किसी भी एक में कम से कम 1 photo upload करें। बाकी photo fields optional हैं।</div>
+                          <div class="photo-info-tooltip-header">चारों photo fields में कम से कम 1 photo upload करना अनिवार्य है। हर field में अधिकतम 5 photos upload कर सकते हैं।</div>
                           <ul class="photo-info-tooltip-list">
                             <li><strong>Opening/Introduction Photo —</strong> Trainer सामने हो और किसान बैठे/खड़े होकर Training लेते दिखाई दें। कोशिश करें कि पूरा समूह फ्रेम में आए।</li>
                             <li><strong>Training Activity Photo —</strong> Trainer जिस विषय पर समझा रहा है, उसकी वास्तविक activity दिखे। जैसे INM/IPM, बीज उपचार, खाद/दवा का उपयोग, FFS या Field Demonstration हो तो सामग्री/फसल भी फोटो में आए।</li>
@@ -2404,7 +2404,7 @@
                   </div>
                   <p class="training-section-desc"><%= sec[:desc] %></p>
                   <% if sec[:number] == "05" %>
-                    <p class="field-hint">चार photo fields में से किसी भी एक में कम से कम 1 photo upload करें। बाकी photo fields खाली छोड़ सकते हैं।</p>
+                    <p class="field-hint">चारों photo fields में कम से कम 1 photo अनिवार्य है। हर field में अधिकतम 5 photos upload कर सकते हैं।</p>
                   <% end %>
                 </div>
               </div>
@@ -2454,7 +2454,7 @@
             <% if other_target_form && @record.blank? && field == "Completion Date" && field_value.blank? %>
               <% field_value = Date.current.to_s %>
             <% end %>
-            <% optional_training_fields = ["Cluster Coordinator Name", "Agronomist Name", "PAPL Staff Name", "External Input"] + TrainingEditApproval::PHOTO_VIEW_FIELDS.values %>
+            <% optional_training_fields = ["Cluster Coordinator Name", "Agronomist Name", "PAPL Staff Name", "External Input"] %>
             <% form_required = (@slug == "training-form" && !optional_training_fields.include?(field)) || other_target_form || add_farmer_form %>
             <% required_attr = form_required ? "required" : nil %>
             <% field_label = if @slug == "training-form" && training_form_labels&.key?(field)
@@ -2476,7 +2476,7 @@
               </span>
               <% photo_view_key = field_key.tr("-", "_") %>
               <% if @slug == "training-form" && TrainingEditApproval::PHOTO_VIEW_FIELDS.key?(photo_view_key) %>
-                <input name="module_record[<%= photo_view_key %>][]" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple data-max-size-mb="5" data-max-files="5">
+                <input name="module_record[<%= photo_view_key %>][]" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple data-max-size-mb="5" data-max-files="5" <%= "required" if Array(raw_field_value).compact_blank.empty? %>>
                 <% Array(raw_field_value).compact_blank.each do |url| %>
                   <small class="field-hint">Current: <%= link_to File.basename(url.to_s), url, target: "_blank", rel: "noopener" if url.to_s.start_with?("/uploads/module_records/") %></small>
                 <% end %>
