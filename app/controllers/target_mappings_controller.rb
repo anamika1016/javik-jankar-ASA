@@ -161,10 +161,12 @@ class TargetMappingsController < ApplicationController
       match = @api_vrp_users.find { |u| u[:mobile_no] == @selected_mobile_no }
       @selected_jj_name = match ? match[:name] : @selected_mobile_no
     else
-      @is_vrp_login = user_record_type == "Vrp" ||
-                      user_type.casecmp?("vrp") ||
-                      vrp_in_db.present? ||
-                      api_vrp_match.present?
+      # A staff login is never a Jeevika Jankar login, even when a Vrp record or
+      # the external list happens to carry the same mobile number. Only fall back
+      # to those lookups when the session does not say what it is.
+      staff_login = user_record_type.casecmp?("User") || user_record_type.casecmp?("ModuleRecord")
+      @is_vrp_login = user_record_type.casecmp?("Vrp") || user_type.casecmp?("vrp")
+      @is_vrp_login ||= (vrp_in_db.present? || api_vrp_match.present?) unless staff_login
 
       if @is_vrp_login
         @selected_mobile_no = user_mobile.presence || vrp_in_db&.mobile_no.presence || api_vrp_match&.dig(:mobile_no)
@@ -174,6 +176,24 @@ class TargetMappingsController < ApplicationController
         match = @api_vrp_users.find { |u| u[:mobile_no] == @selected_mobile_no }
         @selected_jj_name = match ? match[:name] : @selected_mobile_no
       end
+    end
+
+    # Admin keeps the full external list. A staff login picks from the Jeevika
+    # Jankars under them, so the dropdown is never the whole organisation.
+    @jj_name_options = if is_admin || @is_vrp_login
+      []
+    else
+      jj_mapped_farmer_vrps.filter_map do |vrp|
+        mobile = vrp.mobile_no.to_s.strip
+        next if mobile.blank?
+
+        [[vrp.name.presence || vrp.user_name, mobile].compact_blank.join(" - "), mobile]
+      end.uniq { |_label, mobile| mobile }.sort_by { |label, _mobile| label.to_s.downcase }
+    end
+    # With exactly one Jeevika Jankar there is nothing to choose, so load them.
+    if !is_admin && !@is_vrp_login && @selected_mobile_no.blank? && @jj_name_options.one?
+      @selected_mobile_no = @jj_name_options.first.last
+      @selected_jj_name = @jj_name_options.first.first
     end
 
     @selected_month = params[:month].to_s.strip.presence || Time.current.month.to_s
@@ -746,6 +766,56 @@ class TargetMappingsController < ApplicationController
 
     target_mapping.errors.add(:vrp_id, "is not registered by you")
     false
+  end
+
+  # Which Jeevika Jankars sit under the signed-in staff member:
+  #   Cluster Incharge          -> the ones mapped to them by name
+  #   anyone posted to an office -> that office's (Agronomist, FCO, ...)
+  #   otherwise                  -> the ones they registered or were handed
+  def jj_mapped_farmer_vrps
+    scope = Vrp.all
+    scope = scope.where(status: 55) if Vrp.column_names.include?("status")
+    scope = scope.where(is_active: true) if Vrp.column_names.include?("is_active")
+
+    cluster_labels = jj_mapped_cluster_labels
+    if cluster_labels.any?
+      return scope.where.not(cluster_incharge: [nil, ""]).select do |vrp|
+        cluster_labels.include?(jj_mapped_person_key(vrp.cluster_incharge))
+      end
+    end
+
+    office_keys = jj_mapped_office_keys
+    if office_keys.any?
+      return scope.where.not(fcoc: [nil, ""]).select do |vrp|
+        office_keys.include?(AgreementVrpScope.office_key(vrp.fcoc))
+      end
+    end
+
+    scope.merge(own_registered_vrps).to_a
+  end
+
+  # A saved cluster name often carries the role in brackets.
+  def jj_mapped_person_key(value)
+    value.to_s.sub(/\s*\([^)]*\)\s*\z/, "").gsub(/\s+/, " ").strip.downcase
+  end
+
+  def jj_mapped_cluster_labels
+    roles = [
+      current_app_user&.dig("role"), current_app_user&.dig("role_name"),
+      current_app_user&.dig("stakeholder_role"), current_app_user&.dig("user_management_role")
+    ].compact_blank.join(" ").downcase
+    return [] unless roles.include?("cluster") || roles.match?(/\bcc\b/)
+
+    [current_app_user&.dig("name"), current_app_user&.dig("username")]
+      .compact_blank.map { |value| jj_mapped_person_key(value) }.uniq
+  end
+
+  def jj_mapped_office_keys
+    [
+      current_app_user&.dig("fcoc"), current_app_user&.dig("fcoc_name"),
+      current_app_user&.dig("office_name"), current_app_user&.dig("office"),
+      current_app_user&.dig("parent_office")
+    ].compact_blank.filter_map { |value| AgreementVrpScope.office_key(value).presence }.uniq
   end
 
   def own_registered_vrps

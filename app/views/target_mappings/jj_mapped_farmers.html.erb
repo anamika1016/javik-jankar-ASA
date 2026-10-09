@@ -48,22 +48,33 @@
         </div>
 
         <% unless @is_vrp_login %>
+          <%# A staff login chooses from the Jeevika Jankars under them; admin
+              keeps the full external list and the direct-mobile box. %>
+          <% staff_jj_picker = @jj_name_options.present? %>
           <div>
-            <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem; color: var(--text-color, #334155);">Jeevika Jankar Name (API List) *</label>
+            <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem; color: var(--text-color, #334155);">Jeevika Jankar Name<%= " (API List)" unless staff_jj_picker %> *</label>
             <select name="mobile_no" class="target-field" required style="width: 100%; padding: 0.6rem 0.75rem; border-radius: 6px; border: 1px solid var(--border-color, #cbd5e1); background: var(--bg-input, #fff); font-size: 0.9rem;">
               <option value="">Select Jeevika Jankar</option>
-              <% @api_vrp_users.each do |u| %>
-                <option value="<%= u[:mobile_no] %>" <%= 'selected' if @selected_mobile_no == u[:mobile_no] %>>
-                  <%= u[:label] %>
-                </option>
+              <% if staff_jj_picker %>
+                <% @jj_name_options.each do |label, mobile| %>
+                  <option value="<%= mobile %>" <%= 'selected' if @selected_mobile_no == mobile %>><%= label %></option>
+                <% end %>
+              <% else %>
+                <% @api_vrp_users.each do |u| %>
+                  <option value="<%= u[:mobile_no] %>" <%= 'selected' if @selected_mobile_no == u[:mobile_no] %>>
+                    <%= u[:label] %>
+                  </option>
+                <% end %>
               <% end %>
             </select>
           </div>
 
-          <div>
-            <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem; color: var(--text-color, #334155);">Mobile No (Optional Direct)</label>
-            <input type="text" name="vrp_mobile" value="<%= @selected_mobile_no %>" placeholder="e.g. 8839104575" style="width: 100%; padding: 0.6rem 0.75rem; border-radius: 6px; border: 1px solid var(--border-color, #cbd5e1); background: var(--bg-input, #fff); font-size: 0.9rem;">
-          </div>
+          <% unless staff_jj_picker %>
+            <div>
+              <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem; color: var(--text-color, #334155);">Mobile No (Optional Direct)</label>
+              <input type="text" name="vrp_mobile" value="<%= @selected_mobile_no %>" placeholder="e.g. 8839104575" style="width: 100%; padding: 0.6rem 0.75rem; border-radius: 6px; border: 1px solid var(--border-color, #cbd5e1); background: var(--bg-input, #fff); font-size: 0.9rem;">
+            </div>
+          <% end %>
         <% end %>
 
         <div style="display: flex; gap: 0.5rem;">
