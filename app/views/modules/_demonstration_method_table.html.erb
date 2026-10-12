@@ -1,11 +1,18 @@
+<div class="list-controls">
+  <div class="list-search">
+    <span>⌕</span>
+    <input type="search" placeholder="Search records" data-table-search="dashboard_report_table">
+  </div>
+</div>
 <div class="table-shell">
-  <table class="module-table compact-table">
+  <table class="module-table compact-table" id="dashboard_report_table" data-paginated-table data-page-size="25">
     <thead><tr><% headers.each do |header| %><th><%= header == "FFS" ? "Exposer" : header %></th><% end %></tr></thead>
     <tbody>
       <% rows.each do |row| %>
         <tr><% headers.each do |header| %><td><%= row[header] %></td><% end %></tr>
       <% end %>
-      <% if rows.empty? %><tr><td colspan="<%= headers.size %>">No demonstration method records found.</td></tr><% end %>
+      <% if rows.empty? %><tr><td colspan="<%= headers.size %>">No records found for the selected filters.</td></tr><% end %>
     </tbody>
   </table>
 </div>
+<div class="table-pagination" data-pagination-for="dashboard_report_table"></div>

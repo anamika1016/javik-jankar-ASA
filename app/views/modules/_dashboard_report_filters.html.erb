@@ -1,0 +1,8 @@
+<%= form_with url: request.path, method: :get, local: true, class: "list-controls" do %>
+  <% request.query_parameters.except("month", "search", "q", "page", "format").each do |key, value| %>
+    <% Array(value).each do |item| %><%= hidden_field_tag(value.is_a?(Array) ? "#{key}[]" : key, item) %><% end %>
+  <% end %>
+  <label>Month <%= select_tag :month, options_for_select([["All Months", ""]] + Date::MONTHNAMES.compact.map { |month| [month, month] }, params.key?(:month) ? params[:month] : DashboardDefaults.month), onchange: "this.form.requestSubmit()" %></label>
+  <%= search_field_tag :search, params[:search].presence || params[:q], placeholder: "Search all records" %>
+  <%= submit_tag "Search", class: "list-btn active" %>
+<% end %>

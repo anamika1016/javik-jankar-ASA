@@ -1,0 +1,18 @@
+<% upload_urls = ModuleUploadPaths.call(urls) %>
+<% if upload_urls.any? %>
+  <% upload_urls.each_with_index do |url, index| %>
+    <% if local_assigns[:preview] %>
+      <div class="training-upload-preview">
+        <%= link_to url, target: "_blank", rel: "noopener", class: "training-upload-thumbnail" do %>
+          <%= image_tag url, alt: "#{label} #{index + 1}", loading: "lazy" %>
+        <% end %>
+    <% end %>
+    <%= link_to url, target: "_blank", rel: "noopener", class: "grid-view-link", title: "View #{label} #{index + 1}", aria: { label: "View #{label} #{index + 1}" } do %>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+      <span>View <%= index + 1 %></span>
+    <% end %>
+    <% if local_assigns[:preview] %></div><% end %>
+  <% end %>
+<% else %>
+  <span>Not uploaded</span>
+<% end %>

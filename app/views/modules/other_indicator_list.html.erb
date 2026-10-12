@@ -1,7 +1,8 @@
+<%= javascript_import_module_tag "dashboard_reports" %>
 <% content_for :title, "Main Major Work Indicator - Other View List" %>
 <% selected_month = @dashboard_month_filter_value.presence %>
 <% month_options = Array(@other_indicator_month_options).compact_blank %>
-<section class="dashboard-page">
+<section class="dashboard-page" data-dashboard-report>
   <div class="dashboard-topbar">
     <div>
       <p class="vrp-eyebrow">Main Major Work Indicator - Other</p>
@@ -19,7 +20,7 @@
               onchange: "this.form.submit()", id: "other_indicator_month", class: "form-select" %>
       <% end %>
       <%= link_to "Back to Dashboard", dashboard_path(request.query_parameters.except("format", "other_indicator_list")), class: "list-btn active" %>
-      <%= link_to "Export Excel", other_indicator_list_path(request.query_parameters.merge(format: :xlsx)), class: "list-btn export" %>
+      <%= link_to "Export Excel", other_indicator_list_path(request.query_parameters.merge(format: :xlsx)), class: "list-btn export", data: { report_export: true } %>
     </div>
   </div>
 
@@ -36,7 +37,7 @@
       <table class="module-table compact-table" id="other_indicator_table" data-paginated-table data-page-size="25">
         <thead>
           <tr>
-            <% ModulesController::OTHER_INDICATOR_LIST_HEADERS.each_key do |label| %>
+            <% DashboardReportsController::OTHER_INDICATOR_LIST_HEADERS.each_key do |label| %>
               <th><%= label %></th>
             <% end %>
           </tr>
@@ -44,7 +45,7 @@
         <tbody>
           <% @other_indicator_rows.each do |row| %>
             <tr>
-              <% ModulesController::OTHER_INDICATOR_LIST_HEADERS.each_value do |key| %>
+              <% DashboardReportsController::OTHER_INDICATOR_LIST_HEADERS.each_value do |key| %>
                 <% value = row[key] %>
                 <%# Target and Achievement arrive as BigDecimal, which renders as
                     "0.5e3" unless it is formatted. Whole numbers stay whole. %>

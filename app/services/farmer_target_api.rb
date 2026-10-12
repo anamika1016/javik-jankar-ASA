@@ -22,9 +22,17 @@ class FarmerTargetApi
   end
 
   def list
-    ModuleRecord
+    records = ModuleRecord
       .where(module_slug: @module_slug)
       .order(created_at: :desc)
+      .to_a
+    unless admin_user? || vrp_login_user?
+      ids = records.filter_map do |record|
+        record.data["jeevika_jankar_id"].presence || record.data["vrp_id"].presence || record.data["select_vrp"].presence
+      end
+      @visibility_vrps_by_id = Vrp.where(id: ids).index_by { |vrp| vrp.id.to_s } if model_ready?(:Vrp)
+    end
+    records
       .select { |record| visible?(record) }
       .map { |record| record_payload(record) }
   end
@@ -83,13 +91,20 @@ class FarmerTargetApi
     end
   end
 
+  # Lightweight read path: filters run before farmer hydration and no form/people
+  # options are built for the mapped-farmers endpoint.
+  def training_mappings(filters = {})
+    @training_mapping_filters = filters.to_h.stringify_keys
+    training_target_mappings
+  end
+
   def record_payload(record)
     payload = {
       id: record.id,
       module_slug: record.module_slug,
       created_at: record.created_at,
       updated_at: record.updated_at,
-      data: record.data
+      data: record.module_slug == "training-form" ? TrainingParticipantCounts.data(record.data) : record.data
     }
     if record.module_slug == "training-form"
       payload[:photo_count] = TRAINING_PHOTO_UPLOAD_KEYS.flat_map { |key| Array(record.data[key]) }.compact_blank.uniq.size
@@ -227,6 +242,7 @@ class FarmerTargetApi
     return unless model_ready?(:Vrp)
 
     vrp_id = record.data["jeevika_jankar_id"].presence || record.data["vrp_id"].presence || record.data["select_vrp"].presence
+    return @visibility_vrps_by_id[vrp_id.to_s] if defined?(@visibility_vrps_by_id)
     return Vrp.find_by(id: vrp_id) if vrp_id.present?
 
     nil
@@ -571,35 +587,94 @@ class FarmerTargetApi
 
     activity_settings = main_activity_settings
     sub_activity_settings = sub_activity_settings_for(activity_settings)
-    @training_target_mappings = training_target_scope
-      .order(:ics_name, :ics_id, :village_name, :village_id, :id)
-      .filter_map do |target|
-        activity_setting = activity_setting_for(target, activity_settings, sub_activity_settings) || {}
+    targets = filtered_training_target_scope.includes(:vrp)
+      .order(:ics_name, :ics_id, :village_name, :village_id, :id).to_a
+    @training_completion_months = targets.map { |target| normalize_text(target.month_name) }.uniq
+    preload_training_mapping_farmers(targets)
+    @training_target_mappings = targets.filter_map do |target|
+      activity_setting = activity_setting_for(target, activity_settings, sub_activity_settings) || {}
 
-        farmer_ids = training_target_farmer_ids(target)
-        {
-          target_mapping_id: target.id.to_s,
-          vrp_id: target.vrp_id.to_s,
-          jeevika_jankar_name: target.vrp&.name.presence || target.vrp&.user_name.presence || "Jeevika Jankar ##{target.vrp_id}",
-          contact_number: target.vrp&.mobile_no.to_s.gsub(/\D/, "").last(10),
-          fco_id: target.fco_id.to_s,
-          fco_name: target.fco_name.presence || target.vrp&.fcoc.to_s,
-          fpo_id: target.fco_id.to_s,
-          fpo_name: target.fco_name.presence || target.vrp&.fcoc.to_s,
-          department: target.vrp&.fcoc.to_s.strip,
-          month: target.month_name.to_s.strip,
-          ics: target.ics_name.presence || target.ics_id,
-          village: target.village_name.presence || target.village_id,
-          main_activity_type: activity_setting[:main_activity_type].presence || "Training",
-          main_activity: target.main_activity_name.to_s.strip,
-          sub_activity: target.activity_name.to_s.strip,
-          new_farmer_target: new_farmer_target_mapping?(target),
-          completed_farmer_ids: completed_training_farmer_ids_for(target, farmer_ids),
-          farmers: training_farmers_for_ids(farmer_ids)
-        }
-      end
+      farmer_ids = training_target_farmer_ids(target)
+      {
+        target_mapping_id: target.id.to_s,
+        vrp_id: target.vrp_id.to_s,
+        jeevika_jankar_name: target.vrp&.name.presence || target.vrp&.user_name.presence || "Jeevika Jankar ##{target.vrp_id}",
+        contact_number: target.vrp&.mobile_no.to_s.gsub(/\D/, "").last(10),
+        fco_id: target.fco_id.to_s,
+        fco_name: target.fco_name.presence || target.vrp&.fcoc.to_s,
+        fpo_id: target.fco_id.to_s,
+        fpo_name: target.fco_name.presence || target.vrp&.fcoc.to_s,
+        department: target.vrp&.fcoc.to_s.strip,
+        month: target.month_name.to_s.strip,
+        ics: target.ics_name.presence || target.ics_id,
+        village: target.village_name.presence || target.village_id,
+        main_activity_type: activity_setting[:main_activity_type].presence || "Training",
+        main_activity: target.main_activity_name.to_s.strip,
+        sub_activity: target.activity_name.to_s.strip,
+        new_farmer_target: new_farmer_target_mapping?(target),
+        completed_farmer_ids: completed_training_farmer_ids_for(target, farmer_ids),
+        farmers: training_farmers_for_ids(farmer_ids)
+      }
+    end
       .reject { |mapping| mapping[:ics].blank? && mapping[:village].blank? }
       .uniq
+  end
+
+  def filtered_training_target_scope
+    scope = training_target_scope
+    filters = @training_mapping_filters || {}
+    { "month" => %w[month_name], "ics" => %w[ics_name ics_id],
+      "village" => %w[village_name village_id], "main_activity" => %w[main_activity_name],
+      "sub_activity" => %w[activity_name], "fco_id" => %w[fco_id],
+      "fco_name" => %w[fco_name] }.each do |key, columns|
+      value = filters[key].presence
+      value ||= filters["fpo_id"] if key == "fco_id"
+      value ||= filters["fpo_name"] if key == "fco_name"
+      next if value.blank?
+
+      predicates = columns.map { |column| "LOWER(TRIM(#{column}::text)) = :value" }
+      scope = scope.where(predicates.join(" OR "), value: value.to_s.strip.downcase)
+    end
+    scope
+  end
+
+  def preload_training_mapping_farmers(targets)
+    fallback_targets = targets.select { |target| target_farmer_ids(target).empty? }
+    @training_ics_mappings = if fallback_targets.any? && model_ready?(:VrpIcsMapping)
+      VrpIcsMapping.where(vrp_id: fallback_targets.map(&:vrp_id).uniq).to_a.group_by(&:vrp_id)
+    else
+      {}
+    end
+    @training_farmer_ids_by_target = {}
+    needs_location = []
+    targets.each do |target|
+      ids = target_farmer_ids(target)
+      ids = mapped_training_farmer_ids(target) if ids.empty?
+      ids.empty? ? needs_location << target : @training_farmer_ids_by_target[target.id] = ids
+    end
+    if needs_location.any? && model_ready?(:Afl)
+      # Index the farmer master once rather than scan it once per target.
+      @training_location_index = Hash.new { |hash, key| hash[key] = [] }
+      location_scope = Afl.all
+      { %w[fco_id fco] => needs_location.flat_map { |t| location_tokens([t.fco_id, t.fco_name]) },
+        %w[ics_id ics_name] => needs_location.flat_map { |t| location_tokens([t.ics_id, t.ics_name]) },
+        %w[village_id village_name] => needs_location.flat_map { |t| location_tokens([t.village_id, t.village_name]) } }.each do |columns, tokens|
+        predicates = columns.map { |column| "EXISTS (SELECT 1 FROM unnest(string_to_array(LOWER(COALESCE(#{column}, '')), '||')) token WHERE TRIM(token) IN (:tokens))" }
+        location_scope = location_scope.where(predicates.join(" OR "), tokens: tokens.uniq)
+      end
+      location_scope.pluck(:id, :fco_id, :fco, :ics_id, :ics_name, :village_id, :village_name).each do |id, *location|
+        location_tokens(location[0, 2]).product(location_tokens(location[2, 2]), location_tokens(location[4, 2])).each do |key|
+          @training_location_index[key] << id.to_s
+        end
+      end
+      needs_location.each { |target| @training_farmer_ids_by_target[target.id] = training_location_farmer_ids(target) }
+    end
+    ids = @training_farmer_ids_by_target.values.flatten.uniq
+    @training_farmer_payloads = model_ready?(:Afl) ? Afl.where(id: ids).select(:id, :farmer_name, :village_name, :father_name, :tracenet_no, :mobile_no, :khasara_no).order(:farmer_name, :id).to_a.to_h { |farmer| [farmer.id.to_s, training_farmer_payload(farmer)] } : {}
+  end
+
+  def location_tokens(values)
+    Array(values).compact_blank.flat_map { |value| value.to_s.split("||") }.map { |value| normalize_text(value) }.compact_blank.uniq
   end
 
   def training_target_month_options
@@ -1020,8 +1095,20 @@ class FarmerTargetApi
 
   def training_target_scope
     scope = TargetMapping.all
-    scope = scope.where(vrp_id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
-    scope = scope.where(vrp_id: cluster_visible_vrp_ids) if mapped_vrp_scope_active?
+    scope = scope.where(vrp_id: current_vrp_record&.id) if vrp_login_user?
+    if !admin_user? && !vrp_login_user?
+      if cluster_incharge_login?
+        scope = scope.where(vrp_id: cluster_visible_vrp_ids)
+      elsif AgreementVrpScope.user_office_keys(current_app_user).any?
+        offices = AgreementVrpScope.user_office_keys(current_app_user)
+        ids = Vrp.select(:id, :fcoc).select { |vrp| offices.include?(AgreementVrpScope.office_key(vrp.fcoc)) }.map(&:id)
+        scope = scope.where(vrp_id: ids)
+      elsif mapped_vrp_scope_active?
+        scope = scope.where(vrp_id: cluster_visible_vrp_ids)
+      else
+        scope = scope.none
+      end
+    end
     scope
   end
 
@@ -1148,16 +1235,22 @@ class FarmerTargetApi
     return [] if farmer_ids.blank?
 
     key = training_activity_key(target.month_name, target.main_activity_name, target.activity_name)
-    Array(training_completion_index[key]) & farmer_ids
+    completed = training_completion_index[key]
+    farmer_ids.select { |id| completed.include?(id) }
   end
 
   def training_completion_index
     return @training_completion_index if defined?(@training_completion_index)
 
-    @training_completion_index = Hash.new { |hash, key| hash[key] = [] }
+    @training_completion_index = Hash.new { |hash, key| hash[key] = Set.new }
     return @training_completion_index unless model_ready?(:ModuleRecord)
 
-    ModuleRecord.where(module_slug: "training-form").order(created_at: :desc).select { |record| active_module_record?(record) }.each do |record|
+    completion_scope = ModuleRecord.where(module_slug: "training-form")
+    if defined?(@training_completion_months)
+      completion_scope = completion_scope.where("LOWER(TRIM(COALESCE(data::jsonb ->> 'month', ''))) IN (?)", @training_completion_months)
+    end
+    completion_scope.select(:id, :data).find_each do |record|
+      next unless active_module_record?(record)
       next if @exclude_record_id.present? && record.id.to_s == @exclude_record_id.to_s
 
       summary = {
@@ -1168,7 +1261,7 @@ class FarmerTargetApi
       key = training_activity_key(summary[:month], summary[:training_topic], summary[:training_subject])
       next if key.all?(&:blank?)
 
-      @training_completion_index[key] |= Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?)
+      @training_completion_index[key].merge(Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?))
     end
 
     @training_completion_index
@@ -1184,20 +1277,21 @@ class FarmerTargetApi
     farmer_ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
     return [] if farmer_ids.blank?
 
-    Afl.where(id: farmer_ids).order(:farmer_name, :id).map do |farmer|
-      {
-        id: farmer.id.to_s,
-        farmer_name: farmer.farmer_name.presence || "Farmer ##{farmer.id}",
-        village_name: farmer.village_name.to_s,
-        father_name: farmer.father_name.to_s,
-        tracenet_no: farmer.tracenet_no.to_s,
-        mobile_no: farmer.mobile_no.to_s,
-        khasara_no: farmer.khasara_no.to_s
-      }
+    if defined?(@training_farmer_payloads)
+      return farmer_ids.filter_map { |id| @training_farmer_payloads[id] }.sort_by { |farmer| [farmer[:farmer_name], farmer[:id].to_i] }
     end
+    Afl.where(id: farmer_ids).order(:farmer_name, :id).map { |farmer| training_farmer_payload(farmer) }
+  end
+
+  def training_farmer_payload(farmer)
+    { id: farmer.id.to_s, farmer_name: farmer.farmer_name.presence || "Farmer ##{farmer.id}",
+      village_name: farmer.village_name.to_s, father_name: farmer.father_name.to_s,
+      tracenet_no: farmer.tracenet_no.to_s, mobile_no: farmer.mobile_no.to_s,
+      khasara_no: farmer.khasara_no.to_s }
   end
 
   def training_target_farmer_ids(target)
+    return @training_farmer_ids_by_target.fetch(target.id, []) if defined?(@training_farmer_ids_by_target)
     saved_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
     return saved_ids if saved_ids.any?
 
@@ -1210,7 +1304,8 @@ class FarmerTargetApi
   def mapped_training_farmer_ids(target)
     return [] unless model_ready?(:VrpIcsMapping)
 
-    VrpIcsMapping.where(vrp_id: target.vrp_id).select do |mapping|
+    mappings = defined?(@training_ics_mappings) ? Array(@training_ics_mappings[target.vrp_id]) : VrpIcsMapping.where(vrp_id: target.vrp_id)
+    mappings.select do |mapping|
       training_location_matches?(mapping.fco_id, mapping.fco_name, target.fco_id, target.fco_name) &&
         training_location_matches?(mapping.ics_id, mapping.ics_name, target.ics_id, target.ics_name) &&
         training_location_matches?(mapping.village_id, mapping.village_name, target.village_id, target.village_name)
@@ -1218,6 +1313,11 @@ class FarmerTargetApi
   end
 
   def training_location_farmer_ids(target)
+    if defined?(@training_location_index)
+      return location_tokens([target.fco_id, target.fco_name])
+        .product(location_tokens([target.ics_id, target.ics_name]), location_tokens([target.village_id, target.village_name]))
+        .flat_map { |key| @training_location_index[key] }.uniq
+    end
     return [] unless model_ready?(:Afl)
 
     Afl.all.select do |farmer|

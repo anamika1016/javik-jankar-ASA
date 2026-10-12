@@ -143,17 +143,20 @@ Rails.application.routes.draw do
   get "asa360-mapping", to: "asa360_master#index", as: :asa360_mapping
 
   root "sessions#new"
-  get "dashboard", to: "modules#dashboard", as: :dashboard
-  get "dashboard/cc-jj-work-status", to: "modules#dashboard", defaults: { work_status_list: "true" }, as: :cc_jj_work_status_list
-  get "dashboard/demonstration-method", to: "modules#dashboard", defaults: { demonstration_list: "true" }, as: :demonstration_method_list
-  get "dashboard/other-indicator", to: "modules#dashboard", defaults: { other_indicator_list: "true" }, as: :other_indicator_list
-  get "dashboard/vrp-list/:list_type", to: "modules#vrp_dashboard_list", as: :vrp_dashboard_list
+  get "dashboard", to: "dashboard_reports#dashboard", as: :dashboard
+  get "dashboard/cc-jj-work-status", to: "dashboard_reports#dashboard", defaults: { work_status_list: "true" }, as: :cc_jj_work_status_list
+  get "dashboard/report/:report_type", to: "dashboard_reports#report_list", as: :dashboard_report_list
+  get "dashboard/cc-target-status", to: "dashboard_reports#cc_target_status_list", as: :cc_target_status_list
+  get "dashboard/demonstration-method/farmers", to: "dashboard_reports#demonstration_method_farmers", as: :demonstration_method_farmers
+  get "dashboard/demonstration-method", to: "dashboard_reports#dashboard", defaults: { demonstration_list: "true" }, as: :demonstration_method_list
+  get "dashboard/other-indicator", to: "dashboard_reports#dashboard", defaults: { other_indicator_list: "true" }, as: :other_indicator_list
+  get "dashboard/vrp-list/:list_type", to: "dashboard_reports#vrp_dashboard_list", as: :vrp_dashboard_list
   delete "dashboard/vrp-mapped-villages/:id", to: "modules#destroy_vrp_mapped_village", as: :destroy_vrp_mapped_village
-  get "dashboard/farmer-training-participation", to: "modules#farmer_training_participation", as: :farmer_training_participation
-  get "dashboard/farmer-training-target-status", to: "modules#farmer_training_target_status", as: :farmer_training_target_status
-  get "dashboard/weekly-activity-target-report", to: "modules#weekly_activity_target_report", as: :weekly_activity_target_report
-  get "dashboard/farmer-participation-report", to: "modules#farmer_participation_report", as: :farmer_participation_report
-  get "dashboard/ics-wise-farmer-report", to: "modules#ics_wise_farmer_report", as: :ics_wise_farmer_report
+  get "dashboard/farmer-training-participation", to: "dashboard_reports#farmer_training_participation", as: :farmer_training_participation
+  get "dashboard/farmer-training-target-status", to: "dashboard_reports#farmer_training_target_status", as: :farmer_training_target_status
+  get "dashboard/weekly-activity-target-report", to: "dashboard_reports#weekly_activity_target_report", as: :weekly_activity_target_report
+  get "dashboard/farmer-participation-report", to: "dashboard_reports#farmer_participation_report", as: :farmer_participation_report
+  get "dashboard/ics-wise-farmer-report", to: "dashboard_reports#ics_wise_farmer_report", as: :ics_wise_farmer_report
 
   resources :users, except: [:show] do
     patch :toggle_status, on: :member

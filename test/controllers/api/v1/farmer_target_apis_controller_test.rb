@@ -324,6 +324,58 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
     User.create!(defaults.merge(attributes))
   end
 
+  test "training list corrects stale total without confusing registered farmers and attendance" do
+    record = ModuleRecord.create!(module_slug: "training-form", data: {
+      "male_count" => "07", "female_count" => "3", "total_farmer_count" => "2",
+      "farmer_count" => "99", "selected_farmer_ids" => ["1", "1", "2"]
+    })
+    get "/api/v1/farmer-trainings", headers: auth_headers, as: :json
+    assert_response :success
+    data = response.parsed_body["farmer_trainings"].find { |row| row["id"] == record.id }["data"]
+    assert_equal "7", data["male_count"]
+    assert_equal "3", data["female_count"]
+    assert_equal "10", data["total_farmer_count"]
+    assert_equal "2", data["farmer_count"]
+    assert_equal "2", record.reload.data["total_farmer_count"], "read path must not rewrite saved forms"
+  end
+
+  test "mapped farmer loading batches queries and preserves completion and month filters" do
+    vrp = create_vrp(fcoc: "FCO-C Test Office")
+    farmer = Afl.create!(farmer_name: "Mapped", fco_id: "991", fco: "Test Office", ics_id: "ics-fast", ics_name: "ICS Fast", village_id: "v-fast", village_name: "Village Fast")
+    30.times do |i|
+      TargetMapping.create!(vrp: vrp, fco_id: "991", fco_name: "Test Office", ics_id: "ics-fast", ics_name: "ICS Fast", village_id: "v-fast", village_name: "Village Fast",
+        month_name: "July", main_activity_name: "Training", activity_name: "Subject #{i}", target_quantity: 1, afl_ids: [farmer.id])
+    end
+    TargetMapping.create!(vrp: vrp, fco_id: "991", fco_name: "Test Office", ics_id: "ics-fast", ics_name: "ICS Fast", village_id: "v-fast", village_name: "Village Fast",
+      month_name: "August", main_activity_name: "Training", activity_name: "Outside month", target_quantity: 1, afl_ids: [farmer.id])
+    ModuleRecord.create!(module_slug: "training-form", data: { "month" => "July", "main_activity" => "Training", "sub_activity" => "Subject 0", "selected_farmer_ids" => [farmer.id.to_s] })
+    queries = []
+    ActiveSupport::Notifications.subscribed(->(*args) { queries << args.last[:sql] unless args.last[:cached] }, "sql.active_record") do
+      get "/api/v1/farmer-trainings/mapped-farmers", params: { month: "July" }, headers: auth_headers, as: :json
+    end
+    assert_response :success
+    body = response.parsed_body
+    assert_equal 30, body["target_mapping_ids"].size
+    assert_equal 1, body["count"]
+    assert_equal 1, body["completed_count"]
+    assert_equal 0, body["available_count"]
+    assert_equal farmer.id.to_s, body["mapped_farmers"].first["id"]
+    assert_operator queries.grep(/FROM "afls"/).size, :<=, 2, "AFL queries must not grow per target"
+    assert_operator queries.grep(/FROM "vrps"/).size, :<=, 3, "JJ queries must not grow per target"
+  end
+
+  test "mapped farmers can use the location fallback without repeated AFL scans" do
+    vrp = create_vrp(fcoc: "FCO-C Fallback")
+    farmer = Afl.create!(farmer_name: "Fallback Farmer", fco_id: "993", fco: "Fallback", ics_id: "ics-f", ics_name: "ICS F", village_id: "v-f", village_name: "Village F")
+    target = TargetMapping.create!(vrp: vrp, fco_id: "993", fco_name: "Fallback", ics_id: "ics-f", ics_name: "ICS F", village_id: "v-f", village_name: "Village F",
+      month_name: "July", main_activity_name: "Training", activity_name: "Fallback Subject", target_quantity: 1, afl_ids: [])
+    get "/api/v1/farmer-trainings/mapped-farmers", params: { month: "July" }, headers: auth_headers, as: :json
+    assert_response :success
+    assert_equal [target.id.to_s], response.parsed_body["target_mapping_ids"]
+    assert_equal [farmer.id.to_s], response.parsed_body["mapped_farmers"].map { |row| row["id"] }
+    assert_equal 1, response.parsed_body["available_count"]
+  end
+
   def create_vrp(attributes = {})
     defaults = {
       name: "Test JJ",

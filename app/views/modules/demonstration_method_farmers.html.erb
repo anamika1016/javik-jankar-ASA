@@ -1,0 +1,40 @@
+<% content_for :title, "Targeted Farmers" %>
+<% headers = @demonstration_farmers.first&.keys || ["Farmer ID", "Farmer Name", "Father Name", "TraceNet No", "Mobile No"] %>
+<section class="dashboard-page">
+  <div class="dashboard-topbar">
+    <div>
+      <h1>Targeted Farmers<%= " — #{@demonstration_farmer_vrp.name}" if @demonstration_farmer_vrp %></h1>
+      <p>
+        <% if @demonstration_farmer_month.present? %>Month: <%= @demonstration_farmer_month %> | <% end %>
+        Total: <%= @demonstration_farmers.size %>
+      </p>
+    </div>
+    <div class="dashboard-actions">
+      <%= link_to "Back", demonstration_method_list_path(request.query_parameters.except("vrp_id", "fco_id", "format")), class: "list-btn active" %>
+      <%= link_to "Export Excel", demonstration_method_farmers_path(request.query_parameters.merge(format: :xlsx)), class: "list-btn export" %>
+    </div>
+  </div>
+
+  <section class="module-card">
+    <div class="list-controls">
+      <div class="list-search">
+        <span>⌕</span>
+        <input type="search" placeholder="Search farmers" data-report-search aria-label="Search farmers">
+      </div>
+    </div>
+    <div class="table-shell">
+      <table class="module-table compact-table" data-report-search-table>
+        <thead><tr><% headers.each do |h| %><th><%= h %></th><% end %></tr></thead>
+        <tbody>
+          <% if @demonstration_farmers.any? %>
+            <% @demonstration_farmers.each do |row| %>
+              <tr><% headers.each do |h| %><td><%= row[h].presence || "-" %></td><% end %></tr>
+            <% end %>
+          <% else %>
+            <tr><td colspan="<%= headers.size %>">No targeted farmers found.</td></tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

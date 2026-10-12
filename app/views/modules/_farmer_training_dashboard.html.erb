@@ -6,8 +6,8 @@
 <% participation_week_filter_value = @participation_week_filter_value.to_s %>
 <% filters_ready = selected_month.present? && selected_sub_activity.present? %>
 <% status_cards = Array(@training_participation_status_cards || []).reject { |card| card[:status].to_s == "pending" } %>
-<% participation_path_params = { status: "total", ics: params[:ics].presence || params[:ics_name].presence }.compact_blank %>
-<% participation_path_params[:training_month] = participation_selected_month if participation_selected_month.present? %>
+<% participation_path_params = request.query_parameters.symbolize_keys.except(:format, :page).merge(status: "total", ics: params[:ics].presence || params[:ics_name].presence).compact_blank %>
+<% participation_path_params[:training_month] = participation_selected_month.presence || "all" %>
 <% participation_path_params[:training_fcoc] = participation_fcoc_filter_value if participation_fcoc_filter_value.present? %>
 <% participation_path_params[:week] = participation_week_filter_value if participation_week_filter_value.present? %>
 <% unique_status_path_params = participation_path_params.merge(status: "unique") %>

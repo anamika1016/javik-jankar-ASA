@@ -77,6 +77,7 @@
               <div class="dashboard-summary-actions">
                 <span class="dashboard-summary-action-popover">
                   <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true } %>
+                <%= link_to "Export Excel", card[:export_path], class: "table-action" if card[:export_path].present? %>
                   <% if Array(card[:popup_items]).any? %>
                     <span class="dashboard-card-hover-popup" role="tooltip">
                       <% Array(card[:popup_items]).each do |item| %>
@@ -419,12 +420,12 @@
       </div>
 
       <div class="dashboard-filter-field">
-        <label for="dash_main_activity">Main Activity</label>
+        <label for="dash_main_activity">Main Major Work Indicator</label>
         <%= f.select :main_activity, options_for_select([["All Main Activities", ""]] + Array(@filter_main_activity_options).map { |v| [v, v] }, @dashboard_main_activity_filter_value), {}, id: "dash_main_activity", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
       </div>
 
       <div class="dashboard-filter-field">
-        <label for="dash_sub_activity">Sub Activity</label>
+        <label for="dash_sub_activity">Sub Major Work Indicator</label>
         <%= f.select :sub_activity, options_for_select([["All Sub Activities", ""]] + Array(@filter_sub_activity_options).map { |v| [v, v] }, params[:sub_activity]), {}, id: "dash_sub_activity", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
       </div>
 
@@ -442,7 +443,7 @@
 
       <%# ICS Name (cascades from the selected activity, FCO and Cluster Incharge) %>
       <div class="dashboard-filter-field">
-        <label for="dash_ics">ICS Name/Block Name</label>
+        <label for="dash_ics">ICS Name</label>
         <%= f.select :ics,
               options_for_select(
                 [["All ICS", ""]] + (@filter_ics_options || []).map { |v| [v, v] },
@@ -487,8 +488,8 @@
   <% all_dashboard_summary_cards = Array(@dashboard_summary_cards) %>
   <% demonstration_method_cards = Array(@demonstration_method_cards).presence || all_dashboard_summary_cards.select { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
   <% dashboard_summary_cards = all_dashboard_summary_cards.reject { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
-  <%# Dashboard Summary is training-specific, so it stays hidden for Other activities. %>
-  <% if dashboard_summary_cards.any? && !@vrp_dashboard && farmer_activity_mode %>
+  <%# Master counts remain visible for every work indicator selection. %>
+  <% if dashboard_summary_cards.any? && !@vrp_dashboard %>
     <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel" id="dashboard_summary_boxes">
       <div class="module-card-header training-participation-status-header">
         <div>
@@ -564,6 +565,8 @@
       </div>
     </section>
 
+  <% end %>
+
     <% if @dashboard_other_activity_totals.present? %>
       <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel demonstration-method-panel" id="other_major_work_indicator_boxes" style="margin-top: 20px;">
         <div class="module-card-header training-participation-status-header">
@@ -638,7 +641,7 @@
                     <strong><%= status %></strong>
                     <div class="metric-card-group-items">
                       <% { "toatl_cc" => "CC", "toatl_jj" => "JJ" }.each do |key, label| %>
-                        <%= link_to cc_jj_work_status_list_path(request.query_parameters), class: "metric-card-group-item" do %>
+                        <%= link_to cc_jj_work_status_list_path(request.query_parameters.merge(fcoc: fco_id, work_status: status)), class: "metric-card-group-item" do %>
                           <span><%= label %></span><strong><%= row ? row[key] : 0 %></strong>
                         <% end %>
                       <% end %>
@@ -662,7 +665,6 @@
         <div class="metric-card-popup-body" data-card-popup-body></div>
       </dialog>
     </div>
-  <% end %>
 
 </section>
 <% end %>

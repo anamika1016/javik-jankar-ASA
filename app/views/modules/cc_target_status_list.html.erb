@@ -1,0 +1,52 @@
+<%= javascript_import_module_tag "dashboard_reports" %>
+<% content_for :title, "CC Target Status" %>
+<section class="dashboard-page" data-dashboard-report>
+  <div class="dashboard-topbar">
+    <h1>CC Target Status</h1>
+    <div class="dashboard-actions">
+      <%= link_to "Back to Dashboard", dashboard_path(request.query_parameters.except("format")), class: "list-btn active" %>
+      <%= link_to "Export Excel", cc_target_status_list_path(request.query_parameters.merge(format: :xlsx)), class: "list-btn export", data: { report_export: true } %>
+    </div>
+  </div>
+  <section class="module-card">
+    <%= render "dashboard_report_filters" %>
+    <p>Total: <%= @cc_target_rows.size %></p>
+    <div class="list-search"><input type="search" placeholder="Search records" data-table-search="cc_target_report_table"></div>
+    <div class="table-shell">
+      <table class="module-table vrp-list-table" id="cc_target_report_table" data-paginated-table data-page-size="25">
+        <thead>
+          <tr>
+            <th>Cluster Coordinator (CC)</th>
+            <th>FCO</th>
+            <th>Jeevika Jankar</th>
+            <th>Target</th>
+            <th>Achieved</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if @cc_target_rows.any? %>
+            <% @cc_target_rows.each do |r| %>
+              <tr>
+                <td><strong><%= r["cluster_incharge"] %></strong></td>
+                <td><%= r["fpo_name"] %></td>
+                <td><%= Array(r["jj_names"]).join(", ").presence || "-" %></td>
+                <td><strong><%= r["target"] %></strong></td>
+                <td><%= r["achievement"] %></td>
+                <td>
+                  <% badge_style = { "Red" => "color:#c0392b;background:rgba(214,69,69,0.12);", "Yellow" => "color:#b07800;background:rgba(217,148,0,0.12);", "Green" => "color:#1a8a34;background:rgba(26,138,52,0.12);" }.fetch(r["status"].to_s, "") %>
+                  <span style="font-size:0.8rem;font-weight:700;padding:3px 10px;border-radius:20px;<%= badge_style %>"><%= r["status"] %></span>
+                </td>
+              </tr>
+            <% end %>
+          <% else %>
+            <tr>
+              <td colspan="6" style="text-align:center;color:#64748b;padding:24px;">No CC Target data found for the selected filters.</td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-pagination" data-pagination-for="cc_target_report_table"></div>
+  </section>
+</section>

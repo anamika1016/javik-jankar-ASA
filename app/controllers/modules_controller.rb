@@ -38,7 +38,7 @@ class ModulesController < ApplicationController
                 :jeevika_bill_vrp, :jeevika_bill_cc_name, :bill_display_date, :bill_display_datetime,
                 :approval_sequence_from_level, :module_record_field_value, :module_upload_public_url,
                 :module_upload_public_urls,
-                :approval_level_display_label, :approval_level_label_for_sequence,
+                :approval_level_display_label, :approval_level_label_for_sequence, :approval_user_display_label,
                 :training_participation_status_label, :training_participation_status_caption,
                 :training_target_status_label, :training_target_status_caption, :training_target_status_for_percent,
                 :training_trainee_department_default, :seed_distribution_target_mappings,
@@ -10968,6 +10968,7 @@ class ModulesController < ApplicationController
 
   def jeevika_bill_status_label(record)
     status = record.data["status"].presence || "Submitted (Not sent for approval)"
+    status = status.sub(/\APending at\s+(.+)\z/i) { "Pending at #{approval_user_display_label(Regexp.last_match(1))}" }
     return status if status.to_s.downcase.match?(/rejected|returned/)
 
     history_actions = jeevika_bill_approval_history(record).map { |history| history.data["action"].to_s }
@@ -10979,7 +10980,7 @@ class ModulesController < ApplicationController
       return status if steps.blank?
 
       step = jeevika_bill_current_approval_step(record)
-      return "Pending at #{step.data["approver_approved_by"]}" if step
+      return "Pending at #{approval_user_display_label(step.data["approver_approved_by"])}" if step
       return "Final Approved"
     end
 
@@ -12378,6 +12379,7 @@ class ModulesController < ApplicationController
     ].compact.uniq
     value = first_present_data(record, *keys)
     return approval_level_display_label(value) if field == "Approval Level"
+    return approval_user_display_label(value) if field == "Approver (Approved By)" && value.present?
 
     # Saved transfers carry a trailing record id for lookup; read it as names.
     if record.module_slug == "jeevika-jankar-transfer" && field == "Jeevika Jankar Names"
@@ -15366,6 +15368,11 @@ class ModulesController < ApplicationController
     role.present? ? "#{username}(#{role})" : username
   end
 
+  def approval_user_display_label(value)
+    @approval_user_display_directory ||= ApprovalUserDisplayDirectory.new
+    @approval_user_display_directory.label(value)
+  end
+
   def approval_level_display_label(value)
     text = value.to_s.strip
     return text if text.blank?
@@ -15580,7 +15587,7 @@ class ModulesController < ApplicationController
 
     if vrp_approval_sent?(vrp)
       step = dashboard_current_approval_step_for_visibility(vrp)
-      approver = step&.data&.[]("approver_approved_by").presence || "Approver"
+      approver = approval_user_display_label(step&.data&.[]("approver_approved_by").presence || "Approver")
       "Pending at #{approver}"
     else
       "Submitted"

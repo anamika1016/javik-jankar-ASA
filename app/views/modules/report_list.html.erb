@@ -1,0 +1,23 @@
+<%= javascript_import_module_tag "dashboard_reports" %>
+<% content_for :title, @report_title %>
+<section class="dashboard-page" data-dashboard-report>
+  <div class="dashboard-topbar">
+    <div><p class="vrp-eyebrow">Dashboard</p><h1><%= @report_title %></h1></div>
+    <div class="dashboard-actions">
+      <%= link_to "Back to Dashboard", dashboard_path(request.query_parameters.except("format")), class: "list-btn active" %>
+      <%= link_to "Export Excel", dashboard_report_list_path(@report_type, request.query_parameters.merge(format: :xlsx)), class: "list-btn export", data: { report_export: true } %>
+    </div>
+  </div>
+  <section class="module-card">
+    <%= form_with url: dashboard_report_list_path(@report_type), method: :get, local: true, class: "list-controls" do %>
+      <% request.query_parameters.except("month", "search", "format", "page").each do |key, value| %>
+        <% Array(value).each do |item| %><%= hidden_field_tag(value.is_a?(Array) ? "#{key}[]" : key, item) %><% end %>
+      <% end %>
+      <label>Month <%= select_tag :month, options_for_select([["All Months", ""]] + @report_months.map { |month| [month, month] }, @dashboard_month_filter_value), onchange: "this.form.requestSubmit()" %></label>
+      <%= search_field_tag :search, params[:search], placeholder: "Search all records", aria: { label: "Search all records" } %>
+      <%= submit_tag "Search", class: "list-btn active" %>
+    <% end %>
+    <p>Total: <%= @report_rows.size %></p>
+    <%= render "demonstration_method_table", headers: @report_headers, rows: @report_rows %>
+  </section>
+</section>

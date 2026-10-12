@@ -1,40 +1,43 @@
 <% content_for :title, "#{@training_participation_title} Farmer Training List" %>
-<% filter_params = {
+<% filter_params = request.query_parameters.symbolize_keys.except(:status, :page, :format).merge({
   training_month: @training_selected_month.presence,
   training_sub_activity: @training_selected_sub_activity.presence,
-  training_fcoc: @training_selected_fcoc.presence
-}.compact_blank %>
-<% status_counts = @training_participation_totals || { unique: 0, green: 0, yellow: 0, red: 0, pending: 0, total: 0 } %>
+  training_fcoc: @training_selected_fcoc.presence,
+  training_method: @training_selected_method.presence,
+  search: @training_participation_search.presence,
+  week: @training_selected_week.presence
+}).compact_blank %>
+<% dashboard_back_params = filter_params.except(:week, :search, :per_page) %>
+<% dashboard_back_params[:weekly_target_week] = @training_selected_week if @training_selected_week.present? %>
+<% status_counts = @training_participation_totals || { unique: 0, training_unique: 0, completed_map: 0, green: 0, yellow: 0, red: 0, pending: 0, total: 0 } %>
+<% rendered_rows = @training_participation_page_rows || @training_participation_rows %>
+<% total_count = @training_participation_total_count || @training_participation_rows.size %>
 
 <section class="dashboard-page">
   <div class="dashboard-topbar">
     <div>
       <p class="vrp-eyebrow">Farmer Training Participation Status</p>
-      <h1><%= @training_participation_title %> Farmers</h1>
+      <h1><%= @training_participation_title.to_s.sub(/\s*Farmers?\s*\z/i, "") %> Farmers</h1>
       <p><%= @training_participation_caption %></p>
     </div>
 
     <div class="dashboard-actions">
-      <%= link_to "Back to Dashboard", dashboard_path(filter_params), class: "list-btn active" %>
+      <%= link_to "Back to Dashboard", dashboard_path(dashboard_back_params), class: "list-btn active" %>
       <%= link_to "Export Excel", farmer_training_participation_path(filter_params.merge(status: @training_participation_status, format: :xlsx)), class: "list-btn export" %>
+      <%= link_to "Download Attachments", farmer_training_participation_path(filter_params.merge(status: @training_participation_status, format: :zip)), class: "list-btn export" %>
     </div>
   </div>
 
   <section class="module-card training-participation-status-card">
     <div class="training-participation-boxes compact">
-      <%= link_to farmer_training_participation_path(filter_params.merge(status: "total")), class: "training-participation-box total #{'is-active' if @training_participation_status == 'total'}" do %>
-        <span>Total Training Farmer</span>
-        <strong><%= status_counts[:total].to_i %></strong>
-        <small>Overall farmers included in selected filters.</small>
-      <% end %>
       <%= link_to farmer_training_participation_path(filter_params.merge(status: "unique")), class: "training-participation-box total #{'is-active' if @training_participation_status == 'unique'}" do %>
-        <span>Total Unique Farmers</span>
+        <span>Mapped Farmer</span>
         <strong><%= status_counts[:unique].to_i %></strong>
-        <small>Sirf wahi farmer jinki training selected month me ek hi baar hui.</small>
+        <small>Unique mapped farmers for the selected filters.</small>
       <% end %>
-      <% %w[green yellow red pending].each do |status| %>
-        <%= link_to farmer_training_participation_path(filter_params.merge(status: status)), class: "training-participation-box #{status} #{'is-active' if @training_participation_status == status}" do %>
-          <span><%= status == "pending" ? "Pending Farmer" : training_participation_status_label(status) %></span>
+      <% %w[red yellow green].each do |status| %>
+        <%= link_to farmer_training_participation_path(filter_params.merge(status: status)), class: "training-participation-box #{status} #{'is-active' if (%w[red no_activity no_training_mapping no_training training_mapped_no_entry no_entry].include?(@training_participation_status) && status == 'red') || @training_participation_status == status}" do %>
+          <span><%= training_participation_status_label(status) %></span>
           <strong><%= status_counts[status.to_sym].to_i %></strong>
           <small><%= training_participation_status_caption(status) %></small>
         <% end %>
@@ -42,39 +45,87 @@
     </div>
   </section>
 
+  <% if %w[red no_activity no_training_mapping no_training training_mapped_no_entry no_entry].include?(@training_participation_status) %>
+    <div class="red-breakdown-tabs" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;">
+      <%= link_to "All Red (No Training)", farmer_training_participation_path(filter_params.merge(status: "red")), class: "table-action #{'export' if @training_participation_status == 'red'}" %>
+      <%= link_to "No Activity Mapping", farmer_training_participation_path(filter_params.merge(status: "no_activity")), class: "table-action #{'export' if @training_participation_status == 'no_activity'}" %>
+      <%= link_to "No Training Mapping", farmer_training_participation_path(filter_params.merge(status: "no_training_mapping")), class: "table-action #{'export' if %w[no_training_mapping no_training].include?(@training_participation_status)}" %>
+      <%= link_to "Training Mapped But No Entry", farmer_training_participation_path(filter_params.merge(status: "training_mapped_no_entry")), class: "table-action #{'export' if %w[training_mapped_no_entry no_entry].include?(@training_participation_status)}" %>
+    </div>
+  <% end %>
+
   <section class="module-card">
     <div class="module-card-header">
       <div>
-        <h2><%= @training_participation_title %> Farmer List</h2>
+        <h2><%= @training_participation_title.to_s.sub(/\s*Farmers?\s*\z/i, "") %> Farmer List</h2>
         <p class="module-subtitle">
-          Total: <%= @training_participation_rows.size %>
-          <% if @training_selected_month.present? %>
-            | Month: <%= @training_selected_month %>
+          Total: <%= total_count %>
+          <% if @training_participation_total_pages.to_i > 1 %>
+            | Page <%= @training_participation_page %> of <%= @training_participation_total_pages %>
           <% end %>
           <% if @training_selected_sub_activity.present? %>
             | Sub Activity: <%= @training_selected_sub_activity %>
           <% end %>
-          <% if @training_selected_fcoc.present? %>
-            | FCOC: <%= @training_selected_fcoc %>
+          <% if @training_selected_method.present? %>
+            | Training Method: <%= @training_selected_method %>
+          <% end %>
+          <% if @training_selected_week.present? %>
+            | Week: W<%= @training_selected_week %>
           <% end %>
         </p>
       </div>
-      <button type="button" class="list-btn export" data-export-table="training_participation_list">Export</button>
+      <%= link_to "Export Excel", farmer_training_participation_path(filter_params.merge(status: @training_participation_status, format: :xlsx)), class: "list-btn export" %>
     </div>
 
+    <%= form_with url: farmer_training_participation_path, method: :get, class: "list-controls" do %>
+      <% request.query_parameters.except("search", "page", "format").each do |key, value| %>
+        <% Array(value).each do |item| %>
+          <%= hidden_field_tag(value.is_a?(Array) ? "#{key}[]" : key, item) %>
+        <% end %>
+      <% end %>
+      <div class="list-search">
+        <span aria-hidden="true">⌕</span>
+        <%= search_field_tag :search, @training_participation_search, placeholder: "Search all records", aria: { label: "Search all records" } %>
+      </div>
+      <%= submit_tag "Search", class: "list-btn active" %>
+      <%= link_to "Clear", farmer_training_participation_path(request.query_parameters.except("search", "page")), class: "list-btn" if @training_participation_search.present? %>
+    <% end %>
+
+    <% if @mapped_farmer_details %>
+      <div class="table-shell">
+        <table class="module-table compact-table" data-report-search-table>
+          <thead><tr><% @mapped_farmer_details.columns.each do |column| %><th><%= { "vrp" => "JJ", "vrp_name" => "JJ Name", "vrp_id" => "JJ ID", "cluster_incharge" => "ClusterCoordinator", "main_activities" => "Main Major Work Indicator", "sub_activities" => "Sub Major Work Indicator", "training_register_urls" => "Training Register Upload", "training_photo_urls" => "Training Photo Upload with Geo Tag" }[column] || column.humanize %></th><% end %></tr></thead>
+          <tbody>
+            <% @mapped_farmer_details.rows.each do |values| %>
+              <tr><% values.each_with_index do |value, index| %><td>
+                <% column = @mapped_farmer_details.columns[index] %>
+                <% if %w[training_register_urls training_photo_urls].include?(column) %>
+                  <%= render "training_participation_uploads", urls: value, label: column == "training_register_urls" ? "training register" : "training photo" %>
+                <% else %>
+                  <%= value.presence || "-" %>
+                <% end %>
+              </td><% end %></tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% else %>
     <div class="table-shell">
-      <table class="module-table compact-table training-participation-table upload-report-table" id="training_participation_list" data-paginated-table data-page-size="20">
+      <table class="module-table compact-table training-participation-table upload-report-table" id="training_participation_list" data-report-search-table>
         <thead>
           <tr>
             <th>Farmer</th>
-            <th>Mobile</th>
             <th>TraceNet No</th>
             <th>ICS</th>
             <th>Village</th>
-            <th>VRP</th>
+            <th>FCOC</th>
+            <th>ClusterCoordinator</th>
+            <th>Jeevika Jankar Name</th>
+            <th>Registered By</th>
             <th>Target Month</th>
             <th>Main Activity</th>
             <th>Sub Activity</th>
+            <th>Training Method</th>
             <th>Training Count</th>
             <th>Status</th>
             <th>Training Dates</th>
@@ -84,57 +135,61 @@
           </tr>
         </thead>
         <tbody>
-          <% if @training_participation_rows.any? %>
-            <% @training_participation_rows.each do |row| %>
+          <% if rendered_rows.any? %>
+            <% rendered_rows.each do |row| %>
               <tr>
                 <td>
                   <%= row[:farmer_name] %>
                   <% if row[:father_name].present? %>
-                    <small><%= farmer_identity_meta(row[:village], row[:father_name], row[:tracenet_no]) %></small>
+                    <small>Father: <%= row[:father_name] %></small>
                   <% end %>
                 </td>
-                <td><%= row[:mobile_no].presence || "-" %></td>
                 <td><%= row[:tracenet_no].presence || "-" %></td>
                 <td><%= row[:ics].presence || "-" %></td>
                 <td><%= row[:village].presence || "-" %></td>
+                <td><%= row[:fcoc].presence || "-" %></td>
+                <td><%= row[:cluster_incharge].presence || "-" %></td>
                 <td><%= row[:vrp].presence || "-" %></td>
+                <td><%= row[:registered_by].presence || "-" %></td>
                 <td><%= row[:months].presence || "-" %></td>
                 <td><%= row[:main_activities].presence || "-" %></td>
                 <td><%= row[:sub_activities].presence || "-" %></td>
+                <td><%= row[:training_method].to_s.gsub(/\bFFS\b/, "FFS Exposure").presence || "-" %></td>
                 <td><%= row[:attendance_count].to_i %></td>
                 <td><span class="training-status-pill <%= row[:status] %>"><%= row[:status_label] %></span></td>
                 <td><%= row[:training_dates].presence || "-" %></td>
                 <td><%= row[:last_training_date].presence || "-" %></td>
                 <td class="upload-report-column" data-export-value="<%= Array(row[:training_register_urls]).join(', ') %>">
-                  <% if Array(row[:training_register_urls]).any? %>
-                    <% Array(row[:training_register_urls]).each_with_index do |url, index| %>
-                      <%= link_to "View #{index + 1}", url, target: "_blank", rel: "noopener", class: "grid-view-link" %>
-                    <% end %>
-                  <% else %>
-                    -
-                  <% end %>
+                  <%= render "training_participation_uploads", urls: row[:training_register_urls], label: "training register" %>
                 </td>
                 <td class="upload-report-column" data-export-value="<%= Array(row[:training_photo_urls]).join(', ') %>">
-                  <% if Array(row[:training_photo_urls]).any? %>
-                    <% Array(row[:training_photo_urls]).each_with_index do |url, index| %>
-                      <%= link_to url, target: "_blank", rel: "noopener", class: "upload-thumbnail-link", title: "Open photo #{index + 1}" do %>
-                        <%= image_tag url, alt: "Training photo #{index + 1}", class: "upload-thumbnail", loading: "lazy" %>
-                      <% end %>
-                    <% end %>
-                  <% else %>
-                    -
-                  <% end %>
+                  <%= render "training_participation_uploads", urls: row[:training_photo_urls], label: "training photo" %>
                 </td>
               </tr>
             <% end %>
           <% else %>
             <tr>
-              <td colspan="15">No farmers found for this status.</td>
+              <td colspan="18">No farmers found for this status.</td>
             </tr>
           <% end %>
         </tbody>
       </table>
     </div>
-    <div class="table-pagination" data-pagination-for="training_participation_list"></div>
+    <% end %>
+    <% if @training_participation_total_pages.to_i > 1 %>
+      <div class="table-pagination">
+        <% if @training_participation_page.to_i > 1 %>
+          <%= link_to "Previous", farmer_training_participation_path(filter_params.merge(status: @training_participation_status, page: @training_participation_page - 1, per_page: @training_participation_per_page)), class: "page-link" %>
+        <% else %>
+          <span class="page-link disabled">Previous</span>
+        <% end %>
+        <span class="page-link disabled">Page <%= @training_participation_page %> / <%= @training_participation_total_pages %></span>
+        <% if @training_participation_page.to_i < @training_participation_total_pages.to_i %>
+          <%= link_to "Next", farmer_training_participation_path(filter_params.merge(status: @training_participation_status, page: @training_participation_page + 1, per_page: @training_participation_per_page)), class: "page-link" %>
+        <% else %>
+          <span class="page-link disabled">Next</span>
+        <% end %>
+      </div>
+    <% end %>
   </section>
 </section>

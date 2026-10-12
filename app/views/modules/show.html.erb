@@ -120,7 +120,7 @@
                 <% is_last = (idx == total_steps - 1) %>
                 <% label = is_last ? "Financial Approver" : approval_level_label_for_sequence(seq).sub(" Approval", " Approver") %>
                 <% step_hist = jeevika_bill_approval_history(detail_record).find { |h| approval_sequence_from_level(h.data["approval_level"]) == seq && ["Approved", "Rejected", "Returned"].include?(h.data["action"]) } %>
-                <% approver_name = step.data["approver_approved_by"].presence || "-" %>
+                <% approver_name = approval_user_display_label(step.data["approver_approved_by"].presence || "-") %>
                 <% role_label = step.data["approval_level"].to_s.sub(/\A(first|second|third|fourth|fifth)\s+approval\z/i, "").strip.presence %>
                 <% display_label = role_label.present? && !is_last ? "#{label} (#{role_label})" : label %>
                 <% if step_hist %>
@@ -437,7 +437,7 @@
             <div class="approval-progress-card <%= state %>">
               <div class="approval-progress-icon"><%= state == "approved" ? "✓" : (closing_action == "Returned" ? "↩" : (state == "rejected" ? "×" : "•")) %></div>
               <h3><%= ordinal_label %></h3>
-              <p><%= step.data["approver_approved_by"].presence || "-" %></p>
+              <p><%= approval_user_display_label(step.data["approver_approved_by"].presence || "-") %></p>
               <% if step_history %>
                 <small><%= step_history.data["action"] %> at <%= step_history.data["action_at"] %></small>
                 <% if step_history.data["remarks"].present? %>
@@ -2176,6 +2176,7 @@
             <% if list_record_groups.any? %>
               <% list_record_groups.each do |group_records| %>
                 <% record = group_records.first %>
+                <% session_counts = TrainingParticipantCounts.for_session(group_records) if @slug == "training-form-list" %>
                 <% grouped_farmer_ids = group_records.flat_map { |item| Array(item.data["selected_farmer_ids"]).map(&:to_s) }.reject(&:blank?).uniq %>
                 <% grouped_main_activities = group_records.flat_map { |item| Array(item.data["main_activities"].presence || item.data["main_activity"].presence || item.data["training_topic"]) }.map(&:to_s).map(&:strip).reject(&:blank?).uniq %>
                 <% grouped_training_methods = group_records.flat_map { |item| Array(item.data["training_method"]) }.map(&:to_s).map(&:strip).reject(&:blank?).uniq %>
@@ -2222,7 +2223,8 @@
                       <% value = grouped_main_activities.join(" • ") if field == "Main Activity" %>
                       <% value = grouped_sub_activities.join("\n") if field == "Sub Activity" %>
                       <% value = grouped_training_methods.map { |method| method == "FFS" ? "Exposer" : method }.join(" • ") if field == "Training Method" %>
-                      <% value = grouped_farmer_ids.size if ["Farmer Count", "Total Farmer Count"].include?(field) %>
+                      <% value = grouped_farmer_ids.size if field == "Farmer Count" %>
+                      <% value = session_counts[field_key] if ["Male Count", "Female Count", "Total Farmer Count"].include?(field) %>
                     <% end %>
                     <% if @slug == "access-control-list" && field == "Module Name" %>
                       <% value = Array(record.data["module_names"].presence || value).compact_blank %>

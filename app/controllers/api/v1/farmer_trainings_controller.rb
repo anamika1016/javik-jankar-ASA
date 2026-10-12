@@ -77,7 +77,7 @@ module Api
       end
 
       def farmers
-        mappings = filter_form_mappings(Array(farmer_target_api.form_options[:target_mappings]))
+        mappings = filter_form_mappings(farmer_target_api.training_mappings(params.permit(:month, :ics, :village, :main_activity, :sub_activity, :fco_id, :fpo_id, :fco_name, :fpo_name)))
         all_farmers, available_farmers, completed_farmer_ids = farmer_lists_for(mappings)
 
         render json: {
@@ -104,10 +104,11 @@ module Api
       end
 
       def mapped_farmers
-        mappings = filter_form_mappings(Array(farmer_target_api.form_options[:target_mappings]))
+        mappings = filter_form_mappings(farmer_target_api.training_mappings(params.permit(:month, :ics, :village, :main_activity, :sub_activity, :fco_id, :fpo_id, :fco_name, :fpo_name)))
         farmers, _available_farmers, completed_farmer_ids = farmer_lists_for(mappings)
+        completed_ids = completed_farmer_ids.to_set
         rows = farmers.map do |farmer|
-          completed = completed_farmer_ids.include?(farmer[:id].to_s)
+          completed = completed_ids.include?(farmer[:id].to_s)
           farmer.merge(is_completed: completed, is_available: !completed)
         end
 
@@ -142,7 +143,8 @@ module Api
         farmers = mappings
           .flat_map { |mapping| Array(mapping[:farmers]) }
           .uniq { |farmer| farmer[:id].to_s }
-        available_farmers = farmers.reject { |farmer| completed_farmer_ids.include?(farmer[:id].to_s) }
+        completed_ids = completed_farmer_ids.to_set
+        available_farmers = farmers.reject { |farmer| completed_ids.include?(farmer[:id].to_s) }
         [farmers, available_farmers, completed_farmer_ids]
       end
 

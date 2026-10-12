@@ -22,6 +22,26 @@ class TrainingFormListScopeTest < ActionDispatch::IntegrationTest
     post login_path, params: { login: user.user_name, password: "secret" }
   end
 
+  test "grouped training attendance uses one coherent session count and retains selected farmer count" do
+    common = { "month" => "September", "ics_block" => "ICS Count", "gram_name" => "Attendance Session",
+      "trainer_name" => "Count Trainer", "training_date" => "2026-09-01", "selected_farmer_ids" => ["1", "2"] }
+    ModuleRecord.create!(module_slug: "training-form", data: common.merge("main_activity" => "Main", "sub_activity" => "First", "male_count" => "2", "female_count" => "1", "total_farmer_count" => "99"))
+    ModuleRecord.create!(module_slug: "training-form", data: common.merge("main_activity" => "Main", "sub_activity" => "Second", "male_count" => "7", "female_count" => "3", "total_farmer_count" => "99"))
+    admin = User.create!(user_name: "tfl_count_admin", password: "secret", first_name: "Adm", user_type: "admin", status: "Active")
+    login(admin)
+    get module_path("training-form-list")
+    assert_response :success
+    table = Nokogiri::HTML(response.body).at_css("table.module-table")
+    headers = table.css("thead th").map { |cell| cell.text.strip }
+    rows = table.css("tbody tr").select { |row| row.text.include?("Attendance Session") }
+    assert_equal 1, rows.size
+    cells = rows.first.css("td").map { |cell| cell.text.strip }
+    assert_equal "7", cells[headers.index("Male Count")]
+    assert_equal "3", cells[headers.index("Female Count")]
+    assert_equal "10", cells[headers.index("Total Farmer Count")]
+    assert_equal "2", cells[headers.index("Farmer Count")]
+  end
+
   test "an admin sees every training record" do
     admin = User.create!(user_name: "tfl_admin", password: "secret", first_name: "Adm",
                          user_type: "admin", status: "Active")
