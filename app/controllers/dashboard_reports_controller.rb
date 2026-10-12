@@ -1376,7 +1376,7 @@ class DashboardReportsController < ModulesController
     vrp_version = dashboard_table_version(Vrp)
 
     [
-      dashboard_agronomist_all_months? ? "dashboard/training-participation-counts/agronomist-fco-v1" : "jj-dashboard/training-participation-counts/v6",
+      dashboard_agronomist_all_months? ? "dashboard/training-participation-counts/agronomist-fco-v2" : "jj-dashboard/training-participation-counts/v7",
       Digest::SHA256.hexdigest([
         dashboard_current_user_office_keys.sort,
         dashboard_visible_vrp_ids.sort,
@@ -1781,7 +1781,14 @@ class DashboardReportsController < ModulesController
     quoted_ids = ids.empty? ? "NULL" : ids.map { |id| connection.quote(id) }.join(", ")
     quoted_names = values.map { |name| connection.quote(name) }.join(", ")
     name_column = farmer ? "fco" : "fco_name"
-    "(LOWER(BTRIM(#{table_alias}.fco_id)) IN (#{quoted_ids}) OR LOWER(BTRIM(#{table_alias}.#{name_column})) IN (#{quoted_names}))"
+    office_keys = values.map { |value| AgreementVrpScope.office_key(value) }.compact_blank.uniq
+    quoted_keys = office_keys.empty? ? "NULL" : office_keys.map { |key| connection.quote(key) }.join(", ")
+    normalized_name = <<~SQL.squish
+      BTRIM(REGEXP_REPLACE(REGEXP_REPLACE(
+        BTRIM(REGEXP_REPLACE(LOWER(COALESCE(#{table_alias}.#{name_column}, '')), '[^a-z0-9]+', ' ', 'g')),
+        '^(fcoc|fco( c)?)( |$)', ''), ' fco( c)?$', ''))
+    SQL
+    "(LOWER(BTRIM(#{table_alias}.fco_id)) IN (#{quoted_ids}) OR LOWER(BTRIM(#{table_alias}.#{name_column})) IN (#{quoted_names}) OR #{normalized_name} IN (#{quoted_keys}))"
   end
 
   def participation_popup_ids(rows, ids)
@@ -2399,8 +2406,14 @@ class DashboardReportsController < ModulesController
     specific_jj_scope = dashboard_filter_param(:cluster_incharge, :post, :vrp_id).present?
     return Afl.all if dashboard_global_view_user? && !specific_jj_scope
     unless module_cluster_incharge_login? || vrp_login_user? || specific_jj_scope
-      ids = dashboard_afl_fco_ids_for(dashboard_current_user_office_names)
-      return Afl.where(fco_id: ids)
+      offices = dashboard_current_user_office_names.reject do |office|
+        DashboardFcoDirectory.invalid?(office) || DashboardFcoDirectory.invalid?(AgreementVrpScope.office_key(office))
+      end
+      return Afl.none if offices.empty?
+
+      # VRP scopes office staff by both saved office IDs and office names.
+      # Normalize legacy spellings too; blank/spaced IDs must not hide farmers.
+      return Afl.where(participation_fco_predicate("afls", offices, farmer: true))
     end
     target_sql = dashboard_visible_target_scope.select(:afl_ids).to_sql
     Afl.where("afls.id::text IN (SELECT jsonb_array_elements_text(CASE WHEN jsonb_typeof(visible_targets.afl_ids::jsonb) = 'array' THEN visible_targets.afl_ids::jsonb ELSE '[]'::jsonb END) FROM (#{target_sql}) visible_targets)")
@@ -2732,10 +2745,8 @@ class DashboardReportsController < ModulesController
   def dashboard_total_afl_scope
     scope = dashboard_visible_farmer_scope.where.not(id: nil)
     office = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
-    values = dashboard_summary_fco_filter_values(office)
-    if values.any?
-      ids = dashboard_afl_fco_ids_for(values)
-      scope = ids.any? ? scope.where(fco_id: ids) : scope.none
+    if office.present? && !dashboard_all_filter_value?(office)
+      scope = scope.where(participation_fco_predicate("afls", office, farmer: true))
     end
     scope
   end
