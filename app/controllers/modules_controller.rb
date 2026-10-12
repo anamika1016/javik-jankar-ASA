@@ -1948,8 +1948,15 @@ class ModulesController < ApplicationController
     completed_ids = targets.flat_map { |target| completed_training_farmer_ids_for(target, target_live_farmer_ids(target)) }.map(&:to_s).uniq
     completed_lookup = completed_ids.index_with(true)
 
+    # Which farmers the targets were actually mapped against, so the form can
+    # show them apart from the rest of the village it also offers.
+    mapped_lookup = targets.flat_map { |target| target_farmer_ids(target) }.map(&:to_s).index_with(true)
+
     farmers = training_farmers_for_ids(farmer_ids).map do |farmer|
-      farmer.merge(already_included: completed_lookup.key?(farmer[:id].to_s))
+      farmer.merge(
+        already_included: completed_lookup.key?(farmer[:id].to_s),
+        in_target: mapped_lookup.key?(farmer[:id].to_s)
+      )
     end
 
     missing_external = farmers.select { |f| f[:record_missing] && f[:id].to_s !~ /\A\d+\z/ }

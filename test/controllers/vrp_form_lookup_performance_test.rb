@@ -1,6 +1,20 @@
 require "test_helper"
 
 class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
+  test "form option readers share records without changing labels or active filtering" do
+    record = ModuleRecord.create!(module_slug: "state-master", data: { "state_name" => "Read State", "status" => "Active" })
+    ModuleRecord.create!(module_slug: "state-master", data: { "state_name" => "Hidden State", "status" => "Inactive" })
+    controller = VrpsController.new
+    queries = []
+    callback = ->(*args) { queries << args.last[:sql] if args.last[:sql].match?(/SELECT.*FROM "module_records"/m) }
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      assert_equal [["Read State", record.id]], controller.send(:module_record_options, "state-master", "state_name")
+      assert_equal ["Read State"], controller.send(:text_module_record_options, "state-master", "state_name")
+      assert_equal [record.id], controller.send(:active_records_for_location, "state-master").map(&:id)
+    end
+    assert_equal 1, queries.size
+  end
+
   test "plain hierarchy labels and registration enrichment share one user query" do
     User.create!(first_name: "Plain", last_name: "Coordinator", user_name: "plain_lookup_cc",
       email: "plain-lookup-cc@example.test", password: "secret", role: "Cluster Incharge", status: "Active")

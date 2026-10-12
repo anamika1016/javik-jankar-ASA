@@ -2790,11 +2790,19 @@ function initDeferredLayoutPage() {
 	        const checked = isSelected ? " checked" : "";
 	        const includedClass = farmer.already_included ? " already-included" : "";
 	        const includedBadge = farmer.already_included ? '<b class="training-included-badge">Already Completed</b>' : "";
+	        // Mark the mapped target farmers apart from the extra village ones,
+	        // only once the server has told us which is which.
+	        const knowsTarget = Object.prototype.hasOwnProperty.call(farmer, "in_target");
+	        const inTarget = Boolean(farmer.in_target);
+	        const extraClass = knowsTarget && !inTarget ? " seed-farmer-extra" : "";
+	        const targetBadge = knowsTarget
+	          ? `<em class="seed-farmer-tag ${inTarget ? "in-target" : "extra"}">${inTarget ? "Target" : "Other village farmer"}</em>`
+	          : "";
 	        return `
-	          <label class="vrp-ics-farmer-item${includedClass}">
+	          <label class="vrp-ics-farmer-item${includedClass}${extraClass}">
 	            <input type="checkbox" name="module_record[selected_farmer_ids][]" value="${escapeHtml(farmer.id)}" data-training-farmer-checkbox${checked}>
 	            <span>
-	              <strong>${escapeHtml(farmer.farmer_name || `Farmer #${farmer.id}`)} ${includedBadge}</strong>
+	              <strong>${escapeHtml(farmer.farmer_name || `Farmer #${farmer.id}`)} ${includedBadge}</strong>${targetBadge}
 	              <small>${escapeHtml(meta)}</small>
 	            </span>
 	          </label>

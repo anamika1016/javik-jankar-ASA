@@ -6,11 +6,11 @@ class PaymentAdviceSmsSender
   DEFAULT_API_URL = "https://sms.yoursmsbox.com/api/sendhttp.php".freeze
   DEFAULT_TIMEOUT_SECONDS = 10
 
-  AUTH_KEY = "37317061706c39353312".freeze
-  SENDER = "PLOAPL".freeze
-  TEMPLATE_ID = "1707175758077109741".freeze
+  AUTH_KEY = OtpSmsSender::ASA_AUTH_KEY
+  SENDER = "ACTFSA".freeze
+  TEMPLATE_ID = "1777179179837744556".freeze
   MESSAGE_TEMPLATE =
-    "Payment Advice Notification:- Your NEFT Txn. with Ref. No. %<reference_number>s for Rs. %<amount>s has been credited to beneficiary : %<beneficiary_name>s on %<transaction_date>s . Ploughman Agro Private Limited".freeze
+    "Payment Advice Notification:- Your NEFT Txn. with Ref. No. %<reference_number>s for Rs. %<amount>s has been credited to beneficiary : %<beneficiary_name>s on %<transaction_date>s . Action for social advancement(ASA)".freeze
 
   Result = Struct.new(:success, :message, :response_code, :response_body, keyword_init: true) do
     def success?

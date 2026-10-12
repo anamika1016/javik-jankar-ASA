@@ -1729,9 +1729,7 @@ class VrpsController < ApplicationController
     return [] unless model_ready?(:ModuleRecord)
 
     field_keys = Array(field_key)
-    ModuleRecord
-      .where(module_slug: module_slug)
-      .order(created_at: :desc)
+    vrp_form_records_for(module_slug)
       .select { |record| active_module_record?(record) }
       .filter_map do |record|
         label = module_slug == "gram-panchayat-master" ? gram_panchayat_name_from_record(record) : first_present_data(record, *field_keys)
@@ -1745,9 +1743,7 @@ class VrpsController < ApplicationController
     return [] unless model_ready?(:ModuleRecord)
 
     field_keys = Array(field_key)
-    ModuleRecord
-      .where(module_slug: module_slug)
-      .order(created_at: :desc)
+    vrp_form_records_for(module_slug)
       .select { |record| active_module_record?(record) }
       .flat_map { |record| field_keys.filter_map { |key| record.data[key].presence } }
       .uniq
@@ -1756,9 +1752,7 @@ class VrpsController < ApplicationController
   def role_management_mappings
     return [] unless model_ready?(:ModuleRecord)
 
-    stakeholder_role_mappings = ModuleRecord
-      .where(module_slug: "stakeholder-role")
-      .order(created_at: :desc)
+    stakeholder_role_mappings = vrp_form_records_for("stakeholder-role")
       .select { |record| active_module_record?(record) }
       .flat_map do |record|
         stakeholder_role = first_present_data(record, "stakeholder_role").to_s.strip
@@ -1779,9 +1773,7 @@ class VrpsController < ApplicationController
         end
       end
 
-    role_mappings = ModuleRecord
-      .where(module_slug: "role-management")
-      .order(created_at: :desc)
+    role_mappings = vrp_form_records_for("role-management")
       .select { |record| active_module_record?(record) }
       .flat_map do |record|
         role = first_present_data(record, "role", "role_name").to_s.strip
@@ -1800,9 +1792,7 @@ class VrpsController < ApplicationController
         end
       end
 
-    user_management_role_mappings = ModuleRecord
-      .where(module_slug: "user-management-role")
-      .order(created_at: :desc)
+    user_management_role_mappings = vrp_form_records_for("user-management-role")
       .select { |record| active_module_record?(record) }
       .flat_map do |record|
         user_management_role = first_present_data(record, "user_management_role").to_s.strip
@@ -1820,9 +1810,7 @@ class VrpsController < ApplicationController
         end
       end
 
-    person_type_mappings = ModuleRecord
-      .where(module_slug: "person-type")
-      .order(created_at: :desc)
+    person_type_mappings = vrp_form_records_for("person-type")
       .select { |record| active_module_record?(record) }
       .flat_map do |record|
         person_type = first_present_data(record, "person_type").to_s.strip
@@ -1970,10 +1958,14 @@ class VrpsController < ApplicationController
   end
 
   def active_records_for_location(module_slug)
-    ModuleRecord
-      .where(module_slug: module_slug)
-      .order(created_at: :desc)
+    vrp_form_records_for(module_slug)
       .select { |record| active_module_record?(record) }
+  end
+
+  def vrp_form_records_for(module_slug)
+    @vrp_form_records_by_slug ||= {}
+    @vrp_form_records_by_slug[module_slug] ||= ModuleRecord.where(module_slug: module_slug)
+      .order(created_at: :desc).to_a
   end
 
   def location_row(record, values)

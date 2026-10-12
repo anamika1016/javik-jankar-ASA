@@ -60,6 +60,7 @@ class VrpAgreementsController < ApplicationController
       .where.not(agreement_accepted_at: nil)
       .order(agreement_accepted_at: :desc)
 
+    @agreement_village_resolver = AgreementVillageName.new.preload(scope.to_a)
     scope.map do |vrp|
         {
           id: vrp.id,
@@ -85,7 +86,7 @@ class VrpAgreementsController < ApplicationController
   end
 
   def agreement_village_name(vrp)
-    AgreementVillageName.call(vrp)
+    @agreement_village_resolver ? @agreement_village_resolver.call(vrp) : AgreementVillageName.call(vrp)
   end
 
   def vrp_agreement_enabled?
