@@ -23,7 +23,7 @@ class DashboardDemonstrationMethodReport
     "Status"
   ].freeze
 
-  def initialize(targets:, month: "August")
+  def initialize(targets:, month: "August", cache: nil)
     if targets.is_a?(ActiveRecord::Relation) && !targets.loaded?
       @target_ids = targets.pluck(:id).uniq
       @fco_ids = nil
@@ -35,6 +35,7 @@ class DashboardDemonstrationMethodReport
       @fco_ids = list.filter_map { |t| t.fco_id if t.respond_to?(:fco_id) }
         .map(&:to_s).reject(&:blank?).uniq.presence
     end
+    @cache = cache
     @month = month.to_s.strip.downcase
   end
 
@@ -48,7 +49,7 @@ class DashboardDemonstrationMethodReport
       else
         "LOWER(TRIM(mr.data::jsonb ->> 'month')) = #{connection.quote(@month)}"
       end
-      raw_rows = connection.select_all(<<~SQL).to_a
+      raw_rows = (@cache || connection).select_all(<<~SQL).to_a
         WITH scoped_targets AS (
           #{scope.to_sql}
         ), village_target AS (
@@ -188,7 +189,7 @@ class DashboardDemonstrationMethodReport
       scope = demonstration_target_scope
       scope = scope.where("LOWER(TRIM(month_name)) = ?", @month) unless @month.blank? || @month == "all"
       month_filter = @month.blank? || @month == "all" ? "TRUE" : "LOWER(TRIM(mr.data::jsonb ->> 'month')) = #{connection.quote(@month)}"
-      connection.select_all(<<~SQL).to_a
+      (@cache || connection).select_all(<<~SQL).to_a
         WITH scoped_targets AS (
           #{scope.to_sql}
         ), village_target AS (

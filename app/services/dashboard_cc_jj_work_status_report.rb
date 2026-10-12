@@ -64,7 +64,7 @@ class DashboardCcJjWorkStatusReport
     }
     sql = sql.gsub(/%\{(\w+)\}/) { replacements.fetch(Regexp.last_match(1).to_sym) }
     sql = @calculator.send(:dashboard_scoped_training_sql, sql)
-    connection.select_all(sql).to_a.map do |row|
+    @calculator.send(:dashboard_sql_cache).select_all(sql).map do |row|
       if kind == "rows"
         row["vrp_name"] = row["vrp_name"].presence || "Not mapped"
         row["cluster_incharge"] = row["cluster_incharge"].presence || "Not assigned"

@@ -73,6 +73,68 @@ class DashboardReportsControllerTest < ActionDispatch::IntegrationTest
     assert_equal [@target.id.to_s], jj.training_mappings.map { |mapping| mapping[:target_mapping_id] }
   end
 
+  test "new FCO with a missing AFL office label shows farmer participation and JJ boxes" do
+    staff = User.create!(user_name: "shahdol_dashboard", password: "secret", first_name: "Office", role: "Agronomist", office_name: "FCO-Shahdol", user_type: "User", status: "Active")
+    jj = create_vrp("Shahdol JJ", "FCO-Shahdol", "Shahdol CC")
+    farmer = Afl.create!(fco_id: "451", fco: "NULL", ics_id: "ics-shahdol", ics_name: "ICS Shahdol", village_id: "v-shahdol", village_name: "Village Shahdol", tracenet_no: "SHAHDOL-1", farmer_name: "Shahdol Farmer")
+    target = create_target(jj, farmer, DashboardDefaults.month, "Shahdol Activity")
+    target.update!(fco_name: "Shahdol")
+    ModuleRecord.create!(module_slug: "training-form", data: {
+      "jeevika_jankar_id" => jj.id.to_s, "month" => DashboardDefaults.month,
+      "main_activity" => "Farmers' Training", "sub_activity" => "Shahdol Activity", "main_activity_type" => "Training",
+      "training_method" => "OPG Training", "selected_farmer_ids" => [farmer.id.to_s]
+    })
+    login(staff)
+    get dashboard_path
+    assert_response :success
+    assert_select ".training-status-panel .training-participation-box.total > strong", text: "1"
+    assert_select ".training-status-panel .training-participation-box.yellow > strong", text: "1"
+    assert_select "#dashboard_summary_boxes .dashboard-summary-box", text: /Total Farmer Count\s+1/
+    assert_select ".metric-card-group-title", text: "FCO-wise JJ Requirement"
+    assert_select ".metric-card-group-title", text: "Gender Count"
+    assert_select ".metric-card-group-item", text: /Shahdol Male\s+1/
+    get farmer_training_participation_path, params: { training_month: DashboardDefaults.month, training_fcoc: "FCO-Shahdol", status: "unique" }
+    assert_response :success
+    assert_includes response.body, "Shahdol Farmer"
+    refute_includes response.body, "Outside Farmer"
+  end
+
+  test "office aliases include every target ID and prefer AFL ID for office lookup" do
+    create_target(@mine, @farmer, "September", "Alternate ID").update!(fco_id: "13", fco_name: "Bhawanipatna")
+    DashboardFcoDirectory::Store.reset
+    assert_equal "995", DashboardFcoDirectory.id_for("FCO-Bhawanipatna")
+    assert_equal ["13", "995"], DashboardFcoDirectory.ids_for("Bhawanipatna").sort
+    assert_equal 1, DashboardFcoDirectory.names.count("Bhawanipatna")
+    assert_equal ["13", "995"], calculator(@staff).send(:training_fcoc_ids_from_param, "Bhawanipatna").sort
+  end
+
+  test "dashboard aggregate cache reuses reads and refreshes immediately after changes" do
+    DashboardSqlCache::STORE.clear
+    sql = "SELECT target_quantity FROM target_mappings WHERE id = #{@target.id}"
+    queries = []
+    ActiveSupport::Notifications.subscribed(->(*args) { queries << args.last[:sql] }, "sql.active_record") do
+      first = DashboardSqlCache.new.select_all(sql)
+      first.first["target_quantity"] = 999
+      assert_equal 1, DashboardSqlCache.new.select_all(sql).first["target_quantity"].to_i
+    end
+    assert_equal 1, queries.count { |query| query == sql }
+    @target.update!(target_quantity: 3)
+    assert_equal 3, DashboardSqlCache.new.select_all(sql).first["target_quantity"].to_i
+    assert_empty DashboardSqlCache.new.select_all("SELECT target_quantity FROM target_mappings WHERE id = -1")
+  end
+
+  test "office JJ requirement and gender boxes stay visible when no JJ is mapped" do
+    staff = User.create!(user_name: "empty_office_dashboard", password: "secret", first_name: "Office", role: "Agronomist", office_name: "FCO-Empty Office", user_type: "User", status: "Active")
+    Afl.create!(fco_id: "452", fco: "Empty Office", farmer_name: "Office Farmer", tracenet_no: "EMPTY-1")
+    login(staff)
+    get dashboard_path
+    assert_response :success
+    assert_select ".metric-card-group-title", text: "FCO-wise JJ Requirement"
+    assert_select ".metric-card-group-title", text: "Gender Count"
+    assert_select ".metric-card-group-item", text: /Empty Office Male\s+0/
+    refute_includes response.body, "Outside Farmer"
+  end
+
   def create_vrp(name, office, cluster)
     Vrp.create!(name: name, father_husband_name: "F", gender: :male,
       date_of_birth: Date.new(1990, 1, 1), date_of_joining: Date.current,

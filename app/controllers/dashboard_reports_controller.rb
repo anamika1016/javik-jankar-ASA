@@ -201,7 +201,7 @@ class DashboardReportsController < ModulesController
     @filtered_vrps = v_scope
     @filtered_targets = t_scope
     if params[:demonstration_list] == "true"
-      @demonstration_method_report = DashboardDemonstrationMethodReport.new(targets: t_scope, month: @dashboard_month_filter_value)
+      @demonstration_method_report = DashboardDemonstrationMethodReport.new(targets: t_scope, month: @dashboard_month_filter_value, cache: dashboard_sql_cache)
       @demonstration_method_rows = dashboard_search_rows(@demonstration_method_report.rows)
       respond_to do |format|
         format.html { render :demonstration_method_list }
@@ -270,7 +270,8 @@ class DashboardReportsController < ModulesController
     if dashboard_filters_active || module_cluster_incharge_login?
       bill_scope = filtered_vrp_ids.any? ? bill_scope.where("data::jsonb ->> 'select_vrp' IN (?)", filtered_vrp_ids) : ModuleRecord.none
     end
-    bill_records = bill_summary_scope(bill_scope).to_a
+    bill_records = dashboard_sql_cache.select_all(bill_summary_scope(bill_scope).to_sql)
+      .map { |row| ModuleRecord.instantiate(row) }
     unless admin_dashboard_user?
       bill_records = bill_records.select { |r| jeevika_jankar_bill_record_visible?(r) }
     end
@@ -857,7 +858,7 @@ class DashboardReportsController < ModulesController
       FROM mapped_rows
     SQL
 
-    row = ActiveRecord::Base.connection.exec_query(
+    row = dashboard_sql_cache.select_all(
       ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
     ).first || {}
 
@@ -985,7 +986,7 @@ class DashboardReportsController < ModulesController
   def demonstration_method_cards
     report = @demonstration_method_report || DashboardDemonstrationMethodReport.new(
       targets: @filtered_targets || dashboard_target_mappings,
-      month: params.key?(:month) ? dashboard_filter_param(:month) : DashboardDefaults.month)
+      month: params.key?(:month) ? dashboard_filter_param(:month) : DashboardDefaults.month, cache: dashboard_sql_cache)
 
     summary_rows = report.summary
 
@@ -1182,7 +1183,7 @@ class DashboardReportsController < ModulesController
       LEFT JOIN training_entries te ON te.farmer_id = mf.afl_id
     SQL
 
-    row = ActiveRecord::Base.connection.exec_query(
+    row = dashboard_sql_cache.select_all(
       ActiveRecord::Base.send(:sanitize_sql_array, [sql, target_binds.merge(training_binds)])
     ).first || {}
     {
@@ -1376,7 +1377,7 @@ class DashboardReportsController < ModulesController
     vrp_version = dashboard_table_version(Vrp)
 
     [
-      dashboard_agronomist_all_months? ? "dashboard/training-participation-counts/agronomist-fco-v1" : "jj-dashboard/training-participation-counts/v2",
+      dashboard_agronomist_all_months? ? "dashboard/training-participation-counts/agronomist-fco-v1" : "jj-dashboard/training-participation-counts/v3",
       Digest::SHA256.hexdigest([
         dashboard_current_user_office_keys.sort,
         dashboard_visible_vrp_ids.sort,
@@ -1628,7 +1629,7 @@ class DashboardReportsController < ModulesController
 
     binds = { fco_ids: fco_ids.map(&:downcase) }
     binds[:month_name] = selected_month.strip.downcase unless all_months
-    rows = ActiveRecord::Base.connection.exec_query(
+    rows = dashboard_sql_cache.select_all(
       ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
     ).to_a
 
@@ -1721,7 +1722,7 @@ class DashboardReportsController < ModulesController
     SQL
 
     binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase), fco_values: fco_values }
-    rows = ActiveRecord::Base.connection.exec_query(
+    rows = dashboard_sql_cache.select_all(
       ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
     ).to_a
 
@@ -1799,7 +1800,7 @@ class DashboardReportsController < ModulesController
     SQL
 
     binds = { fco_ids: fco_ids.map(&:downcase) }
-    rows = ActiveRecord::Base.connection.exec_query(
+    rows = dashboard_sql_cache.select_all(
       ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
     ).to_a
 
@@ -1878,7 +1879,7 @@ class DashboardReportsController < ModulesController
     SQL
     binds = { fco_ids: fco_ids }
     binds[:month_name] = month unless all_months
-    @farmer_training_attendance_counts_by_fco[key] = ActiveRecord::Base.connection.exec_query(
+    @farmer_training_attendance_counts_by_fco[key] = dashboard_sql_cache.select_all(
       ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
     ).to_a
   end
@@ -2546,12 +2547,19 @@ class DashboardReportsController < ModulesController
   end
 
   def dashboard_fco_names
-    names = DashboardFcoDirectory.names
+    names = (DashboardFcoDirectory.names + dashboard_vrps.map(&:fcoc) +
+      (dashboard_global_view_user? ? [] : dashboard_current_user_office_names))
+      .compact_blank.map { |value| DashboardFcoDirectory.bare_name(value) }.uniq.sort
     values = if dashboard_global_view_user?
       selected = dashboard_filter_param(:fcoc, :fco)
       selected.present? ? training_fcoc_filter_values(selected) : []
     else
-      dashboard_visible_fco_filter_values
+      visible_values = dashboard_visible_fco_filter_values
+      if module_cluster_incharge_login? || vrp_login_user?
+        visible_values
+      else
+        (visible_values + training_fcoc_filter_values(dashboard_current_user_office_names)).uniq
+      end
     end
     names = names.select { |name| (training_fcoc_filter_values(name) & values).any? } if values.any?
     return [] if !dashboard_global_view_user? && values.empty?
@@ -2566,13 +2574,13 @@ class DashboardReportsController < ModulesController
   end
 
   def training_fcoc_filter_values(*values)
-    super + values.flatten.compact.flat_map { |value| DashboardFcoDirectory.aliases_for(value) }.map { |value| normalize_dashboard_text(value) }
+    (super + values.flatten.compact.map { |value| AgreementVrpScope.office_key(value) }.compact_blank + values.flatten.compact.flat_map { |value| DashboardFcoDirectory.aliases_for(value) }.map { |value| normalize_dashboard_text(value) }).uniq
   end
 
   def training_fcoc_ids_from_param(value)
     raw_values = Array(value).flat_map { |item| item.to_s.split(",") }.compact_blank
     return DashboardFcoDirectory.ids if raw_values.empty?
-    raw_values.filter_map { |name| DashboardFcoDirectory.id_for(name) }.uniq
+    raw_values.flat_map { |name| DashboardFcoDirectory.ids_for(name) }.uniq
   end
 
   # Agronomists report on their office's JJs, regardless of who registered them.
@@ -2637,14 +2645,21 @@ class DashboardReportsController < ModulesController
   end
 
   def dashboard_fco_active_vrp_records(fco, month = nil, vrps = nil)
+    population = Array(vrps || dashboard_vrps)
+    @dashboard_fco_active_vrp_records_cache ||= {}
+    key = [AgreementVrpScope.office_key(fco), month, population.map(&:id).sort]
+    return @dashboard_fco_active_vrp_records_cache[key] if @dashboard_fco_active_vrp_records_cache.key?(key)
     scope = dashboard_visible_target_scope
     scope = scope.where("LOWER(BTRIM(month_name)) = ?", month.to_s.downcase) if month.present? && !dashboard_all_filter_value?(month)
     values = training_fcoc_filter_values(fco)
     scope = scope.where("LOWER(BTRIM(fco_id)) IN (:values) OR LOWER(BTRIM(fco_name)) IN (:values)", values: values)
     ids = scope.distinct.pluck(:vrp_id)
-    population = Array(vrps || dashboard_vrps)
-    return population.select { |vrp| ids.include?(vrp.id) } if ids.any?
-    population.select { |vrp| training_fcoc_text_matches?(vrp.fcoc, fco) && dashboard_vrp_active_for_requirement?(vrp) }
+    ids = ids.to_set
+    @dashboard_fco_active_vrp_records_cache[key] = if ids.any?
+      population.select { |vrp| ids.include?(vrp.id) }
+    else
+      population.select { |vrp| training_fcoc_text_matches?(vrp.fcoc, fco) && dashboard_vrp_active_for_requirement?(vrp) }
+    end
   end
 
   def dashboard_fco_active_vrp_count(fco, month = nil, vrps = nil)
@@ -2790,6 +2805,25 @@ class DashboardReportsController < ModulesController
           ((dashboard_global_view_user? && office.blank?) || ids.include?(record.data["select_vrp"].to_s))
       end
     end
+  end
+
+  # Fresh, request-local source revisions avoid both repeated version queries
+  # and the old minute-long delay after a target or training entry changes.
+  def dashboard_table_version(model_class)
+    return super unless DashboardSqlCache::TABLES.include?(model_class.table_name)
+    dashboard_sql_cache.source_revision
+  end
+
+  def dashboard_module_record_version(_module_slug)
+    dashboard_sql_cache.source_revision
+  end
+
+  def dashboard_sql_cache
+    @dashboard_sql_cache ||= DashboardSqlCache.new
+  end
+
+  def dashboard_afl_fco_ids_for(values)
+    Array(values).flat_map { |value| DashboardFcoDirectory.ids_for(value) }.uniq
   end
 
   def dashboard_total_afl_scope

@@ -1,4 +1,4 @@
-# Request-local office directory for dashboard reports. AFL is authoritative.
+# Request-local office aliases for dashboard farmer and target reports.
 class DashboardFcoDirectory
   class Store < ActiveSupport::CurrentAttributes
     attribute :offices
@@ -9,17 +9,28 @@ class DashboardFcoDirectory
   end
 
   def self.offices
-    Store.offices ||= Afl.where.not(fco_id: [nil, ""]).distinct.pluck(:fco_id, :fco)
-      .filter_map do |id, name|
-        next if %w[null nil none n/a -].include?(id.to_s.strip.downcase)
-        label = name.to_s.strip
-        label = id.to_s if label.blank? || %w[null nil none n/a -].include?(label.downcase)
-        { id: id.to_s.strip, name: bare_name(label), raw_name: label }
-      end.uniq { |office| office[:id] }.sort_by { |office| office[:name] }
+    Store.offices ||= begin
+      # Some target mappings use office-master IDs or name IDs, while AFL uses
+      # another ID. Keep every saved alias so a populated target office does not
+      # disappear from farmer reports or JJ summary boxes.
+      farmer_pairs = Afl.distinct.pluck(:fco_id, :fco)
+      farmer_ids = farmer_pairs.map { |id, _name| id.to_s.strip }.to_set
+      pairs = farmer_pairs + TargetMapping.distinct.pluck(:fco_id, :fco_name)
+      pairs.group_by { |id, _name| id.to_s.strip }.filter_map do |id, rows|
+        next if invalid?(id)
+        names = rows.map { |_id, name| name.to_s.strip }.reject { |name| invalid?(name) }.uniq.sort
+        label = names.first || id
+        { id: id, name: bare_name(label), raw_name: label, aliases: names, farmer_master: farmer_ids.include?(id) }
+      end.sort_by { |office| [office[:name], office[:farmer_master] ? 0 : 1, office[:id]] }
+    end
+  end
+
+  def self.invalid?(value)
+    value.blank? || %w[null nil none n/a -].include?(value.to_s.downcase)
   end
 
   def self.names
-    offices.map { |office| office[:name] }
+    offices.map { |office| office[:name] }.uniq
   end
 
   def self.ids
@@ -34,9 +45,21 @@ class DashboardFcoDirectory
     offices.to_h { |office| [office[:name].downcase, office[:id]] }
   end
 
-  def self.office_for(value)
+  def self.offices_for(value)
     key = AgreementVrpScope.office_key(value)
-    offices.find { |office| office[:id] == value.to_s.strip || AgreementVrpScope.office_key(office[:name]) == key }
+    return [] if key.blank?
+    offices.select do |office|
+      office[:id] == value.to_s.strip ||
+        [office[:name], *office[:aliases]].any? { |name| AgreementVrpScope.office_key(name) == key }
+    end
+  end
+
+  def self.office_for(value)
+    offices_for(value).first
+  end
+
+  def self.ids_for(value)
+    offices_for(value).map { |office| office[:id] }.uniq
   end
 
   def self.id_for(value)
@@ -48,8 +71,9 @@ class DashboardFcoDirectory
   end
 
   def self.aliases_for(value)
-    office = office_for(value)
-    office ? [office[:id], office[:name], office[:raw_name], "FCO-C #{office[:name]}", "FCO-#{office[:name]}"] : []
+    offices_for(value).flat_map do |office|
+      [office[:id], office[:name], office[:raw_name], *office[:aliases], "FCO-C #{office[:name]}", "FCO-#{office[:name]}"]
+    end.uniq
   end
 
   def self.filter_values
