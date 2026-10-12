@@ -9363,7 +9363,8 @@ class ModulesController < ApplicationController
   def cached_vrps_by_id
     return {} unless model_ready?(:Vrp)
 
-    @cached_vrps_by_id ||= Vrp.includes(:vrp_bank_master).index_by { |vrp| vrp.id.to_s }
+    @cached_vrps_by_id ||= Vrp.select(Vrp.column_names - ["agreement_signature_data"])
+      .includes(:vrp_bank_master).index_by { |vrp| vrp.id.to_s }
   end
 
   def module_cluster_visible_vrp_id_strings
@@ -9601,6 +9602,9 @@ class ModulesController < ApplicationController
     return [] unless ModuleRecord.table_exists?
 
     records_scope = ModuleRecord.where(module_slug: record_source_slug)
+    if @slug == "jeevika-jankar-bill-list" && @record.blank? && request&.format&.html? && params[:view_id].blank?
+      records_scope = bill_summary_scope(records_scope)
+    end
     # The newest-first cap is applied *after* the visibility filter below. Capping
     # in SQL discarded rows before we knew who owned them, so a user whose records
     # fell outside the newest N overall saw only the few that happened to land in it.
@@ -9636,6 +9640,25 @@ class ModulesController < ApplicationController
       params[:all].blank? &&
       @record.blank? &&
       @slug == "training-form-list"
+  end
+
+  # Ported from VRP's list projection. Detail/download actions still fetch the
+  # complete bill, while list calculations never use nested farmer metadata.
+  def bill_summary_scope(base)
+    base.select(<<~SQL.squish)
+      module_records.id, module_records.module_slug,
+      module_records.created_at, module_records.updated_at,
+      (SELECT COALESCE(jsonb_object_agg(field.key,
+        CASE WHEN field.key = 'bill_items' AND jsonb_typeof(field.value) = 'array'
+          THEN COALESCE((
+            SELECT jsonb_agg(CASE WHEN jsonb_typeof(elem) = 'object'
+              THEN elem - 'farmer_details' ELSE elem END ORDER BY ord)
+            FROM jsonb_array_elements(field.value) WITH ORDINALITY AS t(elem, ord)
+          ), '[]'::jsonb)
+          ELSE field.value
+        END), '{}'::jsonb)
+       FROM jsonb_each(module_records.data::jsonb) AS field(key, value))::text AS data
+    SQL
   end
 
   def module_records_required_for_show?
@@ -10454,8 +10477,7 @@ class ModulesController < ApplicationController
     # Bills carry a workflow status ("Submitted...", "Final Approved"), never
     # "Active", so active_module_record? would reject every real bill. Match the
     # Bill List instead: visibility only, minus explicitly deleted rows.
-    records = ModuleRecord
-      .where(module_slug: "jeevika-jankar-bill-process")
+    records = bill_summary_scope(ModuleRecord.where(module_slug: "jeevika-jankar-bill-process"))
       .order(created_at: :desc)
       .to_a
       .reject { |record| module_record_soft_deleted?(record) }
@@ -10539,6 +10561,7 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_bill_rows(records)
+    preload_jeevika_bill_process_totals(records)
     Array(records).map do |record|
       data = record.data
       summary = jeevika_bill_summary(record)
@@ -11492,19 +11515,19 @@ class ModulesController < ApplicationController
       (ModuleRecord.where(module_slug: TARGET_RECORD_MODULE_SLUGS).maximum(:updated_at) if model_ready?(:ModuleRecord))
     ].compact.max
 
-    Rails.cache.fetch(
-      ["jj-achievement-keys", current_app_user&.dig("record_type"), current_app_user&.dig("id"), stamp.to_i],
-      expires_in: 1.hour
-    ) do
-      jeevika_jankar_bill_rows(totals_only: true).filter_map do |row|
-        next unless dashboard_numeric(row[:achievement_count]).positive?
+    cache_key = ["jj-achievement-keys", current_app_user&.dig("record_type"), current_app_user&.dig("id"), stamp.to_i]
+    DashboardCacheFill.synchronize(cache_key) do
+      Rails.cache.fetch(cache_key, expires_in: 1.hour) do
+        jeevika_jankar_bill_rows(totals_only: true).filter_map do |row|
+          next unless dashboard_numeric(row[:achievement_count]).positive?
 
-        vrp_id = row[:vrp_id].to_s.strip
-        month = row[:month_name].to_s.strip.downcase
-        next if vrp_id.blank? || month.blank?
+          vrp_id = row[:vrp_id].to_s.strip
+          month = row[:month_name].to_s.strip.downcase
+          next if vrp_id.blank? || month.blank?
 
-        "#{vrp_id}|#{month}"
-      end.uniq
+          "#{vrp_id}|#{month}"
+        end.uniq
+      end
     end
   end
 
@@ -11784,6 +11807,12 @@ class ModulesController < ApplicationController
 
     ModuleRecord
       .where(module_slug: "jeevika-jankar-bill-process")
+      .select("id", <<~SQL.squish)
+        (SELECT COALESCE(jsonb_object_agg(field.key, field.value), '{}'::jsonb)
+         FROM jsonb_each(data::jsonb) AS field(key, value)
+         WHERE field.key IN ('select_vrp', 'bill_month', 'deleted', 'is_deleted',
+                            'discarded', 'record_state', 'status'))::text AS data
+      SQL
       .order(created_at: :desc)
       .select { |record| jeevika_jankar_bill_blocks_duplicate?(record) }
       .map do |record|
@@ -15858,6 +15887,38 @@ class ModulesController < ApplicationController
       "Submitted"
     end
   end
+  def preload_jeevika_bill_process_totals(records)
+    return if records.blank?
+    # Retain the existing per-owner scope/fallback path for mapped and JJ logins.
+    return if vrp_login_user? || module_mapped_vrp_scope_active?
+
+    @jeevika_bill_process_totals ||= {}
+    numeric_bills = Array(records).select do |bill|
+      bill.data["select_vrp"].to_s.match?(/\A\d+\z/) && bill.data["bill_month"].present?
+    end
+    numeric_bills.group_by { |bill| normalize_dashboard_text(bill.data["bill_month"]) }.each do |month_key, bills|
+      bills = bills.reject { |bill| @jeevika_bill_process_totals.key?([bill.data["select_vrp"].to_s, month_key]) }
+      next if bills.empty?
+
+      previous_summary = @jeevika_jankar_target_summary
+      begin
+        remove_instance_variable(:@approved_other_target_completed_farmer_ids_by_target) if instance_variable_defined?(:@approved_other_target_completed_farmer_ids_by_target)
+        ids = bills.map { |bill| bill.data["select_vrp"].to_s }.uniq
+        jeevika_jankar_bill_rows(vrp_id: ids.join(","), month_name: bills.first.data["bill_month"], totals_only: true)
+        bills.each do |bill|
+          id = bill.data["select_vrp"].to_s
+          summary = @jeevika_jankar_target_summary&.dig(id, month_key)
+          # A missing canonical-month result must still take the original
+          # numeric-month or legacy owner-label fallback when that bill is read.
+          @jeevika_bill_process_totals[[id, month_key]] = summary if summary
+        end
+      ensure
+        @jeevika_jankar_target_summary = previous_summary
+        remove_instance_variable(:@approved_other_target_completed_farmer_ids_by_target) if instance_variable_defined?(:@approved_other_target_completed_farmer_ids_by_target)
+      end
+    end
+  end
+
   def jeevika_jankar_bill_process_totals(record)
     vrp_id = record.data["select_vrp"].to_s
     month = record.data["bill_month"].to_s

@@ -30,7 +30,7 @@ WHERE ns.nspname = 'public'
   AND tab.relname IN ('module_records', 'target_mappings', 'vrps', 'afls', 'users')
 ORDER BY tab.relname, idx.relname;
 SELECT version FROM schema_migrations
-WHERE version IN ('20260915100000', '20261005130000', '20261005140000', '20261012100000') ORDER BY version;
+WHERE version IN ('20260915100000', '20261005130000', '20261005140000', '20261012100000', '20261012120000') ORDER BY version;
 SELECT relname, pg_size_pretty(pg_relation_size(relid)) AS heap_size,
        pg_size_pretty(pg_total_relation_size(relid)) AS total_size
 FROM pg_stat_user_tables

@@ -25,5 +25,8 @@ puts({ month: selected_month || "All Months", role: payload["role"],
   only_one_training: rows.sum { |row| row["yellow_count"].to_i },
   repeat_training: rows.sum { |row| row["green_count"].to_i },
   training_rows: records.count,
+  visible_farmer_rows: controller.send(:dashboard_visible_farmer_scope).count,
+  visible_farmers_missing_fco_id: controller.send(:dashboard_visible_farmer_scope)
+    .where("NULLIF(BTRIM(fco_id), '') IS NULL").count,
   farmer_id_field_types: records.group(Arel.sql("COALESCE(jsonb_typeof(data::jsonb -> 'selected_farmer_ids'), 'missing')")).count
 }.to_json)

@@ -1376,7 +1376,7 @@ class DashboardReportsController < ModulesController
     vrp_version = dashboard_table_version(Vrp)
 
     [
-      dashboard_agronomist_all_months? ? "dashboard/training-participation-counts/agronomist-fco-v1" : "jj-dashboard/training-participation-counts/v5",
+      dashboard_agronomist_all_months? ? "dashboard/training-participation-counts/agronomist-fco-v1" : "jj-dashboard/training-participation-counts/v6",
       Digest::SHA256.hexdigest([
         dashboard_current_user_office_keys.sort,
         dashboard_visible_vrp_ids.sort,
@@ -1602,22 +1602,27 @@ class DashboardReportsController < ModulesController
     all_months = month_name.blank?
     month_filter_sql = all_months ? "TRUE" : "LOWER(BTRIM(t.month_name)) = :month_name"
     fco_ids = training_fcoc_ids_from_param(fcoc_name)
-    fco_filter_sql = "AND LOWER(BTRIM(t.fco_id)) IN (:fco_ids)"
+    fco_filter_sql = "AND #{participation_fco_predicate('t', fcoc_name)}"
 
     sql = <<~SQL.squish
-      SELECT
-          t.fco_id,
-          COALESCE(MAX(NULLIF(BTRIM(t.fco_name), '')), t.fco_id) AS fco_name,
-          COUNT(DISTINCT v.afl_id) AS farmer_count
-      FROM public.target_mappings t
-      CROSS JOIN LATERAL jsonb_array_elements_text(
+      WITH mapped AS MATERIALIZED (
+        SELECT t.fco_id, t.fco_name, TRIM(v.afl_id) AS afl_id
+        FROM public.target_mappings t
+        CROSS JOIN LATERAL jsonb_array_elements_text(
           CASE
             WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array' THEN t.afl_ids::jsonb
             ELSE jsonb_build_array(t.afl_ids::jsonb)
           END
-      ) AS v(afl_id)
-      WHERE #{month_filter_sql}
-        #{fco_filter_sql}
+        ) AS v(afl_id)
+        WHERE #{month_filter_sql} #{fco_filter_sql}
+          AND NULLIF(TRIM(v.afl_id), '') IS NOT NULL
+      )
+      SELECT
+          t.fco_id,
+          COALESCE(MAX(NULLIF(BTRIM(t.fco_name), '')), t.fco_id) AS fco_name,
+          COUNT(DISTINCT t.afl_id) AS farmer_count,
+          (SELECT COUNT(DISTINCT afl_id) FROM mapped) AS total_farmer_count
+      FROM mapped t
       GROUP BY t.fco_id
       ORDER BY t.fco_id;
     SQL
@@ -1628,8 +1633,8 @@ class DashboardReportsController < ModulesController
       ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
     ).to_a
 
-    total_count = rows.sum { |r| r["farmer_count"].to_i }
-    popups = format_fco_popups(rows, fco_ids, "farmer_count")
+    total_count = rows.first.to_h["total_farmer_count"].to_i
+    popups = format_fco_popups(rows, participation_popup_ids(rows, fco_ids), "farmer_count")
 
     [total_count, popups]
   rescue StandardError => e
@@ -1647,7 +1652,7 @@ class DashboardReportsController < ModulesController
 
   def compute_farmer_training_no_training_count_and_popups(month_name:, fcoc_name:)
     rows = farmer_training_attendance_counts_by_fco(month_name: month_name, fcoc_name: fcoc_name)
-    ids = training_fcoc_ids_from_param(fcoc_name)
+    ids = participation_popup_ids(rows, training_fcoc_ids_from_param(fcoc_name))
     [rows.sum { |row| row["red_farmer_count"].to_i }, format_red_fco_popups(rows, ids), format_red_fco_details(rows, ids)]
   end
 
@@ -1665,7 +1670,7 @@ class DashboardReportsController < ModulesController
 
   def compute_farmer_training_yellow_farmer_count_and_popups(month_name:, fcoc_name:)
     rows = farmer_training_attendance_counts_by_fco(month_name: month_name, fcoc_name: fcoc_name)
-    [rows.sum { |row| row["yellow_count"].to_i }, format_fco_popups(rows, training_fcoc_ids_from_param(fcoc_name), "yellow_count")]
+    [rows.sum { |row| row["yellow_count"].to_i }, format_fco_popups(rows, participation_popup_ids(rows, training_fcoc_ids_from_param(fcoc_name)), "yellow_count")]
   end
 
   def farmer_training_green_farmer_count_and_popups(month_name:, fcoc_name:)
@@ -1678,7 +1683,7 @@ class DashboardReportsController < ModulesController
 
   def compute_farmer_training_green_farmer_count_and_popups(month_name:, fcoc_name:)
     rows = farmer_training_attendance_counts_by_fco(month_name: month_name, fcoc_name: fcoc_name)
-    [rows.sum { |row| row["green_count"].to_i }, format_fco_popups(rows, training_fcoc_ids_from_param(fcoc_name), "green_count")]
+    [rows.sum { |row| row["green_count"].to_i }, format_fco_popups(rows, participation_popup_ids(rows, training_fcoc_ids_from_param(fcoc_name)), "green_count")]
   end
 
   def farmer_training_attendance_counts_by_fco(month_name:, fcoc_name:)
@@ -1689,7 +1694,7 @@ class DashboardReportsController < ModulesController
     # month's training entries, instead of silently defaulting to August.
     all_months = month_name.blank?
     month = all_months ? nil : normalize_dashboard_text(month_name.presence || "August")
-    key = [month, fco_ids.sort, all_months ? nil : selected_participation_sql_week]
+    key = [month, fco_ids.sort, normalize_dashboard_text(fcoc_name), all_months ? nil : selected_participation_sql_week]
     return @farmer_training_attendance_counts_by_fco[key] if @farmer_training_attendance_counts_by_fco.key?(key)
 
     month_filter_sql = all_months ? "" : "AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name"
@@ -1720,8 +1725,8 @@ class DashboardReportsController < ModulesController
         WHERE #{target_month_filter}
         GROUP BY sf.farmer_id
       )
-      SELECT a.fco_id,
-        COALESCE(MAX(NULLIF(BTRIM(a.fco), '')), a.fco_id) AS fco_name,
+      SELECT COALESCE(NULLIF(BTRIM(a.fco_id), ''), NULLIF(BTRIM(a.fco), ''), 'Unassigned') AS fco_id,
+        COALESCE(MAX(NULLIF(BTRIM(a.fco), '')), MAX(a.fco_id)) AS fco_name,
         COUNT(DISTINCT a.id) AS total_farmer_count,
         COUNT(DISTINCT a.id) FILTER (WHERE attendance.training_count IS NULL) AS red_farmer_count,
         COUNT(DISTINCT a.id) FILTER (WHERE attendance.training_count = 1) AS yellow_count,
@@ -1732,9 +1737,9 @@ class DashboardReportsController < ModulesController
       FROM public.afls a
       LEFT JOIN attendance ON attendance.farmer_id = a.id::text
       LEFT JOIN mappings ON mappings.farmer_id = a.id::text
-      WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)
-      GROUP BY a.fco_id
-      ORDER BY a.fco_id
+      WHERE #{participation_fco_predicate('a', fcoc_name, farmer: true)}
+      GROUP BY COALESCE(NULLIF(BTRIM(a.fco_id), ''), NULLIF(BTRIM(a.fco), ''), 'Unassigned')
+      ORDER BY fco_id
     SQL
     binds = { fco_ids: fco_ids }
     binds[:month_name] = month unless all_months
@@ -1761,6 +1766,34 @@ class DashboardReportsController < ModulesController
           ) - 1) / 7) + 1
       , 4) = #{week}
     SQL
+  end
+
+  def participation_fco_predicate(table_alias, fcoc_name, farmer: false)
+    # All FCO means the entire already-authorized population, including rows
+    # whose office ID is blank. A named FCO also matches its saved name aliases.
+    return "TRUE" if fcoc_name.blank? || dashboard_all_filter_value?(fcoc_name)
+
+    values = Array(fcoc_name).flat_map do |value|
+      [value, DashboardFcoDirectory.bare_name(value), *DashboardFcoDirectory.aliases_for(value)]
+    end.map { |value| value.to_s.strip.downcase }.compact_blank.uniq
+    ids = training_fcoc_ids_from_param(fcoc_name).map { |id| id.to_s.strip.downcase }
+    connection = ActiveRecord::Base.connection
+    quoted_ids = ids.empty? ? "NULL" : ids.map { |id| connection.quote(id) }.join(", ")
+    quoted_names = values.map { |name| connection.quote(name) }.join(", ")
+    name_column = farmer ? "fco" : "fco_name"
+    "(LOWER(BTRIM(#{table_alias}.fco_id)) IN (#{quoted_ids}) OR LOWER(BTRIM(#{table_alias}.#{name_column})) IN (#{quoted_names}))"
+  end
+
+  def participation_popup_ids(rows, ids)
+    (Array(ids) + rows.map { |row| row["fco_id"].to_s }).uniq
+  end
+
+  def participation_list_scoped_sql(sql, fcoc_name)
+    sql = sql.gsub("LOWER(BTRIM(a.fco_id)) IN (:fco_ids)", participation_fco_predicate("a", fcoc_name, farmer: true))
+      .gsub("a.fco_id IN (:fco_ids)", participation_fco_predicate("a", fcoc_name, farmer: true))
+      .gsub("t.fco_id IN (:fco_ids)", participation_fco_predicate("t", fcoc_name))
+      .gsub("COUNT(at.training_id)", "COUNT(DISTINCT at.training_id)")
+    dashboard_scoped_training_sql(sql)
   end
 
   def farmer_training_participation_rows_from_sql(status, month_name:, fcoc_name:, week_number: nil)
@@ -1849,7 +1882,7 @@ class DashboardReportsController < ModulesController
       binds = { fco_ids: fco_ids.map(&:downcase) }
       binds[:month_name] = selected_month.strip.downcase unless all_months
       raw_rows = ActiveRecord::Base.connection.exec_query(
-        ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
+        ActiveRecord::Base.send(:sanitize_sql_array, [participation_list_scoped_sql(sql, fcoc_name), binds])
       )
 
       return raw_rows.map do |row|
@@ -1955,7 +1988,7 @@ class DashboardReportsController < ModulesController
       binds = { fco_ids: fco_ids.map(&:downcase) }
       binds[:month_name] = selected_month.strip.downcase unless all_months
       raw_rows = ActiveRecord::Base.connection.exec_query(
-        ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
+        ActiveRecord::Base.send(:sanitize_sql_array, [participation_list_scoped_sql(sql, fcoc_name), binds])
       )
 
       return raw_rows.map do |row|
@@ -2100,7 +2133,7 @@ class DashboardReportsController < ModulesController
       # dashboard_scoped_training_sql already injects the authorised farmer scope.
       # Do not materialise that scope into a large Ruby ID array: on big FCOs it
       # produces a massive IN clause and was responsible for 9–13 second list spikes.
-      scoped_sql = dashboard_scoped_training_sql(sql).gsub(" AND a.id IN (:visible_farmer_ids)", "")
+      scoped_sql = participation_list_scoped_sql(sql, fcoc_name).gsub(" AND a.id IN (:visible_farmer_ids)", "")
       binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids }
       @mapped_farmer_details = ActiveRecord::Base.connection.exec_query(
         ActiveRecord::Base.send(:sanitize_sql_array, [scoped_sql, binds])
@@ -2117,7 +2150,7 @@ class DashboardReportsController < ModulesController
 
     binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.flat_map { |id| [id.to_s, id.to_s.downcase] }.uniq }
     raw_rows = ActiveRecord::Base.connection.exec_query(
-      ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
+      ActiveRecord::Base.send(:sanitize_sql_array, [participation_list_scoped_sql(sql, fcoc_name), binds])
     )
 
     raw_rows.map do |row|
@@ -2317,24 +2350,6 @@ class DashboardReportsController < ModulesController
     (1..4).include?(value) ? value : nil
   end
 
-  def bill_summary_scope(base)
-    base.select(<<~SQL.squish)
-      module_records.id, module_records.module_slug,
-      module_records.created_at, module_records.updated_at,
-      CASE
-        WHEN jsonb_typeof(module_records.data::jsonb -> 'bill_items') = 'array'
-        THEN jsonb_set(
-               module_records.data::jsonb, '{bill_items}',
-               COALESCE((
-                 SELECT jsonb_agg(elem - 'farmer_details' ORDER BY ord)
-                 FROM jsonb_array_elements(module_records.data::jsonb -> 'bill_items')
-                   WITH ORDINALITY AS t(elem, ord)
-               ), '[]'::jsonb)
-             )::text
-        ELSE module_records.data
-      END AS data
-    SQL
-  end
 
   public :cc_target_status_list, :farmer_training_participation, :dashboard, :demonstration_method_farmers
   private
@@ -2343,17 +2358,25 @@ class DashboardReportsController < ModulesController
   def dashboard_vrps
     return @dashboard_vrps if defined?(@dashboard_vrps)
     return @dashboard_vrps = [] unless model_ready?(:Vrp)
-    return @dashboard_vrps = Vrp.all.to_a if dashboard_global_view_user?
+    return @dashboard_vrps = dashboard_vrp_read_scope.to_a if dashboard_global_view_user?
     return @dashboard_vrps = [current_vrp_record].compact if vrp_login_user?
     if module_cluster_incharge_login?
       return @dashboard_vrps = module_cluster_visible_vrps
     end
     offices = dashboard_current_user_office_keys
-    @dashboard_vrps = offices.any? ? Vrp.all.select { |vrp| offices.include?(AgreementVrpScope.office_key(vrp.fcoc)) } : []
+    @dashboard_vrps = offices.any? ? dashboard_vrp_read_scope.select { |vrp| offices.include?(AgreementVrpScope.office_key(vrp.fcoc)) } : []
+  end
+
+  def dashboard_vrp_read_scope
+    Vrp.select(Vrp.column_names - ["agreement_signature_data"])
   end
 
   def dashboard_target_mappings
-    @dashboard_target_mappings ||= dashboard_visible_target_scope.includes(:vrp).order(updated_at: :desc).to_a
+    @dashboard_target_mappings ||= begin
+      targets = dashboard_visible_target_scope.order(updated_at: :desc).to_a
+      ActiveRecord::Associations::Preloader.new(records: targets, associations: :vrp, scope: dashboard_vrp_read_scope).call
+      targets
+    end
   end
 
   def dashboard_visible_target_scope

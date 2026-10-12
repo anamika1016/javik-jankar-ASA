@@ -1,6 +1,7 @@
+-- Farmer IDs are authoritative across legacy office-ID aliases.
+-- The controller injects authorized target/farmer scopes before execution.
 WITH august_any_mapping AS (
     SELECT
-        t.fco_id,
         v.afl_id,
 
         STRING_AGG(
@@ -17,13 +18,11 @@ WITH august_any_mapping AS (
     WHERE %{target_month_filter}
 
     GROUP BY
-        t.fco_id,
         v.afl_id
 ),
 
 august_training_mapping AS (
     SELECT
-        t.fco_id,
         v.afl_id,
 
         STRING_AGG(
@@ -42,7 +41,6 @@ august_training_mapping AS (
           LIKE '%farmers'' training%'
 
     GROUP BY
-        t.fco_id,
         v.afl_id
 ),
 
@@ -79,7 +77,6 @@ august_training_done AS MATERIALIZED (
 
 farmer_vrp_details AS (
     SELECT
-        am.fco_id,
         am.afl_id,
 
         STRING_AGG(
@@ -107,7 +104,6 @@ farmer_vrp_details AS (
         ON vd.vrp_id = x.vrp_id
 
     GROUP BY
-        am.fco_id,
         am.afl_id
 )
 
@@ -176,19 +172,16 @@ SELECT
 FROM public.afls a
 
 LEFT JOIN august_any_mapping am
-    ON am.fco_id = a.fco_id
-   AND am.afl_id = a.id::text
+    ON am.afl_id = a.id::text
 
 LEFT JOIN august_training_mapping tm
-    ON tm.fco_id = a.fco_id
-   AND tm.afl_id = a.id::text
+    ON tm.afl_id = a.id::text
 
 LEFT JOIN august_training_done td
     ON td.farmer_id = a.id::text
 
 LEFT JOIN farmer_vrp_details fvd
-    ON fvd.fco_id = a.fco_id
-   AND fvd.afl_id = a.id::text
+    ON fvd.afl_id = a.id::text
 
 WHERE a.fco_id IN (:fco_ids) AND a.id IN (:visible_farmer_ids)
   AND td.farmer_id IS NULL

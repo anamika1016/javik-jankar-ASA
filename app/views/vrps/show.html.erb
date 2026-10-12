@@ -114,7 +114,7 @@
               <td><%= label %></td>
               <td>
                 <% if attachment&.attached? %>
-                  <%= image_tag rails_blob_path(attachment, only_path: true), alt: label, class: "attachment-thumb" %>
+                  <%= image_tag rails_blob_path(attachment, only_path: true), alt: label, class: "attachment-thumb", loading: "lazy", decoding: "async" %>
                 <% else %>
                   -
                 <% end %>
