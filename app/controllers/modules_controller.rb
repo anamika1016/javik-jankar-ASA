@@ -50,7 +50,7 @@ class ModulesController < ApplicationController
                 :jeevika_jankar_transfer_office_keys
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
-  OTHER_TARGET_MODULE_SLUGS = ["seed-distribution-target", "papl360-target", "other-target"].freeze
+  OTHER_TARGET_MODULE_SLUGS = ["seed-distribution-target", "papl360-target", "other-target", "other-target-with-farmer"].freeze
   TARGET_RECORD_MODULE_SLUGS = (["training-form", "add-farmer-form"] + OTHER_TARGET_MODULE_SLUGS).freeze
   # Columns of the "Main Major Work Indicator - Other" drill-down list.
   OTHER_INDICATOR_LIST_HEADERS = {
@@ -304,6 +304,46 @@ class ModulesController < ApplicationController
       title: "Other Target",
       group: "Farmer Target",
       purpose: "Other target aur achievement save karne ke liye.",
+      fields: [
+        "Jeevika Jankar Name",
+        "Contact Number",
+        "Department",
+        "Month",
+        "ICS",
+        "Village",
+        "Main Activity",
+        "Sub Activity",
+        "Completion Date",
+        "Target",
+        "Achievement",
+        "Attachment Upload",
+        "Field Photo"
+      ]
+    },
+    "other-target-with-farmer" => {
+      title: "Other Target with Farmer",
+      group: "Farmer Target",
+      purpose: "Other target with farmer ke liye -- village ke farmer chunkar target aur achievement save karne ke liye.",
+      fields: [
+        "Jeevika Jankar Name",
+        "Contact Number",
+        "Department",
+        "Month",
+        "ICS",
+        "Village",
+        "Main Activity",
+        "Sub Activity",
+        "Completion Date",
+        "Target",
+        "Achievement",
+        "Attachment Upload",
+        "Field Photo"
+      ]
+    },
+    "other-target-with-farmer-list" => {
+      title: "Other Target with Farmer List",
+      group: "Farmer Target",
+      purpose: "Saved other target with farmer records dekhne ke liye.",
       fields: [
         "Jeevika Jankar Name",
         "Contact Number",
@@ -663,6 +703,7 @@ class ModulesController < ApplicationController
     "seed-distribution-target-list" => "seed-distribution-target",
     "papl360-target-list" => "papl360-target",
     "other-target-list" => "other-target",
+    "other-target-with-farmer-list" => "other-target-with-farmer",
     "user-hierarchy-list" => "user-hierarchy-mapping",
     "jeevika-jankar-transfer-list" => "jeevika-jankar-transfer",
     "all-user" => "new-user"
@@ -1899,10 +1940,12 @@ class ModulesController < ApplicationController
     end
     saved_ids = @record ? Array(@record.data["target_mapping_ids"].presence || @record.data["target_mapping_id"]) : []
     targets = training_target_scope.or(TargetMapping.where(id: saved_ids)).where(id: ids).includes(:vrp).to_a
-    farmer_ids = targets.flat_map { |target| target_farmer_ids(target) }.map(&:to_s).reject(&:blank?).uniq
+    # Offer every farmer the villages hold today. The mapped quantity stays the
+    # target; it does not cap who the Jeevika Jankar may pick.
+    farmer_ids = targets.flat_map { |target| target_live_farmer_ids(target) }.map(&:to_s).reject(&:blank?).uniq
     existing_ids = @record ? training_record_selected_farmer_ids(@record) : []
     farmer_ids = (farmer_ids + existing_ids).uniq
-    completed_ids = targets.flat_map { |target| completed_training_farmer_ids_for(target, target_farmer_ids(target)) }.map(&:to_s).uniq
+    completed_ids = targets.flat_map { |target| completed_training_farmer_ids_for(target, target_live_farmer_ids(target)) }.map(&:to_s).uniq
     completed_lookup = completed_ids.index_with(true)
 
     farmers = training_farmers_for_ids(farmer_ids).map do |farmer|
@@ -7985,6 +8028,51 @@ class ModulesController < ApplicationController
     @target_farmer_ids_cache[cache_key] ||= Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
   end
 
+  # Village ids a target covers, whichever shape they were saved in.
+  def target_village_ids(target)
+    return [] unless target.respond_to?(:village_id)
+
+    raw = target.village_id
+    values = raw.is_a?(String) && raw.strip.start_with?("[") ? (JSON.parse(raw) rescue []) : Array(raw)
+    values.flatten
+      .flat_map { |value| value.to_s.split(",") }
+      .map { |value| value.to_s.split("||").first.to_s.strip }
+      .reject(&:blank?)
+      .uniq
+  end
+
+  # Everyone currently registered in the target's villages, not just the farmers
+  # picked when the target was mapped. The mapped number stays the target; the
+  # Jeevika Jankar still chooses who they actually worked with, including
+  # farmers registered after the mapping was saved.
+  def target_live_farmer_ids(target)
+    @target_live_farmer_ids_cache ||= {}
+    key = target.respond_to?(:id) && target.id.present? ? target.id : target.object_id
+    return @target_live_farmer_ids_cache[key] if @target_live_farmer_ids_cache.key?(key)
+
+    village_ids = target_village_ids(target)
+    ids = target_farmer_ids(target)
+
+    if village_ids.any?
+      ids += Afl.where(village_id: village_ids).pluck(:id).map(&:to_s) if model_ready?(:Afl)
+      ids += village_external_farmer_ids(village_ids)
+    end
+
+    @target_live_farmer_ids_cache[key] = ids.map(&:to_s).reject(&:blank?).uniq
+  end
+
+  # Cached per village so repeated targets in one request, and repeated requests
+  # within a few minutes, do not re-hit the farmer API.
+  def village_external_farmer_ids(village_ids)
+    @village_external_farmer_ids_cache ||= {}
+
+    village_ids.flat_map do |village_id|
+      @village_external_farmer_ids_cache[village_id] ||= Rails.cache.fetch(
+        ["training-village-farmer-ids", village_id], expires_in: 5.minutes
+      ) { fetch_training_external_farmer_names([village_id]).keys }
+    end
+  end
+
   def training_participation_target_farmer_ids(target)
     valid_ids = training_participation_existing_farmer_id_set([target])
     target_farmer_ids(target).select { |farmer_id| valid_ids.include?(farmer_id.to_s) }
@@ -9497,6 +9585,7 @@ class ModulesController < ApplicationController
     ids = records.flat_map do |record|
       [record.data["select_vrp"], record.data["vrp_id"]] + jeevika_bill_detail_rows(record).map { |item| item["vrp_id"] }
     end.compact_blank.map(&:to_s).uniq
+    ids = ids.to_set
     vrps = cached_vrps_by_id.values.select { |vrp| ids.include?(vrp.id.to_s) }
     preload_dashboard_vrp_identity_records!(vrps)
     @cached_user_find_by ||= {}
@@ -9550,12 +9639,13 @@ class ModulesController < ApplicationController
   end
 
   def module_records_required_for_show?
+    return false if @slug == "jeevika-jankar-observation-list" && @record.blank?
     return false if @slug == "jeevika-jankar-bill-list" && params[:view_id].present?
     return true if @record.present?
     return true if @slug.to_s.end_with?("-list")
     # These entry screens include a Saved Records table.  Loading the visible
     # records here makes a just-saved entry appear immediately after redirect.
-    return true if %w[training-form seed-distribution-target papl360-target other-target add-farmer-form].include?(@slug)
+    return true if (%w[training-form add-farmer-form] + OTHER_TARGET_MODULE_SLUGS).include?(@slug)
     return true if %w[state-master district-master block-master gram-panchayat-master village-master month-master project-master].include?(@slug)
     return true if %w[stakeholder-master stakeholder-role role-name parent-office-add office-category-add office-mapping-add].include?(@slug)
     return true if %w[add-activity-group add-vrp-activity task-completion-indicator].include?(@slug)
@@ -10369,7 +10459,9 @@ class ModulesController < ApplicationController
       .order(created_at: :desc)
       .to_a
       .reject { |record| module_record_soft_deleted?(record) }
-      .select { |record| jeevika_jankar_bill_record_visible?(record) }
+
+    preload_bill_list_identities!(records)
+    records = records.select { |record| jeevika_jankar_bill_record_visible?(record) }
 
     option_labels = JEEVIKA_JANKAR_OBSERVATION_OPTIONS.to_h { |option| [option[:key], option[:label]] }
 
@@ -11123,12 +11215,12 @@ class ModulesController < ApplicationController
       .map { |step| approval_channel_key(step) }
       .uniq
 
-    matching_channels = steps
-      .select { |step| matching_channel_keys.include?(approval_channel_key(step)) }
-      .group_by { |step| approval_channel_key(step) }
-      .values
-      .map { |records| ordered_approval_channel_steps(records) }
-      .reject(&:blank?)
+    @jeevika_bill_ordered_channels ||= steps.group_by { |step| approval_channel_key(step) }
+      .transform_values { |records| ordered_approval_channel_steps(records) }
+    # Keep catalogue order: max_by retains the first channel when priorities tie.
+    matching_channel_keys = matching_channel_keys.to_set
+    matching_channels = @jeevika_bill_ordered_channels
+      .select { |key, _records| matching_channel_keys.include?(key) }.values.reject(&:blank?)
 
     @jeevika_bill_approval_steps_cache[cache_key] = matching_channels.max_by { |records| approval_channel_priority(records) } || []
   end
@@ -11372,7 +11464,7 @@ class ModulesController < ApplicationController
       scope = scope.where(id: visible_ids) if visible_ids.any?
     end
 
-    vrps = scope.order(:name).to_a
+    vrps = scope.select(:id, :name, :user_name).order(:name).to_a
 
     vrps.map do |vrp|
       label = vrp.name.presence || vrp.user_name.presence
@@ -13237,7 +13329,7 @@ class ModulesController < ApplicationController
 
   def normalize_seed_distribution_target_data(data)
     stamp_target_record_creator!(data)
-    data["main_activity_type"] = "Other"
+    data["main_activity_type"] = record_source_slug == "other-target-with-farmer" ? "Other with Farmer" : "Other"
     data["training_topic"] = data["training_topic"].presence || data["main_activity"].presence
     data["training_subject"] = data["training_subject"].presence || data["sub_activity"].presence
     data["completion_date"] = data["completion_date"].presence || data["date"].presence || Date.current.to_s
@@ -13373,7 +13465,11 @@ class ModulesController < ApplicationController
     target = TargetMapping.find_by(id: target_mapping_id)
     return [] unless target
 
-    target_farmer_ids(target) - other_target_completed_farmer_ids_for(target.id)
+    # Other Target with Farmer lets the whole village be picked, so the pending
+    # set has to be the live village list -- otherwise a farmer registered after
+    # the mapping was saved would be silently dropped from the submission.
+    available = record_source_slug == "other-target-with-farmer" ? target_live_farmer_ids(target) : target_farmer_ids(target)
+    available - other_target_completed_farmer_ids_for(target.id)
   end
 
   def training_form_activity_scope_present?(data)
@@ -13765,7 +13861,9 @@ class ModulesController < ApplicationController
 
     mapped_cluster_labels = hierarchy_cluster_incharge_labels.compact_blank.uniq
 
-    Vrp.where.not(cluster_incharge: [nil, ""]).order(updated_at: :desc, id: :desc).filter_map do |vrp|
+    Vrp.where.not(cluster_incharge: [nil, ""])
+      .select(:id, :name, :user_name, :mobile_no, :fcoc, :to_name, :cluster_incharge, :status, :is_active)
+      .order(updated_at: :desc, id: :desc).filter_map do |vrp|
       next if mapped_cluster_labels.any? && !mapped_cluster_labels.any? { |label| cluster_label_matches?(label, vrp.cluster_incharge) }
 
       {
@@ -14044,7 +14142,8 @@ class ModulesController < ApplicationController
     return @transferable_jeevika_jankar_vrps if defined?(@transferable_jeevika_jankar_vrps)
     return @transferable_jeevika_jankar_vrps = [] unless model_ready?(:Vrp)
 
-    scope = Vrp.order(:name).where(is_active: [true, nil], is_deleted: [false, nil])
+    scope = Vrp.select(:id, :name, :user_name, :mobile_no, :fcoc)
+      .order(:name).where(is_active: [true, nil], is_deleted: [false, nil])
     @transferable_jeevika_jankar_vrps = scope.to_a
   end
 
@@ -14475,7 +14574,10 @@ class ModulesController < ApplicationController
       .includes(:vrp)
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
       .to_a
-    include_farmer_payload = @record.present? && record_source_slug != "other-target"
+    other_with_farmer = record_source_slug == "other-target-with-farmer"
+    # This form always lists farmers, including on a blank form, so their names
+    # have to be loaded even when no record is being edited.
+    include_farmer_payload = other_with_farmer || (@record.present? && record_source_slug != "other-target")
     preload_other_target_completed_farmer_ids!(targets) if include_farmer_payload
     preload_training_farmers_for_targets!(targets) if include_farmer_payload
 
@@ -14483,8 +14585,24 @@ class ModulesController < ApplicationController
       .filter_map do |target|
         activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
         next unless activity_setting.present? && !training_main_activity_type?(activity_setting[:main_activity_type])
+        # Only indicators set up as "Other with Farmer" belong on this form; the
+        # plain Other Target screens keep every non-training indicator.
+        if other_with_farmer
+          next unless other_with_farmer_activity_type?(activity_setting[:main_activity_type])
+          # The target closes once every farmer it was mapped against is done,
+          # even though the village may still hold farmers outside that mapping.
+          next if other_with_farmer_target_exhausted?(target)
+        elsif other_with_farmer_activity_type?(activity_setting[:main_activity_type])
+          next
+        end
 
-        farmer_ids = record_source_slug == "other-target" ? [] : target_farmer_ids(target)
+        farmer_ids = case record_source_slug
+        when "other-target" then []
+        # Other Target with Farmer offers the whole village, so a farmer
+        # registered after the target was mapped can still be picked.
+        when "other-target-with-farmer" then target_live_farmer_ids(target)
+        else target_farmer_ids(target)
+        end
         {
           target_mapping_id: target.id.to_s,
           vrp_id: target.vrp_id.to_s,
@@ -14500,7 +14618,10 @@ class ModulesController < ApplicationController
           target: target.target_quantity.to_s,
           new_farmer_target: new_farmer_target_mapping?(target),
           completed_farmer_ids: include_farmer_payload ? other_target_completed_farmer_ids_for(target.id) : [],
-          farmers: include_farmer_payload ? training_farmers_for_ids(farmer_ids) : []
+          # Which of the listed farmers the target was actually mapped against,
+          # so the form can tell them apart from the rest of the village.
+          mapped_farmer_ids: other_with_farmer ? target_farmer_ids(target) : [],
+          farmers: include_farmer_payload ? resolve_target_farmer_details(target, farmer_ids) : []
         }
       end
       .reject { |mapping| mapping[:ics].blank? && mapping[:village].blank? }
@@ -14509,6 +14630,50 @@ class ModulesController < ApplicationController
 
   def training_main_activity_type?(value)
     normalize_dashboard_text(value.presence || "Training") == normalize_dashboard_text("Training")
+  end
+
+  def other_with_farmer_activity_type?(value)
+    normalize_dashboard_text(value) == normalize_dashboard_text("Other with Farmer")
+  end
+
+  # Done when the farmers the target was actually mapped against are all
+  # covered. Extra village farmers do not keep a finished target open.
+  def other_with_farmer_target_exhausted?(target)
+    mapped = target_farmer_ids(target)
+    return false if mapped.blank?
+
+    (mapped - other_target_completed_farmer_ids_for(target.id)).empty?
+  end
+
+  # Farmers that only exist in the external register have no AFL row, so they
+  # come back as "Mapped Farmer #<id>" with blank village/father/tracenet. Fill
+  # those in from the village feed the ids came from.
+  def resolve_target_farmer_details(target, farmer_ids)
+    rows = training_farmers_for_ids(farmer_ids)
+    missing = rows.select { |row| row[:record_missing] }
+    return rows if missing.blank?
+
+    village_ids = target_village_ids(target)
+    return rows if village_ids.blank?
+
+    lookup = village_external_farmer_details(village_ids)
+    return rows if lookup.blank?
+
+    rows.map do |row|
+      details = row[:record_missing] && lookup[row[:id].to_s]
+      details ? row.merge(details).merge(record_missing: false) : row
+    end
+  end
+
+  def village_external_farmer_details(village_ids)
+    @village_external_farmer_details_cache ||= {}
+
+    village_ids.each_with_object({}) do |village_id, memo|
+      details = @village_external_farmer_details_cache[village_id] ||= Rails.cache.fetch(
+        ["training-village-farmer-details", village_id], expires_in: 5.minutes
+      ) { fetch_training_external_farmer_names([village_id]) }
+      memo.merge!(details || {})
+    end
   end
 
   def other_target_completed_farmer_ids_for(target_mapping_id)
@@ -14788,7 +14953,9 @@ class ModulesController < ApplicationController
     end
   end
 
-  def fetch_training_external_farmer_names(village_ids, needed_ids)
+  # needed_ids nil means "every farmer the village has", which is what the
+  # training form needs so a Jeevika Jankar can pick beyond the mapped target.
+  def fetch_training_external_farmer_names(village_ids, needed_ids = nil)
     result = {}
     village_ids.each_slice(6) do |batch|
       threads = batch.map do |vid|
@@ -14820,7 +14987,8 @@ class ModulesController < ApplicationController
           Array(thread.value).each do |row|
             farmer = row["farmer"].is_a?(Hash) ? row["farmer"] : row
             fid = (farmer["farmer_unique_id"].presence || farmer["id"].presence).to_s
-            next unless needed_ids.include?(fid)
+            next if fid.blank?
+            next if needed_ids && !needed_ids.include?(fid)
             result[fid] ||= {
               village_name: farmer["village_name"].presence || row.dig("address", "village").presence || row.dig("grouping", "village"),
               farmer_name: farmer["farmer_name"].to_s.strip.presence || "Farmer ##{fid}",
@@ -15247,7 +15415,7 @@ class ModulesController < ApplicationController
       "Can Edit" => ["Yes", "No"],
       "Can Delete" => ["Yes", "No"],
       "Select Mandatory" => ["Yes", "No"],
-      "Main Activity Type" => ["Training", "Other"],
+      "Main Activity Type" => ["Training", "Other", "Other with Farmer"],
       "Training Method" => ["General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS"],
       "Achievement Fill" => ["Auto Fill", "Self"],
       "Office Level" => ["State", "District", "Block", "Gram Panchayat", "Village"],

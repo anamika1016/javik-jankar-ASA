@@ -3230,8 +3230,25 @@ function initDeferredLayoutPage() {
     const updateSeedFarmerCount = () => {
       const count = selectedSeedFarmerBoxes().length;
       const boxes = seedFarmerBoxes().filter((checkbox) => !checkbox.disabled);
-      if (farmerCountLabel) farmerCountLabel.textContent = `${count} farmer selected`;
+      if (farmerCountLabel) {
+        // Break the tally down so it is obvious how much of the mapped target
+        // is covered and how many extra village farmers were added.
+        const mapped = new Set((selectedSeedMapping()?.mapped_farmer_ids || []).map(String));
+        if (mapped.size) {
+          const inTarget = selectedSeedFarmerBoxes().filter((box) => mapped.has(String(box.value))).length;
+          farmerCountLabel.textContent =
+            `${count} farmer selected — ${inTarget} target me se (${mapped.size}), ${count - inTarget} other village farmer`;
+        } else {
+          farmerCountLabel.textContent = `${count} farmer selected`;
+        }
+      }
       if (farmerCountInput) farmerCountInput.value = selectedSeedMappingIsManual() ? "0" : (count ? String(count) : "");
+      // On Other Target with Farmer the achievement is simply how many farmers
+      // were picked, so it is filled in rather than typed.
+      if (achievementInput && formShell.dataset.seedAchievementFromFarmers === "true") {
+        achievementInput.value = count ? String(count) : "";
+        achievementInput.readOnly = true;
+      }
       if (farmerSelectAll) {
         farmerSelectAll.checked = !selectedSeedMappingIsManual() && boxes.length > 0 && boxes.every((checkbox) => checkbox.checked);
         farmerSelectAll.indeterminate = !selectedSeedMappingIsManual() && boxes.some((checkbox) => checkbox.checked) && !farmerSelectAll.checked;
@@ -3301,6 +3318,7 @@ function initDeferredLayoutPage() {
 
       const farmers = loadedData.farmers || [];
       const completedFarmerIds = new Set((loadedData.completedFarmerIds || []).map(String));
+      const mappedFarmerIds = new Set((selectedSeedMapping()?.mapped_farmer_ids || []).map(String));
       if (!farmers.length) {
         farmerList.textContent = "No mapped farmers found for selected activity.";
         if (farmerSearchEmpty) farmerSearchEmpty.hidden = true;
@@ -3325,6 +3343,7 @@ function initDeferredLayoutPage() {
       farmerList.innerHTML = farmerRows.map(({ farmer, farmerId, completed, checked: isChecked }) => {
         const checked = isChecked ? " checked" : "";
         const disabled = completed ? " disabled" : "";
+        const inTarget = mappedFarmerIds.size === 0 || mappedFarmerIds.has(farmerId);
         const meta = [
           `Village: ${farmer.village_name || "-"}`,
           `Father: ${farmer.father_name || "-"}`,
@@ -3332,11 +3351,16 @@ function initDeferredLayoutPage() {
           completed ? "Already submitted" : ""
         ].filter(Boolean).join(" | ");
 
+        // Only mark them apart when the form actually knows the mapped set.
+        const badge = mappedFarmerIds.size === 0
+          ? ""
+          : `<em class="seed-farmer-tag ${inTarget ? "in-target" : "extra"}">${inTarget ? "Target" : "Other village farmer"}</em>`;
+
         return `
-          <label class="vrp-ics-farmer-item${completed ? " disabled" : ""}">
+          <label class="vrp-ics-farmer-item${completed ? " disabled" : ""}${mappedFarmerIds.size && !inTarget ? " seed-farmer-extra" : ""}">
             <input type="checkbox" name="module_record[selected_farmer_ids][]" value="${escapeSeedHtml(farmerId)}" data-seed-farmer-checkbox${checked}${disabled}>
             <span>
-              <strong>${escapeSeedHtml(farmer.farmer_name || `Farmer #${farmerId}`)}</strong>
+              <strong>${escapeSeedHtml(farmer.farmer_name || `Farmer #${farmerId}`)}</strong>${badge}
               <small>${escapeSeedHtml(meta)}</small>
             </span>
           </label>
@@ -3512,6 +3536,7 @@ function initDeferredLayoutPage() {
       const targetValue = Number(targetInput?.value || 0);
       const achievementValue = Number(achievementInput?.value || 0);
       const manualTarget = Boolean(mapping?.new_farmer_target);
+      const achievementFromFarmers = formShell.dataset.seedAchievementFromFarmers === "true";
       let invalidInput = null;
       let message = "";
 
@@ -3527,7 +3552,9 @@ function initDeferredLayoutPage() {
       } else if (farmerPanel && farmerCountInput && !manualTarget && farmerCountValue !== selectedFarmerCount) {
         invalidInput = farmerCountInput;
         message = "Farmer Count selected farmers ke count ke equal hona chahiye.";
-      } else if (farmerPanel && farmerCountInput && !manualTarget && farmerCountValue > targetValue) {
+      } else if (farmerPanel && farmerCountInput && !manualTarget && !achievementFromFarmers && farmerCountValue > targetValue) {
+        // Other Target with Farmer has no cap: the village can hold more farmers
+        // than the mapped target, and all of them may be worked with.
         invalidInput = farmerCountInput;
         message = `Farmer Count Target (${targetValue}) se jyada nahi ho sakta.`;
       } else if (!targetInput?.value || targetValue < 0) {
@@ -3536,7 +3563,9 @@ function initDeferredLayoutPage() {
       } else if (!achievementInput?.value || achievementValue < 0) {
         invalidInput = achievementInput;
         message = "Achievement valid hona chahiye.";
-      } else if (achievementValue > targetValue) {
+      } else if (achievementValue > targetValue && !achievementFromFarmers) {
+        // Other Target with Farmer counts whoever was actually worked with, and
+        // the village can hold more farmers than the mapped target.
         invalidInput = achievementInput;
         message = `Achievement Target (${targetValue}) se jyada nahi ho sakta.`;
       }
@@ -3544,7 +3573,16 @@ function initDeferredLayoutPage() {
       if (!invalidInput) return true;
 
       invalidInput.setCustomValidity(message);
-      if (report) invalidInput.reportValidity();
+      if (report) {
+        // Several of these inputs are hidden behind chip controls, where
+        // reportValidity() shows nothing and Save looks simply dead. Fall back
+        // to an alert so the reason is always visible.
+        const hidden = invalidInput.type === "hidden" ||
+          invalidInput.hidden ||
+          invalidInput.offsetParent === null;
+        if (hidden) window.alert(message);
+        else invalidInput.reportValidity();
+      }
       return false;
     };
 
@@ -3914,6 +3952,9 @@ function initDeferredLayoutPage() {
     const visibleAvailableTargetBoxes = () => availableTargetBoxes().filter((checkbox) => !checkbox.closest(".vrp-ics-farmer-item")?.hidden);
     const targetFarmerSearchTerm = () => (farmerSearchInput?.value || "").trim().toLowerCase();
     const villageTargetMode = () => (targetTypeSelect?.value || "").trim().toLowerCase() === "village";
+    // "Other with Farmer" picks farmers like Farmer mode but carries no OPG /
+    // training split -- only the Major Work Indicator wise plan applies.
+    const otherWithFarmerTargetMode = () => (targetTypeSelect?.value || "").trim().toLowerCase() === "other_with_farmer";
     const newFarmerTargetMode = () => (newFarmerTargetInput?.value || "").trim() !== "";
     const clearNewFarmerTargetForSelection = () => {
       if (!newFarmerTargetInput || !newFarmerTargetMode()) return;
@@ -4067,9 +4108,13 @@ function initDeferredLayoutPage() {
       if (!mainActivitySelect || !originalMainActivityOptions.length) return;
 
       const selectedValues = resetSelection ? [] : targetSelectedValues(mainActivitySelect);
+      // Each target type only offers the indicators set up with the matching
+      // Main Major Work Indicator Type.
+      const requiredType = villageTargetMode()
+        ? "Other"
+        : (otherWithFarmerTargetMode() ? "Other with Farmer" : "Training");
       const filteredOptions = originalMainActivityOptions.filter((option) => {
         if (!option.value) return true;
-        const requiredType = villageTargetMode() ? "Other" : "Training";
         return mainActivityTypeFor(option.value) === normalizeOption(requiredType);
       });
 
@@ -4142,16 +4187,20 @@ function initDeferredLayoutPage() {
         });
       });
 
-      if (trainingFieldsPanel) trainingFieldsPanel.hidden = !trainingMode || villageMode;
+      // Other with Farmer has no OPG / training split, so that whole block stays
+      // out of the way -- the Major Work Indicator wise plan below still shows.
+      const hideTrainingTargets = !trainingMode || villageMode || otherWithFarmerTargetMode();
+
+      if (trainingFieldsPanel) trainingFieldsPanel.hidden = hideTrainingTargets;
 
       trainingTargetInputs().forEach((input) => {
-        input.disabled = !trainingMode || villageMode;
-        input.required = trainingMode && !villageMode;
-        if ((!trainingMode || villageMode) && !editTarget.id) input.value = "";
+        input.disabled = hideTrainingTargets;
+        input.required = !hideTrainingTargets;
+        if (hideTrainingTargets && !editTarget.id) input.value = "";
       });
 
       if (ccTargetInput) {
-        ccTargetInput.disabled = !trainingMode || villageMode;
+        ccTargetInput.disabled = hideTrainingTargets;
         if (ccTargetInput.disabled && !editTarget.id) ccTargetInput.value = "";
         validateCcTarget();
       }
@@ -5291,9 +5340,11 @@ function initDeferredLayoutPage() {
     const currentPage = Math.min(Math.max(page, 1), totalPages);
     const start = (currentPage - 1) * pageSize;
     const visibleRows = matchedRows.slice(start, start + pageSize);
+    const visibleRowSet = new Set(visibleRows);
 
     dataRows.forEach((row) => {
-      row.hidden = !visibleRows.includes(row);
+      const hidden = !visibleRowSet.has(row);
+      if (row.hidden !== hidden) row.hidden = hidden;
     });
 
     const pagination = document.querySelector(`[data-pagination-for='${table.id}']`);
@@ -5466,7 +5517,7 @@ function initDeferredLayoutPage() {
   document.querySelectorAll("[data-paginated-table]").forEach((table, index) => {
     const rows = Array.from(table.querySelectorAll("tbody tr"));
     rows.forEach((row) => {
-      if (row.children.length === 1 || row.innerText.toLowerCase().includes("no records")) {
+      if (row.children.length === 1 || row.textContent.toLowerCase().includes("no records")) {
         row.dataset.emptyRow = "true";
       }
     });

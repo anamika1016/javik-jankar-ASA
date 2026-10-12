@@ -13682,3 +13682,31 @@ body {
   border-color: #b45309;
   box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 4px rgba(180, 83, 9, 0.35);
 }
+
+/* Other Target with Farmer: tell the mapped target farmers apart from the
+   extra village farmers that can also be picked. */
+.vrp-ics-farmer-item.seed-farmer-extra {
+  border-color: #e0b36a;
+  background: #fffaf0;
+}
+
+.seed-farmer-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.seed-farmer-tag.in-target {
+  background: #e3f3e6;
+  color: #1f6b34;
+}
+
+.seed-farmer-tag.extra {
+  background: #fdeccd;
+  color: #8a5a10;
+}

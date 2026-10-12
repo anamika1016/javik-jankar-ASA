@@ -12,7 +12,7 @@ class FarmerTargetApi
     photo_close_up_view
     photo_long_shot
   ].freeze
-  OTHER_TARGET_SLUGS = %w[seed-distribution-target papl360-target other-target].freeze
+  OTHER_TARGET_SLUGS = %w[seed-distribution-target papl360-target other-target other-target-with-farmer].freeze
   TARGET_SLUGS = (%w[training-form add-farmer-form] + OTHER_TARGET_SLUGS).freeze
 
   def initialize(current_app_user:, module_slug:, exclude_record_id: nil)

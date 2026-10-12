@@ -330,6 +330,8 @@ module ApplicationHelper
         ["Training Form List", :module, "training-form-list"],
         ["Other Target", :module, "other-target"],
         ["Other Target List", :module, "other-target-list"],
+        ["Other Target with Farmer", :module, "other-target-with-farmer"],
+        ["Other Target with Farmer List", :module, "other-target-with-farmer-list"],
         ["Farmer Participation Report", :route, :farmer_participation_report_path],
       ]
     },
@@ -700,6 +702,8 @@ module ApplicationHelper
         ["Training Form List", :module, "training-form-list"],
         ["Other Target", :module, "other-target"],
         ["Other Target List", :module, "other-target-list"],
+        ["Other Target with Farmer", :module, "other-target-with-farmer"],
+        ["Other Target with Farmer List", :module, "other-target-with-farmer-list"],
         ["Farmer Participation Report", :route, :farmer_participation_report_path],
         ]
       },

@@ -1,6 +1,24 @@
 require "test_helper"
 
 class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
+  test "plain hierarchy labels and registration enrichment share one user query" do
+    User.create!(first_name: "Plain", last_name: "Coordinator", user_name: "plain_lookup_cc",
+      email: "plain-lookup-cc@example.test", password: "secret", role: "Cluster Incharge", status: "Active")
+    controller = VrpsController.new
+    queries = []
+    callback = ->(*args) do
+      payload = args.last
+      queries << payload[:sql] if payload[:sql].match?(/SELECT.*FROM "users"/m)
+    end
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      assert controller.send(:user_record_cluster_incharge_label?, "Plain Coordinator")
+      10.times { |index| assert_not controller.send(:user_record_cluster_incharge_label?, "Missing #{index}") }
+      assert_equal "Plain Coordinator", controller.send(:enrich_cluster_mapping_from_user,
+        { value: "plain_lookup_cc", label: "Saved" })[:value]
+    end
+    assert_equal 1, queries.size
+  end
+
   test "cluster enrichment loads ordered users once and preserves inactive filtering" do
     User.create!(first_name: "Lookup", last_name: "Person", user_name: "lookup_person", email: "lookup_person@example.com", password: "secret", status: "Active")
     controller = VrpsController.new

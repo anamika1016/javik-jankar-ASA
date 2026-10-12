@@ -15,7 +15,7 @@
     </div>
   <% end %>
 
-  <% list_only_slugs = ["activity-group-list", "vrp-activity-list", "task-completion-indicator-list", "approval-list", "access-control-list", "vrp-bill-list", "jeevika-jankar-bill-list", "jeevika-jankar-observation-list", "jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail", "jeevika-jankar-completed-payment-list", "training-form-list", "seed-distribution-target-list", "papl360-target-list", "other-target-list"] %>
+  <% list_only_slugs = ["activity-group-list", "vrp-activity-list", "task-completion-indicator-list", "approval-list", "access-control-list", "vrp-bill-list", "jeevika-jankar-bill-list", "jeevika-jankar-observation-list", "jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail", "jeevika-jankar-completed-payment-list", "training-form-list", "seed-distribution-target-list", "papl360-target-list", "other-target-list", "other-target-with-farmer-list"] %>
   <%# Transfers have their own list screen, so the form stays entry-only. %>
   <% entry_only_slugs = ["approval-master", "access-control", "vrp-bill-add", "jeevika-jankar-bill-process", "training-form", "jeevika-jankar-transfer"] %>
 
@@ -2135,7 +2135,7 @@
     <% table_id = "#{@slug.tr("-", "_")}_table" %>
     <section class="module-card list-only-card">
       <div class="module-card-header list-title-header">
-        <h2><%= { "activity-group-list" => "All Main Activities", "vrp-activity-list" => "All Sub Activities", "task-completion-indicator-list" => "All Task Completion Indicators", "approval-list" => "All Approvals", "access-control-list" => "All Access Control", "vrp-bill-list" => "All VRP Bills", "jeevika-jankar-bill-list" => "All Jeevika Jankar Bills", "training-form-list" => "All Training Records", "seed-distribution-target-list" => "All Seed Distribution Target Records", "papl360-target-list" => "All ASA360 Target Records", "other-target-list" => "All Other Target Records" }[@slug] %></h2>
+        <h2><%= { "activity-group-list" => "All Main Activities", "vrp-activity-list" => "All Sub Activities", "task-completion-indicator-list" => "All Task Completion Indicators", "approval-list" => "All Approvals", "access-control-list" => "All Access Control", "vrp-bill-list" => "All VRP Bills", "jeevika-jankar-bill-list" => "All Jeevika Jankar Bills", "training-form-list" => "All Training Records", "seed-distribution-target-list" => "All Seed Distribution Target Records", "papl360-target-list" => "All ASA360 Target Records", "other-target-list" => "All Other Target Records", "other-target-with-farmer-list" => "All Other Target with Farmer Records" }[@slug] %></h2>
       </div>
 
       <div class="vrp-list-toolbar compact">
@@ -2170,7 +2170,7 @@
       </div>
 
       <div class="table-shell">
-        <% fast_open_list_table = ["training-form-list", "jeevika-jankar-bill-list", "jeevika-jankar-payment-list", "seed-distribution-target-list", "papl360-target-list", "other-target-list"].include?(@slug) %>
+        <% fast_open_list_table = ["training-form-list", "jeevika-jankar-bill-list", "jeevika-jankar-payment-list", "seed-distribution-target-list", "papl360-target-list", "other-target-list", "other-target-with-farmer-list"].include?(@slug) %>
         <table class="module-table user-list-table" id="<%= table_id %>" data-paginated-table data-page-size="15" <% if fast_open_list_table %>data-fast-open-table="true"<% end %>>
           <thead>
             <tr>
@@ -2209,7 +2209,7 @@
                 end.map(&:to_s).map(&:strip).reject(&:blank?).uniq %>
                 <% training_edit_revision = training_edit_revision_for(record, skip_auto_assign: true) if @slug == "training-form-list" %>
                 <tr>
-                  <% edit_slug = { "approval-list" => "approval-master", "access-control-list" => "access-control", "vrp-bill-list" => "vrp-bill-add", "jeevika-jankar-bill-list" => "jeevika-jankar-bill-process", "training-form-list" => "training-form", "seed-distribution-target-list" => "seed-distribution-target", "papl360-target-list" => "papl360-target", "other-target-list" => "other-target" }.fetch(@slug, @slug) %>
+                  <% edit_slug = { "approval-list" => "approval-master", "access-control-list" => "access-control", "vrp-bill-list" => "vrp-bill-add", "jeevika-jankar-bill-list" => "jeevika-jankar-bill-process", "training-form-list" => "training-form", "seed-distribution-target-list" => "seed-distribution-target", "papl360-target-list" => "papl360-target", "other-target-list" => "other-target", "other-target-with-farmer-list" => "other-target-with-farmer" }.fetch(@slug, @slug) %>
                   <td>
                     <input type="checkbox"
                       value="<%= edit_module_record_path(edit_slug, record) %>"
@@ -2371,11 +2371,11 @@
   <div class="module-grid">
     <% location_fields = ["State", "District", "Block", "Gram Panchayat", "Village"] %>
     <% has_location_fields = (@module[:fields] & location_fields).any? %>
-    <% other_target_form = ["seed-distribution-target", "papl360-target", "other-target"].include?(@slug) %>
+    <% other_target_form = ModulesController::OTHER_TARGET_MODULE_SLUGS.include?(@slug) %>
     <% add_farmer_form = @slug == "add-farmer-form" %>
     <% seed_target_form = @slug == "seed-distribution-target" %>
     <% unless @slug == "jeevika-jankar-transfer-list" %>
-    <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if @slug == "parent-office-add" %>data-parent-office-form data-parent-office-map="<%= json_escape(parent_office_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-record-id="<%= @record&.id %>" data-training-target-map="<%= json_escape(training_target_browser_payload.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_setup_mappings.to_json) %>" data-training-month-options="<%= json_escape(training_target_month_options.to_json) %>" data-training-farmers-url="<%= training_target_farmers_module_path(@slug) %>" data-user-hierarchy-cc-map="<%= json_escape(user_hierarchy_cc_to_head_map.to_json) %>"<% end %> <% if other_target_form %>data-seed-target-form data-seed-target-map="<%= json_escape(seed_distribution_target_mappings.to_json) %>" data-seed-month-options="<%= json_escape(seed_distribution_target_month_options.to_json) %>" data-seed-current-vrp-option="<%= json_escape(current_seed_target_vrp_option.to_json) %>" data-seed-farmers-url="<%= seed_target_farmers_module_path(@slug) %>"<% end %> <% if add_farmer_form %>data-add-farmer-form data-add-farmer-map="<%= json_escape(add_farmer_form_mappings.to_json) %>"<% end %>>
+    <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if @slug == "parent-office-add" %>data-parent-office-form data-parent-office-map="<%= json_escape(parent_office_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-record-id="<%= @record&.id %>" data-training-target-map="<%= json_escape(training_target_browser_payload.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_setup_mappings.to_json) %>" data-training-month-options="<%= json_escape(training_target_month_options.to_json) %>" data-training-farmers-url="<%= training_target_farmers_module_path(@slug) %>" data-user-hierarchy-cc-map="<%= json_escape(user_hierarchy_cc_to_head_map.to_json) %>"<% end %> <% if other_target_form %>data-seed-target-form data-seed-target-map="<%= json_escape(seed_distribution_target_mappings.to_json) %>" data-seed-month-options="<%= json_escape(seed_distribution_target_month_options.to_json) %>" data-seed-current-vrp-option="<%= json_escape(current_seed_target_vrp_option.to_json) %>" data-seed-farmers-url="<%= seed_target_farmers_module_path(@slug) %>" data-seed-achievement-from-farmers="<%= @slug == "other-target-with-farmer" %>"<% end %> <% if add_farmer_form %>data-add-farmer-form data-add-farmer-map="<%= json_escape(add_farmer_form_mappings.to_json) %>"<% end %>>
       <div class="module-card-header" style="display:flex;justify-content:space-between;align-items:center;">
         <h2><%= @slug == "new-user" ? "Registration" : (@record.present? ? "Edit Record" : "Fields") %></h2>
         <% if @slug == "training-form" && @record.present? && @training_edit_revision && TrainingEditApproval.can_decide?(@training_edit_revision, current_app_user) %>

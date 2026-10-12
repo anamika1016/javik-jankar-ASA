@@ -1554,15 +1554,23 @@ class VrpsController < ApplicationController
     return mapping unless model_ready?(:User)
 
     @cluster_mapping_users ||= User.order(:first_name, :last_name, :user_name).to_a
-    user = @cluster_mapping_users.detect do |candidate|
-        candidate_status = candidate.respond_to?(:status) ? candidate.status : nil
-        next false unless candidate_status.blank? || candidate_status.to_s.casecmp("Active").zero?
+    matching_users = @cluster_mapping_users.select do |candidate|
+      candidate_status = candidate.respond_to?(:status) ? candidate.status : nil
+      next false unless candidate_status.blank? || candidate_status.to_s.casecmp("Active").zero?
 
-        candidate_name = (candidate.respond_to?(:full_name) ? candidate.full_name : nil).presence ||
-          (candidate.respond_to?(:user_name) ? candidate.user_name : nil)
-        normalize_approver_label(candidate_name) == normalize_approver_label(mapping[:value]) ||
-          normalize_approver_label(candidate.respond_to?(:user_name) ? candidate.user_name : nil) == normalize_approver_label(mapping[:value])
-      end
+      candidate_name = (candidate.respond_to?(:full_name) ? candidate.full_name : nil).presence ||
+        (candidate.respond_to?(:user_name) ? candidate.user_name : nil)
+      normalize_approver_label(candidate_name) == normalize_approver_label(mapping[:value]) ||
+        normalize_approver_label(candidate.respond_to?(:user_name) ? candidate.user_name : nil) == normalize_approver_label(mapping[:value])
+    end
+    # A person can have separate FCO and CC registrations with the same base
+    # name. Resolve a hierarchy CC to their CC registration before enriching
+    # the FCO/TO fields used by the registration picker.
+    user = matching_users.find do |candidate|
+      role = (candidate.respond_to?(:role_name) ? candidate.role_name : nil).presence ||
+        (candidate.respond_to?(:role) ? candidate.role : nil)
+      role.to_s.downcase.include?("cluster")
+    end || matching_users.first
     return mapping unless user
 
     role = (user.respond_to?(:role_name) ? user.role_name : nil).presence ||
@@ -1573,7 +1581,7 @@ class VrpsController < ApplicationController
     mapping.merge(
       label: role.present? ? "#{name}(#{role})" : mapping[:label],
       value: name,
-      office_category: user_office_category(user),
+      office_category: (user.respond_to?(:office_name) ? user.office_name : nil).presence || user_office_category(user),
       office_name: user_office_name(user),
       parent_office: user.respond_to?(:parent_office) ? user.parent_office.to_s.strip : ""
     )
@@ -1696,7 +1704,8 @@ class VrpsController < ApplicationController
     return false unless model_ready?(:User)
 
     normalized_label = normalize_approver_label(label)
-    User.order(:first_name, :last_name, :user_name).any? do |user|
+    @cluster_mapping_users ||= User.order(:first_name, :last_name, :user_name).to_a
+    @cluster_mapping_users.any? do |user|
       name = (user.respond_to?(:full_name) ? user.full_name : nil).presence ||
         (user.respond_to?(:user_name) ? user.user_name : nil)
       next false unless normalize_approver_label(name) == normalized_label ||
