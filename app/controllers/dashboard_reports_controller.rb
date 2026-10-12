@@ -1377,7 +1377,7 @@ class DashboardReportsController < ModulesController
     vrp_version = dashboard_table_version(Vrp)
 
     [
-      dashboard_agronomist_all_months? ? "dashboard/training-participation-counts/agronomist-fco-v1" : "jj-dashboard/training-participation-counts/v3",
+      dashboard_agronomist_all_months? ? "dashboard/training-participation-counts/agronomist-fco-v1" : "jj-dashboard/training-participation-counts/v4",
       Digest::SHA256.hexdigest([
         dashboard_current_user_office_keys.sort,
         dashboard_visible_vrp_ids.sort,
@@ -1431,12 +1431,8 @@ class DashboardReportsController < ModulesController
       target_binds[:participation_vrp_ids] = dashboard_registered_vrp_ids_for_current_user
     end
 
-    # training_records conditions: only training-form with main_activity_type='training' and main_activity='farmers'' training'
-    training_conditions = [
-      "mr.module_slug = 'training-form'",
-      "LOWER(TRIM(COALESCE(mr.data::jsonb ->> 'main_activity_type', ''))) = 'training'",
-      "(LOWER(TRIM(COALESCE(mr.data::jsonb ->> 'main_activity', ''))) = 'farmers'' training' OR (jsonb_typeof(mr.data::jsonb -> 'main_activity') = 'array' AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(mr.data::jsonb -> 'main_activity') AS ma(activity) WHERE LOWER(TRIM(ma.activity)) = 'farmers'' training')))"
-    ]
+    # Use the same countable training population as red/yellow/green lists.
+    training_conditions = ["mr.id IN (#{dashboard_participation_training_scope.select(:id).to_sql})"]
     completed_binds = {}
     if month_name.present?
       training_conditions << "LOWER(TRIM(COALESCE(mr.data::jsonb ->> 'month', ''))) = :completed_month"
@@ -2528,9 +2524,29 @@ class DashboardReportsController < ModulesController
     dashboard_ics_filtered_scope(dashboard_user_visible_farmer_scope)
   end
 
-  def dashboard_scoped_training_sql(sql)
-    sql.gsub("public.target_mappings", "(#{dashboard_visible_target_scope.to_sql})")
+  def dashboard_participation_training_scope
+    return @dashboard_participation_training_scope if defined?(@dashboard_participation_training_scope)
+    scope = ModuleRecord.where(module_slug: "training-form")
+      .where("COALESCE(LOWER(BTRIM(data::jsonb ->> 'main_activity_type')), '') IN ('', 'training')")
+    %w[deleted is_deleted discarded].each do |key|
+      scope = scope.where("COALESCE(LOWER(BTRIM(data::jsonb ->> '#{key}')), '') NOT IN ('1', 'true', 'yes', 'deleted')")
+    end
+    %w[status approval_status approval_state].each do |key|
+      scope = scope.where("COALESCE(LOWER(BTRIM(data::jsonb ->> '#{key}')), '') NOT LIKE '%reject%'")
+        .where("COALESCE(LOWER(BTRIM(data::jsonb ->> '#{key}')), '') NOT LIKE '%return%'")
+        .where("COALESCE(LOWER(BTRIM(data::jsonb ->> '#{key}')), '') <> 'inactive'")
+    end
+    @dashboard_participation_training_scope = scope.where.not(id: TrainingEditApproval.unapproved_record_ids)
+  end
+
+  def dashboard_scoped_training_sql(sql, participation: true)
+    sql = sql.gsub("public.target_mappings", "(#{dashboard_visible_target_scope.to_sql})")
       .gsub("public.afls", "(#{dashboard_visible_farmer_scope.to_sql})")
+    return sql unless participation
+    sql.gsub("public.module_records", "(#{dashboard_participation_training_scope.to_sql})")
+      .gsub(/LOWER\((?:TRIM\()?COALESCE\(mr\.data::jsonb ->> 'main_activity', ''\)\)?\)\s+LIKE '%farmers'' training%'/, "TRUE")
+      .gsub(/LOWER\(COALESCE\(t\.main_activity_name, ''\)\)\s+LIKE '%farmers'' training%'/,
+        "REGEXP_REPLACE(LOWER(COALESCE(t.main_activity_name, '')), '[^a-z0-9]+', ' ', 'g') ~ '(farmers? training|farmer activity)'")
   end
 
   def dashboard_current_user_office_names

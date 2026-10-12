@@ -135,6 +135,53 @@ class DashboardReportsControllerTest < ActionDispatch::IntegrationTest
     refute_includes response.body, "Outside Farmer"
   end
 
+  test "participation boxes and lists include legacy Training labels and exclude uncountable entries" do
+    @target.update!(main_activity_name: "Farmers Training")
+    training = ModuleRecord.create!(module_slug: "training-form", data: {
+      "month" => "September", "main_activity" => "Farmers Training", "main_activity_type" => "Training",
+      "jeevika_jankar_id" => @mine.id.to_s, "selected_farmer_ids" => [@farmer.id.to_s]
+    })
+    %w[Other Inactive Rejected Deleted].each do |state|
+      data = training.data.deep_dup
+      data["main_activity_type"] = "Other" if state == "Other"
+      data["status"] = state if %w[Inactive Rejected].include?(state)
+      data["deleted"] = "true" if state == "Deleted"
+      ModuleRecord.create!(module_slug: "training-form", data: data)
+    end
+    ["Farmers Training", "Farmer Activity", "__common__"].each do |label|
+      training.update!(data: training.data.merge("main_activity" => label))
+      [@admin, @staff].each do |user|
+        c = calculator(user)
+        yellow, = c.send(:farmer_training_yellow_farmer_count_and_popups, month_name: "September", fcoc_name: "Bhawanipatna")
+        green, = c.send(:farmer_training_green_farmer_count_and_popups, month_name: "September", fcoc_name: "Bhawanipatna")
+        red, = c.send(:farmer_training_no_training_count_and_popups, month_name: "September", fcoc_name: "Bhawanipatna")
+        assert_equal 1, yellow, "#{label}: valid training must appear for #{user.user_type}"
+        assert_equal 0, green, "inactive/rejected/deleted/Other rows must not turn yellow into green"
+        assert_equal 0, red, "legacy main labels must not leave a trained farmer pending"
+        assert_equal yellow, c.send(:farmer_training_participation_rows_from_sql, "yellow", month_name: "September", fcoc_name: "Bhawanipatna").size
+        assert_equal green, c.send(:farmer_training_participation_rows_from_sql, "green", month_name: "September", fcoc_name: "Bhawanipatna").size
+        assert_equal red, c.send(:farmer_training_participation_rows_from_sql, "red", month_name: "September", fcoc_name: "Bhawanipatna").size
+      end
+    end
+    second = ModuleRecord.create!(module_slug: "training-form", data: training.data.deep_dup)
+    [@admin, @staff].each do |user|
+      c = calculator(user)
+      green, = c.send(:farmer_training_green_farmer_count_and_popups, month_name: "September", fcoc_name: "Bhawanipatna")
+      yellow, = c.send(:farmer_training_yellow_farmer_count_and_popups, month_name: "September", fcoc_name: "Bhawanipatna")
+      assert_equal 1, green
+      assert_equal 0, yellow
+      assert_equal green, c.send(:farmer_training_participation_rows_from_sql, "green", month_name: "September", fcoc_name: "Bhawanipatna").size
+    end
+    training.update!(data: training.data.merge("status" => "Inactive"))
+    second.update!(data: second.data.merge("deleted" => "true"))
+    [@admin, @staff].each do |user|
+      c = calculator(user)
+      red, = c.send(:farmer_training_no_training_count_and_popups, month_name: "September", fcoc_name: "Bhawanipatna")
+      assert_equal 1, red
+      assert_equal red, c.send(:farmer_training_participation_rows_from_sql, "red", month_name: "September", fcoc_name: "Bhawanipatna").size
+    end
+  end
+
   def create_vrp(name, office, cluster)
     Vrp.create!(name: name, father_husband_name: "F", gender: :male,
       date_of_birth: Date.new(1990, 1, 1), date_of_joining: Date.current,
