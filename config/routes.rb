@@ -298,6 +298,7 @@ Rails.application.routes.draw do
       patch :reject_bill, action: :reject_bill, on: :member
       patch :return_bill, action: :return_bill, on: :member
       get :download_bill, action: :download_bill, on: :member
+      get :download_bill_attachments, action: :download_bill_attachments, on: :member
     end
   end
 

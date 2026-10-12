@@ -234,6 +234,7 @@
               <th>Achievement</th>
               <th>Pending</th>
               <th>Attachment</th>
+              <th>Files</th>
             </tr>
           </thead>
           <tbody>
@@ -284,14 +285,32 @@
                 <% end %>
                 <td class="bill-activity-attachments">
                   <% uploads = is_other ? jeevika_bill_other_activity_uploads(item) : jeevika_bill_training_uploads(item) %>
-                  <% if uploads.any? %>
+                  <%# Attachment holds the photos as one archive; Files lists the
+                      documents separately so each one still opens directly. %>
+                  <% photo_uploads, document_uploads = uploads.partition { |url| jeevika_bill_image_upload?(url) } %>
+                  <% if photo_uploads.any? %>
                     <div class="bill-attachment-links">
-                      <% uploads.each_with_index do |url, file_index| %>
+                      <%= link_to download_bill_attachments_module_record_path(@slug, detail_record, item: index),
+                            class: "bill-attachment-link bill-attachment-archive",
+                            title: "Download #{photo_uploads.size} photo(s) as a zip",
+                            aria: { label: "Download #{photo_uploads.size} photos as a zip" } do %>
+                        <span aria-hidden="true">🗜</span>
+                        <span>PHOTOS (<%= photo_uploads.size %>)</span>
+                      <% end %>
+                    </div>
+                  <% else %>
+                    <span class="bill-attachment-empty">—</span>
+                  <% end %>
+                </td>
+                <td class="bill-activity-attachments">
+                  <% if document_uploads.any? %>
+                    <div class="bill-attachment-links">
+                      <% document_uploads.each_with_index do |url, file_index| %>
                         <% filename = File.basename(URI.parse(url).path) %>
                         <% file_type = File.extname(filename).delete_prefix(".").upcase.presence || "FILE" %>
-                        <%= link_to url, target: "_blank", rel: "noopener", class: "bill-attachment-link", title: filename, aria: { label: "Open attachment: #{filename}" } do %>
+                        <%= link_to url, target: "_blank", rel: "noopener", class: "bill-attachment-link", title: filename, aria: { label: "Open file: #{filename}" } do %>
                           <span aria-hidden="true">↗</span>
-                          <span><%= file_type %><%= " #{file_index + 1}" if uploads.size > 1 %></span>
+                          <span><%= file_type %><%= " #{file_index + 1}" if document_uploads.size > 1 %></span>
                         <% end %>
                       <% end %>
                     </div>
@@ -361,7 +380,11 @@
                 <td><%= label %></td>
                 <td>
                   <% if attachment&.attached? %>
-                    <%= image_tag rails_blob_path(attachment, only_path: true), alt: label, class: "attachment-thumb" %>
+                    <% if attachment.blob.image? %>
+                      <%= image_tag rails_blob_path(attachment, only_path: true), alt: label, class: "attachment-thumb", loading: "lazy", decoding: "async" %>
+                    <% else %>
+                      <%= link_to "View #{attachment.blob.filename.extension.to_s.upcase}", rails_blob_path(attachment, disposition: "inline"), target: "_blank", rel: "noopener" %>
+                    <% end %>
                   <% else %>
                     -
                   <% end %>

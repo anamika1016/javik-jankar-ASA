@@ -373,10 +373,9 @@ class DashboardReportsController < ModulesController
         month_name: @participation_selected_month,
         fcoc_name: @participation_fcoc_filter_value
       )
-      participation_dashboard_counts[:red] = no_training_count if participation_dashboard_counts.is_a?(Hash)
-      participation_dashboard_counts[:yellow] = yellow_count if participation_dashboard_counts.is_a?(Hash)
-      participation_dashboard_counts[:green] = green_count if participation_dashboard_counts.is_a?(Hash)
-      participation_dashboard_counts[:total] = mapped_count if participation_dashboard_counts.is_a?(Hash)
+      participation_dashboard_counts = participation_dashboard_counts.to_h.symbolize_keys.merge(
+        red: no_training_count, yellow: yellow_count, green: green_count, total: mapped_count
+      )
 
       @training_participation_status_cards = training_participation_dashboard_status_cards(
         participation_dashboard_counts,
@@ -1377,7 +1376,7 @@ class DashboardReportsController < ModulesController
     vrp_version = dashboard_table_version(Vrp)
 
     [
-      dashboard_agronomist_all_months? ? "dashboard/training-participation-counts/agronomist-fco-v1" : "jj-dashboard/training-participation-counts/v4",
+      dashboard_agronomist_all_months? ? "dashboard/training-participation-counts/agronomist-fco-v1" : "jj-dashboard/training-participation-counts/v5",
       Digest::SHA256.hexdigest([
         dashboard_current_user_office_keys.sort,
         dashboard_visible_vrp_ids.sort,
@@ -1647,167 +1646,13 @@ class DashboardReportsController < ModulesController
   end
 
   def compute_farmer_training_no_training_count_and_popups(month_name:, fcoc_name:)
-    # "All Months" selected: run the simpler all-months red query below instead of
-    # silently defaulting to August. Every other (specific-month) path below is
-    # unchanged.
-    return compute_farmer_training_no_training_count_and_popups_all_months(fcoc_name: fcoc_name) if month_name.blank?
-
-    selected_month = month_name.presence || "August"
-    fco_ids = training_fcoc_ids_from_param(fcoc_name)
-    fco_values = fco_ids.flat_map { |id| training_fcoc_filter_values(id) }.uniq.map(&:downcase)
-    fco_filter_sql = "AND LOWER(BTRIM(a.fco_id)) IN (:fco_ids)"
-    fco_filter_t = "AND (LOWER(BTRIM(t.fco_id)) IN (:fco_values) OR LOWER(BTRIM(t.fco_name)) IN (:fco_values))"
-
-    sql = <<~SQL.squish
-      WITH august_any_mapping AS (
-          SELECT DISTINCT v.afl_id
-          FROM public.target_mappings t
-          CROSS JOIN LATERAL jsonb_array_elements_text(
-              CASE
-                WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array' THEN t.afl_ids::jsonb
-                ELSE jsonb_build_array(t.afl_ids::jsonb)
-              END
-          ) AS v(afl_id)
-          WHERE LOWER(TRIM(t.month_name)) = :month_name
-            #{fco_filter_t}
-      ),
-      august_training_mapping AS (
-          SELECT DISTINCT v.afl_id
-          FROM public.target_mappings t
-          CROSS JOIN LATERAL jsonb_array_elements_text(
-              CASE
-                WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array' THEN t.afl_ids::jsonb
-                ELSE jsonb_build_array(t.afl_ids::jsonb)
-              END
-          ) AS v(afl_id)
-          WHERE LOWER(TRIM(t.month_name)) = :month_name
-            #{fco_filter_t}
-            AND LOWER(COALESCE(t.main_activity_name, '')) LIKE '%farmers'' training%'
-      ),
-      august_training_done AS (
-          SELECT DISTINCT sf.farmer_id
-          FROM public.module_records mr
-          CROSS JOIN LATERAL jsonb_array_elements_text(
-              COALESCE(
-                  mr.data::jsonb -> 'selected_farmer_ids',
-                  '[]'::jsonb
-              )
-          ) AS sf(farmer_id)
-          WHERE mr.module_slug = 'training-form'
-            AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name
-            #{training_participation_week_filter_sql(selected_participation_sql_week)}
-            AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
-      )
-      SELECT
-          a.fco_id,
-          COALESCE(MAX(NULLIF(BTRIM(a.fco), '')), a.fco_id) AS fco_name,
-          COUNT(DISTINCT a.id) AS total_farmer_count,
-          COUNT(DISTINCT CASE WHEN am.afl_id IS NOT NULL THEN a.id END) AS total_mapped_farmer_count,
-          COUNT(DISTINCT CASE WHEN am.afl_id IS NULL AND td.farmer_id IS NULL THEN a.id END) AS no_activity_mapping_count,
-          COUNT(DISTINCT CASE WHEN am.afl_id IS NOT NULL AND tm.afl_id IS NULL AND td.farmer_id IS NULL THEN a.id END) AS no_training_mapping_count,
-          COUNT(DISTINCT CASE WHEN tm.afl_id IS NOT NULL AND td.farmer_id IS NULL THEN a.id END) AS training_mapped_but_no_entry_count,
-          COUNT(DISTINCT a.id) FILTER (WHERE td.farmer_id IS NULL) AS red_farmer_count
-      FROM public.afls a
-      LEFT JOIN august_any_mapping am ON am.afl_id = a.id::text
-      LEFT JOIN august_training_mapping tm ON tm.afl_id = a.id::text
-      LEFT JOIN august_training_done td ON td.farmer_id = a.id::text
-      WHERE 1=1
-        #{fco_filter_sql}
-      GROUP BY a.fco_id
-      ORDER BY a.fco_id;
-    SQL
-
-    binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase), fco_values: fco_values }
-    rows = dashboard_sql_cache.select_all(
-      ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
-    ).to_a
-
-    total_count = rows.sum { |r| r["red_farmer_count"].to_i }
-    popups = format_red_fco_popups(rows, fco_ids)
-    details = format_red_fco_details(rows, fco_ids)
-
-    [total_count, popups, details]
-  rescue StandardError => e
-    Rails.logger.warn("No training count SQL failed: #{e.message}")
-    [0, format_fco_popups([], fco_ids, "red_farmer_count"), []]
+    rows = farmer_training_attendance_counts_by_fco(month_name: month_name, fcoc_name: fcoc_name)
+    ids = training_fcoc_ids_from_param(fcoc_name)
+    [rows.sum { |row| row["red_farmer_count"].to_i }, format_red_fco_popups(rows, ids), format_red_fco_details(rows, ids)]
   end
 
-  # "All Months" red count and its hover breakdown. Same shape as the
-  # month-specific query above, with every month filter dropped so mapping and
-  # training entries are matched across all months. The FCO filter and the
-  # login's own visibility scope still apply, so picking Sausar or Turekela
-  # narrows this exactly like it does for a single month.
-
   def compute_farmer_training_no_training_count_and_popups_all_months(fcoc_name:)
-    fco_ids = training_fcoc_ids_from_param(fcoc_name)
-    fco_filter_sql = "AND LOWER(BTRIM(a.fco_id)) IN (:fco_ids)"
-
-    sql = <<~SQL.squish
-      WITH august_any_mapping AS (
-          SELECT DISTINCT t.fco_id, v.afl_id
-          FROM public.target_mappings t
-          CROSS JOIN LATERAL jsonb_array_elements_text(
-              CASE
-                WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array' THEN t.afl_ids::jsonb
-                ELSE jsonb_build_array(t.afl_ids::jsonb)
-              END
-          ) AS v(afl_id)
-      ),
-      august_training_mapping AS (
-          SELECT DISTINCT t.fco_id, v.afl_id
-          FROM public.target_mappings t
-          CROSS JOIN LATERAL jsonb_array_elements_text(
-              CASE
-                WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array' THEN t.afl_ids::jsonb
-                ELSE jsonb_build_array(t.afl_ids::jsonb)
-              END
-          ) AS v(afl_id)
-          WHERE LOWER(COALESCE(t.main_activity_name, '')) LIKE '%farmers'' training%'
-      ),
-      august_training_done AS (
-          SELECT DISTINCT sf.farmer_id
-          FROM public.module_records mr
-          CROSS JOIN LATERAL jsonb_array_elements_text(
-              COALESCE(
-                  mr.data::jsonb -> 'selected_farmer_ids',
-                  '[]'::jsonb
-              )
-          ) AS sf(farmer_id)
-          WHERE mr.module_slug = 'training-form'
-            AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
-      )
-      SELECT
-          a.fco_id,
-          COALESCE(MAX(NULLIF(BTRIM(a.fco), '')), a.fco_id) AS fco_name,
-          COUNT(DISTINCT a.id) AS total_farmer_count,
-          COUNT(DISTINCT CASE WHEN am.afl_id IS NOT NULL THEN a.id END) AS total_mapped_farmer_count,
-          COUNT(DISTINCT CASE WHEN am.afl_id IS NULL THEN a.id END) AS no_activity_mapping_count,
-          COUNT(DISTINCT CASE WHEN am.afl_id IS NOT NULL AND tm.afl_id IS NULL THEN a.id END) AS no_training_mapping_count,
-          COUNT(DISTINCT CASE WHEN tm.afl_id IS NOT NULL AND td.farmer_id IS NULL THEN a.id END) AS training_mapped_but_no_entry_count,
-          COUNT(DISTINCT CASE WHEN td.farmer_id IS NULL THEN a.id END) AS red_farmer_count
-      FROM public.afls a
-      LEFT JOIN august_any_mapping am ON am.fco_id = a.fco_id AND am.afl_id = a.id::text
-      LEFT JOIN august_training_mapping tm ON tm.fco_id = a.fco_id AND tm.afl_id = a.id::text
-      LEFT JOIN august_training_done td ON td.farmer_id = a.id::text
-      WHERE 1=1
-        #{fco_filter_sql}
-      GROUP BY a.fco_id
-      ORDER BY a.fco_id;
-    SQL
-
-    binds = { fco_ids: fco_ids.map(&:downcase) }
-    rows = dashboard_sql_cache.select_all(
-      ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
-    ).to_a
-
-    total_count = rows.sum { |r| r["red_farmer_count"].to_i }
-    popups = format_red_fco_popups(rows, fco_ids)
-    details = format_red_fco_details(rows, fco_ids)
-
-    [total_count, popups, details]
-  rescue StandardError => e
-    Rails.logger.warn("No training count (all months) SQL failed: #{e.message}")
-    [0, format_fco_popups([], fco_ids, "red_farmer_count"), []]
+    compute_farmer_training_no_training_count_and_popups(month_name: nil, fcoc_name: fcoc_name)
   end
 
   def farmer_training_yellow_farmer_count_and_popups(month_name:, fcoc_name:)
@@ -1850,25 +1695,43 @@ class DashboardReportsController < ModulesController
     month_filter_sql = all_months ? "" : "AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name"
     week_filter_sql = all_months ? "" : training_participation_week_filter_sql(selected_participation_sql_week)
 
+    target_month_filter = all_months ? "TRUE" : "LOWER(TRIM(t.month_name)) = :month_name"
     sql = <<~SQL
       WITH attendance AS MATERIALIZED (
         SELECT sf.farmer_id, COUNT(DISTINCT mr.id) AS training_count
         FROM public.module_records mr
         CROSS JOIN LATERAL jsonb_array_elements_text(
-          COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb)
+          CASE WHEN jsonb_typeof(mr.data::jsonb -> 'selected_farmer_ids') = 'array'
+            THEN mr.data::jsonb -> 'selected_farmer_ids' ELSE '[]'::jsonb END
         ) AS sf(farmer_id)
         WHERE mr.module_slug = 'training-form'
           #{month_filter_sql}
           #{week_filter_sql}
-          AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
+        GROUP BY sf.farmer_id
+      ), mappings AS MATERIALIZED (
+        SELECT sf.farmer_id, BOOL_OR(
+          REGEXP_REPLACE(LOWER(COALESCE(t.main_activity_name, '')), '[^a-z0-9]+', ' ', 'g')
+            ~ '(farmers? training|farmer activity)'
+        ) AS training_mapped
+        FROM public.target_mappings t
+        CROSS JOIN LATERAL jsonb_array_elements_text(
+          CASE WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array' THEN t.afl_ids::jsonb ELSE '[]'::jsonb END
+        ) AS sf(farmer_id)
+        WHERE #{target_month_filter}
         GROUP BY sf.farmer_id
       )
       SELECT a.fco_id,
         COALESCE(MAX(NULLIF(BTRIM(a.fco), '')), a.fco_id) AS fco_name,
+        COUNT(DISTINCT a.id) AS total_farmer_count,
+        COUNT(DISTINCT a.id) FILTER (WHERE attendance.training_count IS NULL) AS red_farmer_count,
         COUNT(DISTINCT a.id) FILTER (WHERE attendance.training_count = 1) AS yellow_count,
-        COUNT(DISTINCT a.id) FILTER (WHERE attendance.training_count > 1) AS green_count
+        COUNT(DISTINCT a.id) FILTER (WHERE attendance.training_count > 1) AS green_count,
+        COUNT(DISTINCT a.id) FILTER (WHERE attendance.training_count IS NULL AND mappings.farmer_id IS NULL) AS no_activity_mapping_count,
+        COUNT(DISTINCT a.id) FILTER (WHERE attendance.training_count IS NULL AND mappings.training_mapped = FALSE) AS no_training_mapping_count,
+        COUNT(DISTINCT a.id) FILTER (WHERE attendance.training_count IS NULL AND mappings.training_mapped = TRUE) AS training_mapped_but_no_entry_count
       FROM public.afls a
-      JOIN attendance ON attendance.farmer_id = a.id::text
+      LEFT JOIN attendance ON attendance.farmer_id = a.id::text
+      LEFT JOIN mappings ON mappings.farmer_id = a.id::text
       WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)
       GROUP BY a.fco_id
       ORDER BY a.fco_id
@@ -2527,6 +2390,7 @@ class DashboardReportsController < ModulesController
   def dashboard_participation_training_scope
     return @dashboard_participation_training_scope if defined?(@dashboard_participation_training_scope)
     scope = ModuleRecord.where(module_slug: "training-form")
+      .where("jsonb_typeof(data::jsonb -> 'selected_farmer_ids') = 'array'")
       .where("COALESCE(LOWER(BTRIM(data::jsonb ->> 'main_activity_type')), '') IN ('', 'training')")
     %w[deleted is_deleted discarded].each do |key|
       scope = scope.where("COALESCE(LOWER(BTRIM(data::jsonb ->> '#{key}')), '') NOT IN ('1', 'true', 'yes', 'deleted')")

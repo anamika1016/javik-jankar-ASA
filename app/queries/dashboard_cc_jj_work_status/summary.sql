@@ -11,10 +11,8 @@ month_training_done AS (
         sf.farmer_id
     FROM public.module_records mr
     CROSS JOIN LATERAL jsonb_array_elements_text(
-        COALESCE(
-            mr.data::jsonb -> 'selected_farmer_ids',
-            '[]'::jsonb
-        )
+        CASE WHEN jsonb_typeof(mr.data::jsonb -> 'selected_farmer_ids') = 'array'
+            THEN mr.data::jsonb -> 'selected_farmer_ids' ELSE '[]'::jsonb END
     ) AS sf(farmer_id)
     WHERE mr.module_slug = 'training-form'
 

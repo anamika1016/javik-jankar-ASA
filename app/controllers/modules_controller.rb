@@ -46,6 +46,7 @@ class ModulesController < ApplicationController
                 :add_farmer_form_mappings, :dashboard_vrp_previous_status, :dashboard_vrp_status_label,
                 :training_edit_revision_for, :dashboard_weekly_report_filter_params,
                 :jeevika_bill_observation_row, :jeevika_bill_fcoc_name, :training_target_browser_payload,
+                :jeevika_bill_image_upload?,
                 :jeevika_jankar_transfer_office_keys
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
@@ -2048,6 +2049,28 @@ class ModulesController < ApplicationController
     @bill_print_mode = true
     @records = []
     render :show, layout: "bill_print"
+  end
+
+  # Every photo on one bill row, as a single archive. PDFs and spreadsheets stay
+  # out of it so they keep opening straight from their own links.
+  def download_bill_attachments
+    load_module!
+    record = ModuleRecord.find(params[:id])
+    list_path = module_path("jeevika-jankar-bill-list")
+    unless jeevika_jankar_bill_downloadable?(record)
+      redirect_to list_path, alert: "You are not allowed to download these attachments.", status: :see_other and return
+    end
+
+    item = jeevika_bill_display_items(record)[params[:item].to_i]
+    images = item ? jeevika_bill_item_uploads(item).select { |url| jeevika_bill_image_upload?(url) } : []
+    files = images.filter_map { |url| module_upload_attachment_file(url) }
+    if files.empty?
+      redirect_to list_path, alert: "No photo is saved on this row.", status: :see_other and return
+    end
+
+    send_data attachment_files_zip(files),
+      filename: "bill_#{record.id}_row_#{params[:item].to_i + 1}_photos.zip",
+      type: "application/zip"
   end
 
   private
@@ -7323,6 +7346,23 @@ class ModulesController < ApplicationController
     end
   end
 
+  # A bill row can carry a dozen photos. Those are bundled into one download so
+  # the row stays readable, while PDFs and spreadsheets keep their own links
+  # because people open those directly.
+  BILL_IMAGE_EXTENSIONS = %w[jpg jpeg png gif webp].freeze
+
+  def jeevika_bill_image_upload?(url)
+    extension = File.extname(URI.parse(url.to_s).path).delete_prefix(".").downcase
+    BILL_IMAGE_EXTENSIONS.include?(extension)
+  rescue URI::InvalidURIError
+    false
+  end
+
+  def jeevika_bill_item_uploads(item)
+    other = item["main_activity_type"].to_s.casecmp("other").zero?
+    other ? jeevika_bill_other_activity_uploads(item) : jeevika_bill_training_uploads(item)
+  end
+
   def module_upload_attachment_file(url)
     return if url.blank?
 
@@ -7331,13 +7371,30 @@ class ModulesController < ApplicationController
     return if path.blank?
 
     public_path = Rails.root.join("public", path.delete_prefix("/"))
-    return unless public_path.exist? && public_path.file?
+    name = File.basename(public_path.to_s)
+    return { name: name, content: public_path.binread } if public_path.exist? && public_path.file?
 
-    {
-      name: File.basename(public_path.to_s),
-      content: public_path.binread
-    }
+    # Uploads often live on the shared server rather than this machine, which is
+    # why UploadsController redirects there. Follow the same fallback so the
+    # archive is not silently empty.
+    content = remote_module_upload_body(name)
+    content.present? ? { name: name, content: content } : nil
   rescue URI::InvalidURIError
+    nil
+  end
+
+  def remote_module_upload_body(filename)
+    origin = UploadsController::MODULE_UPLOAD_FALLBACK_ORIGIN
+    return nil unless Rails.env.development? && origin.present?
+
+    uri = URI.parse("#{origin}/uploads/module_records/#{ERB::Util.url_encode(filename)}")
+    response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https",
+      open_timeout: 4, read_timeout: 15) do |http|
+      http.get(uri.request_uri)
+    end
+    response.is_a?(Net::HTTPSuccess) ? response.body : nil
+  rescue StandardError => error
+    Rails.logger.warn("Remote module upload fetch failed for #{filename}: #{error.class} - #{error.message}")
     nil
   end
 
@@ -9436,6 +9493,21 @@ class ModulesController < ApplicationController
     params[:slug] || params[:module_slug]
   end
 
+  def preload_bill_list_identities!(records)
+    ids = records.flat_map do |record|
+      [record.data["select_vrp"], record.data["vrp_id"]] + jeevika_bill_detail_rows(record).map { |item| item["vrp_id"] }
+    end.compact_blank.map(&:to_s).uniq
+    vrps = cached_vrps_by_id.values.select { |vrp| ids.include?(vrp.id.to_s) }
+    preload_dashboard_vrp_identity_records!(vrps)
+    @cached_user_find_by ||= {}
+    { id: "created_by_id", user_name: "created_by_username", email: "created_by_email" }.each do |column, field|
+      values = records.filter_map { |record| record.data[field].presence }.map(&:to_s).uniq
+      next if values.empty?
+      values.each { |value| @cached_user_find_by["#{column}=#{value}"] = nil }
+      User.where(column => values).each { |user| @cached_user_find_by["#{column}=#{user.public_send(column)}"] = user }
+    end
+  end
+
   def module_records
     return [] unless ModuleRecord.table_exists?
 
@@ -9446,6 +9518,7 @@ class ModulesController < ApplicationController
     limit_training_list = @slug == "training-form-list" && request.format.html? && params[:all].blank?
     records_scope = records_scope.order(created_at: :desc) if limit_training_list
     records = records_scope.to_a
+    preload_bill_list_identities!(records) if record_source_slug == "jeevika-jankar-bill-process"
     if record_source_slug == "jeevika-jankar-bill-process"
       records = if ["jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail"].include?(@slug) && jeevika_jankar_payment_module_access?(@slug)
         records.select { |record| jeevika_bill_final_approved?(record) }
@@ -9477,6 +9550,7 @@ class ModulesController < ApplicationController
   end
 
   def module_records_required_for_show?
+    return false if @slug == "jeevika-jankar-bill-list" && params[:view_id].present?
     return true if @record.present?
     return true if @slug.to_s.end_with?("-list")
     # These entry screens include a Saved Records table.  Loading the visible
@@ -10096,10 +10170,12 @@ class ModulesController < ApplicationController
   end
 
   def module_records_attachments_zip(records)
-    files = Array(records).flat_map do |record|
-      module_record_attachment_files(record)
-    end
+    attachment_files_zip(Array(records).flat_map { |record| module_record_attachment_files(record) })
+  end
 
+  # Same file can appear twice, so a repeat gets a numbered name instead of
+  # silently overwriting the first one.
+  def attachment_files_zip(files)
     used_names = Hash.new(0)
     Zip::OutputStream.write_buffer do |zip|
       files.each do |file|
@@ -10722,17 +10798,23 @@ class ModulesController < ApplicationController
     record.data["grand_total"].presence || "0.00"
   end
 
+  def bill_training_targets(ids)
+    key = Array(ids).compact_blank.map(&:to_s).uniq.sort
+    @bill_training_targets ||= {}
+    @bill_training_targets[key] ||= TargetMapping.includes(:vrp).where(id: key).to_a
+  end
+
   def jeevika_bill_training_uploads(item)
     ids = (Array(item["target_mapping_ids"]) + [item["target_mapping_id"]]).compact_blank.uniq
     return [] if ids.empty?
 
     dates = item["timesheet_dates"].to_s.split(",").filter_map { |date| parse_module_date(date.strip) }
-    TargetMapping.includes(:vrp).where(id: ids).flat_map do |target|
+    bill_training_targets(ids).flat_map do |target|
       matching_training_records_for_target(target, target_farmer_ids(target)).filter_map do |training|
         date = parse_module_date(training_summary(training)[:training_date])
         next if dates.any? && !dates.include?(date)
 
-        module_upload_public_urls(training.data["training_register_upload"])
+        %w[training_register_upload training_photo_upload_with_geo_tag photo_front_view photo_back_view photo_close_up_view photo_long_shot].flat_map { |key| module_upload_public_urls(training.data[key]) }
       end.flatten
     end.uniq
   end
@@ -10773,24 +10855,39 @@ class ModulesController < ApplicationController
   # derived from are grouped per target, which collapsed a JJ's three sessions
   # into a single row whenever they shared the same farmers.
   def jeevika_bill_time_slot_rows(record)
-    training_items, other_items = jeevika_bill_detail_rows(record).partition do |item|
-      training_main_activity_type?(item["main_activity_type"].presence || "Training")
+    items = jeevika_bill_detail_rows(record)
+    return items.flat_map { |item| jeevika_bill_time_slot_rows_for_item(item) } if record.data["bill_month"].blank?
+    items.flat_map do |item|
+      if training_main_activity_type?(item["main_activity_type"].presence || "Training")
+        jeevika_bill_saved_worksheet_rows(record, item)
+      else
+        jeevika_bill_time_slot_rows_for_item(item)
+      end
     end
+  end
 
-    # Only the training half is rebuilt from sessions. Seed distribution and
-    # other non-training items have no training form behind them, so they stay
-    # on the item-derived rows instead of dropping off the invoice.
-    session_rows = jeevika_bill_training_session_rows(record)
-    covered = session_rows.map { |row| normalize_dashboard_text(row[:tci]) }.to_set
-
-    # A training item whose activity no session covers keeps its original row, so
-    # billable work can never vanish just because no form carries that label.
-    leftover_items = training_items.reject do |item|
-      covered.include?(normalize_dashboard_text(item["main_activity"]))
+  def jeevika_bill_saved_worksheet_rows(record, item)
+    details = item["farmer_details"]
+    details = details.values if details.is_a?(Hash)
+    completed = Array(details).select { |farmer| farmer.is_a?(Hash) && !farmer["status"].to_s.match?(/\Apending\z/i) }
+      .uniq { |farmer| farmer["id"].presence || farmer }
+    achievement = completed.any? ? completed.size : dashboard_numeric(item["achievement_count"])
+    base = { village: item["village"].presence || "-", activity: item["activity"].presence || "-", tci: item["main_activity"].presence || "-" }
+    month = month_number_value(record.data["bill_month"])
+    start_year = record.data["financial_year"].to_s[/\b\d{4}\b/]&.to_i
+    year = start_year && month ? start_year + (month < 4 ? 1 : 0) : nil
+    date_in_period = ->(date) { date && (!month || date.month == month) && (!year || date.year == year) }
+    dated = completed.filter_map do |farmer|
+      date = parse_module_date(farmer["training_date"])
+      [date, farmer] if date_in_period.call(date)
+    end.group_by(&:first)
+    rows = dated.sort_by(&:first).map { |date, farmers| base.merge(working_date: bill_display_date(date), number: farmers.size) }
+    remaining = achievement - rows.sum { |row| row[:number] }
+    if remaining.positive? || rows.empty?
+      dates = item["timesheet_dates"].to_s.split(",").filter_map { |value| parse_module_date(value.strip) }.select(&date_in_period).uniq
+      rows << base.merge(working_date: dates.map { |date| bill_display_date(date) }.presence&.join(", ") || "-", number: dashboard_quantity(remaining))
     end
-
-    session_rows +
-      (leftover_items + other_items).flat_map { |item| jeevika_bill_time_slot_rows_for_item(item) }
+    rows
   end
 
   def jeevika_bill_training_session_rows(record)

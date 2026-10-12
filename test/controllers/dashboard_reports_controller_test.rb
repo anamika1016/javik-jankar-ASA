@@ -182,6 +182,30 @@ class DashboardReportsControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "rendered participation partitions farmers despite an OPG record without farmer IDs" do
+    yellow = @farmer
+    green = Afl.create!(fco_id: "995", fco: "Bhawanipatna", farmer_name: "Repeat Farmer", tracenet_no: "REPEAT-1", ics_id: "ics-a", ics_name: "ICS A", village_id: "v-a", village_name: "Village A")
+    red = Afl.create!(fco_id: "995", fco: "Bhawanipatna", farmer_name: "Pending Farmer", tracenet_no: "PENDING-1", ics_id: "ics-a", ics_name: "ICS A", village_id: "v-a", village_name: "Village A")
+    [green, red].each { |farmer| create_target(@mine, farmer, "September", "Soil Preparation") }
+    [yellow, green, green, nil].each do |farmer|
+      ModuleRecord.create!(module_slug: "training-form", data: {
+        "month" => "September", "main_activity" => "Farmers' Training", "main_activity_type" => "Training",
+        "jeevika_jankar_id" => @mine.id.to_s, "training_method" => "General Training/Meeting",
+        "selected_farmer_ids" => farmer ? [farmer.id.to_s] : nil
+      })
+    end
+    [@admin, @staff].each do |user|
+      login(user)
+      get dashboard_path, params: { month: "September", fcoc: "Bhawanipatna" }
+      assert_response :success
+      assert_select ".training-status-panel .training-participation-box.total > strong", text: "3"
+      %w[red yellow green].each do |status|
+        assert_select ".training-status-panel .training-participation-box.#{status} > strong", text: "1"
+      end
+      assert_select "#demonstration_method_boxes .demonstration-metric-achievement > strong", text: "4"
+    end
+  end
+
   def create_vrp(name, office, cluster)
     Vrp.create!(name: name, father_husband_name: "F", gender: :male,
       date_of_birth: Date.new(1990, 1, 1), date_of_joining: Date.current,

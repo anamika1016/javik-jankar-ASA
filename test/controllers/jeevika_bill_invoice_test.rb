@@ -3,6 +3,43 @@ require "test_helper"
 class JeevikaBillInvoiceTest < ActiveSupport::TestCase
   setup { @controller = ModulesController.new }
 
+  test "saved monthly worksheet totals match the billed unique achievement and exclude another month" do
+    farmers = 26.times.map do |i|
+      { "id" => (i + 1).to_s, "status" => "completed", "training_date" => i < 13 ? "2026-09-17" : "2026-09-22" }
+    end
+    item = { "main_activity_type" => "Training", "main_activity" => "Farmers Training", "activity" => "Organic", "achievement_count" => "26", "farmer_details" => farmers,
+      "timesheet_dates" => "2026-09-17,2026-09-22,2026-10-07" }
+    other = { "main_activity_type" => "Other", "main_activity" => "Visit", "achievement_count" => "8" }
+    registration = { "main_activity_type" => "Other", "main_activity" => "Registration", "achievement_count" => "150" }
+    record = ModuleRecord.new(data: { "bill_month" => "September", "financial_year" => "2026-2027", "bill_items" => [item, other, registration] })
+    def @controller.jeevika_bill_training_session_rows(_); raise "must not rebuild a saved worksheet from live sessions"; end
+    rows = @controller.send(:jeevika_bill_time_slot_rows, record)
+    training = rows.select { |row| row[:tci] == "Farmers Training" }
+    assert_equal 26, training.sum { |row| row[:number].to_i }
+    assert_equal [13, 13], training.map { |row| row[:number] }
+    refute training.any? { |row| row[:working_date].include?("10/2026") }
+    assert_equal 8, rows.find { |row| row[:tci] == "Visit" }[:number].to_i
+    assert_equal 150, rows.find { |row| row[:tci] == "Registration" }[:number].to_i
+  end
+
+  test "legacy saved achievements without dated farmers remain the exact billed total" do
+    record = ModuleRecord.new(data: { "bill_month" => "September", "financial_year" => "2026-2027", "bill_items" => [{ "achievement_count" => "26", "timesheet_dates" => "2026-09-17,2026-10-07" }] })
+    rows = @controller.send(:jeevika_bill_time_slot_rows, record)
+    assert_equal 26, rows.sum { |row| row[:number].to_i }
+    refute_includes rows.first[:working_date], "10/2026"
+  end
+
+  test "training attachments include every register PDF and uploaded photo" do
+    target = TargetMapping.new(id: 1)
+    training = ModuleRecord.new(data: { "training_date" => "2026-09-17", "training_register_upload" => ["/uploads/first.pdf", "/uploads/second.pdf"],
+      "training_photo_upload_with_geo_tag" => ["/uploads/front.jpg", "/uploads/back.jpg"], "photo_close_up_view" => "/uploads/close.jpg" })
+    @controller.define_singleton_method(:matching_training_records_for_target) { |*_| [training] }
+    @controller.define_singleton_method(:target_farmer_ids) { |_| [] }
+    @controller.define_singleton_method(:bill_training_targets) { |_| [target] }
+    urls = @controller.send(:jeevika_bill_training_uploads, { "target_mapping_id" => 1 })
+    assert_equal %w[/uploads/first.pdf /uploads/second.pdf /uploads/front.jpg /uploads/back.jpg /uploads/close.jpg], urls
+  end
+
   test "worksheet uses actual date attendance instead of repeating monthly total" do
     def @controller.jeevika_bill_training_attendance_by_date(_item)
       { "2026-09-01" => %w[1 2], "2026-09-14" => %w[3] }
