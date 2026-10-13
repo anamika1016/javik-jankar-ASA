@@ -41,7 +41,7 @@ class ModulesController < ApplicationController
                 :approval_level_display_label, :approval_level_label_for_sequence, :approval_user_display_label,
                 :training_participation_status_label, :training_participation_status_caption,
                 :training_target_status_label, :training_target_status_caption, :training_target_status_for_percent,
-                :training_trainee_department_default, :seed_distribution_target_mappings,
+                :training_trainee_department_default, :seed_distribution_target_mappings, :seed_distribution_target_browser_payload,
                 :seed_distribution_target_month_options, :current_seed_target_vrp_option,
                 :add_farmer_form_mappings, :dashboard_vrp_previous_status, :dashboard_vrp_status_label,
                 :training_edit_revision_for, :dashboard_weekly_report_filter_params,
@@ -8072,15 +8072,39 @@ class ModulesController < ApplicationController
     @target_live_farmer_ids_cache[key] = ids.map(&:to_s).reject(&:blank?).uniq
   end
 
+  # Load all local and external village farmers once before building target
+  # rows. Previously each target performed its own AFL/cache reads.
+  def preload_live_target_farmers!(targets)
+    village_ids = Array(targets).flat_map { |target| target_village_ids(target) }.uniq
+    return if village_ids.blank?
+
+    @target_live_local_village_ids ||= {}
+    @training_farmers_by_id_cache ||= {}
+    if model_ready?(:Afl)
+      farmers = Afl
+        .where(village_id: village_ids)
+        .select(:id, :farmer_name, :father_name, :mobile_no, :tracenet_no, :khasara_no, :ics_name, :ics_id, :village_name, :village_id)
+        .to_a
+      farmers.each { |farmer| @training_farmers_by_id_cache[farmer.id.to_s] = farmer }
+      farmers_by_village = farmers.group_by { |farmer| farmer.village_id.to_s }
+      Array(targets).each do |target|
+        target_villages = target_village_ids(target)
+        @target_live_local_village_ids[target_villages] = target_villages.flat_map do |village_id|
+          Array(farmers_by_village[village_id.to_s]).map { |farmer| farmer.id.to_s }
+        end
+      end
+    end
+
+    preload_village_external_farmer_details!(village_ids)
+  end
+
   # Cached per village so repeated targets in one request, and repeated requests
   # within a few minutes, do not re-hit the farmer API.
   def village_external_farmer_ids(village_ids)
     @village_external_farmer_ids_cache ||= {}
 
     village_ids.flat_map do |village_id|
-      @village_external_farmer_ids_cache[village_id] ||= Rails.cache.fetch(
-        ["training-village-farmer-ids", village_id], expires_in: 5.minutes
-      ) { fetch_training_external_farmer_names([village_id]).keys }
+      @village_external_farmer_ids_cache[village_id] ||= village_external_farmer_details([village_id]).keys
     end
   end
 
@@ -14628,6 +14652,26 @@ class ModulesController < ApplicationController
     @seed_distribution_target_mappings ||= build_seed_distribution_target_mappings
   end
 
+  # The farmer form can contain the same farmer in several target rows. Keep
+  # one copy of each farmer in the HTML payload and let the browser rebuild the
+  # unchanged per-target arrays.
+  def seed_distribution_target_browser_payload
+    farmers = []
+    farmer_indexes = {}
+    mappings = seed_distribution_target_mappings.map do |mapping|
+      indexes = Array(mapping[:farmers]).map do |farmer|
+        farmer_indexes.fetch(farmer) do
+          index = farmers.size
+          farmers << farmer
+          farmer_indexes[farmer] = index
+        end
+      end
+      mapping.except(:farmers).merge(farmer_indexes: indexes)
+    end
+
+    { mappings: mappings, farmers: farmers }
+  end
+
   def build_seed_distribution_target_mappings
     return [] unless model_ready?(:TargetMapping)
 
@@ -14644,6 +14688,7 @@ class ModulesController < ApplicationController
     include_farmer_payload = other_with_farmer || (@record.present? && record_source_slug != "other-target")
     preload_other_target_completed_farmer_ids!(targets) if include_farmer_payload
     preload_training_farmers_for_targets!(targets) if include_farmer_payload
+    preload_live_target_farmers!(targets) if other_with_farmer
 
     targets
       .filter_map do |target|
@@ -14732,12 +14777,42 @@ class ModulesController < ApplicationController
   def village_external_farmer_details(village_ids)
     @village_external_farmer_details_cache ||= {}
 
+    preload_village_external_farmer_details!(village_ids)
+
     village_ids.each_with_object({}) do |village_id, memo|
-      details = @village_external_farmer_details_cache[village_id] ||= Rails.cache.fetch(
-        ["training-village-farmer-details", village_id], expires_in: 5.minutes
-      ) { fetch_training_external_farmer_names([village_id]) }
-      memo.merge!(details || {})
+      memo.merge!(@village_external_farmer_details_cache[village_id] || {})
     end
+  end
+
+  def preload_village_external_farmer_details!(village_ids)
+    @village_external_farmer_details_cache ||= {}
+    village_ids = Array(village_ids).map(&:to_s).reject(&:blank?).uniq
+    missing_ids = village_ids.reject { |village_id| @village_external_farmer_details_cache.key?(village_id) }
+    return @village_external_farmer_details_cache if missing_ids.blank?
+
+    keys_by_village = missing_ids.index_with { |village_id| ["training-village-farmer-details", village_id] }
+    cached = Rails.cache.read_multi(*keys_by_village.values)
+    unresolved = []
+    keys_by_village.each do |village_id, cache_key|
+      if cached.key?(cache_key)
+        @village_external_farmer_details_cache[village_id] = cached[cache_key] || {}
+      else
+        unresolved << village_id
+      end
+    end
+
+    if unresolved.any?
+      fetched_by_village = fetch_training_external_farmer_names(unresolved, nil, group_by_village: true)
+      unresolved.each do |village_id|
+        @village_external_farmer_details_cache[village_id] = fetched_by_village[village_id.to_s] || {}
+      end
+      Rails.cache.write_multi(
+        unresolved.to_h { |village_id| [keys_by_village[village_id], @village_external_farmer_details_cache[village_id]] },
+        expires_in: 5.minutes
+      )
+    end
+
+    @village_external_farmer_details_cache
   end
 
   def other_target_completed_farmer_ids_for(target_mapping_id)
@@ -15019,11 +15094,12 @@ class ModulesController < ApplicationController
 
   # needed_ids nil means "every farmer the village has", which is what the
   # training form needs so a Jeevika Jankar can pick beyond the mapped target.
-  def fetch_training_external_farmer_names(village_ids, needed_ids = nil)
+  def fetch_training_external_farmer_names(village_ids, needed_ids = nil, group_by_village: false)
     result = {}
+    result_by_village = Hash.new { |hash, key| hash[key] = {} }
     village_ids.each_slice(6) do |batch|
-      threads = batch.map do |vid|
-        Thread.new do
+      threads = batch.to_h do |vid|
+        [vid, Thread.new do
           Rails.application.executor.wrap do
             uri = URI("https://asa.ploughmanagro.com/api/farmers/get_farmers.json")
             rows = []
@@ -15044,16 +15120,16 @@ class ModulesController < ApplicationController
             Rails.logger.warn("Training external farmer fetch for village #{vid}: #{e.message}")
             []
           end
-        end
+        end]
       end
       ActiveSupport::Dependencies.interlock.permit_concurrent_loads do
-        threads.each do |thread|
+        threads.each do |vid, thread|
           Array(thread.value).each do |row|
             farmer = row["farmer"].is_a?(Hash) ? row["farmer"] : row
             fid = (farmer["farmer_unique_id"].presence || farmer["id"].presence).to_s
             next if fid.blank?
             next if needed_ids && !needed_ids.include?(fid)
-            result[fid] ||= {
+            details = {
               village_name: farmer["village_name"].presence || row.dig("address", "village").presence || row.dig("grouping", "village"),
               farmer_name: farmer["farmer_name"].to_s.strip.presence || "Farmer ##{fid}",
               father_name: farmer["father_husband_name"].presence || farmer["father_name"].presence,
@@ -15061,11 +15137,13 @@ class ModulesController < ApplicationController
               mobile_no: farmer["mobile_no"].presence,
               khasara_no: Array(row["lands"]).filter_map { |l| l["khasra_no"].presence || l["plot_no"].presence }.join(", ").presence
             }
+            result[fid] ||= details
+            result_by_village[vid.to_s][fid] ||= details
           end
         end
       end
     end
-    result
+    group_by_village ? result_by_village : result
   end
 
   def role_management_mappings

@@ -11,6 +11,7 @@ module Api
         months = targets.filter_map { |target| target.month_name.to_s.strip.presence }.uniq
         selected_month = params[:month].presence || params[:training_month].presence || default_month(months)
         targets = targets.select { |target| same_text?(target.month_name, selected_month) } if selected_month.present?
+        preload_dashboard_mappings(targets)
         progress = web_parity_progress(targets, vrp)
         assigned = progress.sum { |row| row[:assigned].to_f }
         achieved = progress.sum { |row| row[:achieved].to_f }

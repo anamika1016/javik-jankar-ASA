@@ -28,6 +28,15 @@
 threads_count = ENV.fetch("RAILS_MAX_THREADS", 3)
 threads threads_count, threads_count
 
+# Keep a large report/form request and its garbage collection from delaying
+# login, logout and unrelated pages in the same Ruby process. Production can
+# override this explicitly through WEB_CONCURRENCY; development stays single.
+worker_count = ENV.fetch("WEB_CONCURRENCY", ENV.fetch("RAILS_ENV", "development") == "production" ? 2 : 0)
+if worker_count.to_s == "auto" || worker_count.to_i.positive?
+  workers worker_count
+  preload_app!
+end
+
 # Specifies the `port` that Puma will listen on to receive requests; default is 3000.
 port ENV.fetch("PORT", 3000)
 

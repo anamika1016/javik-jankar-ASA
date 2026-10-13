@@ -3043,7 +3043,7 @@ function initDeferredLayoutPage() {
     let monthOptions = [];
     let currentVrpOption = null;
     try {
-      mappings = JSON.parse(formShell.dataset.seedTargetMap || "[]");
+      mappings = unpackTrainingTargetMappings(JSON.parse(formShell.dataset.seedTargetMap || "[]"));
     } catch (_error) {
       mappings = [];
     }

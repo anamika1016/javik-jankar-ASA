@@ -122,4 +122,33 @@ class ModuleReadPerformanceTest < ActiveSupport::TestCase
     end
     assert_equal 1, queries.size
   end
+
+  test "API dashboard batches fallback VRP mappings while preserving mapped farmer ids" do
+    controller = Api::V1::JeevikaJankarDashboardController.new
+    vrps = [201, 202].map do |id|
+      Vrp.new(id: id).tap { |vrp| vrp.save!(validate: false) }
+    end
+    targets = vrps.map.with_index do |vrp, index|
+      TargetMapping.new(vrp_id: vrp.id, fco_id: "FCO#{index}", ics_id: "ICS#{index}",
+        village_id: "Village#{index}", afl_ids: [])
+    end
+    vrps.each_with_index do |vrp, index|
+      VrpIcsMapping.create!(vrp_id: vrp.id, fco_id: "FCO#{index}", ics_id: "ICS#{index}",
+        village_id: "Village#{index}", afl_ids: [index + 10, index + 20])
+    end
+
+    queries = []
+    subscriber = ->(*args) do
+      payload = args.last
+      queries << payload[:sql] if payload[:sql].start_with?("SELECT") && payload[:sql].include?('"vrp_ics_mappings"')
+    end
+    results = nil
+    ActiveSupport::Notifications.subscribed(subscriber, "sql.active_record") do
+      controller.send(:preload_dashboard_mappings, targets)
+      results = targets.map { |target| controller.send(:mapped_farmer_ids, target) }
+    end
+
+    assert_equal [["10", "20"], ["11", "21"]], results
+    assert_equal 1, queries.size
+  end
 end

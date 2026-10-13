@@ -59,6 +59,64 @@ class ApiVrpReadScalingTest < ActiveSupport::TestCase
     assert_equal 1, queries.count { |sql| sql.include?('FROM "afls"') }
   end
 
+  test "other target farmer preload batches distinct villages and preserves target farmer order" do
+    first = Afl.create!(farmer_name: "First Village", village_id: "village-one")
+    second = Afl.create!(farmer_name: "Second Village", village_id: "village-two")
+    vrp = create_vrp(102)
+    targets = [
+      TargetMapping.create!(vrp: vrp, fco_id: "fco", ics_id: "ics", village_id: "village-one", month_name: "October",
+        main_activity_name: "Other", activity_name: "Activity One", target_quantity: 1, afl_ids: ["mapped-one"]),
+      TargetMapping.create!(vrp: vrp, fco_id: "fco", ics_id: "ics", village_id: "village-two", month_name: "October",
+        main_activity_name: "Other", activity_name: "Activity Two", target_quantity: 1, afl_ids: ["mapped-two"])
+    ]
+    controller = ModulesController.new
+    controller.define_singleton_method(:preload_village_external_farmer_details!) { |_ids| {} }
+    controller.define_singleton_method(:village_external_farmer_ids) do |ids|
+      ids.map { |id| "external-#{id}" }
+    end
+
+    queries = []
+    capture_queries(queries) { controller.send(:preload_live_target_farmers!, targets) }
+
+    assert_equal ["mapped-one", first.id.to_s, "external-village-one"], controller.send(:target_live_farmer_ids, targets.first)
+    assert_equal ["mapped-two", second.id.to_s, "external-village-two"], controller.send(:target_live_farmer_ids, targets.second)
+    assert_equal 1, queries.count { |sql| sql.include?('FROM "afls"') }
+  end
+
+  test "other target compact browser payload expands to the original mappings" do
+    shared = { id: "farmer-1", farmer_name: "Shared Farmer" }
+    unique = { id: "farmer-2", farmer_name: "Unique Farmer" }
+    mappings = [
+      { target_mapping_id: "1", farmers: [shared, unique] },
+      { target_mapping_id: "2", farmers: [shared] }
+    ]
+    controller = ModulesController.new
+    controller.define_singleton_method(:seed_distribution_target_mappings) { mappings }
+
+    payload = controller.send(:seed_distribution_target_browser_payload)
+    expanded = payload[:mappings].map do |mapping|
+      mapping.except(:farmer_indexes).merge(farmers: mapping[:farmer_indexes].map { |index| payload[:farmers][index] })
+    end
+
+    assert_equal mappings, expanded
+    assert_equal [shared, unique], payload[:farmers]
+  end
+
+  test "external village details are fetched once as a grouped batch" do
+    controller = ModulesController.new
+    calls = []
+    controller.define_singleton_method(:fetch_training_external_farmer_names) do |ids, needed = nil, group_by_village: false|
+      calls << [ids, needed, group_by_village]
+      ids.to_h { |id| [id, { "farmer-#{id}" => { farmer_name: "Farmer #{id}" } }] }
+    end
+
+    controller.send(:preload_village_external_farmer_details!, %w[village-one village-two])
+
+    assert_equal [[%w[village-one village-two], nil, true]], calls
+    assert_equal ["farmer-village-one"], controller.send(:village_external_farmer_ids, ["village-one"])
+    assert_equal ["farmer-village-two"], controller.send(:village_external_farmer_ids, ["village-two"])
+  end
+
   private
 
   def capture_queries(queries, &block)
