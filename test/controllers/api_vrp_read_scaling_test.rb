@@ -114,6 +114,42 @@ class ApiVrpReadScalingTest < ActiveSupport::TestCase
     assert_equal [mapping.except(:farmers)], payload[:mappings]
   end
 
+  test "other with farmer form setup defers the live village query until target selection" do
+    vrp = Struct.new(:name, :user_name, :mobile_no).new("JJ One", "jj-one", "9876543210")
+    target = Struct.new(:id, :vrp_id, :vrp, :month_name, :ics_name, :ics_id, :village_name, :village_id,
+      :main_activity_name, :activity_name, :target_quantity, :afl_ids).new(
+        1, 1, vrp, "October", "ICS One", "ics-1", "Village One", "village-1",
+        "Other Activity", "Subject", 10, ["mapped-farmer"]
+      )
+    relation = Object.new
+    relation.define_singleton_method(:includes) { |*| self }
+    relation.define_singleton_method(:order) { |*| self }
+    relation.define_singleton_method(:to_a) { [target] }
+
+    controller = ModulesController.new
+    controller.define_singleton_method(:model_ready?) { |_| true }
+    controller.define_singleton_method(:record_source_slug) { "other-target-with-farmer" }
+    controller.define_singleton_method(:training_target_scope) { relation }
+    controller.define_singleton_method(:jeevika_jankar_main_activity_settings) { [] }
+    controller.define_singleton_method(:jeevika_jankar_sub_activity_settings) { |_| [] }
+    controller.define_singleton_method(:jeevika_jankar_activity_setting_for) { |*| { main_activity_type: "Other with Farmer" } }
+    controller.define_singleton_method(:other_with_farmer_target_exhausted?) { |_| false }
+    controller.define_singleton_method(:preload_other_target_completed_farmer_ids!) { |_| nil }
+    controller.define_singleton_method(:preload_training_farmers_for_targets!) { |_| raise "initial form must not preload farmers" }
+    controller.define_singleton_method(:preload_live_target_farmers!) { |_| raise "initial form must not query live villages" }
+    controller.define_singleton_method(:target_live_farmer_ids) { |_| raise "initial form must not resolve live farmers" }
+    controller.define_singleton_method(:target_farmer_ids) { |_| ["mapped-farmer"] }
+    controller.define_singleton_method(:other_target_completed_farmer_ids_for) { |_| ["done-farmer"] }
+    controller.define_singleton_method(:registered_vrp_fcoc) { |_| "FCO One" }
+    controller.define_singleton_method(:new_farmer_target_mapping?) { |_| false }
+
+    mapping = controller.send(:build_seed_distribution_target_mappings).sole
+
+    assert_equal [], mapping[:farmers]
+    assert_equal ["mapped-farmer"], mapping[:mapped_farmer_ids]
+    assert_equal ["done-farmer"], mapping[:completed_farmer_ids]
+  end
+
   test "external village details are fetched once as a grouped batch" do
     controller = ModulesController.new
     calls = []

@@ -14699,12 +14699,16 @@ class ModulesController < ApplicationController
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
       .to_a
     other_with_farmer = record_source_slug == "other-target-with-farmer"
-    # This form always lists farmers, including on a blank form, so their names
-    # have to be loaded even when no record is being edited.
-    include_farmer_payload = other_with_farmer || (@record.present? && record_source_slug != "other-target")
-    preload_other_target_completed_farmer_ids!(targets) if include_farmer_payload
+    # Other with Farmer uses the existing selected-target request for its live
+    # village list. Building every village's rows before rendering the form
+    # created hundreds of queries and large temporary objects, even though the
+    # browser intentionally excludes those rows from the initial payload.
+    # Keep the same target and completion state here; load the unchanged farmer
+    # list only when the user selects a target.
+    include_farmer_payload = !other_with_farmer && @record.present? && record_source_slug != "other-target"
+    include_completed_farmer_state = other_with_farmer || include_farmer_payload
+    preload_other_target_completed_farmer_ids!(targets) if include_completed_farmer_state
     preload_training_farmers_for_targets!(targets) if include_farmer_payload
-    preload_live_target_farmers!(targets) if other_with_farmer
 
     targets
       .filter_map do |target|
@@ -14723,9 +14727,10 @@ class ModulesController < ApplicationController
 
         farmer_ids = case record_source_slug
         when "other-target" then []
-        # Other Target with Farmer offers the whole village, so a farmer
-        # registered after the target was mapped can still be picked.
-        when "other-target-with-farmer" then target_live_farmer_ids(target)
+        # The live village list is loaded by seed_target_farmers after this
+        # target is selected. That endpoint retains the historic list and
+        # validation, including farmers registered after mapping.
+        when "other-target-with-farmer" then []
         else target_farmer_ids(target)
         end
         {
@@ -14742,7 +14747,7 @@ class ModulesController < ApplicationController
           training_subject: target.activity_name.to_s.strip,
           target: target.target_quantity.to_s,
           new_farmer_target: new_farmer_target_mapping?(target),
-          completed_farmer_ids: include_farmer_payload ? other_target_completed_farmer_ids_for(target.id) : [],
+          completed_farmer_ids: include_completed_farmer_state ? other_target_completed_farmer_ids_for(target.id) : [],
           # Which of the listed farmers the target was actually mapped against,
           # so the form can tell them apart from the rest of the village.
           mapped_farmer_ids: other_with_farmer ? target_farmer_ids(target) : [],
