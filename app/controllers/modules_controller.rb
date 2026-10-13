@@ -2003,9 +2003,14 @@ class ModulesController < ApplicationController
     target = training_target_scope.find_by(id: params[:target_mapping_id])
     return render json: { farmers: [], completed_farmer_ids: [] } unless target
 
-    farmer_ids = target_farmer_ids(target)
+    # Other with Farmer has always offered the live village list, including
+    # farmers registered after the target was created. Keep that exact list on
+    # the deferred request instead of serialising every village's farmers into
+    # the initial form HTML.
+    farmer_ids = record_source_slug == "other-target-with-farmer" ? target_live_farmer_ids(target) : target_farmer_ids(target)
     completed_ids = other_target_completed_farmer_ids_for(target.id)
-    farmers = training_farmers_for_ids(farmer_ids)
+    farmers = record_source_slug == "other-target-with-farmer" ?
+      resolve_target_farmer_details(target, farmer_ids) : training_farmers_for_ids(farmer_ids)
 
     render json: {
       farmers: farmers,
@@ -14656,6 +14661,17 @@ class ModulesController < ApplicationController
   # one copy of each farmer in the HTML payload and let the browser rebuild the
   # unchanged per-target arrays.
   def seed_distribution_target_browser_payload
+    # The Other with Farmer form can have thousands of live village farmers.
+    # Its existing JavaScript fetches a selected target's farmers on demand, so
+    # omit those repeated rows from the initial page while preserving the
+    # selected target's exact response and save-time validation.
+    if record_source_slug == "other-target-with-farmer"
+      return {
+        mappings: seed_distribution_target_mappings.map { |mapping| mapping.except(:farmers) },
+        farmers: []
+      }
+    end
+
     farmers = []
     farmer_indexes = {}
     mappings = seed_distribution_target_mappings.map do |mapping|

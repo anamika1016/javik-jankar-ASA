@@ -102,6 +102,18 @@ class ApiVrpReadScalingTest < ActiveSupport::TestCase
     assert_equal [shared, unique], payload[:farmers]
   end
 
+  test "other with farmer initial payload keeps target metadata and defers live farmer rows" do
+    mapping = { target_mapping_id: "1", village: "Village", farmers: [{ id: "farmer-1" }], mapped_farmer_ids: ["farmer-1"] }
+    controller = ModulesController.new
+    controller.define_singleton_method(:record_source_slug) { "other-target-with-farmer" }
+    controller.define_singleton_method(:seed_distribution_target_mappings) { [mapping] }
+
+    payload = controller.send(:seed_distribution_target_browser_payload)
+
+    assert_equal [], payload[:farmers]
+    assert_equal [mapping.except(:farmers)], payload[:mappings]
+  end
+
   test "external village details are fetched once as a grouped batch" do
     controller = ModulesController.new
     calls = []
