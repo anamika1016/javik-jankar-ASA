@@ -514,24 +514,25 @@ class VrpsController < ApplicationController
 
     mapped_vrps = cluster_mapped_vrps.to_a
     own_records = own_vrps.to_a
-    base_vrps = if cluster_incharge_login? || mapped_vrps.any?
-      own_records + mapped_vrps
-    else
-      own_records
-    end
+    cluster_scoped = cluster_incharge_login? || mapped_vrps.any?
+    base_vrps = cluster_scoped ? own_records + mapped_vrps : own_records
 
-    (base_vrps + office_scoped_vrps + approval_related_vrps).uniq
+    # Someone who has Jeevika Jankars mapped under them is scoped to those,
+    # whatever their role is called. Adding the whole office back on top showed
+    # them every Jeevika Jankar of the FCO instead of just their own.
+    office_vrps = cluster_scoped ? [] : office_scoped_vrps
+
+    (base_vrps + office_vrps + approval_related_vrps).uniq
   end
 
   # A staff login that belongs to an FCO office sees every Jeevika Jankar of
   # that office, whoever registered them. A Jeevika Jankar login stays limited
   # to its own records, so this never widens a JJ's own view.
   #
-  # A cluster incharge is an exception: they are scoped to the Jeevika Jankars
-  # mapped under them, so the office must not widen that back to everyone.
+  # Cluster-scoped logins are excluded by the caller, which already knows
+  # whether any Jeevika Jankar is mapped under this user.
   def office_scoped_vrps
     return [] if current_app_user&.dig("record_type").to_s == "Vrp"
-    return [] if cluster_incharge_login?
 
     offices = AgreementVrpScope.user_office_keys(current_app_user)
     return [] if offices.blank?

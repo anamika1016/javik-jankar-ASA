@@ -2043,6 +2043,7 @@
               <th>Jeevika Jankar ID</th>
               <th>Status</th>
               <th>Name</th>
+              <th>Prepared By</th>
               <th>FCOC Name</th>
               <th>Financial Year</th>
               <th>Bill Month</th>
@@ -2084,6 +2085,7 @@
                   <td><%= row[:vrp_id].presence || "-" %></td>
                   <td><span class="grid-status <%= row[:status_class] %>"><%= row[:status] %></span></td>
                   <td><%= row[:name].presence || "-" %></td>
+                  <td><%= row[:prepared_by].presence || "-" %></td>
                   <td><%= row[:fcoc_name] %></td>
                   <td><%= row[:financial_year] %></td>
                   <td><%= row[:bill_month] %></td>

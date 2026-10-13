@@ -10599,6 +10599,7 @@ class ModulesController < ApplicationController
         bill_id: record.id,
         vrp_id: data["select_vrp"],
         name: jeevika_jankar_display_name(data["select_vrp_name"].presence || jeevika_jankar_vrp_label(data["select_vrp"])),
+        prepared_by: jeevika_bill_prepared_by(record)[:name].presence || "-",
         fcoc_name: jeevika_bill_fcoc_name(record),
         financial_year: data["financial_year"].presence || "-",
         bill_month: data["bill_month"].presence || "-",
