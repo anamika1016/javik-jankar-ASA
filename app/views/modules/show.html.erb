@@ -52,7 +52,6 @@
             <p>Invoice Date: <%= bill_display_date(detail_record.data["invoice_date"].presence || detail_record.created_at) %></p>
             <p>Invoice Month: <%= detail_record.data["bill_month"].presence || "-" %></p>
             <p>FCO: <%= detail_summary[:fco].presence || "-" %>, TO: <%= detail_summary[:to].presence || "-" %>, Block: <%= jeevika_bill_block_name(detail_record) %></p>
-            <p>CC Name: <%= jeevika_bill_cc_name(detail_record) %></p>
           </div>
         </div>
 
@@ -1985,9 +1984,13 @@
     <% selected_bill_month = params[:bill_month].presence || (dashboard_status_link ? nil : default_bill_month) %>
     <% if @jeevika_bill_user_filters || params[:bill_month].present? || params[:bill_status].present? || params[:record_state].present? %>
       <% bill_rows = bill_rows.select { |row| selected_bill_month.blank? || row[:bill_month].to_s.casecmp(selected_bill_month).zero? } %>
+      <%# The two options are exact opposites. Anything not finally approved -
+          including a bill still "Submitted (Not sent for approval)" - belongs in
+          the pending bucket, otherwise it is unreachable from either filter for
+          anyone except its creator or an approver. %>
       <% bill_rows = bill_rows.select do |row|
-        row_status = row[:status].to_s.downcase
-        selected_bill_status == "final-approved" ? row_status.include?("final approved") : (row_status.include?("pending") || row[:created_by_current_user] || row[:approver_visible])
+        finally_approved = row[:status].to_s.downcase.include?("final approved")
+        selected_bill_status == "final-approved" ? finally_approved : !finally_approved
       end %>
       <% bill_rows = bill_rows.select { |row| selected_record_state.blank? || row[:record_state].to_s.casecmp(selected_record_state).zero? } %>
     <% end %>

@@ -11169,7 +11169,12 @@ class ModulesController < ApplicationController
     vrp_record_name = jeevika_bill_vrp(record)&.name.presence
     creator = bill_creator_user(record.data) unless record.data["created_by_record_type"] == "ModuleRecord"
     creator_record = bill_creator_module_record(record.data) unless creator
-    prepared_name = [record.data["created_by_name"], creator&.full_name,
+    # Once a Jeevika Jankar is mapped to a cluster incharge, that cluster
+    # incharge owns the bill and sends it for approval, so the invoice carries
+    # their name. It reads live from the Jeevika Jankar, so remapping takes
+    # effect at once. Whoever keyed the bill in stays as the fallback.
+    prepared_name = [jeevika_bill_cc_name(record),
+      record.data["created_by_name"], creator&.full_name,
       creator_record&.data&.[]("name"), creator_record&.data&.[]("full_name"),
       vrp_record_name, vrp_name, sent_history&.data&.[]("action_by"),
       record.data["created_by_username"], creator&.user_name, creator_record&.data&.[]("user_name")

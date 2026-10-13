@@ -76,6 +76,93 @@ class JeevikaBillWorksheetAndCcTest < ActionDispatch::IntegrationTest
       "another cluster incharge's bill must not be listed"
   end
 
+  # A bill that is still "Submitted (Not sent for approval)" is neither pending
+  # nor finally approved, so it used to be reachable from neither filter unless
+  # you happened to be its creator or an approver.
+  test "a submitted bill still reaches the cluster incharge under the Pending filter" do
+    cc = User.create!(user_name: "ws_cc_submitted", password: "secret", first_name: "Arti",
+                      last_name: "Shrama", role: "Cluster Incharge",
+                      office_name: "FCO-Kotma", user_type: "User", status: "Active")
+    mine = vrp("MAKHAN DAS", "9000000041", cluster_incharge: "Arti Shrama")
+    submitted = bill_with_items([other_item(achievement: "5")])
+    submitted.update!(data: submitted.data.merge(
+      "select_vrp" => mine.id.to_s, "status" => "Submitted (Not sent for approval)"
+    ))
+
+    post login_path, params: { login: cc.user_name, password: "secret" }
+    get module_path("jeevika-jankar-bill-list", bill_month: "September")
+    assert_response :success
+    assert_includes response.body, "MAKHAN DAS",
+      "a submitted bill of a mapped Jeevika Jankar must be visible to the cluster incharge"
+  end
+
+  test "the Final Approved filter still shows only approved bills" do
+    cc = User.create!(user_name: "ws_cc_approved", password: "secret", first_name: "Arti",
+                      last_name: "Shrama", role: "Cluster Incharge",
+                      office_name: "FCO-Kotma", user_type: "User", status: "Active")
+    mine = vrp("APPROVED JJ", "9000000042", cluster_incharge: "Arti Shrama")
+    other = vrp("SUBMITTED JJ", "9000000043", cluster_incharge: "Arti Shrama")
+
+    approved = bill_with_items([other_item(achievement: "5")])
+    approved.update!(data: approved.data.merge("select_vrp" => mine.id.to_s, "status" => "Final Approved"))
+    pending = bill_with_items([other_item(achievement: "5")])
+    pending.update!(data: pending.data.merge("select_vrp" => other.id.to_s, "status" => "Submitted (Not sent for approval)"))
+
+    post login_path, params: { login: cc.user_name, password: "secret" }
+    get module_path("jeevika-jankar-bill-list", bill_month: "September", bill_status: "final-approved")
+    assert_response :success
+    assert_includes response.body, "APPROVED JJ"
+    assert_not_includes response.body, "SUBMITTED JJ",
+      "a bill that is not finally approved must stay out of that filter"
+  end
+
+  # The cluster incharge owns the bill and sends it for approval, so the invoice
+  # carries their name rather than whoever keyed it in.
+  test "Prepared by shows the cluster incharge, not the person who keyed it in" do
+    jj = vrp("PREPARED JJ", "9000000051", cluster_incharge: "Arti Shrama")
+    record = bill_with_items([other_item(achievement: "5")])
+    record.update!(data: record.data.merge(
+      "select_vrp" => jj.id.to_s, "created_by_name" => "Pankaj Maurya"
+    ))
+
+    controller = ModulesController.new
+    controller.request = ActionDispatch::TestRequest.create
+    assert_equal "Arti Shrama", controller.send(:jeevika_bill_prepared_by, record)[:name]
+  end
+
+  # Remapping the Jeevika Jankar changes the invoice straight away.
+  test "remapping the Jeevika Jankar moves Prepared by to the new cluster incharge" do
+    jj = vrp("REMAP JJ", "9000000052", cluster_incharge: "Old CC")
+    record = bill_with_items([other_item(achievement: "5")])
+    record.update!(data: record.data.merge("select_vrp" => jj.id.to_s, "created_by_name" => "Pankaj Maurya"))
+
+    jj.update!(cluster_incharge: "Arti Shrama")
+    controller = ModulesController.new
+    controller.request = ActionDispatch::TestRequest.create
+    assert_equal "Arti Shrama", controller.send(:jeevika_bill_prepared_by, record)[:name]
+  end
+
+  test "a bill with no cluster incharge still names whoever keyed it in" do
+    jj = vrp("NO CC JJ", "9000000053")
+    record = bill_with_items([other_item(achievement: "5")])
+    record.update!(data: record.data.merge("select_vrp" => jj.id.to_s, "created_by_name" => "Pankaj Maurya"))
+
+    controller = ModulesController.new
+    controller.request = ActionDispatch::TestRequest.create
+    assert_equal "Pankaj Maurya", controller.send(:jeevika_bill_prepared_by, record)[:name]
+  end
+
+  test "the invoice no longer prints a CC Name line" do
+    record = bill_with_items([other_item(achievement: "5")])
+    admin = User.create!(user_name: "ws_admin", password: "secret", first_name: "Adm",
+                         user_type: "admin", status: "Active")
+    post login_path, params: { login: admin.user_name, password: "secret" }
+
+    get module_path("jeevika-jankar-bill-list", view_id: record.id)
+    assert_response :success
+    assert_not_includes response.body, "CC Name:"
+  end
+
   def vrp(name, mobile, **extra)
     Vrp.create!({
       name: name, father_husband_name: "F", gender: :male,
