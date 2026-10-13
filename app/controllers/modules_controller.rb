@@ -8061,7 +8061,11 @@ class ModulesController < ApplicationController
     ids = target_farmer_ids(target)
 
     if village_ids.any?
-      ids += Afl.where(village_id: village_ids).pluck(:id).map(&:to_s) if model_ready?(:Afl)
+      if model_ready?(:Afl)
+        @target_live_local_village_ids ||= {}
+        @target_live_local_village_ids[village_ids] ||= Afl.where(village_id: village_ids).pluck(:id).map(&:to_s)
+        ids += @target_live_local_village_ids[village_ids]
+      end
       ids += village_external_farmer_ids(village_ids)
     end
 
@@ -13163,7 +13167,13 @@ class ModulesController < ApplicationController
     return false unless record&.data.present?
     if jeevika_bill_staff_scope.present?
       vrp = jeevika_bill_vrp_for_visibility(record)
-      return vrp.present? && jeevika_bill_staff_vrp_ids.include?(vrp.id.to_s)
+      return false unless vrp
+      return true if jeevika_bill_staff_vrp_ids.include?(vrp.id.to_s)
+
+      # A cluster incharge still sees the bills of the Jeevika Jankars mapped
+      # under them. This branch returned before that was ever checked, which
+      # left their Bill List empty.
+      return module_cluster_incharge_login? && module_cluster_visible_vrp_id_strings.include?(vrp.id.to_s)
     end
     return true if jeevika_bill_created_by_current_user?(record)
     return true if jeevika_bill_approver_visible?(record)

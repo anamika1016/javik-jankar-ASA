@@ -74,6 +74,8 @@ module VrpAccess
   end
 
   def current_app_user_emails
+    return @vrp_access_user_emails if defined?(@vrp_access_user_emails)
+
     emails = [current_app_user&.dig("email")]
 
     if model_ready?(:User)
@@ -81,7 +83,7 @@ module VrpAccess
       emails << user&.email
     end
 
-    emails.compact_blank.map { |email| email.to_s.strip.downcase }.uniq
+    @vrp_access_user_emails = emails.compact_blank.map { |email| email.to_s.strip.downcase }.uniq
   end
 
   def registered_by_name(vrp)
@@ -108,16 +110,16 @@ module VrpAccess
       end
       if creator.blank?
         creator_class = { "User" => User, "ModuleRecord" => ModuleRecord }[vrp.created_by_type]
-        creator = creator_class.find_by(id: vrp.created_by_id) if creator_class&.respond_to?(:find_by)
+        creator = creator_class == User ? cached_vrp_creator_user(vrp.created_by_id) : cached_vrp_creator_record(vrp.created_by_id) if creator_class&.respond_to?(:find_by)
       end
       return @registered_by_user_cache[cache_key] = creator if creator
     end
 
     if vrp.created_by_id.present?
       user = @preloaded_creator_users_by_id&.[](vrp.created_by_id)
-      user ||= User.find_by(id: vrp.created_by_id) if model_ready?(:User)
+      user ||= cached_vrp_creator_user(vrp.created_by_id) if model_ready?(:User)
       record = @preloaded_creator_records_by_id&.[](vrp.created_by_id)
-      record ||= ModuleRecord.find_by(id: vrp.created_by_id) if model_ready?(:ModuleRecord)
+      record ||= cached_vrp_creator_record(vrp.created_by_id) if model_ready?(:ModuleRecord)
       creator = legacy_registered_by_candidate(vrp, user, record)
       return @registered_by_user_cache[cache_key] = creator if creator
     end
@@ -125,7 +127,13 @@ module VrpAccess
     if model_ready?(:User)
       email_key = vrp.email.to_s.strip.downcase
       user = @preloaded_creator_users_by_email&.[](email_key)
-      user ||= User.find_by("LOWER(email) = ?", email_key)
+      unless user
+        @registered_by_user_email_lookup ||= {}
+        unless @registered_by_user_email_lookup.key?(email_key)
+          @registered_by_user_email_lookup[email_key] = User.find_by("LOWER(email) = ?", email_key)
+        end
+        user = @registered_by_user_email_lookup[email_key]
+      end
       return @registered_by_user_cache[cache_key] = user if user
     end
 
@@ -174,10 +182,11 @@ module VrpAccess
 
     ModuleRecord
       .where(module_slug: "vrp-approval-history")
-      .where("data::jsonb ->> 'vrp_id' IN (?)", ids)
       .order(created_at: :asc)
       .to_a
-      .group_by { |record| record.data["vrp_id"].to_s }
+      # Keep approval_history_for's Ruby to_i matching for legacy values such
+      # as "00044" or "44legacy"; an exact JSON string filter changes access.
+      .group_by { |record| record.data["vrp_id"].to_i }
       .each { |vrp_id, records| @approval_history_for_cache[vrp_id.to_i] = records }
     ids.each { |vrp_id| @approval_history_for_cache[vrp_id.to_i] ||= [] }
   end
@@ -272,7 +281,9 @@ module VrpAccess
   end
 
   def approval_queue
-    scope = Vrp.all.select { |vrp| approval_visible_after_sent?(vrp) }
+    records = Vrp.all.to_a
+    preload_vrp_approval_history_lookup_data!(records)
+    scope = records.select { |vrp| approval_visible_after_sent?(vrp) }
     return scope if admin_user?
 
     scope.select { |vrp| current_user_in_approval_channel?(vrp) }
@@ -1589,7 +1600,12 @@ module VrpAccess
   def module_record_label(module_slug, id, field_key)
     return "" if id.blank? || !model_ready?(:ModuleRecord)
 
-    record = ModuleRecord.find_by(module_slug: module_slug, id: id)
+    @vrp_access_module_labels ||= {}
+    key = [module_slug, id]
+    unless @vrp_access_module_labels.key?(key)
+      @vrp_access_module_labels[key] = ModuleRecord.find_by(module_slug: module_slug, id: id)
+    end
+    record = @vrp_access_module_labels[key]
     label = module_record_display_label(module_slug, record, field_key)
     return label if label.present?
 
@@ -1606,12 +1622,15 @@ module VrpAccess
     ids = Array(ids).reject(&:blank?)
     return "" if ids.blank?
 
+    @vrp_access_type_labels ||= {}
+    return @vrp_access_type_labels[ids] if @vrp_access_type_labels.key?(ids)
+
     if model_ready?(:VrpType)
       labels = VrpType.where(id: ids).pluck(:type_name)
-      return labels.join(", ") if labels.any?
+      return @vrp_access_type_labels[ids.dup] = labels.join(", ") if labels.any?
     end
 
-    module_record_labels("add-vrp-type", ids, ["jeevika_jankar_type_name", "vrp_type_name"])
+    @vrp_access_type_labels[ids.dup] = module_record_labels("add-vrp-type", ids, ["jeevika_jankar_type_name", "vrp_type_name"])
   end
 
   def module_record_display_label(module_slug, record, field_key)

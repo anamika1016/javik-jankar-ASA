@@ -526,8 +526,12 @@ class VrpsController < ApplicationController
   # A staff login that belongs to an FCO office sees every Jeevika Jankar of
   # that office, whoever registered them. A Jeevika Jankar login stays limited
   # to its own records, so this never widens a JJ's own view.
+  #
+  # A cluster incharge is an exception: they are scoped to the Jeevika Jankars
+  # mapped under them, so the office must not widen that back to everyone.
   def office_scoped_vrps
     return [] if current_app_user&.dig("record_type").to_s == "Vrp"
+    return [] if cluster_incharge_login?
 
     offices = AgreementVrpScope.user_office_keys(current_app_user)
     return [] if offices.blank?

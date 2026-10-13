@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_12_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_13_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -94,6 +94,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_12_120000) do
     t.index ["slip_no"], name: "index_afls_on_slip_no"
     t.index ["tracenet_no"], name: "index_afls_on_tracenet_no"
     t.index ["updated_at"], name: "index_afls_on_updated_at", order: :desc
+    t.index ["village_id"], name: "index_afls_on_village_id"
   end
 
   create_table "asa360_master", force: :cascade do |t|
