@@ -10983,14 +10983,26 @@ class ModulesController < ApplicationController
   # into a single row whenever they shared the same farmers.
   def jeevika_bill_time_slot_rows(record)
     items = jeevika_bill_detail_rows(record)
-    return items.flat_map { |item| jeevika_bill_time_slot_rows_for_item(item) } if record.data["bill_month"].blank?
-    items.flat_map do |item|
-      if training_main_activity_type?(item["main_activity_type"].presence || "Training")
-        jeevika_bill_saved_worksheet_rows(record, item)
-      else
-        jeevika_bill_time_slot_rows_for_item(item)
+    rows = if record.data["bill_month"].blank?
+      items.flat_map { |item| jeevika_bill_time_slot_rows_for_item(item) }
+    else
+      items.flat_map do |item|
+        if training_main_activity_type?(item["main_activity_type"].presence || "Training")
+          jeevika_bill_saved_worksheet_rows(record, item)
+        else
+          jeevika_bill_time_slot_rows_for_item(item)
+        end
       end
     end
+    # Nothing was achieved on that line, so it is not worth an invoice row.
+    rows.reject { |row| jeevika_bill_worksheet_row_empty?(row) }
+  end
+
+  # Only drops a genuinely numeric zero; a dash or blank is left alone so a row
+  # that simply has no count recorded still appears.
+  def jeevika_bill_worksheet_row_empty?(row)
+    value = row[:number].to_s.strip
+    value.match?(/\A-?\d+(?:\.\d+)?\z/) && value.to_f.zero?
   end
 
   def jeevika_bill_saved_worksheet_rows(record, item)
