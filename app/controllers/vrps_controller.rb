@@ -1973,7 +1973,15 @@ class VrpsController < ApplicationController
 
   def vrp_form_records_for(module_slug)
     @vrp_form_records_by_slug ||= {}
+    # Every caller uses active_module_record?, so apply that exact predicate
+    # before records (and their JSON payloads) are materialized. This powers
+    # the VRP form's location and role dropdowns and previously loaded inactive
+    # master records only to discard them in Ruby.
     @vrp_form_records_by_slug[module_slug] ||= ModuleRecord.where(module_slug: module_slug)
+      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
+      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
+      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
+      .where("COALESCE(BTRIM(data::jsonb ->> 'status'), '') = '' OR LOWER(BTRIM(data::jsonb ->> 'status')) = 'active'")
       .order(created_at: :desc).to_a
   end
 

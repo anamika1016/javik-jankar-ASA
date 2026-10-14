@@ -3,14 +3,16 @@ require "test_helper"
 class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
   test "form option readers share records without changing labels or active filtering" do
     record = ModuleRecord.create!(module_slug: "state-master", data: { "state_name" => "Read State", "status" => "Active" })
+    spaced_active = ModuleRecord.create!(module_slug: "state-master", data: { "state_name" => "Spaced Active", "status" => " Active " })
     ModuleRecord.create!(module_slug: "state-master", data: { "state_name" => "Hidden State", "status" => "Inactive" })
+    ModuleRecord.create!(module_slug: "state-master", data: { "state_name" => "Deleted State", "deleted" => " YES " })
     controller = VrpsController.new
     queries = []
     callback = ->(*args) { queries << args.last[:sql] if args.last[:sql].match?(/SELECT.*FROM "module_records"/m) }
     ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
-      assert_equal [["Read State", record.id]], controller.send(:module_record_options, "state-master", "state_name")
-      assert_equal ["Read State"], controller.send(:text_module_record_options, "state-master", "state_name")
-      assert_equal [record.id], controller.send(:active_records_for_location, "state-master").map(&:id)
+      assert_equal [["Read State", record.id], ["Spaced Active", spaced_active.id]], controller.send(:module_record_options, "state-master", "state_name")
+      assert_equal ["Spaced Active", "Read State"], controller.send(:text_module_record_options, "state-master", "state_name")
+      assert_equal [spaced_active.id, record.id], controller.send(:active_records_for_location, "state-master").map(&:id)
     end
     assert_equal 1, queries.size
   end
