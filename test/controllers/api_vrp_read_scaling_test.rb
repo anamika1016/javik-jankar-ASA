@@ -40,6 +40,23 @@ class ApiVrpReadScalingTest < ActiveSupport::TestCase
     assert_equal expected, batch.send(:approval_history_for, vrp).map(&:id)
   end
 
+  test "approval-related JJ visibility batches history reads without changing matching rows" do
+    rows = 12.times.map { |index| create_vrp(200 + index, status: 10) }
+    rows.each do |vrp|
+      ModuleRecord.create!(module_slug: "vrp-approval-history", data: {
+        "vrp_id" => "000#{vrp.id}", "action" => "Sent for Approval", "action_by" => "Batch Approver"
+      })
+    end
+
+    reader = Reader.new
+    reader.define_singleton_method(:approver_labels) { ["Batch Approver"] }
+    queries = []
+    visible = capture_queries(queries) { reader.send(:approval_related_vrps) }
+
+    assert_equal rows.map(&:id).sort, visible.map(&:id).sort
+    assert_equal 1, queries.count { |sql| sql.include?("vrp-approval-history") }
+  end
+
   test "training village reads are reused without changing mapped IDs or missing farmer fallbacks" do
     farmer = Afl.create!(farmer_name: "Village Read", village_id: "performance-village")
     vrp = create_vrp(101)

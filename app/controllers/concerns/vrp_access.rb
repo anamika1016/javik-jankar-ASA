@@ -294,7 +294,13 @@ module VrpAccess
   end
 
   def approval_related_vrps
-    Vrp.all.select do |vrp|
+    records = Vrp.all.to_a
+    # approval_history_for keeps legacy numeric-ID matching in Ruby.  Populate
+    # that same lookup once before testing every JJ so the access predicate
+    # does not reload the complete approval-history catalogue per row.
+    preload_vrp_approval_history_lookup_data!(records)
+
+    records.select do |vrp|
       approval_visible_after_sent?(vrp) && current_user_in_approval_channel?(vrp)
     end
   end

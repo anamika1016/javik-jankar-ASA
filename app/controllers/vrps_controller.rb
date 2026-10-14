@@ -627,7 +627,11 @@ class VrpsController < ApplicationController
   end
 
   def approval_related_vrps
-    Vrp.all.select do |vrp|
+    # A JJ can pass approval_visible_after_sent? only when it either has an
+    # approval-history row or has status >= 25. approval_candidate_vrps is
+    # exactly that set, so this retains visibility while avoiding an all-JJ
+    # scan for every non-admin list request.
+    approval_candidate_vrps.select do |vrp|
       approval_visible_after_sent?(vrp) && current_user_in_approval_channel?(vrp)
     end
   end

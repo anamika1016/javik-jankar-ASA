@@ -25,7 +25,11 @@
 # Any libraries that use a connection pool or another resource pool should
 # be configured to provide at least as many connections as the number of
 # threads. This includes Active Record's `pool` parameter in `database.yml`.
-threads_count = ENV.fetch("RAILS_MAX_THREADS", 3)
+# The production host runs memory-heavy reports and forms alongside web
+# requests. Two web threads keep interactive requests responsive without
+# allowing three large JSON/report allocations to pressure Ruby GC and the
+# primary database at the same time. An explicit environment value still wins.
+threads_count = ENV.fetch("RAILS_MAX_THREADS", ENV.fetch("RAILS_ENV", "development") == "production" ? 2 : 3)
 threads threads_count, threads_count
 
 # This deployment is configured for a small-memory host.  Running two workers

@@ -50,7 +50,12 @@ env:
 
     # This deployment runs on a small-memory host; keep one Puma worker.
     WEB_CONCURRENCY: 1
-    RAILS_MAX_THREADS: 3
+    RAILS_MAX_THREADS: 2
+
+    # Emit only duration and application callsite for database operations that
+    # exceed this threshold. The tracer deliberately never logs SQL text,
+    # bind values, or credentials.
+    PERFORMANCE_SQL_LOG_MS: 750
 
     # Match this to any external database server to configure Active Record correctly
     # Use vrp-db for a db accessory server on same machine via local kamal docker network.
