@@ -1,6 +1,26 @@
 require "test_helper"
 
 class TrainingEditApprovalTest < ActiveSupport::TestCase
+  test "unapproved record IDs use only each record's newest revision" do
+    old_revision = ModuleRecord.create!(module_slug: TrainingEditApproval::SLUG, data: {
+      "record_id" => "training-1", "status" => "Approved"
+    })
+    newest_revision = ModuleRecord.create!(module_slug: TrainingEditApproval::SLUG, data: {
+      "record_id" => "training-1", "status" => "Pending"
+    })
+    approved_latest_revision = ModuleRecord.create!(module_slug: TrainingEditApproval::SLUG, data: {
+      "record_id" => "training-2", "status" => "Pending"
+    })
+
+    assert_operator newest_revision.id, :>, old_revision.id
+    assert_includes TrainingEditApproval.unapproved_record_ids, "training-1"
+    assert_includes TrainingEditApproval.unapproved_record_ids, "training-2"
+
+    approved_latest_revision.update!(data: approved_latest_revision.data.merge("status" => "Approved"))
+
+    refute_includes TrainingEditApproval.unapproved_record_ids, "training-2"
+  end
+
   test "CC edits route to the owning Agronomist without an approval channel" do
     record = ModuleRecord.create!(module_slug: "training-form", data: { "fco_name" => "FCO-C Sausar", "month" => "August", "training_location" => "Original", "selected_farmer_ids" => ["1"] })
     fco = User.create!(user_name: "sausar_fco", password: "secret", first_name: "Sausar", last_name: "Approver",

@@ -771,11 +771,16 @@ module ApplicationHelper
     @active_stakeholder_records ||= {}
     @active_stakeholder_records[module_slug] ||= ModuleRecord
       .where(module_slug: module_slug)
+      # This is called by every application layout. Keep the exact previous
+      # definition of active, but have PostgreSQL discard inactive records
+      # before Ruby materializes JSON payloads.
+      .where(<<~SQL.squish)
+        COALESCE(data::jsonb ->> 'status', '') = ''
+        OR BTRIM(data::jsonb ->> 'status') = ''
+        OR LOWER(data::jsonb ->> 'status') = 'active'
+      SQL
       .order(updated_at: :desc)
-      .select do |record|
-        status = record_data(record)["status"]
-        status.blank? || status.to_s.casecmp("Active").zero?
-      end
+      .to_a
   end
 
   def matching_stakeholder_record(module_slug)
