@@ -5,8 +5,7 @@ module Api
 
       def index
         vrps = visible_vrps.to_a
-        preload_vrp_approval_history_lookup_data!(vrps)
-        ActiveRecord::Associations::Preloader.new(records: vrps, associations: :vrp_bank_master).call
+        preload_vrp_list_payload_data!(vrps)
         records = vrps.map { |vrp| list_row_payload(vrp) }
 
         render json: {
@@ -22,6 +21,8 @@ module Api
         unless vrp
           return render json: { success: false, message: "Jeevika Jankar record not found." }, status: :not_found
         end
+
+        preload_vrp_detail_payload_data!(vrp)
 
         render json: {
           success: true,
@@ -140,7 +141,17 @@ module Api
       end
 
       def find_api_visible_vrp(id)
-        (visible_vrps.to_a + approval_queue).uniq.find { |vrp| vrp.id == id.to_i }
+        # The prior implementation loaded every visible JJ and every approval
+        # candidate before finding one primary key.  Keep precisely the same
+        # ownership and approval-channel rules, but apply them to this record.
+        vrp = Vrp.find_by(id: id)
+        return unless vrp
+
+        preload_vrp_access_lookup_data!([vrp])
+        return vrp if visible_vrps.where(id: vrp.id).exists?
+        return unless approval_visible_after_sent?(vrp)
+
+        vrp if current_user_in_approval_channel?(vrp)
       end
 
       def find_api_manageable_vrp(id)

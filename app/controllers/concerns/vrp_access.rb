@@ -154,6 +154,29 @@ module VrpAccess
     cached_vrp_approval_master_records
   end
 
+  # JSON payload construction reads creator, approval, profile, bank and three
+  # document associations.  Preloading does not alter fields or access rules;
+  # it prevents one query per association while serializing a response.
+  def preload_vrp_list_payload_data!(vrps)
+    records = Array(vrps).compact
+    preload_vrp_access_lookup_data!(records)
+    ActiveRecord::Associations::Preloader.new(records: records, associations: :vrp_bank_master).call
+  end
+
+  def preload_vrp_detail_payload_data!(vrp)
+    records = Array(vrp).compact
+    preload_vrp_list_payload_data!(records)
+    ActiveRecord::Associations::Preloader.new(
+      records: records,
+      associations: [
+        :vrp_profile,
+        { photo_attachment: :blob },
+        { aadhar_upload_attachment: :blob },
+        { bank_passbook_upload_attachment: :blob }
+      ]
+    ).call
+  end
+
   def preload_vrp_creator_lookup_data!(vrps)
     creator_ids = vrps.filter_map(&:created_by_id).uniq
     emails = vrps.filter_map { |vrp| vrp.email.to_s.strip.downcase.presence }.uniq

@@ -120,6 +120,23 @@ class Api::V1::JeevikaJankarsControllerTest < ActionDispatch::IntegrationTest
     assert_equal vrp.id, response.parsed_body.dig("jeevika_jankar", "id")
   end
 
+  test "show returns not found without scanning the JJ catalogue" do
+    12.times { |index| create_vrp(user_name: "unrelated_jj_#{index}", created_by_id: @user.id) }
+    queries = []
+    callback = ->(*args) do
+      payload = args.last
+      queries << payload[:sql] if payload[:name] != "SCHEMA" && payload[:sql].start_with?("SELECT")
+    end
+
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      get "/api/v1/jeevika-jankars/999999", headers: auth_headers, as: :json
+    end
+
+    assert_response :not_found
+    assert_equal "Jeevika Jankar record not found.", response.parsed_body["message"]
+    assert_equal 1, queries.count { |sql| sql.include?('FROM "vrps"') }
+  end
+
   test "update edits manageable jeevika jankar without clearing omitted fields" do
     vrp = create_vrp(
       name: "Old JJ Name",
