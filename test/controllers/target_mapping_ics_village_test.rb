@@ -51,6 +51,29 @@ class TargetMappingIcsVillageTest < ActiveSupport::TestCase
     assert_includes options.map { |option| option[:value] }, "18||BADGAON"
   end
 
+  test "ICS options do not include blocks saved by block-wise targets" do
+    create_afl(village_name: "Badgaon")
+    TargetMapping.create!(
+      vrp: @vrp,
+      fco_id: "1009",
+      fco_name: "Bhabra",
+      ics_id: "42",
+      ics_name: "Bhawanipatna",
+      village_id: "village-1",
+      village_name: "Village One",
+      month_name: "October",
+      main_activity_name: "Farmers' Training",
+      activity_name: "Training",
+      target_quantity: 1,
+      afl_ids: []
+    )
+
+    values = @controller.send(:ics_options_for, "1009||Bhabra", @vrp.id).map { |option| option[:value] }
+
+    assert_includes values, "18||BADGAON"
+    refute_includes values, "42||Bhawanipatna"
+  end
+
   test "a blank AFL village falls back to the selected village label" do
     create_afl(village_name: nil)
 

@@ -1374,8 +1374,11 @@ end
     return [] if fco_value.blank?
 
     mapping_scope = filter_mapping_location(mapped_location_scope(vrp_id), :fco_id, :fco_name, fco_value)
-    target_scope = filter_mapping_location(target_location_scope(vrp_id), :fco_id, :fco_name, fco_value)
-    saved_options = saved_location_options(vrp_id, :ics_id, :ics_name, mapping_scope, target_scope)
+    # A block-wise target saves its selected block in the legacy ics_id/ics_name
+    # columns. Those target rows are not ICS choices and must never be mixed into
+    # the ICS-wise dropdown. VrpIcsMapping remains as a valid historical ICS
+    # source, alongside the AFL source of truth.
+    saved_options = mapping_location_options(mapping_scope, :ics_id, :ics_name)
 
     unique_location_options(afl_ics_options_for(fco_value) + saved_options)
   end
