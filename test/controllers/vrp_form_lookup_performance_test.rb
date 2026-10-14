@@ -17,6 +17,36 @@ class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
     assert_equal 1, queries.size
   end
 
+  test "VRP location hierarchy loads all active master modules in one query" do
+    ModuleRecord.create!(module_slug: "state-master", data: { "state_name" => "Batch State" })
+    ModuleRecord.create!(module_slug: "district-master", data: { "state_name" => "Batch State", "district_name" => "Batch District" })
+    ModuleRecord.create!(module_slug: "village-master", data: {
+      "state_name" => "Batch State", "district_name" => "Batch District", "block_name" => "Batch Block",
+      "village_name" => "Batch Village", "status" => " Active "
+    })
+    ModuleRecord.create!(module_slug: "village-master", data: { "village_name" => "Hidden Village", "status" => "Inactive" })
+    controller = VrpsController.new
+    queries = []
+    callback = ->(*args) do
+      sql = args.last[:sql]
+      queries << sql if sql.match?(/SELECT.*FROM "module_records"/m)
+    end
+
+    mappings = nil
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      mappings = controller.send(:location_hierarchy_mappings)
+      assert_equal 6, VrpsController::LOCATION_HIERARCHY_MODULE_SLUGS.size
+      assert mappings.any? { |row| row[:village] == "Batch Village" }
+      assert_not mappings.any? { |row| row[:village] == "Hidden Village" }
+      VrpsController::LOCATION_HIERARCHY_MODULE_SLUGS.each do |slug|
+        controller.send(:active_records_for_location, slug)
+      end
+    end
+
+    assert_equal 1, queries.size
+    assert_includes queries.first, "module_slug"
+  end
+
   test "plain hierarchy labels and registration enrichment share one user query" do
     User.create!(first_name: "Plain", last_name: "Coordinator", user_name: "plain_lookup_cc",
       email: "plain-lookup-cc@example.test", password: "secret", role: "Cluster Incharge", status: "Active")

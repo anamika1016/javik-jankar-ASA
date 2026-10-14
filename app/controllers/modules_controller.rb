@@ -1613,7 +1613,7 @@ class ModulesController < ApplicationController
       redirect_to module_path(module_redirect_slug), alert: "You are not allowed to view this record."
       return
     end
-    @records = module_records
+    @records = module_records_required_for_show? ? module_records : []
     prepare_approval_channel_form(@record) if record_source_slug == "approval-master"
     prepare_vrp_bill_data if @slug == "vrp-bill-add"
     prepare_jeevika_jankar_bill_data if @slug == "jeevika-jankar-bill-process"
@@ -9704,6 +9704,9 @@ class ModulesController < ApplicationController
   def module_records_required_for_show?
     return false if @slug == "jeevika-jankar-observation-list" && @record.blank?
     return false if @slug == "jeevika-jankar-bill-list" && params[:view_id].present?
+    # The training entry/edit form does not render a saved-record table. The
+    # dedicated training-form-list handles those rows and their visibility.
+    return false if @slug == "training-form"
     return true if @record.present?
     return true if @slug.to_s.end_with?("-list")
     # These entry screens include a Saved Records table.  Loading the visible
@@ -11629,10 +11632,12 @@ class ModulesController < ApplicationController
       return @module_cluster_visible_vrps = transferred_vrps
     end
 
-    directly_mapped_vrps = Vrp
-      .where.not(cluster_incharge: [nil, ""])
-      .order(:name, :id)
-      .select { |vrp| module_cluster_vrp_visible?(vrp) }
+    # Preserve the existing fuzzy, typo-tolerant label matcher while avoiding
+    # loading every full VRP row just to inspect cluster_incharge. In practice
+    # the distinct label catalogue is far smaller than the JJ table.
+    matched_cluster_labels = module_matching_cluster_labels
+    directly_mapped_vrps = matched_cluster_labels.any? ?
+      Vrp.where(cluster_incharge: matched_cluster_labels).order(:name, :id).to_a : []
 
     hierarchy_mapped_vrps = module_cluster_incharge_login? ? dashboard_hierarchy_vrps : []
 
@@ -11645,6 +11650,25 @@ class ModulesController < ApplicationController
     @module_cluster_visible_vrps = visible_vrps.compact.uniq(&:id).sort_by do |vrp|
       [vrp.name.to_s, vrp.id]
     end
+  end
+
+  def module_matching_cluster_labels
+    return @module_matching_cluster_labels if defined?(@module_matching_cluster_labels)
+
+    labels = current_cluster_incharge_labels.compact_blank.uniq
+    @module_matching_cluster_labels = if labels.blank?
+      []
+    else
+      Vrp.where.not(cluster_incharge: [nil, ""])
+        .distinct
+        .pluck(:cluster_incharge)
+        .select { |cluster_label| labels.any? { |label| cluster_label_matches?(label, cluster_label) } }
+    end
+  end
+
+  def module_directly_mapped_cluster_vrp_ids
+    labels = module_matching_cluster_labels
+    labels.any? ? Vrp.where(cluster_incharge: labels).pluck(:id) : []
   end
 
   # Jeevika Jankars handed to the signed-in user through the transfer form, for
@@ -14948,7 +14972,7 @@ class ModulesController < ApplicationController
   def training_target_scope
     scope = TargetMapping.all
     if %w[training-form training-form-list].include?(current_slug.to_s) && !admin_dashboard_user? && !vrp_login_user?
-      ids = Vrp.where.not(cluster_incharge: [nil, ""]).select { |vrp| module_cluster_vrp_visible?(vrp) }.map(&:id)
+      ids = module_directly_mapped_cluster_vrp_ids
       return scope.where(vrp_id: ids) if ids.any?
       return scope
     end

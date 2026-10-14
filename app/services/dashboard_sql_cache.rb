@@ -28,6 +28,8 @@ class DashboardSqlCache
 
   def revision
     @revision ||= begin
+      # Keep row counts in the revision so deletes invalidate cached dashboard
+      # results too. MAX(updated_at) alone cannot detect deletion of an older row.
       expressions = TABLES.flat_map do |table|
         ["(SELECT COUNT(*) FROM #{table}) AS #{table}_count",
          "(SELECT COALESCE(MAX(updated_at)::text, '') FROM #{table}) AS #{table}_updated"]

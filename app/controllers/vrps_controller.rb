@@ -5,6 +5,10 @@ class VrpsController < ApplicationController
                 :admin_user?
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
+  LOCATION_HIERARCHY_MODULE_SLUGS = %w[
+    state-master district-master block-master gram-panchayat-master village-master lg-directory-list
+  ].freeze
+  VrpLocationRecord = Struct.new(:id, :data)
 
   before_action :set_form_dependencies, only: [:new, :create]
   before_action :set_edit_dependencies, only: [:edit, :update]
@@ -1892,6 +1896,8 @@ class VrpsController < ApplicationController
 
     return @location_hierarchy_mappings if defined?(@location_hierarchy_mappings)
 
+    preload_vrp_form_location_records!
+
     states = active_records_for_location("state-master").map do |record|
       location_row(record,
         state: first_present_data(record, "state_name"),
@@ -1969,6 +1975,25 @@ class VrpsController < ApplicationController
   def active_records_for_location(module_slug)
     vrp_form_records_for(module_slug)
       .select { |record| active_module_record?(record) }
+  end
+
+  def preload_vrp_form_location_records!
+    @vrp_form_records_by_slug ||= {}
+    missing_slugs = LOCATION_HIERARCHY_MODULE_SLUGS.reject { |slug| @vrp_form_records_by_slug.key?(slug) }
+    return if missing_slugs.empty?
+
+    missing_slugs.each { |slug| @vrp_form_records_by_slug[slug] = [] }
+    records = ModuleRecord.where(module_slug: missing_slugs)
+      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
+      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
+      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
+      .where("COALESCE(BTRIM(data::jsonb ->> 'status'), '') = '' OR LOWER(BTRIM(data::jsonb ->> 'status')) = 'active'")
+      .order(created_at: :desc)
+      .pluck(:module_slug, :id, :data)
+
+    records.each do |module_slug, id, data|
+      @vrp_form_records_by_slug[module_slug] << VrpLocationRecord.new(id, data)
+    end
   end
 
   def vrp_form_records_for(module_slug)

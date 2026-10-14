@@ -123,6 +123,24 @@ class DashboardReportsControllerTest < ActionDispatch::IntegrationTest
     assert_empty DashboardSqlCache.new.select_all("SELECT target_quantity FROM target_mappings WHERE id = -1")
   end
 
+  test "dashboard cache revision includes row counts so deletes invalidate source data" do
+    cache = DashboardSqlCache.new
+    statements = []
+    revision = nil
+    ActiveSupport::Notifications.subscribed(->(*args) { statements << args.last[:sql] }, "sql.active_record") do
+      revision = cache.send(:revision)
+    end
+
+    assert_equal DashboardSqlCache::TABLES.size * 2, revision.split("/").size
+    revision_queries = statements.grep(/SELECT COALESCE\(MAX\(updated_at\)/)
+    assert_equal 1, revision_queries.size
+    assert_match(/COUNT\(\*\)/i, revision_queries.first)
+
+    previous_revision = revision
+    ModuleRecord.create!(module_slug: "revision-check", data: { "value" => "new source row" })
+    assert_not_equal previous_revision, DashboardSqlCache.new.send(:revision)
+  end
+
   test "office JJ requirement and gender boxes stay visible when no JJ is mapped" do
     staff = User.create!(user_name: "empty_office_dashboard", password: "secret", first_name: "Office", role: "Agronomist", office_name: "FCO-Empty Office", user_type: "User", status: "Active")
     Afl.create!(fco_id: "452", fco: "Empty Office", farmer_name: "Office Farmer", tracenet_no: "EMPTY-1")

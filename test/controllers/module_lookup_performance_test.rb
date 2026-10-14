@@ -1,6 +1,34 @@
 require "test_helper"
 
 class ModuleLookupPerformanceTest < ActiveSupport::TestCase
+  test "cluster visibility matches fuzzy labels after reading only distinct cluster labels" do
+    matching = create_test_vrp("Ashvin Durve (Cluster Incharge)")
+    create_test_vrp("Someone Else (Cluster Incharge)")
+    controller = ModulesController.new
+    controller.define_singleton_method(:model_ready?) { |_| true }
+    controller.define_singleton_method(:current_cluster_incharge_labels) { ["Ashvin Durve"] }
+    controller.define_singleton_method(:module_cluster_incharge_login?) { false }
+    controller.define_singleton_method(:jeevika_jankar_transferred_vrps) { [] }
+
+    queries = []
+    subscriber = ->(*args) do
+      sql = args.last[:sql]
+      queries << sql if sql.include?(%Q{FROM "vrps"})
+    end
+    visible = nil
+    directly_mapped_ids = nil
+    ActiveSupport::Notifications.subscribed(subscriber, "sql.active_record") do
+      visible = controller.send(:module_cluster_visible_vrps)
+      directly_mapped_ids = controller.send(:module_directly_mapped_cluster_vrp_ids)
+    end
+
+    assert_equal [matching.id], visible.map(&:id)
+    assert_equal [matching.id], directly_mapped_ids
+    assert_equal 3, queries.size
+    assert_match(/DISTINCT.*cluster_incharge/m, queries.first)
+    assert_match(/WHERE.*cluster_incharge/m, queries.last)
+  end
+
   test "lightweight location rows preserve flags order and JSON value types" do
     records = [
       { "state" => "S", "district" => "D", "block_name" => "First", "status" => " Active " },
@@ -190,6 +218,17 @@ class ModuleLookupPerformanceTest < ActiveSupport::TestCase
   end
 
   private
+
+  def create_test_vrp(cluster_incharge)
+    vrp = Vrp.new(name: "Performance #{SecureRandom.hex(4)}", cluster_incharge: cluster_incharge,
+      aadhar_no: "123456789012", account_no: "123", address: "Test", branch: "Test",
+      date_of_birth: Date.new(1990, 1, 1), date_of_joining: Date.current,
+      email: "performance-#{SecureRandom.hex(4)}@example.test", experience_in_years: 0,
+      father_husband_name: "Test", gender: 1, ifsc_code: "TEST0123456", mobile_no: "9876543210",
+      office_detail_id: 0, to_office_detail_id: 0)
+    vrp.save!(validate: false)
+    vrp
+  end
 
   def capture_queries(table)
     queries = []

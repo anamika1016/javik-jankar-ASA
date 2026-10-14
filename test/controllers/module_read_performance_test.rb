@@ -70,6 +70,13 @@ class ModuleReadPerformanceTest < ActiveSupport::TestCase
     assert_equal ["High", "Medium", "Low"], @controller.send(:static_field_options, "Priority")
   end
 
+  test "training form edit does not load the separate training form list" do
+    @controller.instance_variable_set(:@slug, "training-form")
+    @controller.instance_variable_set(:@record, ModuleRecord.new(module_slug: "training-form"))
+
+    assert_not @controller.send(:module_records_required_for_show?)
+  end
+
   test "directory compaction matches existing prefix rules including Unicode and missing levels" do
     random = Random.new(42)
     levels = %i[state district sub_district block gram_panchayat village]
