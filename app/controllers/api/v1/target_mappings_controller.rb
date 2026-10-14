@@ -4,26 +4,97 @@ module Api
       DEFAULT_LIMIT = 100
       MAX_LIMIT = 200
 
+      # Picking several sub activities saves one row per sub activity, so the raw
+      # table holds many more rows than the mappings a user actually made.  The
+      # web list collapses a submission back into one row and the app has to show
+      # the same thing, so the rows are grouped here the same way.
+      TARGET_BATCH_WINDOW = 10.seconds
+      # Rows are read newest first, so a submission's rows are next to each other
+      # and only the oldest batch read can be cut in half.  Enough rows are read
+      # to fill the asked-for mappings several times over, and the batch sitting
+      # on the cut is dropped rather than returned with sub activities missing.
+      BATCH_ROW_HEADROOM = 25
+      MAX_BATCH_ROWS = 2_000
+
       def recent
-        mappings = filtered_mappings
-        farmer_ids = mappings.flat_map { |mapping| Array(mapping.afl_ids) }.map(&:to_s).compact_blank.uniq
+        batches = filtered_mapping_batches
+        farmer_ids = batches.flatten.flat_map { |mapping| normalized_afl_ids(mapping.afl_ids) }.uniq
         farmers_by_id = Afl.where(id: farmer_ids).index_by { |farmer| farmer.id.to_s }
 
         render json: {
           success: true,
           message: "Recent target mappings fetched successfully.",
-          target_mappings: mappings.map { |mapping| mapping_payload(mapping, farmers_by_id) },
-          count: mappings.size
+          target_mappings: batches.map { |batch| mapping_payload(batch, farmers_by_id) },
+          count: batches.size
         }, status: :ok
       end
 
       private
 
+      def filtered_mapping_batches
+        rows = filtered_mappings
+        batches = rows.group_by { |mapping| batch_signature(mapping) }
+          .flat_map { |_signature, grouped| submission_batches(grouped) }
+          .sort_by { |batch| -batch.map { |mapping| batch_time(mapping) }.max.to_f }
+        batches = batches[0...-1] if rows.size >= batch_row_limit && batches.size > 1
+        batches.first(requested_limit)
+      end
+
       def filtered_mappings
         scope = visible_mappings.includes(:vrp, :vrp_ics_mapping)
         scope = scope.where("LOWER(month_name) = ?", params[:month].to_s.strip.downcase) if params[:month].present?
         scope = apply_search(scope) if params[:search].present?
-        scope.order("target_mappings.updated_at DESC").limit(requested_limit).to_a
+        scope.order("target_mappings.updated_at DESC").limit(batch_row_limit).to_a
+      end
+
+      def batch_row_limit
+        [requested_limit * BATCH_ROW_HEADROOM, MAX_BATCH_ROWS].min
+      end
+
+      # Saving a mapping writes every sub activity row in the same moment, and
+      # editing it re-writes them all, so updated_at is what ties a batch
+      # together — created_at drifts apart once a sub activity is added later.
+      def batch_time(mapping)
+        mapping.updated_at || mapping.created_at || Time.zone.at(0)
+      end
+
+      def batch_signature(mapping)
+        [
+          mapping.vrp_id, mapping.fco_id, mapping.ics_id, mapping.village_id,
+          mapping.month_name, mapping.completion_date,
+          mapping.main_activity_name.to_s.strip.downcase
+        ]
+      end
+
+      # Sub activities mapped at some other time stay a separate mapping.
+      def submission_batches(rows)
+        rows.sort_by { |mapping| batch_time(mapping) }.slice_when do |previous, current|
+          batch_time(current) - batch_time(previous) > TARGET_BATCH_WINDOW
+        end.to_a
+      end
+
+      def normalized_afl_ids(ids)
+        parsed = ids.is_a?(String) ? JSON.parse(ids) : ids
+        Array(parsed).map(&:to_s).compact_blank.uniq
+      rescue JSON::ParserError
+        []
+      end
+
+      def activity_values(value)
+        case value
+        when Array
+          value.flat_map { |item| activity_values(item) }
+        when String
+          stripped = value.strip
+          return [] if stripped.blank?
+          return activity_values(JSON.parse(stripped)) if stripped.start_with?("[")
+
+          [stripped]
+        else
+          Array(value).flat_map { |item| activity_values(item) }
+        end.map { |item| item.to_s.strip }.reject { |item| item.blank? || item == "__common__" }.uniq
+      rescue JSON::ParserError
+        [value.to_s.strip].reject { |item| item.blank? || item == "__common__" }
       end
 
       def visible_mappings
@@ -51,12 +122,17 @@ module Api
         [limit, MAX_LIMIT].min
       end
 
-      def mapping_payload(mapping, farmers_by_id)
-        farmer_ids = Array(mapping.afl_ids).map(&:to_s).compact_blank.uniq
+      def mapping_payload(batch, farmers_by_id)
+        # The whole batch was saved together, so the targets are the same on
+        # every row; only the sub activity and the farmers differ.
+        mapping = batch.first
+        farmer_ids = batch.flat_map { |row| normalized_afl_ids(row.afl_ids) }.uniq
+        sub_activities = batch.flat_map { |row| activity_values(row.activity_name) }.uniq
         weekly_targets = mapping.weekly_target_values
 
         {
           id: mapping.id,
+          target_mapping_ids: batch.map(&:id),
           jeevika_jankar_id: mapping.vrp_id,
           jeevika_jankar_name: mapping.vrp&.name,
           fco_id: mapping.fco_id,
@@ -68,7 +144,8 @@ module Api
           month: mapping.month_name,
           completion_date: mapping.completion_date&.iso8601,
           main_activity: mapping.main_activity_name,
-          sub_activity: mapping.activity_name,
+          sub_activity: sub_activities.join(", "),
+          sub_activities: sub_activities,
           main_activity_type: target_main_activity_type(mapping),
           training_targets: {
             opg_training: mapping.opg_training_target,
@@ -86,8 +163,8 @@ module Api
           },
           farmer_count: farmer_ids.size,
           farmers: farmer_ids.map { |id| farmer_payload(id, farmers_by_id[id]) },
-          created_at: mapping.created_at&.iso8601,
-          updated_at: mapping.updated_at&.iso8601
+          created_at: batch.filter_map(&:created_at).min&.iso8601,
+          updated_at: batch.filter_map(&:updated_at).max&.iso8601
         }
       end
 

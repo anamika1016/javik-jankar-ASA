@@ -57,6 +57,45 @@ module Api
         render json: body, status: :created
       end
 
+      def render_update
+        merge_json_body_params!
+        api = farmer_target_api
+        record = api.find(params[:id])
+        unless record
+          return render json: { success: false, message: "#{self.class::RESOURCE_TITLE} record not found." }, status: :not_found
+        end
+
+        result = api.update(record, update_attrs)
+
+        unless result[:success]
+          return render json: {
+            success: false,
+            message: "#{self.class::RESOURCE_TITLE} update failed.",
+            errors: result[:errors]
+          }, status: :unprocessable_entity
+        end
+
+        # The record itself is untouched until the Agronomist approves, so the
+        # app is told the edit is waiting rather than being shown it as saved.
+        if result[:pending_approval]
+          return render json: {
+            success: true,
+            pending_approval: true,
+            message: "#{self.class::RESOURCE_TITLE} changes submitted for approval.",
+            approval_status: TrainingEditApproval.status_label(result[:revision]),
+            approval_request_id: result[:revision]&.id
+          }, status: :accepted
+        end
+
+        body = {
+          success: true,
+          pending_approval: false,
+          message: "#{self.class::RESOURCE_TITLE} updated successfully."
+        }
+        body[self.class::RESOURCE_KEY.singularize] = api.record_payload(result[:record])
+        render json: body, status: :ok
+      end
+
       def render_form_options
         render json: {
           success: true,
@@ -71,6 +110,12 @@ module Api
         else
           Hash(raw)
         end
+      end
+
+      # The record id travels in the URL, so it must not be written into the
+      # record's own data alongside the fields being edited.
+      def update_attrs
+        create_attrs.except("id")
       end
 
       def merge_json_body_params!

@@ -61,6 +61,35 @@ class FarmerTargetApi
     end
   end
 
+  def update(record, raw_attrs)
+    upload_errors = training_photo_upload_errors(raw_attrs) + other_target_upload_errors(raw_attrs)
+    return { success: false, errors: upload_errors } if upload_errors.any?
+
+    # An edit carries only the fields that changed, so the saved row is the
+    # starting point: anything left out — uploads above all — stays as it is.
+    data = record.data.merge(normalize_incoming(raw_attrs))
+    @retained_farmer_ids = Array(record.data["selected_farmer_ids"]).map(&:to_s).compact_blank.uniq
+    data = normalize_for_slug(data)
+    # An edit changes the record, never whose record it is.  Without this a
+    # caller could post created_by_id and walk off with someone else's form.
+    record.data.each { |key, value| data[key] = value if key.start_with?("created_by") }
+    errors = validation_errors(data)
+    return { success: false, errors: errors } if errors.any?
+
+    if training_edit_needs_approval?
+      revision = TrainingEditApproval.submit!(record: record, proposed: data, actor: current_app_user)
+      return { success: true, record: record, revision: revision, pending_approval: true }
+    end
+
+    if record.update(data: data)
+      { success: true, record: record }
+    else
+      { success: false, errors: record.errors.full_messages }
+    end
+  rescue TrainingEditApproval::InvalidTransition => error
+    { success: false, errors: [error.message] }
+  end
+
   def form_options
     case @module_slug
     when "training-form"
@@ -411,7 +440,7 @@ class FarmerTargetApi
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
     if training_form_activity_scope_present?(data)
       pending_farmer_ids = pending_training_farmer_ids_for(data)
-      selected_farmer_ids &= pending_farmer_ids unless pending_farmer_ids.nil?
+      selected_farmer_ids &= (pending_farmer_ids + retained_farmer_ids) unless pending_farmer_ids.nil?
     end
     data["selected_farmer_ids"] = selected_farmer_ids
     data["selected_farmer_names"] = training_farmer_names(selected_farmer_ids)
@@ -451,7 +480,7 @@ class FarmerTargetApi
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
     if !generic_other_target? && data["target_mapping_id"].present?
       pending_farmer_ids = pending_other_target_farmer_ids_for(data["target_mapping_id"])
-      selected_farmer_ids &= pending_farmer_ids unless pending_farmer_ids.nil?
+      selected_farmer_ids &= (pending_farmer_ids + retained_farmer_ids) unless pending_farmer_ids.nil?
     end
     data["selected_farmer_ids"] = selected_farmer_ids
     data["selected_farmer_names"] = training_farmer_names(selected_farmer_ids)
@@ -567,6 +596,14 @@ class FarmerTargetApi
 
   def generic_other_target?
     @module_slug == "other-target"
+  end
+
+  # A cluster incharge editing a training form raises a request for the
+  # Agronomist on the web rather than writing straight to the record.  The app
+  # has to go the same way, otherwise an edit from the phone would skip the
+  # approval the same person cannot skip on the website.
+  def training_edit_needs_approval?
+    @module_slug == "training-form" && cluster_incharge_login?
   end
 
   def add_farmer_form_error_messages(data)
@@ -1156,6 +1193,14 @@ class FarmerTargetApi
     [data["first_name"], data["last_name"]].compact_blank.join(" ").presence ||
       data["name"].presence ||
       data["user_name"].to_s
+  end
+
+  # "Pending" means a farmer no other record has trained yet, which is the right
+  # test when a form is first filled in.  On an edit the farmers already on the
+  # record are not up for grabs — they are this record's own — so they stay
+  # selectable and an edit of some other field cannot quietly drop them.
+  def retained_farmer_ids
+    @retained_farmer_ids || []
   end
 
   def training_form_activity_scope_present?(data)

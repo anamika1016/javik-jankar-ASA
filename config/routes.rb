@@ -88,7 +88,7 @@ Rails.application.routes.draw do
       get "farmer-trainings/farmers", to: "farmer_trainings#farmers"
       get "farmer-trainings/mapped-farmers", to: "farmer_trainings#mapped_farmers"
       get "farmer-trainings/:id/photos", to: "farmer_trainings#photos"
-      resources :farmer_trainings, path: "farmer-trainings", only: [ :index, :create, :show ]
+      resources :farmer_trainings, path: "farmer-trainings", only: [ :index, :create, :show, :update ]
 
       get "seed-distribution-targets/form-options", to: "seed_distribution_targets#form_options"
       resources :seed_distribution_targets, path: "seed-distribution-targets", only: [ :index, :create, :show ]
@@ -100,7 +100,7 @@ Rails.application.routes.draw do
       get "other-targets/form-data", to: "other_targets#form_data"
       get "other-targets/months", to: "other_targets#months"
       get "other-targets/:id/photos", to: "other_targets#photos"
-      resources :other_targets, path: "other-targets", only: [ :index, :create, :show ]
+      resources :other_targets, path: "other-targets", only: [ :index, :create, :show, :update ]
       get "other-target-list", to: "other_targets#index"
       get "other-target-list/form-options", to: "other_targets#form_options"
       get "other-target-list/form-data", to: "other_targets#form_data"
