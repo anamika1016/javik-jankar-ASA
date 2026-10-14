@@ -43,6 +43,14 @@ class TargetMappingIcsVillageTest < ActiveSupport::TestCase
     assert_equal "Badgaon Village", row[:village_name]
   end
 
+  test "ICS options accept an Office List FCO display suffix" do
+    create_afl(village_name: "Badgaon")
+
+    options = @controller.send(:ics_options_for, "1009||Bhabra - FCO", @vrp.id)
+
+    assert_includes options.map { |option| option[:value] }, "18||BADGAON"
+  end
+
   test "a blank AFL village falls back to the selected village label" do
     create_afl(village_name: nil)
 

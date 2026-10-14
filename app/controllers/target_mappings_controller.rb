@@ -1720,6 +1720,11 @@ end
   def filter_afl_location(scope, id_column, name_column, id_value, name_value)
     id_values = Array(id_value).flat_map { |value| location_value_list(value).map { |item| parse_location_value(item).first } }.reject(&:blank?).uniq
     label_values = location_label_variants(name_value, id_values)
+    # Office List uses labels such as "Bhawanipatna - FCO", while imported
+    # AFL data can carry the same FCO as simply "Bhawanipatna". The suffix is
+    # display metadata, not a different geographic scope.
+    label_values.concat(fco_location_label_variants(label_values)) if name_column.to_sym == :fco
+    label_values.uniq!
     return scope.none if id_values.blank? && label_values.blank?
 
     conditions = []
@@ -1744,6 +1749,13 @@ end
       end
       .reject(&:blank?)
       .uniq
+  end
+
+  def fco_location_label_variants(values)
+    Array(values).filter_map do |value|
+      normalized = value.to_s.strip.sub(/\s*-\s*FCO(?:\s*-\s*\d+)?\s*\z/i, "").strip
+      normalized.presence unless normalized.casecmp?(value.to_s.strip)
+    end
   end
 
   def encoded_location_value(value, label)
