@@ -2,11 +2,12 @@ require "test_helper"
 
 class ModuleLookupPerformanceTest < ActiveSupport::TestCase
   test "cluster visibility matches fuzzy labels after reading only distinct cluster labels" do
-    matching = create_test_vrp("Ashvin Durve (Cluster Incharge)")
-    create_test_vrp("Someone Else (Cluster Incharge)")
+    cluster_label = "Lookup#{SecureRandom.hex(4)} Person"
+    matching = create_test_vrp("#{cluster_label} (Cluster Incharge)")
+    create_test_vrp("Other#{SecureRandom.hex(4)} Person (Cluster Incharge)")
     controller = ModulesController.new
     controller.define_singleton_method(:model_ready?) { |_| true }
-    controller.define_singleton_method(:current_cluster_incharge_labels) { ["Ashvin Durve"] }
+    controller.define_singleton_method(:current_cluster_incharge_labels) { [cluster_label] }
     controller.define_singleton_method(:module_cluster_incharge_login?) { false }
     controller.define_singleton_method(:jeevika_jankar_transferred_vrps) { [] }
 
@@ -27,6 +28,57 @@ class ModuleLookupPerformanceTest < ActiveSupport::TestCase
     assert_equal 3, queries.size
     assert_match(/DISTINCT.*cluster_incharge/m, queries.first)
     assert_match(/WHERE.*cluster_incharge/m, queries.last)
+  end
+
+  test "dashboard office visibility preserves normalized FCO and TO matches" do
+    office = "Performance#{SecureRandom.hex(4)}"
+    matching_fcoc = create_test_vrp("FCO Match", fcoc: "FCO-C #{office}")
+    matching_to = create_test_vrp("TO Match", to_name: office)
+    outside = create_test_vrp("Outside", fcoc: "Elsewhere#{SecureRandom.hex(4)}", to_name: "Other")
+    controller = ModulesController.new
+    controller.define_singleton_method(:model_ready?) { |_| true }
+    controller.define_singleton_method(:current_app_user) { { "office_name" => office } }
+
+    queries = []
+    callback = ->(*args) { queries << args.last[:sql] if args.last[:sql].include?(%Q{FROM "vrps"}) }
+    visible = nil
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      visible = controller.send(:dashboard_office_visible_vrps)
+    end
+
+    assert_equal [matching_fcoc.id, matching_to.id].sort, visible.map(&:id).sort
+    assert_not_includes visible.map(&:id), outside.id
+    assert_equal 3, queries.size
+    assert queries[0].include?("DISTINCT")
+    assert queries[1].include?("DISTINCT")
+    assert_match(/WHERE/, queries.last)
+  end
+
+  test "dashboard approval visibility only loads VRPs referenced by approval history" do
+    recorded = create_test_vrp("Approval Candidate")
+    create_test_vrp("No Approval History")
+    ModuleRecord.create!(module_slug: "vrp-approval-history", data: {
+      "vrp_id" => recorded.id.to_s, "action" => "Sent for Approval"
+    })
+    controller = ModulesController.new
+    controller.define_singleton_method(:model_ready?) { |_| true }
+    controller.define_singleton_method(:preload_dashboard_vrp_identity_records!) { |_| nil }
+    controller.define_singleton_method(:vrp_approval_sent?) { |_| true }
+    controller.define_singleton_method(:dashboard_current_user_in_approval_channel?) { |_| true }
+
+    vrp_queries = []
+    callback = ->(*args) do
+      sql = args.last[:sql]
+      vrp_queries << sql if sql.include?(%Q{FROM "vrps"})
+    end
+    visible = nil
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      visible = controller.send(:dashboard_approval_related_vrps)
+    end
+
+    assert_equal [recorded.id], visible.map(&:id)
+    assert_equal 1, vrp_queries.size
+    assert_match(/WHERE.*id/m, vrp_queries.first)
   end
 
   test "lightweight location rows preserve flags order and JSON value types" do
@@ -219,13 +271,13 @@ class ModuleLookupPerformanceTest < ActiveSupport::TestCase
 
   private
 
-  def create_test_vrp(cluster_incharge)
-    vrp = Vrp.new(name: "Performance #{SecureRandom.hex(4)}", cluster_incharge: cluster_incharge,
+  def create_test_vrp(cluster_incharge = nil, **attributes)
+    vrp = Vrp.new({ name: "Performance #{SecureRandom.hex(4)}", cluster_incharge: cluster_incharge,
       aadhar_no: "123456789012", account_no: "123", address: "Test", branch: "Test",
       date_of_birth: Date.new(1990, 1, 1), date_of_joining: Date.current,
       email: "performance-#{SecureRandom.hex(4)}@example.test", experience_in_years: 0,
       father_husband_name: "Test", gender: 1, ifsc_code: "TEST0123456", mobile_no: "9876543210",
-      office_detail_id: 0, to_office_detail_id: 0)
+      office_detail_id: 0, to_office_detail_id: 0 }.merge(attributes))
     vrp.save!(validate: false)
     vrp
   end

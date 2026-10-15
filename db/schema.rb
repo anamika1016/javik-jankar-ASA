@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_13_090000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_14_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -339,11 +339,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_13_090000) do
     t.index "(((data)::jsonb ->> 'bill_id'::text))", name: "index_jj_bill_history_on_bill_id", where: "((module_slug)::text = 'jeevika-jankar-bill-approval-history'::text)"
     t.index "(((data)::jsonb ->> 'mobile_no'::text))", name: "index_module_records_new_users_on_mobile_no", where: "((module_slug)::text = 'new-user'::text)"
     t.index "(((data)::jsonb ->> 'record_id'::text))", name: "index_training_edits_on_record_id", where: "((module_slug)::text = 'training-form-edit-request'::text)"
+    t.index "(((data)::jsonb ->> 'record_id'::text)), id DESC", name: "index_training_edits_on_record_id_and_latest_id", where: "((module_slug)::text = 'training-form-edit-request'::text)"
     t.index "(((data)::jsonb ->> 'status'::text))", name: "index_training_edits_on_status", where: "((module_slug)::text = 'training-form-edit-request'::text)"
+    t.index "(((data)::jsonb ->> 'status'::text)), id DESC", name: "index_training_edits_on_status_and_latest_id", where: "((module_slug)::text = 'training-form-edit-request'::text)"
+    t.index "(((data)::jsonb ->> 'user_name'::text)), updated_at DESC", name: "index_module_records_new_users_on_user_name_and_updated_at", where: "((module_slug)::text = 'new-user'::text)"
     t.index "((data)::jsonb)", name: "index_module_records_on_json_data", using: :gin
     t.index "lower(((data)::jsonb ->> 'email'::text))", name: "index_module_records_new_users_on_lower_email", where: "((module_slug)::text = 'new-user'::text)"
     t.index "lower(((data)::jsonb ->> 'user_name'::text))", name: "index_module_records_new_users_on_lower_user_name", where: "((module_slug)::text = 'new-user'::text)"
     t.index "module_slug, lower(btrim(((data)::jsonb ->> 'month'::text)))", name: "index_module_records_on_slug_normalized_month"
+    t.index "module_slug, lower(btrim(((data)::jsonb ->> 'month'::text))), created_at DESC", name: "index_module_records_active_slug_month_created_at", where: "((COALESCE(lower(btrim(((data)::jsonb ->> 'deleted'::text))), ''::text) <> ALL (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) AND (COALESCE(lower(btrim(((data)::jsonb ->> 'is_deleted'::text))), ''::text) <> ALL (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) AND (COALESCE(lower(btrim(((data)::jsonb ->> 'discarded'::text))), ''::text) <> ALL (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) AND ((COALESCE(btrim(((data)::jsonb ->> 'status'::text)), ''::text) = ''::text) OR (lower(btrim(((data)::jsonb ->> 'status'::text))) = 'active'::text)))"
     t.index ["module_slug", "created_at"], name: "index_module_records_on_active_catalogue", order: { created_at: :desc }, where: "((COALESCE(lower(btrim(((data)::jsonb ->> 'deleted'::text))), ''::text) <> ALL (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) AND (COALESCE(lower(btrim(((data)::jsonb ->> 'is_deleted'::text))), ''::text) <> ALL (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) AND (COALESCE(lower(btrim(((data)::jsonb ->> 'discarded'::text))), ''::text) <> ALL (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) AND ((COALESCE(btrim(((data)::jsonb ->> 'status'::text)), ''::text) = ''::text) OR (lower(btrim(((data)::jsonb ->> 'status'::text))) = 'active'::text)))"
     t.index ["module_slug", "created_at"], name: "index_module_records_on_slug_and_created_at", order: { created_at: :desc }
     t.index ["module_slug", "updated_at"], name: "index_module_records_on_slug_and_updated_at", order: { updated_at: :desc }
@@ -630,11 +634,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_13_090000) do
     t.index "lower((user_name)::text)", name: "index_vrps_on_lower_user_name"
     t.index ["aadhar_no"], name: "index_vrps_on_aadhar_no"
     t.index ["agreement_accepted_at"], name: "index_vrps_on_agreement_accepted_at"
+    t.index ["cluster_incharge"], name: "index_vrps_on_cluster_incharge"
     t.index ["created_by_id"], name: "index_vrps_on_created_by_id"
     t.index ["created_by_type", "created_by_id"], name: "index_vrps_on_created_by_type_and_created_by_id"
     t.index ["email"], name: "index_vrps_on_email"
+    t.index ["fcoc"], name: "index_vrps_on_fcoc"
     t.index ["mobile_no"], name: "index_vrps_on_mobile_no"
     t.index ["status"], name: "index_vrps_on_status"
+    t.index ["to_name"], name: "index_vrps_on_to_name"
     t.index ["updated_at"], name: "index_vrps_on_updated_at", order: :desc
     t.index ["user_id"], name: "index_vrps_on_user_id"
     t.index ["user_name"], name: "index_vrps_on_user_name"

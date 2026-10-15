@@ -9,6 +9,15 @@ class VrpsController < ApplicationController
     state-master district-master block-master gram-panchayat-master village-master lg-directory-list
   ].freeze
   VrpLocationRecord = Struct.new(:id, :data)
+  LOCATION_OPTION_DATA_KEYS = %w[
+    deleted is_deleted discarded status
+    state_name state state_code state_id
+    district_name district district_code district_id
+    block_name block cd_block_name block_code cd_block_code block_id
+    gram_panchayat_name gram_panchayat gp_name gram_name name
+    gp_code gram_code gram_panchayat_code gram_panchayat_id
+    village_name village village_code village_id
+  ].freeze
 
   before_action :set_form_dependencies, only: [:new, :create]
   before_action :set_edit_dependencies, only: [:edit, :update]
@@ -541,10 +550,14 @@ class VrpsController < ApplicationController
     offices = AgreementVrpScope.user_office_keys(current_app_user)
     return [] if offices.blank?
 
-    Vrp.where.not(fcoc: [nil, ""]).select do |vrp|
-      key = AgreementVrpScope.office_key(vrp.fcoc)
-      key.present? && offices.include?(key)
-    end
+    matching_fcoc_values = Vrp.where.not(fcoc: [nil, ""])
+      .distinct
+      .pluck(:fcoc)
+      .select do |fcoc|
+        key = AgreementVrpScope.office_key(fcoc)
+        key.present? && offices.include?(key)
+      end
+    matching_fcoc_values.any? ? Vrp.where(fcoc: matching_fcoc_values).order(:id).to_a : []
   end
 
   def find_visible_vrp(id)
@@ -565,9 +578,11 @@ class VrpsController < ApplicationController
     labels = current_cluster_incharge_labels
     return Vrp.none if labels.blank?
 
-    Vrp.where.not(cluster_incharge: [nil, ""]).select do |vrp|
-      labels.any? { |label| cluster_label_matches?(label, vrp.cluster_incharge) }
-    end
+    matching_labels = Vrp.where.not(cluster_incharge: [nil, ""])
+      .distinct
+      .pluck(:cluster_incharge)
+      .select { |cluster_label| labels.any? { |label| cluster_label_matches?(label, cluster_label) } }
+    matching_labels.any? ? Vrp.where(cluster_incharge: matching_labels).order(:id).to_a : []
   end
 
   def current_cluster_incharge_labels
@@ -1193,7 +1208,9 @@ class VrpsController < ApplicationController
       history_vrp_ids = approval_history_records_by_vrp_id.keys
       scope = Vrp.where("status >= ?", 25)
       scope = scope.or(Vrp.where(id: history_vrp_ids)) if history_vrp_ids.any?
-      scope.to_a
+      # The approval table and its identity checks only read these attributes.
+      # Avoid materializing bank, address, and attachment fields for every JJ.
+      scope.select(:id, :name, :mobile_no, :email, :status, :created_by_id).to_a
     end
   end
 
@@ -1989,7 +2006,7 @@ class VrpsController < ApplicationController
       .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
       .where("COALESCE(BTRIM(data::jsonb ->> 'status'), '') = '' OR LOWER(BTRIM(data::jsonb ->> 'status')) = 'active'")
       .order(created_at: :desc)
-      .pluck(:module_slug, :id, :data)
+      .pluck(:module_slug, :id, Arel.sql(location_option_data_projection))
 
     records.each do |module_slug, id, data|
       @vrp_form_records_by_slug[module_slug] << VrpLocationRecord.new(id, data)
@@ -2008,6 +2025,11 @@ class VrpsController < ApplicationController
       .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
       .where("COALESCE(BTRIM(data::jsonb ->> 'status'), '') = '' OR LOWER(BTRIM(data::jsonb ->> 'status')) = 'active'")
       .order(created_at: :desc).to_a
+  end
+
+  def location_option_data_projection
+    quoted_keys = LOCATION_OPTION_DATA_KEYS.map { |key| ActiveRecord::Base.connection.quote(key) }.join(", ")
+    "(SELECT COALESCE(jsonb_object_agg(key, value), '{}'::jsonb)::text FROM jsonb_each(data::jsonb) WHERE key IN (#{quoted_keys}))"
   end
 
   def location_row(record, values)

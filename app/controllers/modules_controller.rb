@@ -8930,9 +8930,8 @@ class ModulesController < ApplicationController
       scope = scope.or(email_scope)
     end
 
-    cluster_vrps = Vrp.where.not(cluster_incharge: [nil, ""]).select do |vrp|
-      labels.any? { |label| cluster_label_matches?(label, vrp.cluster_incharge) }
-    end
+    matched_cluster_labels = module_matching_cluster_labels(labels)
+    cluster_vrps = matched_cluster_labels.any? ? Vrp.where(cluster_incharge: matched_cluster_labels).order(:id).to_a : []
 
     (scope.to_a + cluster_vrps).uniq
   end
@@ -8940,7 +8939,25 @@ class ModulesController < ApplicationController
   def dashboard_office_visible_vrps
     return [] unless model_ready?(:Vrp)
 
-    @dashboard_office_visible_vrps ||= Vrp.all.select { |vrp| jeevika_bill_vrp_office_visible?(vrp) }
+    return @dashboard_office_visible_vrps if defined?(@dashboard_office_visible_vrps)
+
+    current_office_values = normalized_visibility_values(
+      current_app_user&.dig("fcoc"), current_app_user&.dig("fcoc_name"), current_app_user&.dig("office_category"),
+      current_app_user&.dig("parent_office"), current_app_user&.dig("to"), current_app_user&.dig("to_name"),
+      current_app_user&.dig("sub_office_name"), current_app_user&.dig("office"), current_app_user&.dig("office_name")
+    )
+    return @dashboard_office_visible_vrps = [] if current_office_values.blank?
+
+    fcoc_values = Vrp.distinct.pluck(:fcoc).select do |fcoc|
+      (normalized_visibility_values(fcoc) & current_office_values).any?
+    end
+    to_values = Vrp.distinct.pluck(:to_name).select do |to_name|
+      (normalized_visibility_values(to_name) & current_office_values).any?
+    end
+    scope = Vrp.none
+    scope = scope.or(Vrp.where(fcoc: fcoc_values)) if fcoc_values.any?
+    scope = scope.or(Vrp.where(to_name: to_values)) if to_values.any?
+    @dashboard_office_visible_vrps = scope.order(:id).to_a
   end
 
   def dashboard_under_user_labels
@@ -9051,7 +9068,13 @@ class ModulesController < ApplicationController
     return [] unless model_ready?(:Vrp)
 
     @dashboard_approval_related_vrps ||= begin
-      vrps = Vrp.all.to_a
+      history_by_vrp_id = ModuleRecord.where(module_slug: "vrp-approval-history")
+        .order(created_at: :asc)
+        .to_a
+        .group_by { |record| record.data["vrp_id"].to_s }
+      @dashboard_approval_history_by_vrp_id = history_by_vrp_id
+      history_vrp_ids = history_by_vrp_id.keys.select { |id| id.match?(/\A\d+\z/) }
+      vrps = Vrp.where(id: history_vrp_ids).order(:id).to_a
       preload_dashboard_vrp_identity_records!(vrps)
       vrps.select do |vrp|
         vrp_approval_sent?(vrp) && dashboard_current_user_in_approval_channel?(vrp)
@@ -9889,9 +9912,9 @@ class ModulesController < ApplicationController
 
     return @training_supervised_vrp_ids = Set.new if supervised_cc_names.blank?
 
-    @training_supervised_vrp_ids = Vrp.where.not(cluster_incharge: [nil, ""]).select { |vrp|
-      supervised_cc_names.any? { |cc| cluster_label_matches?(cc, vrp.cluster_incharge) }
-    }.map { |vrp| vrp.id.to_s }.to_set
+    matched_cluster_labels = module_matching_cluster_labels(supervised_cc_names)
+    @training_supervised_vrp_ids = matched_cluster_labels.any? ?
+      Vrp.where(cluster_incharge: matched_cluster_labels).pluck(:id).map(&:to_s).to_set : Set.new
   end
 
   def target_record_vrp_for_visibility(record)
@@ -11652,18 +11675,18 @@ class ModulesController < ApplicationController
     end
   end
 
-  def module_matching_cluster_labels
-    return @module_matching_cluster_labels if defined?(@module_matching_cluster_labels)
+  def module_matching_cluster_labels(labels = current_cluster_incharge_labels)
+    labels = Array(labels).compact_blank.uniq
+    return [] if labels.blank?
 
-    labels = current_cluster_incharge_labels.compact_blank.uniq
-    @module_matching_cluster_labels = if labels.blank?
-      []
-    else
-      Vrp.where.not(cluster_incharge: [nil, ""])
-        .distinct
-        .pluck(:cluster_incharge)
-        .select { |cluster_label| labels.any? { |label| cluster_label_matches?(label, cluster_label) } }
-    end
+    @module_matching_cluster_labels_by_input ||= {}
+    cache_key = labels.map { |label| normalize_dashboard_user_label(label) }.sort
+    return @module_matching_cluster_labels_by_input[cache_key] if @module_matching_cluster_labels_by_input.key?(cache_key)
+
+    @module_matching_cluster_labels_by_input[cache_key] = Vrp.where.not(cluster_incharge: [nil, ""])
+      .distinct
+      .pluck(:cluster_incharge)
+      .select { |cluster_label| labels.any? { |label| cluster_label_matches?(label, cluster_label) } }
   end
 
   def module_directly_mapped_cluster_vrp_ids

@@ -67,8 +67,11 @@ class FarmerTargetApi
 
     # An edit carries only the fields that changed, so the saved row is the
     # starting point: anything left out — uploads above all — stays as it is.
-    data = record.data.merge(normalize_incoming(raw_attrs))
+    incoming = normalize_incoming(raw_attrs)
+    @farmer_selection_submitted = incoming.key?("selected_farmer_ids")
+    data = record.data.merge(incoming)
     @retained_farmer_ids = Array(record.data["selected_farmer_ids"]).map(&:to_s).compact_blank.uniq
+    @retained_target_mapping_id = record.data["target_mapping_id"].presence
     data = normalize_for_slug(data)
     # An edit changes the record, never whose record it is.  Without this a
     # caller could post created_by_id and walk off with someone else's form.
@@ -453,7 +456,9 @@ class FarmerTargetApi
 
   def normalize_seed_distribution_target_data(data)
     stamp_target_record_creator!(data)
-    data["main_activity_type"] = "Other"
+    # The indicator type has to be the one the target was set up with, otherwise
+    # the record cannot find the mapping it belongs to.
+    data["main_activity_type"] = other_with_farmer_slug? ? "Other with Farmer" : "Other"
     data["training_topic"] = data["training_topic"].presence || data["main_activity"].presence
     data["training_subject"] = data["training_subject"].presence || data["sub_activity"].presence
     data["main_activity"] = data["training_topic"] if data["main_activity"].blank?
@@ -484,7 +489,13 @@ class FarmerTargetApi
     end
     data["selected_farmer_ids"] = selected_farmer_ids
     data["selected_farmer_names"] = training_farmer_names(selected_farmer_ids)
-    data["farmer_count"] = selected_farmer_ids.size.to_s if selected_farmer_ids.any?
+    # The count follows the farmer selection, but an edit that only changes some
+    # fields does not carry that selection, and rewriting the count from the
+    # farmers already on the record threw away the number the caller sent while
+    # still answering 200. Where the two disagree the validation says so.
+    if selected_farmer_ids.any? && (farmer_selection_submitted? || data["farmer_count"].blank?)
+      data["farmer_count"] = selected_farmer_ids.size.to_s
+    end
 
     data["achievement"] = numeric_string(data["achievement"]) if data["achievement"].present?
     data["target"] = numeric_string(data["target"]) if data["target"].present?
@@ -596,6 +607,28 @@ class FarmerTargetApi
 
   def generic_other_target?
     @module_slug == "other-target"
+  end
+
+  def other_with_farmer_slug?
+    @module_slug == "other-target-with-farmer"
+  end
+
+  # Only indicators set up as "Other with Farmer" belong on that form, and the
+  # plain Other Target screens keep every other non-training indicator. A target
+  # also drops off once every farmer it was mapped against is done, even though
+  # the village may still hold farmers outside that mapping.
+  def other_target_slug_accepts?(main_activity_type, target)
+    with_farmer = normalize_text(main_activity_type) == normalize_text("Other with Farmer")
+    return !with_farmer unless other_with_farmer_slug?
+
+    with_farmer && !other_with_farmer_target_exhausted?(target)
+  end
+
+  def other_with_farmer_target_exhausted?(target)
+    mapped = target_farmer_ids(target)
+    return false if mapped.blank?
+
+    (mapped - other_target_completed_farmer_ids_for(target.id)).empty?
   end
 
   # A cluster incharge editing a training form raises a request for the
@@ -763,6 +796,7 @@ class FarmerTargetApi
       .filter_map do |target|
         activity_setting = activity_setting_for(target, activity_settings, sub_activity_settings)
         next unless activity_setting.present? && !training_main_activity_type?(activity_setting[:main_activity_type])
+        next unless other_target_slug_accepts?(activity_setting[:main_activity_type], target)
 
         farmer_ids = generic_other_target? ? [] : target_farmer_ids(target)
         {
@@ -1119,7 +1153,7 @@ class FarmerTargetApi
     selected_subject = normalize_text(data["training_subject"].presence || data["sub_activity"])
     selected_main_activity_type = normalize_text(data["main_activity_type"])
 
-    seed_distribution_target_mappings.find do |mapping|
+    matches = lambda do |mapping|
       [mapping[:vrp_id], mapping[:jeevika_jankar_name]].any? { |value| normalize_text(value) == selected_vrp } &&
         (selected_main_activity_type.blank? || normalize_text(mapping[:main_activity_type]) == selected_main_activity_type) &&
         normalize_text(mapping[:month]) == selected_month &&
@@ -1128,6 +1162,17 @@ class FarmerTargetApi
         normalize_text(mapping[:training_topic]) == selected_topic &&
         normalize_text(mapping[:training_subject]) == selected_subject
     end
+
+    found = seed_distribution_target_mappings.find(&matches)
+    return found if found
+
+    # The list offered on a blank form only holds mappings whose main activity is
+    # set up as non-Training, so a record saved before that setup changed cannot
+    # find itself again and an edit of, say, the achievement would be refused.
+    # The record already knows its mapping, so it is checked too - and only
+    # accepted when the edit still describes that same mapping.
+    retained = retained_target_mapping
+    retained if retained && matches.call(retained)
   end
 
   def training_target_scope
@@ -1201,6 +1246,42 @@ class FarmerTargetApi
   # selectable and an edit of some other field cannot quietly drop them.
   def retained_farmer_ids
     @retained_farmer_ids || []
+  end
+
+  # A save carries the whole form; an edit only carries what changed.
+  def farmer_selection_submitted?
+    @farmer_selection_submitted.nil? || @farmer_selection_submitted
+  end
+
+  # The mapping the record being edited was saved against, shaped like the ones
+  # the blank form offers so it can be compared the same way.
+  def retained_target_mapping
+    return @retained_target_mapping if defined?(@retained_target_mapping)
+    return @retained_target_mapping = nil if @retained_target_mapping_id.blank?
+    return @retained_target_mapping = nil unless model_ready?(:TargetMapping)
+
+    target = TargetMapping.find_by(id: @retained_target_mapping_id)
+    return @retained_target_mapping = nil unless target
+
+    @retained_target_mapping = {
+      target_mapping_id: target.id.to_s,
+      vrp_id: target.vrp_id.to_s,
+      jeevika_jankar_name: target.vrp&.name.presence || target.vrp&.user_name.presence || "Jeevika Jankar ##{target.vrp_id}",
+      contact_number: target.vrp&.mobile_no.to_s.gsub(/\D/, "").last(10),
+      department: target.vrp&.fcoc.to_s.strip,
+      month: target.month_name.to_s.strip,
+      ics: target.ics_name.presence || target.ics_id,
+      village: target.village_name.presence || target.village_id,
+      main_activity_type: other_with_farmer_slug? ? "Other with Farmer" : "Other",
+      training_topic: target.main_activity_name.to_s.strip,
+      training_subject: target.activity_name.to_s.strip,
+      main_activity: target.main_activity_name.to_s.strip,
+      sub_activity: target.activity_name.to_s.strip,
+      target: target.target_quantity.to_s,
+      new_farmer_target: new_farmer_target_mapping?(target),
+      completed_farmer_ids: generic_other_target? ? [] : other_target_completed_farmer_ids_for(target.id),
+      farmers: generic_other_target? ? [] : training_farmers_for_ids(target_farmer_ids(target))
+    }
   end
 
   def training_form_activity_scope_present?(data)

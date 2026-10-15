@@ -9,5 +9,15 @@ class AddVrpClusterInchargeLookupIndex < ActiveRecord::Migration[8.1]
       name: "index_vrps_on_cluster_incharge",
       algorithm: :concurrently,
       if_not_exists: true
+
+    add_index :vrps, :fcoc,
+      name: "index_vrps_on_fcoc",
+      algorithm: :concurrently,
+      if_not_exists: true
+
+    add_index :vrps, :to_name,
+      name: "index_vrps_on_to_name",
+      algorithm: :concurrently,
+      if_not_exists: true
   end
 end

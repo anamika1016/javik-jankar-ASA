@@ -109,6 +109,71 @@ class Api::V1::FarmerTargetUpdateApiTest < ActionDispatch::IntegrationTest
     assert_equal "5", record.reload.data["achievement"]
   end
 
+  # The blank form only offers mappings whose main activity is set up as
+  # non-Training.  A record saved before that setup changed could not find
+  # itself again, so editing even the achievement was refused with "Mapped Other
+  # activity target select karein."
+  test "an other target can be edited when its activity is no longer set up" do
+    record = other_target_record
+    ModuleRecord.where(module_slug: "add-activity-group").destroy_all
+
+    patch "/api/v1/other-targets/#{record.id}", params: { achievement: "7" },
+      headers: auth_headers, as: :json
+
+    assert_response :success
+    assert_equal "7", record.reload.data["achievement"]
+    assert_equal target_mapping.id.to_s, record.data["target_mapping_id"],
+      "the record stays on the mapping it was saved against"
+  end
+
+  # The fallback is the record's own mapping, not a free pass: moving the record
+  # to a month that has no mapping is still refused.
+  test "an other target edit to an unmapped month is still refused" do
+    record = other_target_record
+    ModuleRecord.where(module_slug: "add-activity-group").destroy_all
+
+    patch "/api/v1/other-targets/#{record.id}", params: { month: "December" },
+      headers: auth_headers, as: :json
+
+    assert_response :unprocessable_entity
+    assert_includes response.parsed_body["errors"].join(" "), "Mapped Other activity target select karein."
+    assert_equal "October", record.reload.data["month"]
+  end
+
+  # An edit only carries what changed, so the farmer selection is not resent.
+  # Rewriting the count from the farmers already on the record threw the sent
+  # number away and still answered 200, so the list kept showing the old count.
+  test "an edited farmer count is saved and read back from the list" do
+    record = other_target_record
+    record.update!(data: record.data.merge(
+      "selected_farmer_ids" => %w[101 102 103 104 105], "farmer_count" => "5"
+    ))
+
+    patch "/api/v1/other-targets/#{record.id}", params: { farmer_count: "6" },
+      headers: auth_headers, as: :json
+    assert_response :success
+    assert_equal "6", response.parsed_body.dig("other_target", "data", "farmer_count")
+    assert_equal "6", record.reload.data["farmer_count"]
+
+    get "/api/v1/other-targets", headers: auth_headers, as: :json
+    assert_response :success
+    listed = response.parsed_body["other_targets"].find { |row| row["id"] == record.id }
+    assert_equal "6", listed.dig("data", "farmer_count"), "the list must show the saved count"
+  end
+
+  # Sending the selection is still what decides the count.
+  test "resending the farmer selection sets the count from it" do
+    record = other_target_record
+    record.update!(data: record.data.merge("selected_farmer_ids" => %w[101 102], "farmer_count" => "2"))
+
+    patch "/api/v1/other-targets/#{record.id}",
+      params: { selected_farmer_ids: %w[101 102 103], farmer_count: "99" },
+      headers: auth_headers, as: :json
+
+    assert_response :success
+    assert_equal "3", record.reload.data["farmer_count"]
+  end
+
   test "the record id in the path is not written into the record" do
     record = other_target_record
 
@@ -213,15 +278,20 @@ class Api::V1::FarmerTargetUpdateApiTest < ActionDispatch::IntegrationTest
     })
   end
 
+  def target_mapping
+    @target_mapping ||= TargetMapping.create!(vrp: vrp("Other JJ", "9876511101"),
+      fco_id: "13", fco_name: "Betul-FCO",
+      ics_id: "39", ics_name: "Athner", village_id: "3155", village_name: "Khairi",
+      month_name: "October", main_activity_name: "Farmers WhatsApp Groups",
+      activity_name: "Village level farmers groups", afl_ids: [], farmer_count: 0,
+      target_quantity: 10, completion_date: Date.new(2026, 10, 31),
+      created_by_type: "User", created_by_id: @admin.id)
+  end
+
   def other_target_record
     @other_target_record ||= begin
-      jj = vrp("Other JJ", "9876511101")
-      target = TargetMapping.create!(vrp: jj, fco_id: "13", fco_name: "Betul-FCO",
-        ics_id: "39", ics_name: "Athner", village_id: "3155", village_name: "Khairi",
-        month_name: "October", main_activity_name: "Farmers WhatsApp Groups",
-        activity_name: "Village level farmers groups", afl_ids: [], farmer_count: 0,
-        target_quantity: 10, completion_date: Date.new(2026, 10, 31),
-        created_by_type: "User", created_by_id: @admin.id)
+      target = target_mapping
+      jj = target.vrp
       ModuleRecord.create!(module_slug: "add-activity-group", data: {
         "main_activity_name" => "Farmers WhatsApp Groups", "main_activity_type" => "Other",
         "status" => "Active"

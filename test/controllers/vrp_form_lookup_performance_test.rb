@@ -18,7 +18,7 @@ class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
   end
 
   test "VRP location hierarchy loads all active master modules in one query" do
-    ModuleRecord.create!(module_slug: "state-master", data: { "state_name" => "Batch State" })
+    ModuleRecord.create!(module_slug: "state-master", data: { "state_name" => "Batch State", "unused_large_payload" => "x" * 10_000 })
     ModuleRecord.create!(module_slug: "district-master", data: { "state_name" => "Batch State", "district_name" => "Batch District" })
     ModuleRecord.create!(module_slug: "village-master", data: {
       "state_name" => "Batch State", "district_name" => "Batch District", "block_name" => "Batch Block",
@@ -45,6 +45,67 @@ class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
 
     assert_equal 1, queries.size
     assert_includes queries.first, "module_slug"
+    assert_includes queries.first, "jsonb_each"
+    assert_not_includes queries.first, "unused_large_payload"
+  end
+
+  test "cluster scoped VRP list filters fuzzy labels before loading matching rows" do
+    cluster_label = "Lookup#{SecureRandom.hex(4)} Person"
+    matching = create_test_vrp("Cluster Match", cluster_incharge: "#{cluster_label} (Cluster Incharge)")
+    create_test_vrp("Cluster Other", cluster_incharge: "Other#{SecureRandom.hex(4)} Person (Cluster Incharge)")
+    controller = VrpsController.new
+    controller.define_singleton_method(:current_cluster_incharge_labels) { [cluster_label] }
+
+    queries = []
+    callback = ->(*args) { queries << args.last[:sql] if args.last[:sql].include?(%Q{FROM "vrps"}) }
+    visible = nil
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      visible = controller.send(:cluster_mapped_vrps)
+    end
+
+    assert_equal [matching.id], visible.map(&:id)
+    assert_equal 2, queries.size
+    assert_match(/DISTINCT.*cluster_incharge/m, queries.first)
+    assert_match(/WHERE.*cluster_incharge/m, queries.last)
+  end
+
+  test "office scoped VRP list preserves normalized FCO matching" do
+    office = "Performance#{SecureRandom.hex(4)}"
+    matching = create_test_vrp("Office Match", fcoc: "FCO-C #{office}")
+    create_test_vrp("Other Office", fcoc: "Elsewhere#{SecureRandom.hex(4)}")
+    controller = VrpsController.new
+    controller.define_singleton_method(:current_app_user) { { "office_name" => office } }
+
+    queries = []
+    callback = ->(*args) { queries << args.last[:sql] if args.last[:sql].include?(%Q{FROM "vrps"}) }
+    visible = nil
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      visible = controller.send(:office_scoped_vrps)
+    end
+
+    assert_equal [matching.id], visible.map(&:id)
+    assert_equal 2, queries.size
+    assert_match(/DISTINCT.*fcoc/m, queries.first)
+    assert_match(/WHERE.*fcoc/m, queries.last)
+  end
+
+  test "approval candidates retain status and history rows with a narrow VRP projection" do
+    status_candidate = create_test_vrp("Status Candidate", status: 25)
+    history_candidate = create_test_vrp("History Candidate", status: 20)
+    ModuleRecord.create!(module_slug: "vrp-approval-history", data: { "vrp_id" => history_candidate.id.to_s })
+    controller = VrpsController.new
+
+    vrp_queries = []
+    callback = ->(*args) { vrp_queries << args.last[:sql] if args.last[:sql].include?(%Q{FROM "vrps"}) }
+    candidates = nil
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      candidates = controller.send(:approval_candidate_vrps)
+    end
+
+    assert_equal [status_candidate.id, history_candidate.id].sort, candidates.map(&:id).sort
+    assert_equal 1, vrp_queries.size
+    assert_match(/SELECT.*"vrps"\."name".*"vrps"\."mobile_no"/m, vrp_queries.first)
+    assert_not_match(/"vrps"\."address"/, vrp_queries.first)
   end
 
   test "plain hierarchy labels and registration enrichment share one user query" do
@@ -94,5 +155,15 @@ class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
       3.times { assert_equal "Unknown", controller.send(:module_record_label, "state-master", "Unknown", "state_name") }
     end
     assert_equal 1, queries.size
+  end
+
+  def create_test_vrp(name, attributes = {})
+    vrp = Vrp.new({ name: name, aadhar_no: "123456789012", account_no: "123", address: "Test", branch: "Test",
+      date_of_birth: Date.new(1990, 1, 1), date_of_joining: Date.current,
+      email: "performance-#{SecureRandom.hex(4)}@example.test", experience_in_years: 0,
+      father_husband_name: "Test", gender: 1, ifsc_code: "TEST0123456", mobile_no: "9876543210",
+      office_detail_id: 0, to_office_detail_id: 0 }.merge(attributes))
+    vrp.save!(validate: false)
+    vrp
   end
 end

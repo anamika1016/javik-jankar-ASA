@@ -112,8 +112,23 @@ Rails.application.routes.draw do
       get "other-forms/months", to: "other_targets#months"
       resources :other_forms, path: "other-forms", controller: "other_targets", only: [ :index, :create, :show ]
 
+      get "other-target-with-farmers/form-options", to: "other_target_with_farmers#form_options"
+      get "other-target-with-farmers/form-data", to: "other_target_with_farmers#form_data"
+      get "other-target-with-farmers/months", to: "other_target_with_farmers#months"
+      get "other-target-with-farmers/farmers", to: "other_target_with_farmers#farmers"
+      get "other-target-with-farmers/:id/photos", to: "other_target_with_farmers#photos"
+      resources :other_target_with_farmers, path: "other-target-with-farmers",
+        only: [ :index, :create, :show, :update ]
+      get "other-target-with-farmer-list", to: "other_target_with_farmers#index"
+      get "other-target-with-farmer-list/:id", to: "other_target_with_farmers#show"
+
       get "add-farmer-forms/form-options", to: "add_farmer_forms#form_options"
       resources :add_farmer_forms, path: "add-farmer-forms", only: [ :index, :create, :show ]
+
+      # Jeevika Jankar Mapped Farmers — React Native APIs; web /jj-mapped-farmers unchanged
+      get "jj-mapped-farmers/jeevika-jankars", to: "jj_mapped_farmers#jeevika_jankars"
+      get "jj-mapped-farmers/filters", to: "jj_mapped_farmers#filters"
+      get "jj-mapped-farmers", to: "jj_mapped_farmers#index"
     end
   end
 
