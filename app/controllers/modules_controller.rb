@@ -12694,6 +12694,10 @@ class ModulesController < ApplicationController
   def module_record_field_value(record, field)
     return nil if field.blank?
     return village_master_gram_panchayat_name(record) if record.module_slug == "village-master" && field == "Gram Panchayat"
+    if field == "Contact Number" && other_target_record_source?
+      target = TargetMapping.find_by(id: record.data["target_mapping_id"])
+      return target.vrp&.mobile_no.to_s.gsub(/\D/, "").last(10) if target
+    end
 
     @module_record_field_keys ||= {}
     keys = @module_record_field_keys[field] ||= [
