@@ -15092,8 +15092,12 @@ class ModulesController < ApplicationController
       return scope.where(vrp_id: ids) if ids.any?
       return scope
     end
-    scope = scope.where(vrp_id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
-    scope = scope.where(vrp_id: module_cluster_visible_vrp_ids) if module_mapped_vrp_scope_active? && module_cluster_visible_vrp_ids.any?
+    is_vrp_login = vrp_login_user?
+    scope = scope.where(vrp_id: current_vrp_record.id) if is_vrp_login && current_vrp_record.present?
+    if !is_vrp_login && !admin_dashboard_user? && module_mapped_vrp_scope_active?
+      visible_vrp_ids = module_cluster_visible_vrp_ids
+      scope = scope.where(vrp_id: visible_vrp_ids) if visible_vrp_ids.any?
+    end
     scope
   end
 

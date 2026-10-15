@@ -2021,6 +2021,11 @@ class VrpsController < ApplicationController
       .pluck(:module_slug, :id, Arel.sql(location_option_data_projection))
 
     records.each do |module_slug, id, data|
+      # The projection is cast to SQL text so PostgreSQL returns only the
+      # selected JSON keys. Decode it before the option builders read fields;
+      # treating the JSON string as a Hash silently made every location label
+      # and parent reference disappear.
+      data = JSON.parse(data) if data.is_a?(String)
       @vrp_form_records_by_slug[module_slug] << VrpLocationRecord.new(id, data)
     end
   end

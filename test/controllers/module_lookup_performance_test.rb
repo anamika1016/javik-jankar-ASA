@@ -1,6 +1,33 @@
 require "test_helper"
 
 class ModuleLookupPerformanceTest < ActiveSupport::TestCase
+  test "target lookup keeps admin and VRP scopes from intersecting the cluster scope" do
+    own_vrp = create_test_vrp("Own Other Target")
+    cluster_vrp = create_test_vrp("Cluster Other Target")
+    own_target = create_lookup_target(own_vrp)
+    create_lookup_target(cluster_vrp)
+
+    vrp_controller = ModulesController.new
+    vrp_controller.define_singleton_method(:current_slug) { "other-target" }
+    vrp_controller.define_singleton_method(:vrp_login_user?) { true }
+    vrp_controller.define_singleton_method(:current_vrp_record) { own_vrp }
+    vrp_controller.define_singleton_method(:admin_dashboard_user?) { false }
+    vrp_controller.define_singleton_method(:module_mapped_vrp_scope_active?) { true }
+    vrp_controller.define_singleton_method(:module_cluster_visible_vrp_ids) { [cluster_vrp.id] }
+
+    assert_equal [own_target.id], vrp_controller.send(:training_target_scope).pluck(:id)
+
+    admin_controller = ModulesController.new
+    admin_controller.define_singleton_method(:current_slug) { "other-target" }
+    admin_controller.define_singleton_method(:vrp_login_user?) { false }
+    admin_controller.define_singleton_method(:admin_dashboard_user?) { true }
+    admin_controller.define_singleton_method(:module_mapped_vrp_scope_active?) { true }
+    admin_controller.define_singleton_method(:module_cluster_visible_vrp_ids) { [cluster_vrp.id] }
+
+    assert_equal [own_target.id, TargetMapping.where(vrp: cluster_vrp).pick(:id)].sort,
+      admin_controller.send(:training_target_scope).pluck(:id).sort
+  end
+
   test "Other Target edit keeps saved ICS available when its target mapping is no longer active" do
     controller = ModulesController.new
     record = ModuleRecord.new(data: { "ics" => "Saved September ICS" })
@@ -306,5 +333,22 @@ class ModuleLookupPerformanceTest < ActiveSupport::TestCase
     queries
   ensure
     ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+  end
+
+  private
+
+  def create_lookup_target(vrp)
+    TargetMapping.create!(
+      vrp: vrp,
+      fco_id: "FCO-#{vrp.id}",
+      ics_id: "ICS-#{vrp.id}",
+      ics_name: "ICS #{vrp.id}",
+      village_id: "V-#{vrp.id}",
+      village_name: "Village #{vrp.id}",
+      month_name: "September",
+      main_activity_name: "Other Activity",
+      activity_name: "Other Sub Activity",
+      target_quantity: 10
+    )
   end
 end
