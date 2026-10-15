@@ -15,6 +15,33 @@ class Api::V1::SessionsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "api_vrp", body.dig("user", "username")
   end
 
+  test "api login projects vrp type labels and preserves label order" do
+    type = VrpType.create!(type_name: "Payload Type", is_active: true, is_deleted: false)
+    legacy_type = ModuleRecord.create!(module_slug: "add-vrp-type", data: {
+      "vrp_type_name" => "Legacy Payload Type",
+      "jeevika_jankar_type_name" => "Preferred Legacy Payload Type"
+    })
+    vrp = create_vrp(
+      user_name: "payload_type_login",
+      password: "secret",
+      vrp_type_ids: [type.id, legacy_type.id],
+      agreement_accepted_at: Time.current
+    )
+
+    queries = []
+    callback = ->(*args) do
+      sql = args.last[:sql]
+      queries << sql if sql.match?(/FROM "(?:vrp_types|module_records)"/)
+    end
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      post api_v1_login_path, params: { login: vrp.user_name, password: "secret" }, as: :json
+    end
+
+    assert_response :success
+    assert_equal ["Payload Type", "Preferred Legacy Payload Type"], response.parsed_body.dig("user", "vrp_types")
+    assert_equal 2, queries.size
+  end
+
   test "api login accepts username alias" do
     create_vrp(user_name: "api_username_vrp", password: "secret", agreement_accepted_at: Time.current)
 

@@ -58,4 +58,37 @@ class JjReadOptimizationTest < ActiveSupport::TestCase
     controller.instance_variable_set(:@slug, "jeevika-jankar-observation-list")
     assert_not controller.send(:module_records_required_for_show?)
   end
+
+  test "observation list pushes its selected month into the bill query without changing rows" do
+    ModuleRecord.create!(module_slug: "month-master", data: { "month_name" => "October", "status" => "Active" })
+    october = ModuleRecord.create!(module_slug: "jeevika-jankar-bill-process", data: {
+      "bill_month" => "October", "select_vrp_name" => "October JJ",
+      "observations" => { "timing" => "good", "technology" => "needs_improvement" }
+    })
+    ModuleRecord.create!(module_slug: "jeevika-jankar-bill-process", data: {
+      "bill_month" => "September", "select_vrp_name" => "September JJ",
+      "observations" => { "timing" => "no_progress" }
+    })
+    controller = ModulesController.new
+    controller.instance_variable_set(:@slug, "jeevika-jankar-observation-list")
+    controller.params = ActionController::Parameters.new(bill_month: "October")
+    controller.define_singleton_method(:admin_dashboard_user?) { true }
+    controller.define_singleton_method(:preload_bill_list_identities!) { |_| nil }
+    controller.define_singleton_method(:jeevika_jankar_bill_record_visible?) { |_| true }
+    queries = []
+    callback = ->(*args) do
+      sql = args.last[:sql]
+      queries << sql if sql.include?("jeevika-jankar-bill-process") || sql.include?("bill_month")
+    end
+
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      controller.send(:prepare_jeevika_jankar_observation_list)
+    end
+
+    rows = controller.instance_variable_get(:@observation_rows)
+    assert_equal [october.id], rows.map { |row| row[:id] }
+    assert_equal "October JJ", rows.first[:jeevika_jankar_name]
+    assert_equal "October", controller.instance_variable_get(:@observation_selected_month)
+    assert queries.any? { |sql| sql.include?("data::jsonb ->> 'bill_month'") }
+  end
 end

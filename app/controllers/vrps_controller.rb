@@ -306,6 +306,14 @@ class VrpsController < ApplicationController
       return
     end
 
+    ActiveRecord::Associations::Preloader.new(
+      records: [@vrp],
+      associations: [
+        :vrp_profile,
+        :vrp_bank_master,
+        { bank_passbook_upload_attachment: :blob }
+      ]
+    ).call
     set_form_dependencies
   end
 
@@ -2429,13 +2437,62 @@ class VrpsController < ApplicationController
   def sync_existing_vrp_master_records
     return unless model_ready?(:ModuleRecord)
 
-    ModuleRecord.where(module_slug: ["bank-master", "position-type", "add-vrp-type"]).find_each do |record|
+    records = ModuleRecord.where(module_slug: ["bank-master", "position-type", "add-vrp-type"]).order(:id).to_a
+    sync_existing_vrp_bank_masters(records)
+    sync_existing_vrp_types(records)
+  end
+
+  # Keep the legacy import-on-form-load behavior, but avoid one lookup and
+  # potentially one write per master row when opening registration/edit pages.
+  def sync_existing_vrp_bank_masters(records)
+    return unless model_ready?(:VrpBankMaster)
+
+    desired = records.filter_map do |record|
+      next unless record.module_slug == "bank-master"
+
+      name = record.data["bank_name"].to_s.strip
+      next if name.blank?
+
+      [name, record]
+    end
+    return if desired.empty?
+
+    existing = VrpBankMaster.where(name: desired.map(&:first).uniq).order(:id).each_with_object({}) do |bank, result|
+      result[bank.name] ||= bank
+    end
+    desired.each do |name, record|
+      active = record.data["status"].to_s != "Inactive"
+      bank = existing[name] || VrpBankMaster.new(name: name)
+      bank.is_active = active if bank.respond_to?(:is_active=)
+      bank.is_deleted = false if bank.respond_to?(:is_deleted=)
+      bank.save(validate: false) if bank.new_record? || bank.changed?
+      existing[name] = bank
+    end
+  end
+
+  def sync_existing_vrp_types(records)
+    return unless model_ready?(:VrpType)
+
+    desired = records.filter_map do |record|
       case record.module_slug
-      when "bank-master"
-        sync_bank_master(record)
       when "position-type", "add-vrp-type"
-        sync_vrp_type(record)
+        data = record.data
+        name = (data["position_type_name"].presence || data["jeevika_jankar_type_name"].presence || data["vrp_type_name"]).to_s.strip
+        [name, record] if name.present?
       end
+    end
+    return if desired.empty?
+
+    existing = VrpType.where(type_name: desired.map(&:first).uniq).order(:id).each_with_object({}) do |type, result|
+      result[type.type_name] ||= type
+    end
+    desired.each do |name, record|
+      active = record.data["status"].to_s != "Inactive"
+      type = existing[name] || VrpType.new(type_name: name)
+      type.is_active = active if type.respond_to?(:is_active=)
+      type.is_deleted = false if type.respond_to?(:is_deleted=)
+      type.save(validate: false) if type.new_record? || type.changed?
+      existing[name] = type
     end
   end
 

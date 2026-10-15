@@ -49,6 +49,53 @@ class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
     assert_not_includes queries.first, "unused_large_payload"
   end
 
+  test "form master synchronization batches reads and keeps inactive flags current" do
+    bank_name = "Sync Bank #{SecureRandom.hex(4)}"
+    type_name = "Sync Type #{SecureRandom.hex(4)}"
+    ModuleRecord.create!(module_slug: "bank-master", data: { "bank_name" => bank_name, "status" => "Active" })
+    ModuleRecord.create!(module_slug: "bank-master", data: { "bank_name" => "  ", "status" => "Active" })
+    ModuleRecord.create!(module_slug: "position-type", data: { "position_type_name" => type_name, "status" => "Inactive" })
+    controller = VrpsController.new
+
+    queries = []
+    callback = ->(*args) do
+      payload = args.last
+      queries << payload[:sql] if payload[:sql].start_with?("SELECT") && payload[:sql].match?(/FROM "(?:module_records|vrp_bank_masters|vrp_types)"/)
+    end
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      controller.send(:sync_existing_vrp_master_records)
+    end
+
+    assert_equal true, VrpBankMaster.find_by!(name: bank_name).is_active
+    assert_equal false, VrpType.find_by!(type_name: type_name).is_active
+    assert_operator queries.count { |sql| sql.include?('"module_records"') }, :<=, 1
+    assert_operator queries.count { |sql| sql.include?('"vrp_bank_masters"') }, :<=, 1
+    assert_operator queries.count { |sql| sql.include?('"vrp_types"') }, :<=, 1
+  end
+
+  test "VRP edit data is preloaded with its profile, bank and attachment metadata" do
+    controller = VrpsController.new
+    vrp = Vrp.new
+    controller.request = ActionDispatch::TestRequest.create
+    controller.params = ActionController::Parameters.new(id: "1")
+    controller.define_singleton_method(:find_manageable_vrp) { |_| vrp }
+    controller.define_singleton_method(:set_form_dependencies) { nil }
+    queries = []
+    callback = ->(*args) do
+      payload = args.last
+      queries << payload[:sql] if payload[:sql].start_with?("SELECT") && payload[:sql].match?(/FROM "(?:vrps|vrp_profiles|vrp_bank_masters|active_storage_attachments|active_storage_blobs)"/)
+    end
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      controller.send(:set_edit_dependencies)
+      vrp = controller.instance_variable_get(:@vrp)
+      vrp.vrp_profile
+      vrp.vrp_bank_master
+      vrp.bank_passbook_upload.attachment&.blob
+    end
+
+    assert_operator queries.size, :<=, 6
+  end
+
   test "cluster scoped VRP list filters fuzzy labels before loading matching rows" do
     cluster_label = "Lookup#{SecureRandom.hex(4)} Person"
     matching = create_test_vrp("Cluster Match", cluster_incharge: "#{cluster_label} (Cluster Incharge)")
@@ -105,7 +152,7 @@ class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
     assert_equal [status_candidate.id, history_candidate.id].sort, candidates.map(&:id).sort
     assert_equal 1, vrp_queries.size
     assert_match(/SELECT.*"vrps"\."name".*"vrps"\."mobile_no"/m, vrp_queries.first)
-    assert_not_match(/"vrps"\."address"/, vrp_queries.first)
+    refute_match(/"vrps"\."address"/, vrp_queries.first)
   end
 
   test "plain hierarchy labels and registration enrichment share one user query" do

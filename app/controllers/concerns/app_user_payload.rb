@@ -88,7 +88,9 @@ module AppUserPayload
     labels = []
     labels += VrpType.where(id: ids).pluck(:type_name) if "VrpType".safe_constantize&.table_exists?
     if defined?(ModuleRecord) && ModuleRecord.table_exists?
-      labels += ModuleRecord.where(module_slug: "add-vrp-type", id: ids).filter_map { |record| record.data["jeevika_jankar_type_name"].presence || record.data["vrp_type_name"].presence }
+      labels += ModuleRecord.where(module_slug: "add-vrp-type", id: ids)
+        .pluck(Arel.sql("data::jsonb ->> 'jeevika_jankar_type_name'"), Arel.sql("data::jsonb ->> 'vrp_type_name'"))
+        .filter_map { |preferred, fallback| preferred.presence || fallback.presence }
     end
     labels.compact_blank.uniq
   end

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_14_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_15_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -346,6 +346,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_14_130000) do
     t.index "((data)::jsonb)", name: "index_module_records_on_json_data", using: :gin
     t.index "lower(((data)::jsonb ->> 'email'::text))", name: "index_module_records_new_users_on_lower_email", where: "((module_slug)::text = 'new-user'::text)"
     t.index "lower(((data)::jsonb ->> 'user_name'::text))", name: "index_module_records_new_users_on_lower_user_name", where: "((module_slug)::text = 'new-user'::text)"
+    t.index "module_slug, (((data)::jsonb ->> 'bill_month'::text))", name: "index_jj_bills_on_module_slug_and_bill_month", where: "((module_slug)::text = 'jeevika-jankar-bill-process'::text)"
     t.index "module_slug, lower(btrim(((data)::jsonb ->> 'month'::text)))", name: "index_module_records_on_slug_normalized_month"
     t.index "module_slug, lower(btrim(((data)::jsonb ->> 'month'::text))), created_at DESC", name: "index_module_records_active_slug_month_created_at", where: "((COALESCE(lower(btrim(((data)::jsonb ->> 'deleted'::text))), ''::text) <> ALL (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) AND (COALESCE(lower(btrim(((data)::jsonb ->> 'is_deleted'::text))), ''::text) <> ALL (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) AND (COALESCE(lower(btrim(((data)::jsonb ->> 'discarded'::text))), ''::text) <> ALL (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) AND ((COALESCE(btrim(((data)::jsonb ->> 'status'::text)), ''::text) = ''::text) OR (lower(btrim(((data)::jsonb ->> 'status'::text))) = 'active'::text)))"
     t.index ["module_slug", "created_at"], name: "index_module_records_on_active_catalogue", order: { created_at: :desc }, where: "((COALESCE(lower(btrim(((data)::jsonb ->> 'deleted'::text))), ''::text) <> ALL (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) AND (COALESCE(lower(btrim(((data)::jsonb ->> 'is_deleted'::text))), ''::text) <> ALL (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) AND (COALESCE(lower(btrim(((data)::jsonb ->> 'discarded'::text))), ''::text) <> ALL (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) AND ((COALESCE(btrim(((data)::jsonb ->> 'status'::text)), ''::text) = ''::text) OR (lower(btrim(((data)::jsonb ->> 'status'::text))) = 'active'::text)))"

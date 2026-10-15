@@ -10543,7 +10543,12 @@ class ModulesController < ApplicationController
     # Bills carry a workflow status ("Submitted...", "Final Approved"), never
     # "Active", so active_module_record? would reject every real bill. Match the
     # Bill List instead: visibility only, minus explicitly deleted rows.
-    records = bill_summary_scope(ModuleRecord.where(module_slug: "jeevika-jankar-bill-process"))
+    records_scope = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process")
+    # The displayed rows are month-scoped below. Apply the same exact stored
+    # value predicate in SQL first so old bills from other months do not need
+    # JSON projection or identity preloading for this page.
+    records_scope = records_scope.where("data::jsonb ->> 'bill_month' = ?", selected_month) if selected_month.present?
+    records = bill_summary_scope(records_scope)
       .order(created_at: :desc)
       .to_a
       .reject { |record| module_record_soft_deleted?(record) }
