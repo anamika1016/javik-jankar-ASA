@@ -4,6 +4,8 @@ require "uri"
 class TargetMappingsController < ApplicationController
   before_action :block_vrp_target_write, only: [:create, :destroy]
 
+  helper_method :target_type_label_for
+
   TRAINING_TARGET_FIELDS = {
     "opg_training" => "OPG Training",
     "week_wise_opg" => "General Training/Meeting",
@@ -2133,6 +2135,16 @@ end
 
     match = main_activity_type_map.find { |row| row[:main_activity].to_s.strip.downcase == name }
     match&.dig(:main_activity_type).presence || "Training"
+  end
+
+  # target_type is a form-only field and is never stored, so the saved target is
+  # identified by the type of the indicator it was mapped against.
+  def target_type_label_for(target)
+    case main_activity_type_for(target&.main_activity_name).to_s.strip.downcase
+    when "other with farmer" then "Other with Farmer"
+    when "other" then "Villages"
+    else "Farmer"
+    end
   end
 
   def target_number_value(value)

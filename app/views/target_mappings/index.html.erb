@@ -396,6 +396,7 @@
                 <th>ICS</th>
                 <th>Village</th>
                 <th>Month</th>
+                <th>Target Type</th>
                 <th>Completion Date</th>
                 <th class="target-activity-column">Main Activity</th>
                 <th class="target-activity-column">Sub Activity</th>
@@ -443,6 +444,7 @@
                   <td><%= target.ics_name.presence || target.ics_id %></td>
                   <td><%= target.village_name.presence || target.village_id %></td>
                   <td><%= target.month_name %></td>
+                  <td><%= target_type_label_for(target) %></td>
                   <td><%= target.completion_date&.strftime("%d-%m-%Y") || "-" %></td>
                   <td class="target-activity-text">
                     <div class="target-activity-grouped-list">
