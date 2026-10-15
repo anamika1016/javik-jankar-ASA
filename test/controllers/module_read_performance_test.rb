@@ -121,6 +121,26 @@ class ModuleReadPerformanceTest < ActiveSupport::TestCase
     assert_equal 1, loads
   end
 
+  test "registered app user options retain labels and newest-first order with projected columns" do
+    older = User.create!(user_name: "staff_old_#{SecureRandom.hex(4)}", password: "secret",
+      first_name: "Older", last_name: "Staff", stakeholder: "PAPL")
+    newer = User.create!(user_name: "staff_new_#{SecureRandom.hex(4)}", password: "secret",
+      first_name: "Newer", last_name: "Staff", stakeholder: "PAPL")
+    older.update_column(:updated_at, 2.days.ago)
+    newer.update_column(:updated_at, 1.day.ago)
+
+    queries = []
+    subscriber = ->(*args) { queries << args.last[:sql] if args.last[:sql].include?('FROM "users"') }
+    names = nil
+    ActiveSupport::Notifications.subscribed(subscriber, "sql.active_record") do
+      names = @controller.send(:registered_app_user_names)
+    end
+
+    assert_operator names.index("Newer Staff"), :<, names.index("Older Staff")
+    assert_equal 1, queries.size
+    assert_match(/SELECT\s+"users"\."first_name",\s*"users"\."last_name",\s*"users"\."user_name"/i, queries.first)
+  end
+
   def performance_vrp(mobile_no)
     vrp = Vrp.new(name: "Performance JJ")
     vrp.assign_attributes(aadhar_no: "123456789012", account_no: "123", address: "Test", branch: "Test",

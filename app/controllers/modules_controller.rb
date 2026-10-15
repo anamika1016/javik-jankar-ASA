@@ -1945,6 +1945,7 @@ class ModulesController < ApplicationController
     end
     saved_ids = @record ? Array(@record.data["target_mapping_ids"].presence || @record.data["target_mapping_id"]) : []
     targets = training_target_scope.or(TargetMapping.where(id: saved_ids)).where(id: ids).includes(:vrp).to_a
+    preload_live_target_farmers!(targets)
     # Offer every farmer the villages hold today. The mapped quantity stays the
     # target; it does not cap who the Jeevika Jankar may pick.
     farmer_ids = targets.flat_map { |target| target_live_farmer_ids(target) }.map(&:to_s).reject(&:blank?).uniq
@@ -9672,6 +9673,12 @@ class ModulesController < ApplicationController
     records_scope = ModuleRecord.where(module_slug: record_source_slug)
     if @slug == "jeevika-jankar-bill-list" && @record.blank? && request&.format&.html? && params[:view_id].blank?
       records_scope = bill_summary_scope(records_scope)
+    elsif ["jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail"].include?(@slug) &&
+        @record.blank? && request&.format&.html? && jeevika_jankar_payment_module_access?(@slug)
+      # These screens use only approved bills, and their row summaries never
+      # read nested farmer details. Filter before loading records and discard
+      # that unused payload while preserving the existing Ruby visibility check.
+      records_scope = bill_summary_scope(jeevika_bill_final_approved_scope(records_scope))
     end
     # The newest-first cap is applied *after* the visibility filter below. Capping
     # in SQL discarded rows before we knew who owned them, so a user whose records
@@ -10940,6 +10947,10 @@ class ModulesController < ApplicationController
 
   def jeevika_bill_final_approved?(record)
     record.data["status"].to_s.downcase.include?("final approved")
+  end
+
+  def jeevika_bill_final_approved_scope(scope)
+    scope.where("LOWER(COALESCE(data::jsonb ->> 'status', '')) LIKE ?", "%final approved%")
   end
 
   def jeevika_bill_detail_rows(record)
@@ -15567,7 +15578,9 @@ class ModulesController < ApplicationController
   def registered_app_user_names
     return [] unless model_ready?(:User)
 
-    User.order(updated_at: :desc).filter_map { |user| user.full_name.presence || user.user_name.presence }
+    User.order(updated_at: :desc).pluck(:first_name, :last_name, :user_name).filter_map do |first_name, last_name, user_name|
+      [first_name, last_name].compact_blank.join(" ").presence || user_name.presence
+    end
   end
 
   def registered_module_user_names

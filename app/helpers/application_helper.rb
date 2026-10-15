@@ -802,7 +802,12 @@ module ApplicationHelper
     username = current_app_user&.dig("username").to_s
 
     if defined?(User) && User.table_exists?
-      user = User.find_by(user_name: username) || User.find_by(id: current_app_user&.dig("id"))
+      username_match = User.arel_table[:user_name].eq(username)
+      id_match = User.arel_table[:id].eq(current_app_user&.dig("id"))
+      username_first = User.connection.quote(username)
+      user = User.where(username_match.or(id_match))
+        .order(Arel.sql("CASE WHEN user_name = #{username_first} THEN 0 ELSE 1 END"))
+        .first
       names << user&.stakeholder
     end
 

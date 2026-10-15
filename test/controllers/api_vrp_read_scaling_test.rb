@@ -100,6 +100,37 @@ class ApiVrpReadScalingTest < ActiveSupport::TestCase
     assert_equal 1, queries.count { |sql| sql.include?('FROM "afls"') }
   end
 
+  test "training target farmer endpoint batches local village lookups without changing farmers" do
+    vrp = create_vrp(103)
+    first_farmer = Afl.create!(farmer_name: "First Training Farmer", village_id: "training-village-one")
+    second_farmer = Afl.create!(farmer_name: "Second Training Farmer", village_id: "training-village-two")
+    targets = [
+      TargetMapping.create!(vrp: vrp, fco_id: "fco", ics_id: "ics", village_id: "training-village-one",
+        month_name: "October", main_activity_name: "Training", activity_name: "Activity One", target_quantity: 1, afl_ids: []),
+      TargetMapping.create!(vrp: vrp, fco_id: "fco", ics_id: "ics", village_id: "training-village-two",
+        month_name: "October", main_activity_name: "Training", activity_name: "Activity Two", target_quantity: 1, afl_ids: [])
+    ]
+    controller = ModulesController.new
+    controller.define_singleton_method(:params) { ActionController::Parameters.new(target_mapping_ids: targets.map(&:id).join(",")) }
+    controller.define_singleton_method(:model_ready?) { |_| true }
+    controller.define_singleton_method(:load_module!) {}
+    controller.define_singleton_method(:training_target_scope) { TargetMapping.where(id: targets.map(&:id)) }
+    controller.define_singleton_method(:preload_village_external_farmer_details!) { |_ids| {} }
+    controller.define_singleton_method(:village_external_farmer_ids) { |_ids| [] }
+    controller.define_singleton_method(:completed_training_farmer_ids_for) { |_target, _ids| [] }
+    controller.define_singleton_method(:render) { |**options| @training_response = options[:json] }
+
+    queries = []
+    response = nil
+    ActiveSupport::Notifications.subscribed(->(*args) { queries << args.last[:sql] if args.last[:sql].include?('"afls"."village_id" IN') }, "sql.active_record") do
+      controller.send(:training_target_farmers)
+      response = controller.instance_variable_get(:@training_response)
+    end
+
+    assert_equal [first_farmer.id.to_s, second_farmer.id.to_s], response[:farmers].map { |farmer| farmer[:id] }.sort
+    assert_equal 1, queries.size
+  end
+
   test "other target compact browser payload expands to the original mappings" do
     shared = { id: "farmer-1", farmer_name: "Shared Farmer" }
     unique = { id: "farmer-2", farmer_name: "Unique Farmer" }

@@ -21,6 +21,20 @@ class BillListReadScalingTest < ActiveSupport::TestCase
     end
   end
 
+  test "approved payment scope matches the existing status predicate" do
+    controller = ModulesController.new
+    statuses = ["Final Approved", "prefix FINAL APPROVED suffix", "Pending", "Rejected", nil, 5]
+    bills = statuses.map do |status|
+      ModuleRecord.create!(module_slug: "jeevika-jankar-bill-process", data: { "status" => status })
+    end
+
+    expected_ids = bills.select { |bill| controller.send(:jeevika_bill_final_approved?, bill) }.map(&:id).sort
+    actual_ids = controller.send(:jeevika_bill_final_approved_scope,
+      ModuleRecord.where(id: bills.map(&:id))).pluck(:id).sort
+
+    assert_equal expected_ids, actual_ids
+  end
+
   test "batched bill totals equal individual totals including numeric month fallback" do
     bills = 5.times.map do |index|
       vrp = Vrp.new(name: "Scaling JJ #{index}", aadhar_no: "123456789012", account_no: "123",
