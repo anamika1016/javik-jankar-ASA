@@ -11,8 +11,8 @@ const context = vm.createContext({
   document: { createElement: () => ({}) },
   Event: class { constructor(type) { this.type = type; } }
 });
-vm.runInContext(source.slice(start, end) + '\nthis.locationHelpers = { replaceLocationOptions, locationRowMatchesParents, optionMatchesLocationRow };', context);
-const { replaceLocationOptions, locationRowMatchesParents, optionMatchesLocationRow } = context.locationHelpers;
+vm.runInContext(source.slice(start, end) + '\nthis.locationHelpers = { replaceLocationOptions, locationRowMatchesParents, locationParentReferenceIndexes, optionMatchesLocationRow };', context);
+const { replaceLocationOptions, locationRowMatchesParents, locationParentReferenceIndexes, optionMatchesLocationRow } = context.locationHelpers;
 const parent = (value, label = value) => ({ selectedOptions: [{ value, textContent: label }] });
 
 test('directory-only Panchayats and villages populate empty master dropdowns', () => {
@@ -41,8 +41,9 @@ test('parent matching resolves master row IDs to imported state codes', () => {
     { id: '17', state: 'Madhya Pradesh', state_code: '23' },
     { id: 'district-1', state: '23', state_code: '23', district: 'Bhopal' }
   ];
-  assert.equal(locationRowMatchesParents(mappings[1], selects, 'district', mappings), true);
-  assert.equal(locationRowMatchesParents({ ...mappings[1], state: '09', state_code: '09' }, selects, 'district', mappings), false);
+  const indexes = locationParentReferenceIndexes(mappings);
+  assert.equal(locationRowMatchesParents(mappings[1], selects, 'district', indexes), true);
+  assert.equal(locationRowMatchesParents({ ...mappings[1], state: '09', state_code: '09' }, selects, 'district', indexes), false);
 });
 
 test('indexed location options preserve legacy matching, order and saved selection', () => {

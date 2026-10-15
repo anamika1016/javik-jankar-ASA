@@ -1,6 +1,42 @@
 require "test_helper"
 
 class VrpDashboardTest < ActionDispatch::IntegrationTest
+  test "Other Target form exposes target mapping values for an active Other activity" do
+    vrp = create_vrp(name: "September Other Target JJ", user_name: "september_other_target", mobile_no: "9876543211")
+    target = TargetMapping.create!(
+      vrp: vrp,
+      fco_id: "FCO1",
+      fco_name: "FCO One",
+      ics_id: "ICS-SEPTEMBER",
+      ics_name: "September ICS",
+      village_id: "V-SEPTEMBER",
+      village_name: "September Village",
+      month_name: "September",
+      completion_date: Date.new(2026, 9, 30),
+      main_activity_name: "ICS Collection",
+      activity_name: "Document collection",
+      target_quantity: 5,
+      afl_ids: []
+    )
+    ModuleRecord.create!(module_slug: "add-activity-group", data: {
+      "main_activity_name" => target.main_activity_name,
+      "main_activity_type" => "Other",
+      "achievement_fill" => "Manual",
+      "status" => "Active"
+    })
+    User.create!(user_name: "september_other_admin", password: "secret", first_name: "Admin",
+                 user_type: "admin", status: "Active")
+    post login_path, params: { login: "september_other_admin", password: "secret" }
+
+    get module_path("other-target")
+
+    assert_response :success
+    assert_select 'select[data-seed-target-ics] option', text: "September ICS"
+    assert_select 'select[data-seed-target-village] option', text: "September Village"
+    assert_select 'select[data-seed-target-topic] option', text: "ICS Collection"
+    assert_select 'select[data-seed-target-subject] option', text: "Document collection"
+  end
+
   test "dashboard counts the same farmer once for each completed training activity" do
     vrp = create_vrp(user_name: "multi_activity_vrp", password: "secret", agreement_accepted_at: Time.current)
     farmer = create_afl(farmer_name: "Multi Activity Farmer", mobile_no: "9000000070")

@@ -2089,7 +2089,30 @@ function initDeferredLayoutPage() {
     return uniquePresent((locationAliasKeys[key] || [key]).map((alias) => row[alias]));
   };
 
-  const locationRowMatchesParents = (row, selects, level, locationMappings = []) => {
+  const locationParentReferenceIndexes = (mappings) => {
+    const indexes = Object.fromEntries(Object.values(locationKeys).map((key) => [key, new Map()]));
+    const keys = Object.values(locationKeys);
+
+    mappings.forEach((row) => {
+      keys.forEach((key, index) => {
+        if (!row[key]) return;
+        // Only a row for this level can translate its master ID. Deeper rows
+        // repeat parent labels but their own id belongs to a different level.
+        if (keys.slice(index + 1).some((deeperKey) => row[deeperKey])) return;
+
+        const aliases = uniquePresent([row.id].concat(locationRowValues(row, key)));
+        aliases.forEach((alias) => {
+          const normalizedAlias = normalizeOption(alias);
+          const knownAliases = indexes[key].get(normalizedAlias) || [];
+          indexes[key].set(normalizedAlias, uniquePresent(knownAliases.concat(aliases)));
+        });
+      });
+    });
+
+    return indexes;
+  };
+
+  const locationRowMatchesParents = (row, selects, level, parentReferenceIndexes = {}) => {
     const parents = locationParents[level] || [];
     const immediateParent = parents[parents.length - 1];
     return parents.every((parentLevel) => {
@@ -2100,18 +2123,13 @@ function initDeferredLayoutPage() {
       const rowValues = locationRowValues(row, parentKey);
       if (rowValues.length === 0) return parentLevel !== immediateParent;
 
-      // Imported masters often save a child’s parent as a code (for example,
-      // district.state_id = state.state_code) while the dropdown stores the
-      // state row ID and displays its name. Expand the selected parent through
-      // its own master row so matching works across ID, code and display name.
-      const normalizedParents = new Set(parentValues.map(normalizeOption));
-      const matchingParentRows = locationMappings.filter((candidate) => {
-        const candidateValues = [candidate.id].concat(locationRowValues(candidate, parentKey)).filter(Boolean);
-        return candidateValues.some((value) => normalizedParents.has(normalizeOption(value)));
-      });
-      const expandedParentValues = parentValues.concat(matchingParentRows.flatMap((candidate) =>
-        [candidate.id].concat(locationRowValues(candidate, parentKey))
-      ));
+      // Imported masters often save a child’s parent as a code while the
+      // dropdown stores the master row ID and displays its name. Resolve all
+      // three forms through a prebuilt index instead of rescanning every row.
+      const references = parentReferenceIndexes[parentKey];
+      const expandedParentValues = parentValues.flatMap((value) =>
+        references?.get(normalizeOption(value)) || [value]
+      );
 
       return expandedParentValues.some((value) => {
         const normalizedValue = normalizeOption(value);
@@ -2185,6 +2203,7 @@ function initDeferredLayoutPage() {
     } catch (_error) {
       mappings = [];
     }
+    const parentReferenceIndexes = locationParentReferenceIndexes(mappings);
 
     const selects = {};
     const originalOptions = {};
@@ -2215,7 +2234,7 @@ function initDeferredLayoutPage() {
       if (!selects[level]) return;
 
       const key = locationKeys[level];
-      const allowedRows = mappings.filter((row) => row[key] && locationRowMatchesParents(row, selects, level, mappings));
+      const allowedRows = mappings.filter((row) => row[key] && locationRowMatchesParents(row, selects, level, parentReferenceIndexes));
       replaceLocationOptions(selects[level], originalOptions[level], allowedRows, level);
       syncLocationPrimary(level);
     };
