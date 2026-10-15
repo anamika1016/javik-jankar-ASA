@@ -71,7 +71,11 @@ class FarmerTargetApi
     @farmer_selection_submitted = incoming.key?("selected_farmer_ids")
     data = record.data.merge(incoming)
     @retained_farmer_ids = Array(record.data["selected_farmer_ids"]).map(&:to_s).compact_blank.uniq
-    @retained_target_mapping_id = record.data["target_mapping_id"].presence
+    # The mapping the edit names, or the one the record was already saved
+    # against. Either way it is only accepted once the edit is checked against
+    # it, so naming an id is not a way to reach a different target.
+    @retained_target_mapping_id = data["target_mapping_id"].presence ||
+      record.data["target_mapping_id"].presence
     data = normalize_for_slug(data)
     # An edit changes the record, never whose record it is.  Without this a
     # caller could post created_by_id and walk off with someone else's form.
@@ -614,9 +618,33 @@ class FarmerTargetApi
       errors << "Farmer Count Target se jyada nahi ho sakta." if target && farmer_count && farmer_count > target
     end
 
-    errors << "Mapped Other activity target select karein." if target_mapping.blank?
+    errors << ["Mapped Other activity target select karein.", target_mapping_mismatch(data)]
+      .compact_blank.join(" ") if target_mapping.blank?
     errors << "Contact Number valid 10 digit hona chahiye." if data["contact_number"].present? && data["contact_number"].to_s.gsub(/\D/, "").length != 10
     errors
+  end
+
+  # On its own "select a mapped target" says nothing about why none was found,
+  # which left a refused save with nowhere to go. Where the record names a
+  # target, the fields that disagree with it are spelled out.
+  def target_mapping_mismatch(data)
+    mapping = retained_target_mapping
+    return nil unless mapping
+
+    differences = {
+      "Month" => [data["month"], mapping[:month]],
+      "ICS" => [data["ics"], mapping[:ics]],
+      "Village" => [data["village"], mapping[:village]],
+      "Main Activity" => [data["training_topic"].presence || data["main_activity"], mapping[:training_topic]],
+      "Sub Activity" => [data["training_subject"].presence || data["sub_activity"], mapping[:training_subject]]
+    }.filter_map do |label, (sent, expected)|
+      next if normalize_text(sent) == normalize_text(expected)
+
+      "#{label} is \"#{sent}\" but the mapped target has \"#{expected}\""
+    end
+    return nil if differences.empty?
+
+    "#{differences.join('; ')}."
   end
 
   def generic_other_target?

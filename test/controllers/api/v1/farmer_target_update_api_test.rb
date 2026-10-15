@@ -216,6 +216,36 @@ class Api::V1::FarmerTargetUpdateApiTest < ActionDispatch::IntegrationTest
     assert_empty response.parsed_body["ignored_fields"]
   end
 
+  # "Select a mapped target" on its own gave the app nowhere to go, so a refused
+  # save now names the fields that disagree with the target.
+  test "a refused save says which field does not match the mapped target" do
+    record = other_target_record
+
+    patch "/api/v1/other-targets/#{record.id}", params: { village: "Somewhere Else" },
+      headers: auth_headers, as: :json
+
+    assert_response :unprocessable_entity
+    message = response.parsed_body["errors"].join(" ")
+    assert_includes message, "Village is \"Somewhere Else\""
+    assert_includes message, "the mapped target has \"Khairi\""
+    assert_equal "Khairi", record.reload.data["village"]
+  end
+
+  # The app sends the mapping id on every edit; a record saved without one must
+  # still be able to use it.
+  test "the mapping named by the edit is used when the record has none saved" do
+    record = other_target_record
+    record.update!(data: record.data.except("target_mapping_id"))
+    ModuleRecord.where(module_slug: "add-activity-group").destroy_all
+
+    patch "/api/v1/other-targets/#{record.id}",
+      params: { target_mapping_id: target_mapping.id.to_s, achievement: "7" },
+      headers: auth_headers, as: :json
+
+    assert_response :success
+    assert_equal "7", record.reload.data["achievement"]
+  end
+
   test "the record id in the path is not written into the record" do
     record = other_target_record
 
