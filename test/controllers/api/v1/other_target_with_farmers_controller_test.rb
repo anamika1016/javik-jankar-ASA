@@ -67,9 +67,57 @@ class Api::V1::OtherTargetWithFarmersControllerTest < ActionDispatch::Integratio
 
     body = get_json("/api/v1/other-target-with-farmers/farmers", target_mapping_id: target.id.to_s)
 
-    assert_equal ["Farmer Two"], body["farmers"].map { |row| row["farmer_name"] }
+    assert_not_includes body["farmers"].map { |row| row["farmer_name"] }, "Farmer One"
     assert_equal [farmer_one.id.to_s], body["completed_farmer_ids"]
-    assert_equal 2, body["all_farmer_count"]
+  end
+
+  # The target is mapped against two farmers, but the village holds a third who
+  # registered later. The web form offers all of them and the app must match.
+  test "every farmer in the village is offered, not only the mapped ones" do
+    target = with_farmer_target
+    village_only = Afl.create!(fco_id: "13", fco: "Betul-FCO", ics_id: "39", ics_name: "Athner",
+      farmer_name: "Later Farmer", village_id: "3155", village_name: "Khairi")
+
+    body = get_json("/api/v1/other-target-with-farmers/farmers", target_mapping_id: target.id.to_s)
+
+    assert_equal ["Farmer One", "Farmer Two", "Later Farmer"],
+      body["farmers"].map { |row| row["farmer_name"] }.sort
+    assert_equal 2, body["target_farmer_count"], "two of them are the mapped target"
+    assert_equal 1, body["other_village_farmer_count"]
+    assert_equal target.afl_ids.size, 2, "the mapped target itself is unchanged"
+    assert_equal village_only.id.to_s,
+      body["farmers"].find { |row| row["farmer_name"] == "Later Farmer" }["id"]
+  end
+
+  test "a mapped farmer is flagged apart from a village farmer" do
+    target = with_farmer_target
+    Afl.create!(fco_id: "13", fco: "Betul-FCO", ics_id: "39", ics_name: "Athner",
+      farmer_name: "Later Farmer", village_id: "3155", village_name: "Khairi")
+
+    rows = get_json("/api/v1/other-target-with-farmers/farmers",
+      target_mapping_id: target.id.to_s)["farmers"]
+
+    assert_equal true, rows.find { |row| row["farmer_name"] == "Farmer One" }["is_target"]
+    assert_equal false, rows.find { |row| row["farmer_name"] == "Later Farmer" }["is_target"]
+    assert_equal %w[Farmer\ One Farmer\ Two Later\ Farmer], rows.map { |row| row["farmer_name"] },
+      "mapped farmers come first"
+  end
+
+  test "a farmer from another village is not offered" do
+    target = with_farmer_target
+    Afl.create!(fco_id: "13", fco: "Betul-FCO", ics_id: "39", ics_name: "Elsewhere",
+      farmer_name: "Other Village Farmer", village_id: "9999", village_name: "Elsewhere")
+
+    body = get_json("/api/v1/other-target-with-farmers/farmers", target_mapping_id: target.id.to_s)
+
+    assert_not_includes body["farmers"].map { |row| row["farmer_name"] }, "Other Village Farmer"
+  end
+
+  test "the farmer list needs a target to be chosen first" do
+    get "/api/v1/other-target-with-farmers/farmers", headers: auth_headers, as: :json
+
+    assert_response :unprocessable_entity
+    assert_includes response.parsed_body["message"], "target_mapping_id is required"
   end
 
   test "a record is saved, listed and read back" do

@@ -111,6 +111,19 @@ class FarmerTargetApi
     end
   end
 
+  # The month dropdown on its own. Going through form_options built the whole
+  # form - target mappings, farmers, staff lists - to read one field off it.
+  def month_options
+    case @module_slug
+    when "training-form"
+      training_target_month_options
+    when *OTHER_TARGET_SLUGS
+      seed_distribution_target_month_options
+    else
+      []
+    end
+  end
+
   def form_options
     case @module_slug
     when "training-form"
@@ -139,6 +152,53 @@ class FarmerTargetApi
     else
       {}
     end
+  end
+
+  # Other Target with Farmer offers everyone currently registered in the
+  # target's villages, not only the farmers picked when the target was mapped.
+  # The mapped number stays the target; the Jeevika Jankar still chooses who
+  # they actually worked with, including farmers registered since. The form
+  # itself carries no farmers - they are loaded once a target is chosen, which
+  # is why this is a separate call rather than part of the mapping list.
+  def live_target_farmers(target_mapping_id)
+    empty = { farmers: [], completed_farmer_ids: [], target_farmer_ids: [] }
+    return empty unless model_ready?(:TargetMapping)
+
+    target = training_target_scope.find_by(id: target_mapping_id)
+    return empty unless target
+
+    mapped_ids = target_farmer_ids(target)
+    village_ids = target_village_ids(target)
+    live_ids = (mapped_ids + local_village_farmer_ids(village_ids) +
+      external_village_farmer_details(village_ids).keys).map(&:to_s).compact_blank.uniq
+
+    {
+      farmers: resolve_live_farmer_details(live_ids, mapped_ids, village_ids),
+      completed_farmer_ids: other_target_completed_farmer_ids_for(target.id),
+      target_farmer_ids: mapped_ids
+    }
+  end
+
+  # The training form offers every farmer the target's villages hold today, not
+  # only the ones picked when the target was mapped - the mapped quantity is the
+  # target, it does not cap who the Jeevika Jankar may say they trained. The
+  # farmers are loaded once the activity is narrowed down, so only the villages
+  # actually in play are looked up.
+  def live_training_farmers(filters = {})
+    @training_mapping_filters = filters.to_h.stringify_keys
+    return { farmers: [], completed_farmer_ids: [], target_mapping_ids: [] } unless model_ready?(:TargetMapping)
+
+    targets = filtered_training_target_scope.includes(:vrp).to_a
+    village_ids = targets.flat_map { |target| target_village_ids(target) }.uniq
+    mapped_ids = targets.flat_map { |target| target_farmer_ids(target) }.map(&:to_s).uniq
+    live_ids = (mapped_ids + local_village_farmer_ids(village_ids) +
+      external_village_farmer_details(village_ids).keys).map(&:to_s).compact_blank.uniq
+    completed = targets.flat_map { |target| completed_training_farmer_ids_for(target, live_ids) }
+      .map(&:to_s).uniq
+
+    { farmers: resolve_live_farmer_details(live_ids, mapped_ids, village_ids),
+      completed_farmer_ids: completed,
+      target_mapping_ids: targets.map { |target| target.id.to_s } }
   end
 
   # Lightweight read path: filters run before farmer hydration and no form/people
@@ -232,12 +292,38 @@ class FarmerTargetApi
     if vrp
       return true if vrp_registered_by_current_user?(vrp)
       return true if vrp_office_visible?(vrp)
-      return true if cluster_visible_vrp_ids.map(&:to_s).include?(vrp.id.to_s)
+      return true if cluster_visible_vrp_id_set.include?(vrp.id.to_s)
     end
 
     return false unless mapped_vrp_scope_active?
 
-    cluster_visible_vrps.any? { |visible_vrp| target_record_matches_vrp?(record, visible_vrp) }
+    # Asking "does this record match any of my Jeevika Jankars" one Jeevika
+    # Jankar at a time compared every record against every one of them. The
+    # answer is the same as asking whether the record carries any label they
+    # go by, so the labels are collected once and looked up.
+    labels = cluster_vrp_label_set
+    record_visibility_values(record).any? { |value| labels.include?(value) }
+  end
+
+  def cluster_visible_vrp_id_set
+    @cluster_visible_vrp_id_set ||= cluster_visible_vrp_ids.map(&:to_s).to_set
+  end
+
+  def cluster_vrp_label_set
+    @cluster_vrp_label_set ||= cluster_visible_vrps.flat_map { |vrp| vrp_match_labels(vrp) }.to_set
+  end
+
+  def record_visibility_values(record)
+    data = record.data
+    [data["jeevika_jankar_id"], data["vrp_id"], data["jeevika_jankar_name"], data["vrp_name"],
+     data["select_vrp"], data["trainer_contact"], data["trainer_name"], data["contact_number"],
+     data["jeevika_jankar_contact"]].map { |value| normalize_text(value) }.reject(&:blank?)
+  end
+
+  def vrp_match_labels(vrp)
+    [vrp.id, vrp.name, vrp.user_name, vrp.mobile_no,
+     [vrp.name, vrp.mobile_no.presence].compact_blank.join(" - ")]
+      .map { |value| normalize_text(value) }.reject(&:blank?)
   end
 
   def admin_user?
@@ -268,16 +354,10 @@ class FarmerTargetApi
 
   def created_by_current_user?(record)
     data = record.data
-    current_ids = current_user_ids.map(&:to_s)
-    return true if data["created_by_id"].present? && current_ids.include?(data["created_by_id"].to_s)
+    return true if data["created_by_id"].present? && current_user_id_set.include?(data["created_by_id"].to_s)
 
-    current_values = visibility_values(
-      current_app_user["username"],
-      current_app_user["user_name"],
-      current_app_user["name"],
-      current_app_user["email"],
-      current_app_user["mobile_no"]
-    )
+    # The signed-in user's own labels do not change between records.
+    current_values = current_user_visibility_values
     record_values = visibility_values(
       data["created_by_username"],
       data["created_by_name"],
@@ -286,6 +366,17 @@ class FarmerTargetApi
       data["trainer_contact"]
     )
     (current_values & record_values).any?
+  end
+
+  def current_user_id_set
+    @current_user_id_set ||= current_user_ids.map(&:to_s).to_set
+  end
+
+  def current_user_visibility_values
+    @current_user_visibility_values ||= visibility_values(
+      current_app_user["username"], current_app_user["user_name"], current_app_user["name"],
+      current_app_user["email"], current_app_user["mobile_no"]
+    )
   end
 
   def target_record_vrp_for_visibility(record)
@@ -324,7 +415,7 @@ class FarmerTargetApi
   end
 
   def vrp_registered_by_current_user?(vrp)
-    current_ids = current_user_ids.map(&:to_s)
+    current_ids = current_user_id_set
     return true if vrp.created_by_id.present? && current_ids.include?(vrp.created_by_id.to_s)
     return true if vrp.respond_to?(:user_id) && vrp.user_id.present? && current_ids.include?(vrp.user_id.to_s)
 
@@ -334,13 +425,14 @@ class FarmerTargetApi
   def vrp_office_visible?(vrp)
     vrp_fcoc = visibility_values(vrp.fcoc)
     vrp_to = visibility_values(vrp.to_name)
-    current_fcoc = visibility_values(
+    # The signed-in user's offices are the same for every record.
+    current_fcoc = @current_office_fcoc ||= visibility_values(
       current_app_user["fcoc"],
       current_app_user["fcoc_name"],
       current_app_user["office_category"],
       current_app_user["parent_office"]
     )
-    current_to = visibility_values(
+    current_to = @current_office_to ||= visibility_values(
       current_app_user["to"],
       current_app_user["to_name"],
       current_app_user["sub_office_name"],
@@ -790,11 +882,45 @@ class FarmerTargetApi
   end
 
   def training_target_month_options
-    month_options_from(active_month_master_months + training_target_mappings.map { |mapping| mapping[:month] })
+    month_options_from(active_month_master_months + training_target_month_names)
   end
 
   def seed_distribution_target_month_options
-    month_options_from(active_month_master_months + seed_distribution_target_mappings.map { |mapping| mapping[:month] })
+    month_options_from(active_month_master_months + seed_distribution_target_month_names)
+  end
+
+  # The month list only needs the months of the targets that would reach the
+  # form. Building every mapping first meant reading each target's Jeevika
+  # Jankar and farmers to then throw all of it away.
+  def training_target_month_names
+    return training_target_mappings.map { |mapping| mapping[:month] } if defined?(@training_target_mappings)
+
+    filtered_training_target_scope
+      .pluck(:month_name, :ics_name, :ics_id, :village_name, :village_id)
+      .filter_map do |month, ics_name, ics_id, village_name, village_id|
+        # The mapping list drops a target with neither an ICS nor a village, so
+        # its month must not appear here either.
+        next if ics_name.blank? && ics_id.blank? && village_name.blank? && village_id.blank?
+
+        month.to_s.strip
+      end
+  end
+
+  def seed_distribution_target_month_names
+    return seed_distribution_target_mappings.map { |mapping| mapping[:month] } if defined?(@seed_distribution_target_mappings)
+
+    activity_settings = main_activity_settings
+    sub_activity_settings = sub_activity_settings_for(activity_settings)
+
+    training_target_scope.filter_map do |target|
+      setting = activity_setting_for(target, activity_settings, sub_activity_settings)
+      next unless setting.present? && !training_main_activity_type?(setting[:main_activity_type])
+      next unless other_target_slug_accepts?(setting[:main_activity_type], target)
+      next if target.ics_name.blank? && target.ics_id.blank? &&
+        target.village_name.blank? && target.village_id.blank?
+
+      target.month_name.to_s.strip
+    end
   end
 
   def active_month_master_months
@@ -833,7 +959,10 @@ class FarmerTargetApi
     activity_settings = main_activity_settings
     sub_activity_settings = sub_activity_settings_for(activity_settings)
 
+    # Every row reads the Jeevika Jankar for the name, contact and office, which
+    # was one query per target.
     @seed_distribution_target_mappings = training_target_scope
+      .includes(:vrp)
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
       .filter_map do |target|
         activity_setting = activity_setting_for(target, activity_settings, sub_activity_settings)
@@ -1102,37 +1231,37 @@ class FarmerTargetApi
       .uniq { |name| normalize_text(name) }
   end
 
-  def registered_app_user_rows_matching(pattern)
-    return [] unless model_ready?(:User)
+  ROLE_KEYS = %w[role role_name stakeholder_role user_management_role person_type].freeze
 
-    User.order(updated_at: :desc).filter_map do |user|
-      values = [
-        user.try(:role),
-        user.try(:role_name),
-        user.try(:stakeholder_role),
-        user.try(:user_management_role),
-        user.try(:person_type)
-      ].map(&:to_s)
-      next unless values.any? { |value| value.match?(pattern) }
+  # The three staff dropdowns each walked the whole user list, so one form read
+  # the users and the new-user records three times over, with every column.
+  def staff_users
+    return @staff_users if defined?(@staff_users)
+    return @staff_users = [] unless model_ready?(:User)
+
+    columns = (%w[id first_name last_name user_name updated_at] + ROLE_KEYS) & User.column_names
+    @staff_users = User.select(*columns).order(updated_at: :desc).to_a
+  end
+
+  def staff_module_users
+    return @staff_module_users if defined?(@staff_module_users)
+    return @staff_module_users = [] unless model_ready?(:ModuleRecord)
+
+    @staff_module_users = ModuleRecord.where(module_slug: "new-user")
+      .select(:id, :data).order(updated_at: :desc).select { |record| active_module_record?(record) }
+  end
+
+  def registered_app_user_rows_matching(pattern)
+    staff_users.filter_map do |user|
+      next unless ROLE_KEYS.any? { |key| user.try(key).to_s.match?(pattern) }
 
       user.full_name.presence || user.user_name.presence
     end
   end
 
   def registered_module_user_rows_matching(pattern)
-    return [] unless model_ready?(:ModuleRecord)
-
-    ModuleRecord.where(module_slug: "new-user").order(updated_at: :desc).filter_map do |record|
-      next unless active_module_record?(record)
-
-      values = [
-        record.data["role"],
-        record.data["role_name"],
-        record.data["stakeholder_role"],
-        record.data["user_management_role"],
-        record.data["person_type"]
-      ].map(&:to_s)
-      next unless values.any? { |value| value.match?(pattern) }
+    staff_module_users.filter_map do |record|
+      next unless ROLE_KEYS.any? { |key| record.data[key].to_s.match?(pattern) }
 
       [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ").presence || record.data["user_name"].presence
     end
@@ -1146,17 +1275,11 @@ class FarmerTargetApi
   end
 
   def registered_app_user_names
-    return [] unless model_ready?(:User)
-
-    User.order(updated_at: :desc).filter_map { |user| user.full_name.presence || user.user_name.presence }
+    staff_users.filter_map { |user| user.full_name.presence || user.user_name.presence }
   end
 
   def registered_module_user_names
-    return [] unless model_ready?(:ModuleRecord)
-
-    ModuleRecord.where(module_slug: "new-user").order(updated_at: :desc).filter_map do |record|
-      next unless active_module_record?(record)
-
+    staff_module_users.filter_map do |record|
       [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ").presence || record.data["user_name"].presence
     end
   end
@@ -1331,6 +1454,100 @@ class FarmerTargetApi
       (data["village_name"].present? || data["gram_name"].present?) &&
       data["main_activity"].present? &&
       data["sub_activity"].present?
+  end
+
+  def target_village_ids(target)
+    return [] unless target.respond_to?(:village_id)
+
+    raw = target.village_id
+    values = raw.is_a?(String) && raw.strip.start_with?("[") ? (JSON.parse(raw) rescue []) : Array(raw)
+    values.flatten
+      .flat_map { |value| value.to_s.split(",") }
+      .map { |value| value.to_s.split("||").first.to_s.strip }
+      .compact_blank
+      .uniq
+  end
+
+  def local_village_farmer_ids(village_ids)
+    return [] if village_ids.blank? || !model_ready?(:Afl)
+
+    Afl.where(village_id: village_ids).pluck(:id).map(&:to_s)
+  end
+
+  # Farmers that only live in the external register have no Afl row, so they
+  # come back blank; their details are filled in from the village feed.
+  def resolve_live_farmer_details(live_ids, mapped_ids, village_ids)
+    mapped = mapped_ids.map(&:to_s).to_set
+    known = model_ready?(:Afl) ? Afl.where(id: live_ids).index_by { |farmer| farmer.id.to_s } : {}
+    external = external_village_farmer_details(village_ids)
+
+    live_ids.map do |id|
+      row = if (farmer = known[id])
+        training_farmer_payload(farmer)
+      else
+        details = external[id] || {}
+        { id: id, farmer_name: details[:farmer_name].presence || "Farmer ##{id}",
+          village_name: details[:village_name].to_s, father_name: details[:father_name].to_s,
+          tracenet_no: details[:tracenet_no].to_s, mobile_no: details[:mobile_no].to_s,
+          khasara_no: details[:khasara_no].to_s }
+      end
+      # The screen marks who the target was mapped against, so the count of
+      # "target" farmers and "other village" farmers can be shown apart.
+      row.merge(is_target: mapped.include?(id))
+    end.sort_by { |row| [row[:is_target] ? 0 : 1, row[:farmer_name].to_s.downcase, row[:id].to_i] }
+  end
+
+  # Shares the cache the web screen already fills, so a village looked up on
+  # either side is not fetched twice.
+  def external_village_farmer_details(village_ids)
+    village_ids = Array(village_ids).map(&:to_s).compact_blank.uniq
+    return {} if village_ids.blank?
+
+    village_ids.each_with_object({}) do |village_id, memo|
+      cached = Rails.cache.fetch(["training-village-farmer-details", village_id], expires_in: 5.minutes) do
+        fetch_external_village_farmers(village_id)
+      end
+      memo.merge!(cached || {})
+    end
+  end
+
+  def fetch_external_village_farmers(village_id)
+    uri = URI("https://asa.ploughmanagro.com/api/farmers/get_farmers.json")
+    rows = []
+    page = 1
+    loop do
+      uri.query = URI.encode_www_form(data_type: "detail", type: "village",
+        village_id: village_id, page: page, per_page: 500)
+      response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 4,
+        read_timeout: 12) { |http| http.get(uri.request_uri) }
+      break unless response.is_a?(Net::HTTPSuccess)
+
+      payload = JSON.parse(response.body)
+      break if payload["success"] == false
+
+      page_rows = Array(payload["data"])
+      rows.concat(page_rows)
+      break if page_rows.empty? || rows.size >= Integer(payload["count"])
+
+      page += 1
+    end
+    rows.each_with_object({}) do |row, memo|
+      farmer = row["farmer"].is_a?(Hash) ? row["farmer"] : row
+      id = (farmer["farmer_unique_id"].presence || farmer["id"].presence).to_s
+      next if id.blank?
+
+      memo[id] ||= {
+        village_name: farmer["village_name"].presence || row.dig("address", "village").presence || row.dig("grouping", "village"),
+        farmer_name: farmer["farmer_name"].to_s.strip.presence || "Farmer ##{id}",
+        father_name: farmer["father_husband_name"].presence || farmer["father_name"].presence,
+        tracenet_no: farmer["tracenet_id"].presence || farmer["tracenet_no"].presence,
+        mobile_no: farmer["mobile_no"].presence,
+        khasara_no: Array(row["lands"]).filter_map { |land| land["khasra_no"].presence || land["plot_no"].presence }.join(", ").presence
+      }
+    end
+  rescue StandardError => error
+    Rails.logger.warn("External village farmer fetch for village #{village_id}: #{error.class} - #{error.message}")
+    {}
   end
 
   def pending_training_farmer_ids_for(data)

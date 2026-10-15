@@ -4,7 +4,17 @@ module Api
       include VrpAccess
 
       def index
-        rows = approval_queue.map { |vrp| approval_queue_row_payload(vrp) }
+        # Deciding who is in the queue already looks every Jeevika Jankar up by
+        # email and by mobile, so the batch has to be warm before that runs
+        # rather than before the rows are built.
+        preload_vrp_creator_identity_lookups!(Vrp.all.to_a) unless admin_user?
+        queue = approval_queue.to_a
+        # Each row then reads the approval history, the approval master and who
+        # registered the Jeevika Jankar; the web approvals screen preloads the
+        # same way before building its rows.
+        preload_vrp_access_lookup_data!(queue)
+        preload_vrp_creator_identity_lookups!(queue)
+        rows = queue.map { |vrp| approval_queue_row_payload(vrp) }
 
         render json: {
           success: true,

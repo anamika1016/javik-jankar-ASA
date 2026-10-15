@@ -52,7 +52,7 @@ module Api
       end
 
       def months
-        values = Array(farmer_target_api.form_options[:months])
+        values = Array(farmer_target_api.month_options)
 
         render json: {
           success: true,

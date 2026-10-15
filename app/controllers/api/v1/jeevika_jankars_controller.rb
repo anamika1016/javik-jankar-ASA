@@ -6,6 +6,7 @@ module Api
       def index
         vrps = visible_vrps.to_a
         preload_vrp_list_payload_data!(vrps)
+        preload_vrp_creator_identity_lookups!(vrps)
         records = vrps.map { |vrp| list_row_payload(vrp) }
 
         render json: {

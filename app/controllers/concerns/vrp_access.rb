@@ -140,11 +140,51 @@ module VrpAccess
     return unless model_ready?(:ModuleRecord)
 
     email_key = vrp.email.to_s.strip.downcase
-    @registered_by_user_cache[cache_key] = @preloaded_creator_records_by_email&.[](email_key) ||
+    preloaded = @preloaded_creator_records_by_email&.[](email_key)
+    if preloaded.nil? && @preloaded_creator_record_emails&.include?(email_key)
+      return @registered_by_user_cache[cache_key] = nil
+    end
+
+    @registered_by_user_cache[cache_key] = preloaded ||
       ModuleRecord.where(module_slug: "new-user")
-        .where("LOWER(COALESCE(data->>'email', '')) = ?", email_key)
+        # data is a text column, so it has to be cast before ->> can read it.
+        # Without the cast this raises, which is why the preload above casts too.
+        .where("LOWER(COALESCE(data::jsonb->>'email', '')) = ?", email_key)
         .order(created_at: :desc)
         .first
+  end
+
+  # "Who registered this Jeevika Jankar" and the approval identities each look a
+  # user up by email and by mobile. Those lookups are cached per value, but every
+  # Jeevika Jankar carries its own email and mobile, so a list ran four queries
+  # per row. The same lookups are done here in one go, and a value that matched
+  # nothing is remembered as such so it is not asked for again row by row.
+  def preload_vrp_creator_identity_lookups!(vrps)
+    vrps = Array(vrps).compact
+    return if vrps.blank?
+
+    @cached_vrp_creator_users_by ||= {}
+    @registered_by_user_email_lookup ||= {}
+    # Anything a previous call already settled is left alone, so warming a
+    # wider set first and the rows afterwards does not ask twice.
+    emails = vrps.filter_map { |vrp| vrp.email.presence }.uniq
+      .reject { |email| @cached_vrp_creator_users_by.key?([[:email, email]]) }
+    mobiles = vrps.filter_map { |vrp| vrp.mobile_no.presence }.uniq
+      .reject { |mobile| @cached_vrp_creator_users_by.key?([[:mobile_no, mobile]]) }
+
+    if model_ready?(:User)
+      by_email = emails.any? ? User.where(email: emails).index_by(&:email) : {}
+      emails.each { |email| @cached_vrp_creator_users_by[[[:email, email]]] = by_email[email] }
+
+      by_mobile = mobiles.any? ? User.where(mobile_no: mobiles).index_by(&:mobile_no) : {}
+      mobiles.each { |mobile| @cached_vrp_creator_users_by[[[:mobile_no, mobile]]] = by_mobile[mobile] }
+
+      keys = emails.map { |email| email.to_s.strip.downcase }.compact_blank.uniq
+        .reject { |key| @registered_by_user_email_lookup.key?(key) }
+      lowered = keys.any? ? User.where("LOWER(email) IN (?)", keys).index_by { |user| user.email.to_s.strip.downcase } : {}
+      keys.each { |key| @registered_by_user_email_lookup[key] = lowered[key] }
+    end
+
   end
 
   def preload_vrp_access_lookup_data!(vrps)
@@ -196,6 +236,10 @@ module VrpAccess
     @preloaded_creator_records_by_id = records.index_by(&:id)
     @preloaded_creator_users_by_email = users.index_by { |user| user.email.to_s.strip.downcase }
     @preloaded_creator_records_by_email = records.reverse_each.to_a.index_by { |record| record.data["email"].to_s.strip.downcase }
+    # Which emails this actually asked the database about, so that a miss can be
+    # read as "nobody registered them" instead of sending the same question again
+    # one Jeevika Jankar at a time.
+    @preloaded_creator_record_emails = emails.to_set
   end
 
   def preload_vrp_approval_history_lookup_data!(vrps)

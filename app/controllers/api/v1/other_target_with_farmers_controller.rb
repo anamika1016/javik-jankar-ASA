@@ -54,29 +54,41 @@ module Api
         }, status: :ok
       end
 
-      # The farmers still open on the chosen target, so the app can tick them off.
+      # Every farmer registered in the chosen target's villages, not only the
+      # ones the target was mapped against - the same list the web form shows.
       def farmers
-        mappings = filter_form_mappings(Array(farmer_target_api.form_options[:target_mappings]))
-        mappings = mappings.select { |mapping| mapping[:target_mapping_id].to_s == params[:target_mapping_id].to_s } if params[:target_mapping_id].present?
-        completed = mappings.flat_map { |mapping| Array(mapping[:completed_farmer_ids]) }.map(&:to_s).uniq
-        done = completed.to_set
-        farmers = mappings.flat_map { |mapping| Array(mapping[:farmers]) }.uniq { |farmer| farmer[:id].to_s }
+        if params[:target_mapping_id].blank?
+          return render json: {
+            success: false,
+            message: "target_mapping_id is required to load the village farmers."
+          }, status: :unprocessable_entity
+        end
+
+        result = farmer_target_api.live_target_farmers(params[:target_mapping_id])
+        done = Array(result[:completed_farmer_ids]).map(&:to_s).to_set
+        farmers = Array(result[:farmers])
         available = farmers.reject { |farmer| done.include?(farmer[:id].to_s) }
+        target_ids = Array(result[:target_farmer_ids]).map(&:to_s).to_set
 
         render json: {
           success: true,
           message: "Other Target with Farmer farmer list fetched successfully.",
           filters: form_filter_payload,
-          target_mapping_ids: mappings.map { |mapping| mapping[:target_mapping_id] }.compact.uniq,
+          target_mapping_id: params[:target_mapping_id],
           farmers: available,
           count: available.size,
           all_farmer_count: farmers.size,
-          completed_farmer_ids: completed
+          # What the web prints under the list: how many of the offered farmers
+          # the target was mapped against, and how many are other village
+          # farmers the Jeevika Jankar may still have worked with.
+          target_farmer_count: available.count { |farmer| target_ids.include?(farmer[:id].to_s) },
+          other_village_farmer_count: available.count { |farmer| !target_ids.include?(farmer[:id].to_s) },
+          completed_farmer_ids: result[:completed_farmer_ids]
         }, status: :ok
       end
 
       def months
-        values = Array(farmer_target_api.form_options[:months])
+        values = Array(farmer_target_api.month_options)
 
         render json: {
           success: true,

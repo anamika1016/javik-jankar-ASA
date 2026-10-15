@@ -81,23 +81,27 @@ module Api
       end
 
       def farmers
-        mappings = filter_form_mappings(farmer_target_api.training_mappings(params.permit(:month, :ics, :village, :main_activity, :sub_activity, :fco_id, :fpo_id, :fco_name, :fpo_name)))
-        all_farmers, available_farmers, completed_farmer_ids = farmer_lists_for(mappings)
+        result = live_training_farmers
+        done = Array(result[:completed_farmer_ids]).map(&:to_s).to_set
+        all_farmers = Array(result[:farmers])
+        available = all_farmers.reject { |farmer| done.include?(farmer[:id].to_s) }
 
         render json: {
           success: true,
           message: "Farmer Training farmer list fetched successfully.",
           filters: form_filter_payload,
-          target_mapping_ids: mappings.map { |mapping| mapping[:target_mapping_id] }.compact.uniq,
-          farmers: available_farmers,
-          count: available_farmers.size,
+          target_mapping_ids: result[:target_mapping_ids],
+          farmers: available,
+          count: available.size,
           all_farmer_count: all_farmers.size,
-          completed_farmer_ids: completed_farmer_ids
+          target_farmer_count: available.count { |farmer| farmer[:is_target] },
+          other_village_farmer_count: available.count { |farmer| !farmer[:is_target] },
+          completed_farmer_ids: result[:completed_farmer_ids]
         }, status: :ok
       end
 
       def months
-        values = Array(farmer_target_api.form_options[:months])
+        values = Array(farmer_target_api.month_options)
 
         render json: {
           success: true,
@@ -108,11 +112,10 @@ module Api
       end
 
       def mapped_farmers
-        mappings = filter_form_mappings(farmer_target_api.training_mappings(params.permit(:month, :ics, :village, :main_activity, :sub_activity, :fco_id, :fpo_id, :fco_name, :fpo_name)))
-        farmers, _available_farmers, completed_farmer_ids = farmer_lists_for(mappings)
-        completed_ids = completed_farmer_ids.to_set
-        rows = farmers.map do |farmer|
-          completed = completed_ids.include?(farmer[:id].to_s)
+        result = live_training_farmers
+        done = Array(result[:completed_farmer_ids]).map(&:to_s).to_set
+        rows = Array(result[:farmers]).map do |farmer|
+          completed = done.include?(farmer[:id].to_s)
           farmer.merge(is_completed: completed, is_available: !completed)
         end
 
@@ -120,15 +123,24 @@ module Api
           success: true,
           message: "Mapped Farmer list fetched successfully.",
           filters: form_filter_payload,
-          target_mapping_ids: mappings.map { |mapping| mapping[:target_mapping_id] }.compact.uniq,
+          target_mapping_ids: result[:target_mapping_ids],
           mapped_farmers: rows,
           count: rows.size,
           available_count: rows.count { |farmer| farmer[:is_available] },
-          completed_count: rows.count { |farmer| farmer[:is_completed] }
+          completed_count: rows.count { |farmer| farmer[:is_completed] },
+          target_farmer_count: rows.count { |farmer| farmer[:is_target] },
+          other_village_farmer_count: rows.count { |farmer| !farmer[:is_target] }
         }, status: :ok
       end
 
       private
+
+      def live_training_farmers
+        farmer_target_api.live_training_farmers(
+          params.permit(:month, :ics, :village, :main_activity, :sub_activity,
+            :fco_id, :fpo_id, :fco_name, :fpo_name)
+        )
+      end
 
       def filter_form_mappings(mappings)
         mappings.select do |mapping|
