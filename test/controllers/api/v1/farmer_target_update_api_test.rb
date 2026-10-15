@@ -174,6 +174,48 @@ class Api::V1::FarmerTargetUpdateApiTest < ActionDispatch::IntegrationTest
     assert_equal "3", record.reload.data["farmer_count"]
   end
 
+  # The contact number lives on the Jeevika Jankar, so it is rewritten from
+  # there on every save and the web form shows it read only.  Answering
+  # "updated successfully" while dropping it made the edit look like it worked.
+  test "a contact number edit is reported as not taken rather than claimed" do
+    record = other_target_record
+    old_number = record.data["contact_number"]
+
+    patch "/api/v1/other-targets/#{record.id}", params: { contact_number: "9999999999" },
+      headers: auth_headers, as: :json
+
+    assert_response :success
+    body = response.parsed_body
+    assert_equal ["contact_number"], body["ignored_fields"]
+    assert_includes body["message"], "could not be changed here"
+    assert_equal old_number, record.reload.data["contact_number"],
+      "the number still comes from the Jeevika Jankar"
+  end
+
+  test "an edit that takes reports nothing ignored" do
+    record = other_target_record
+
+    patch "/api/v1/other-targets/#{record.id}", params: { achievement: "7" },
+      headers: auth_headers, as: :json
+
+    assert_response :success
+    assert_empty response.parsed_body["ignored_fields"]
+    assert_equal "Other Target updated successfully.", response.parsed_body["message"]
+  end
+
+  # Resending an unchanged read-only field is how the app already works, and
+  # that must stay quiet rather than warn on every save.
+  test "resending a read only field unchanged is not reported" do
+    record = other_target_record
+
+    patch "/api/v1/other-targets/#{record.id}",
+      params: { contact_number: record.data["contact_number"], achievement: "7" },
+      headers: auth_headers, as: :json
+
+    assert_response :success
+    assert_empty response.parsed_body["ignored_fields"]
+  end
+
   test "the record id in the path is not written into the record" do
     record = other_target_record
 

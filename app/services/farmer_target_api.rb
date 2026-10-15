@@ -85,12 +85,26 @@ class FarmerTargetApi
     end
 
     if record.update(data: data)
-      { success: true, record: record }
+      { success: true, record: record, ignored_fields: ignored_fields(incoming, data) }
     else
       { success: false, errors: record.errors.full_messages }
     end
   rescue TrainingEditApproval::InvalidTransition => error
     { success: false, errors: [error.message] }
+  end
+
+  # The contact number, the Jeevika Jankar and the activity names belong to the
+  # target the record is mapped to and are rewritten from there on every save,
+  # which is why the web form shows them read only.  Answering "updated
+  # successfully" while quietly dropping such a value made the edit look like it
+  # had worked, so the caller is told which fields did not take.
+  def ignored_fields(incoming, data)
+    Hash(incoming).keys.reject do |key|
+      sent = incoming[key]
+      # Uploads and id lists are reshaped on the way in, so a difference there
+      # is expected rather than a dropped edit.
+      sent.is_a?(Array) || sent.is_a?(Hash) || sent.to_s.strip == data[key].to_s.strip
+    end
   end
 
   def form_options

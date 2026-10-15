@@ -87,10 +87,18 @@ module Api
           }, status: :accepted
         end
 
+        ignored = Array(result[:ignored_fields])
         body = {
           success: true,
           pending_approval: false,
-          message: "#{self.class::RESOURCE_TITLE} updated successfully."
+          message: if ignored.any?
+            "#{self.class::RESOURCE_TITLE} updated, but #{ignored.join(', ')} " \
+              "could not be changed here - #{ignored.size == 1 ? 'it belongs' : 'they belong'} " \
+              "to the Jeevika Jankar or the mapped target."
+          else
+            "#{self.class::RESOURCE_TITLE} updated successfully."
+          end,
+          ignored_fields: ignored
         }
         body[self.class::RESOURCE_KEY.singularize] = api.record_payload(result[:record])
         render json: body, status: :ok
