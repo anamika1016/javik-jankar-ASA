@@ -77,6 +77,7 @@ class ModuleReadPerformanceTest < ActiveSupport::TestCase
 
     controller = ModulesController.new
     controller.instance_variable_set(:@slug, "training-form")
+    controller.define_singleton_method(:action_name) { "show" }
     controller.define_singleton_method(:model_ready?) { |_| true }
     controller.define_singleton_method(:training_target_scope) { relation }
     controller.define_singleton_method(:jeevika_jankar_main_activity_settings) { { "training" => { main_activity_type: "Training" } } }
@@ -90,6 +91,15 @@ class ModuleReadPerformanceTest < ActiveSupport::TestCase
 
     assert_equal ["farmer-1", "farmer-2"], mapping[:farmer_ids]
     assert_equal [], mapping[:farmers]
+    assert controller.send(:training_form_initial_render?)
+
+    controller.define_singleton_method(:action_name) { "dashboard" }
+    controller.define_singleton_method(:training_farmers_for_ids) do |ids|
+      ids.map { |id| { id: id, farmer_name: "Loaded #{id}" } }
+    end
+    dashboard_mapping = controller.send(:build_training_target_mappings).sole
+    assert_equal ["farmer-1", "farmer-2"], dashboard_mapping[:farmers].map { |farmer| farmer[:id] }
+    assert_not controller.send(:training_form_initial_render?)
   end
 
   test "training activity settings share the same ordered setup records" do

@@ -11,6 +11,11 @@ class ModulesController < ApplicationController
        block_name cd_block_name block_id block_code cd_block_code
        gram_panchayat_name gram_panchayat_id gram_panchayat_code gp_code gram_code
        gp_name gram_name village_name village_id village_code].to_h { |key| [key.freeze, key.to_sym] }.freeze
+  LOCATION_DATA_KEYS = (LOCATION_ALIAS_KEYS.keys + %w[
+    state state_id state_code district district_id district_code block block_id block_code cd_block_name cd_block_code
+    gram_panchayat gram_panchayat_id gram_panchayat_code gp_name gp_code gram_name gram_code
+    village village_id village_code name deleted is_deleted discarded status
+  ]).uniq.freeze
   LOCATION_MODULE_SLUGS = %w[state-master district-master block-master gram-panchayat-master village-master lg-directory-list].freeze
   before_action :authorize_farmer_target_access
   before_action :authorize_jeevika_payment_module_access
@@ -14624,7 +14629,10 @@ class ModulesController < ApplicationController
     when "Month"
       seed_distribution_target_month_options
     when "ICS"
-      seed_distribution_target_mappings.filter_map { |mapping| mapping[:ics].presence }.uniq
+      (
+        seed_distribution_target_mappings.filter_map { |mapping| mapping[:ics].presence } +
+        [@record&.data&.[]("ics"), @record&.data&.[]("ics_name")]
+      ).compact_blank.uniq
     when "Village"
       seed_distribution_target_mappings.filter_map { |mapping| mapping[:village].presence }.uniq
     when "Main Activity"
@@ -14737,10 +14745,10 @@ class ModulesController < ApplicationController
     # target is selected. Looking up every mapped farmer while building the
     # initial form payload duplicates that request and can make large forms slow.
     # Edit forms retain the full lookup so saved selections keep their details.
-    farmers_lookup = if @record.present?
-      training_farmers_for_ids(all_farmer_ids).index_by { |farmer| farmer[:id].to_s }
-    else
+    farmers_lookup = if training_form_initial_render?
       {}
+    else
+      training_farmers_for_ids(all_farmer_ids).index_by { |farmer| farmer[:id].to_s }
     end
 
     missing_external_ids = farmers_lookup.select { |fid, f| f[:record_missing] && fid !~ /\A\d+\z/ }.keys
@@ -15541,6 +15549,10 @@ class ModulesController < ApplicationController
       end
   end
 
+  def training_form_initial_render?
+    @record.blank? && record_source_slug == "training-form" && action_name == "show"
+  end
+
   def registered_vrp_cluster_names
     return [] unless model_ready?(:Vrp)
     return [] unless Vrp.column_names.include?("cluster_incharge")
@@ -15652,10 +15664,17 @@ class ModulesController < ApplicationController
     return if missing.empty?
 
     missing.each { |slug| @active_records_for_location[slug] = [] }
-    ModuleRecord.where(module_slug: missing).order(created_at: :desc)
-      .pluck(:module_slug, :id, :data).each do |slug, id, data|
+    quoted_keys = LOCATION_DATA_KEYS.map { |key| ActiveRecord::Base.connection.quote(key) }.join(", ")
+    data_projection = Arel.sql(
+      "(SELECT COALESCE(jsonb_object_agg(key, value), '{}'::jsonb) " \
+      "FROM jsonb_each(data::jsonb) WHERE key IN (#{quoted_keys}))"
+    )
+    ModuleRecord.where(module_slug: missing)
+      .merge(active_module_records_scope_for_all_modules)
+      .order(created_at: :desc)
+      .pluck(:module_slug, :id, data_projection).each do |slug, id, data|
         record = LocationRecord.new(id, data)
-        @active_records_for_location[slug] << record if active_module_record?(record)
+        @active_records_for_location[slug] << record
       end
   end
 

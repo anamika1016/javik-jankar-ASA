@@ -26,3 +26,29 @@ test('ICS and block selections populate the submitted hidden ICS field', () => {
   context.sync();
   assert.equal(hidden.value, '');
 });
+
+test('saved Other Target ICS stays selectable when its mapping is no longer active', () => {
+  const start = source.indexOf('    const fillSeedSelect =');
+  const end = source.indexOf('    const setOnlySeedOption =', start);
+  assert.ok(start >= 0 && end > start);
+  const context = vm.createContext({
+    document: { createElement: () => ({}) },
+    normalizeOption: (value) => String(value || '').trim().toLowerCase(),
+    optionValue: (option) => typeof option === 'object' ? option.value : option,
+    optionLabel: (option) => typeof option === 'object' ? option.label : option,
+    makeOption: (value, label) => ({ value, label }),
+    selectOption: (option, optionData, selected) => {
+      option.selected = optionData.value === selected || optionData.label === selected;
+    }
+  });
+  vm.runInContext(source.slice(start, end) + '\nthis.fill = fillSeedSelect;', context);
+  const select = {
+    dataset: { selectedValue: 'Saved September ICS' },
+    value: '',
+    options: [],
+    appendChild(option) { this.options.push(option); }
+  };
+  context.fill(select, [], 'Select ICS');
+  assert.equal(select.options[1].value, 'Saved September ICS');
+  assert.equal(select.options[1].selected, true);
+});

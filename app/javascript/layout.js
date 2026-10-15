@@ -2089,7 +2089,7 @@ function initDeferredLayoutPage() {
     return uniquePresent((locationAliasKeys[key] || [key]).map((alias) => row[alias]));
   };
 
-  const locationRowMatchesParents = (row, selects, level) => {
+  const locationRowMatchesParents = (row, selects, level, locationMappings = []) => {
     const parents = locationParents[level] || [];
     const immediateParent = parents[parents.length - 1];
     return parents.every((parentLevel) => {
@@ -2100,7 +2100,20 @@ function initDeferredLayoutPage() {
       const rowValues = locationRowValues(row, parentKey);
       if (rowValues.length === 0) return parentLevel !== immediateParent;
 
-      return parentValues.some((value) => {
+      // Imported masters often save a child’s parent as a code (for example,
+      // district.state_id = state.state_code) while the dropdown stores the
+      // state row ID and displays its name. Expand the selected parent through
+      // its own master row so matching works across ID, code and display name.
+      const normalizedParents = new Set(parentValues.map(normalizeOption));
+      const matchingParentRows = locationMappings.filter((candidate) => {
+        const candidateValues = [candidate.id].concat(locationRowValues(candidate, parentKey)).filter(Boolean);
+        return candidateValues.some((value) => normalizedParents.has(normalizeOption(value)));
+      });
+      const expandedParentValues = parentValues.concat(matchingParentRows.flatMap((candidate) =>
+        [candidate.id].concat(locationRowValues(candidate, parentKey))
+      ));
+
+      return expandedParentValues.some((value) => {
         const normalizedValue = normalizeOption(value);
         return rowValues.some((rowValue) => normalizeOption(rowValue) === normalizedValue);
       });
@@ -2202,7 +2215,7 @@ function initDeferredLayoutPage() {
       if (!selects[level]) return;
 
       const key = locationKeys[level];
-      const allowedRows = mappings.filter((row) => row[key] && locationRowMatchesParents(row, selects, level));
+      const allowedRows = mappings.filter((row) => row[key] && locationRowMatchesParents(row, selects, level, mappings));
       replaceLocationOptions(selects[level], originalOptions[level], allowedRows, level);
       syncLocationPrimary(level);
     };
@@ -3100,14 +3113,21 @@ function initDeferredLayoutPage() {
 
     const fillSeedSelect = (select, options, placeholder) => {
       const selected = select.dataset.selectedValue || select.value;
+      const selectedOptionExists = selected && options.some((optionData) =>
+        normalizeOption(optionValue(optionData)) === normalizeOption(selected) ||
+        normalizeOption(optionLabel(optionData)) === normalizeOption(selected)
+      );
+      const availableOptions = selected && !selectedOptionExists
+        ? options.concat(makeOption(selected, selected))
+        : options;
       select.innerHTML = "";
 
       const blank = document.createElement("option");
       blank.value = "";
-      blank.textContent = options.length ? placeholder : `No ${placeholder.replace(/^Select\s+/i, "")} saved yet`;
+      blank.textContent = availableOptions.length ? placeholder : `No ${placeholder.replace(/^Select\s+/i, "")} saved yet`;
       select.appendChild(blank);
 
-      options.forEach((optionData) => {
+      availableOptions.forEach((optionData) => {
         const option = document.createElement("option");
         option.value = optionValue(optionData);
         option.textContent = optionLabel(optionData);

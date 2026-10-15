@@ -573,7 +573,11 @@ class VrpsController < ApplicationController
   end
 
   def find_manageable_vrp(id)
-    manageable_vrps.find { |vrp| vrp.id == id.to_i }
+    # Admins can manage every VRP. Fetch the requested row directly instead of
+    # materializing the entire table just to find one record on edit/show paths.
+    return Vrp.find_by(id: id.to_i) if current_app_user.blank? || admin_user?
+
+    (own_vrps.to_a + cluster_mapped_vrps.to_a).find { |vrp| vrp.id == id.to_i }
   end
 
   def manageable_vrps

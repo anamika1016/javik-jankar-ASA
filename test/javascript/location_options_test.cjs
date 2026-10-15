@@ -13,7 +13,7 @@ const context = vm.createContext({
 });
 vm.runInContext(source.slice(start, end) + '\nthis.locationHelpers = { replaceLocationOptions, locationRowMatchesParents, optionMatchesLocationRow };', context);
 const { replaceLocationOptions, locationRowMatchesParents, optionMatchesLocationRow } = context.locationHelpers;
-const parent = (value) => ({ selectedOptions: [{ value, textContent: value }] });
+const parent = (value, label = value) => ({ selectedOptions: [{ value, textContent: label }] });
 
 test('directory-only Panchayats and villages populate empty master dropdowns', () => {
   for (const [level, key, label] of [['district', 'district', 'Ranchi'], ['block', 'block', 'Kanke'], ['gram-panchayat', 'gram_panchayat', 'Pandhurna'], ['village', 'village', 'Ajangaon']]) {
@@ -33,6 +33,16 @@ test('parent matching accepts imported codes and excludes another block', () => 
   const row = { state_code: '23', district_code: '455', cd_block_name: 'Pandhurna', gram_panchayat: '03658', gp_code: 'Pandhurna' };
   assert.equal(locationRowMatchesParents(row, selects, 'village'), true);
   assert.equal(locationRowMatchesParents({ ...row, cd_block_name: 'Sausar' }, selects, 'village'), false);
+});
+
+test('parent matching resolves master row IDs to imported state codes', () => {
+  const selects = { state: parent('17', 'Madhya Pradesh'), district: parent('') };
+  const mappings = [
+    { id: '17', state: 'Madhya Pradesh', state_code: '23' },
+    { id: 'district-1', state: '23', state_code: '23', district: 'Bhopal' }
+  ];
+  assert.equal(locationRowMatchesParents(mappings[1], selects, 'district', mappings), true);
+  assert.equal(locationRowMatchesParents({ ...mappings[1], state: '09', state_code: '09' }, selects, 'district', mappings), false);
 });
 
 test('indexed location options preserve legacy matching, order and saved selection', () => {

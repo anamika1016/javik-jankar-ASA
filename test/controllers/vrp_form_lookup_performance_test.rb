@@ -18,10 +18,22 @@ class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
   end
 
   test "VRP location hierarchy loads all active master modules in one query" do
-    ModuleRecord.create!(module_slug: "state-master", data: { "state_name" => "Batch State", "unused_large_payload" => "x" * 10_000 })
-    ModuleRecord.create!(module_slug: "district-master", data: { "state_name" => "Batch State", "district_name" => "Batch District" })
+    ModuleRecord.create!(module_slug: "state-master", data: {
+      "state_name" => "Batch State", "state_id" => "STATE-1", "unused_large_payload" => "x" * 10_000
+    })
+    ModuleRecord.create!(module_slug: "district-master", data: {
+      "state_id" => "STATE-1", "district_id" => "DISTRICT-1", "district_name" => "Batch District"
+    })
+    ModuleRecord.create!(module_slug: "block-master", data: {
+      "state_id" => "STATE-1", "district_id" => "DISTRICT-1", "block_id" => "BLOCK-1", "block_name" => "Batch Block"
+    })
+    ModuleRecord.create!(module_slug: "gram-panchayat-master", data: {
+      "state_id" => "STATE-1", "district_id" => "DISTRICT-1", "block_id" => "BLOCK-1",
+      "gram_panchayat_id" => "GP-1", "gram_panchayat_name" => "Batch GP"
+    })
     ModuleRecord.create!(module_slug: "village-master", data: {
-      "state_name" => "Batch State", "district_name" => "Batch District", "block_name" => "Batch Block",
+      "state_id" => "STATE-1", "district_id" => "DISTRICT-1", "block_id" => "BLOCK-1",
+      "gram_panchayat_id" => "GP-1", "village_id" => "VILLAGE-1",
       "village_name" => "Batch Village", "status" => " Active "
     })
     ModuleRecord.create!(module_slug: "village-master", data: { "village_name" => "Hidden Village", "status" => "Inactive" })
@@ -38,6 +50,14 @@ class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
       assert_equal 6, VrpsController::LOCATION_HIERARCHY_MODULE_SLUGS.size
       assert mappings.any? { |row| row[:village] == "Batch Village" }
       assert_not mappings.any? { |row| row[:village] == "Hidden Village" }
+      district = mappings.find { |row| row[:district] == "Batch District" }
+      assert_equal "STATE-1", district[:state]
+      assert_equal "DISTRICT-1", district[:district_code]
+      village = mappings.find { |row| row[:village] == "Batch Village" }
+      assert_equal "STATE-1", village[:state]
+      assert_equal "DISTRICT-1", village[:district]
+      assert_equal "BLOCK-1", village[:block]
+      assert_equal "GP-1", village[:gp_code]
       VrpsController::LOCATION_HIERARCHY_MODULE_SLUGS.each do |slug|
         controller.send(:active_records_for_location, slug)
       end
@@ -47,6 +67,9 @@ class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
     assert_includes queries.first, "module_slug"
     assert_includes queries.first, "jsonb_each"
     assert_not_includes queries.first, "unused_large_payload"
+    %w[state_id district_id block_id gram_panchayat_id village_id].each do |key|
+      assert_includes queries.first, key
+    end
   end
 
   test "form master synchronization batches reads and keeps inactive flags current" do
@@ -94,6 +117,27 @@ class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
     end
 
     assert_operator queries.size, :<=, 6
+  end
+
+  test "admin VRP lookup fetches only the requested row" do
+    vrp = create_test_vrp("Admin Lookup")
+    controller = VrpsController.new
+    controller.define_singleton_method(:current_app_user) { { "record_type" => "User" } }
+    controller.define_singleton_method(:admin_user?) { true }
+    queries = []
+    callback = ->(*args) do
+      sql = args.last[:sql]
+      queries << sql if sql.start_with?("SELECT") && sql.include?(%Q{FROM "vrps"})
+    end
+
+    found = nil
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      found = controller.send(:find_manageable_vrp, vrp.id)
+    end
+
+    assert_equal vrp.id, found.id
+    assert_equal 1, queries.size
+    assert_match(/WHERE.*"vrps"\."id" =/, queries.first)
   end
 
   test "cluster scoped VRP list filters fuzzy labels before loading matching rows" do

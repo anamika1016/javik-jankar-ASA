@@ -1,6 +1,15 @@
 require "test_helper"
 
 class ModuleLookupPerformanceTest < ActiveSupport::TestCase
+  test "Other Target edit keeps saved ICS available when its target mapping is no longer active" do
+    controller = ModulesController.new
+    record = ModuleRecord.new(data: { "ics" => "Saved September ICS" })
+    controller.instance_variable_set(:@record, record)
+    controller.define_singleton_method(:seed_distribution_target_mappings) { [] }
+
+    assert_equal ["Saved September ICS"], controller.send(:seed_distribution_target_field_options, "ICS")
+  end
+
   test "cluster visibility matches fuzzy labels after reading only distinct cluster labels" do
     cluster_label = "Lookup#{SecureRandom.hex(4)} Person"
     matching = create_test_vrp("#{cluster_label} (Cluster Incharge)")
@@ -233,7 +242,7 @@ class ModuleLookupPerformanceTest < ActiveSupport::TestCase
     assert_equal 1, queries.size
   end
 
-  test "batched location catalogue preserves full payload and executes one query" do
+  test "batched location catalogue preserves lookup values and projects only required data" do
     ModulesController::LOCATION_MODULE_SLUGS.each_with_index do |slug, index|
       ModuleRecord.create!(module_slug: slug, created_at: index.minutes.ago, data: {
         "state_name" => "State", "state_code" => "01", "district_name" => "District",
@@ -250,6 +259,11 @@ class ModuleLookupPerformanceTest < ActiveSupport::TestCase
       2.times { assert_equal expected, controller.send(:location_hierarchy_mappings) }
     end
     assert_equal 1, queries.size
+    assert_includes queries.first, "jsonb_object_agg"
+    assert_not_includes queries.first, "extra"
+    %w[state_id district_id block_id gram_panchayat_id village_id].each do |key|
+      assert_includes queries.first, key
+    end
   end
 
   test "gram label lookup retains active aliases without instantiating full records" do

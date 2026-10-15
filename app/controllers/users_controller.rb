@@ -142,6 +142,10 @@ class UsersController < ApplicationController
   def preload_user_form_module_records!
     @user_form_module_records = ModuleRecord
       .where(module_slug: FORM_OPTION_SLUGS)
+      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
+      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
+      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
+      .where("COALESCE(BTRIM(data::jsonb ->> 'status'), '') = '' OR LOWER(BTRIM(data::jsonb ->> 'status')) = 'active'")
       .order(created_at: :desc)
       .group_by(&:module_slug)
   end
