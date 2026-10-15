@@ -67,6 +67,53 @@ class BillListReadScalingTest < ActiveSupport::TestCase
     assert_nil controller.instance_variable_get(:@jeevika_bill_process_totals)
   end
 
+  test "payment rows contain the same displayed bill values without building full bill-list actions" do
+    controller = calculator
+    record = ModuleRecord.new(id: 42, module_slug: "jeevika-jankar-bill-process", data: {
+      "select_vrp" => "12", "select_vrp_name" => "JJ Twelve", "financial_year" => "2026-27",
+      "bill_month" => "October", "grand_total" => "5000.00"
+    })
+    vrp = Struct.new(:bank_passbook_upload).new(:passbook)
+    controller.define_singleton_method(:jeevika_bill_final_approved?) { |_| true }
+    controller.define_singleton_method(:preload_jeevika_payment_passbooks!) { |_| nil }
+    controller.define_singleton_method(:preload_jeevika_bill_process_totals) { |_| nil }
+    controller.define_singleton_method(:jeevika_bill_vrp) { |_| vrp }
+    controller.define_singleton_method(:jeevika_bill_bank_rows) { |_| [{ bank_name: "Bank", ifsc_code: "IFSC", account_number: "123" }] }
+    controller.define_singleton_method(:jeevika_bill_status_label) { |_| "Final Approved" }
+    controller.define_singleton_method(:jeevika_bill_summary) do |_|
+      { activity_groups: "Training", activity_names: "Soil", total_amount: 5000 }
+    end
+    controller.define_singleton_method(:jeevika_jankar_display_name) { |value| value }
+    controller.define_singleton_method(:jeevika_jankar_vrp_label) { |_| "JJ Twelve" }
+    controller.define_singleton_method(:jeevika_jankar_bill_total_payment) { |_| "5000.00" }
+    controller.define_singleton_method(:jeevika_jankar_bill_total_target) { |_| 4 }
+    controller.define_singleton_method(:jeevika_jankar_bill_total_achievement) { |_| 3 }
+    controller.define_singleton_method(:download_bill_module_record_path) { |slug, row| "/#{slug}/#{row.id}/download" }
+    controller.define_singleton_method(:jeevika_bill_rows) { |_| raise "Payment list must not build full bill-list rows" }
+
+    rows = controller.send(:jeevika_bill_payment_rows, [record], "October")
+
+    assert_equal [{
+      id: 42,
+      download_path: "/jeevika-jankar-bill-list/42/download",
+      status: "Final Approved",
+      status_class: "approved",
+      vrp_id: "12",
+      name: "JJ Twelve",
+      financial_year: "2026-27",
+      bill_month: "October",
+      activity_groups: "Training",
+      amount: "5000.00",
+      activity_names: "Soil",
+      target: 4,
+      achievement: 3,
+      bank_name: "Bank",
+      ifsc_code: "IFSC",
+      account_number: "123",
+      passbook_attachment: :passbook
+    }], rows
+  end
+
   test "bill process duplicate keys preserve rejection flags without loading bill evidence" do
     controller = calculator
     ["Active", "Rejected", "Returned", "Submitted"].each_with_index do |status, index|

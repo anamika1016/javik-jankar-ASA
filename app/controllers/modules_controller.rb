@@ -9684,6 +9684,7 @@ class ModulesController < ApplicationController
       @jeevika_bill_visible_record_ids = records.map { |record| record.id.to_s }
     end
     records = records.select { |record| target_record_visible?(record) } if target_record_source?
+    preload_other_target_contact_numbers!(records) if other_target_record_source?
     if @slug == "training-form-list"
       @training_edit_revision_record_ids = records.map { |record| record.id.to_s }
       sorted = records.sort_by { |record|
@@ -9764,6 +9765,37 @@ class ModulesController < ApplicationController
 
   def other_target_record_source?
     OTHER_TARGET_MODULE_SLUGS.include?(record_source_slug)
+  end
+
+  def preload_other_target_contact_numbers!(records)
+    target_mapping_ids_by_record = records.to_h do |record|
+      [record.id, record.data["target_mapping_id"].to_s.gsub(/\D/, "")]
+    end
+    target_mapping_ids = target_mapping_ids_by_record.values.reject(&:blank?).uniq
+    vrp_ids_by_target_mapping = if target_mapping_ids.empty?
+      {}
+    else
+      TargetMapping.where(id: target_mapping_ids).pluck(:id, :vrp_id).to_h.transform_keys(&:to_s)
+    end
+
+    vrp_ids_by_record = records.to_h do |record|
+      target_mapping_id = target_mapping_ids_by_record[record.id]
+      vrp_id = vrp_ids_by_target_mapping[target_mapping_id] if target_mapping_id.present?
+      vrp_id ||= record.data["jeevika_jankar_id"].presence || record.data["vrp_id"].presence
+      [record.id, vrp_id]
+    end
+    vrp_ids = vrp_ids_by_record.values.reject(&:blank?).uniq
+    mobile_numbers_by_vrp = if vrp_ids.empty?
+      {}
+    else
+      Vrp.where(id: vrp_ids).pluck(:id, :mobile_no).to_h.transform_keys(&:to_s)
+    end
+
+    @other_target_contact_numbers = records.to_h do |record|
+      vrp_id = vrp_ids_by_record[record.id]
+      mobile_number = mobile_numbers_by_vrp[vrp_id.to_s] if vrp_id.present?
+      [record.id, mobile_number.nil? && !mobile_numbers_by_vrp.key?(vrp_id.to_s) ? nil : mobile_number.to_s.gsub(/\D/, "").last(10)]
+    end
   end
 
   def target_record_source?
@@ -10689,18 +10721,40 @@ class ModulesController < ApplicationController
     end
 
     preload_jeevika_payment_passbooks!(filtered_records)
-    filtered_by_id = filtered_records.index_by(&:id)
-    jeevika_bill_rows(filtered_records).map do |row|
-      record = filtered_by_id[row[:id]]
+    preload_jeevika_bill_process_totals(filtered_records)
+    filtered_records.map do |record|
+      data = record.data
       vrp = jeevika_bill_vrp(record)
       bank_row = jeevika_bill_bank_rows(record).first || {}
+      status = jeevika_bill_status_label(record)
+      normalized_status = status.downcase
+      status_class = if normalized_status.include?("final approved") then "approved"
+      elsif normalized_status.include?("returned") then "returned"
+      elsif normalized_status.include?("rejected") then "rejected"
+      elsif normalized_status.include?("pending") then "pending"
+      else "submitted"
+      end
+      summary = jeevika_bill_summary(record)
 
-      row.merge(
+      {
+        id: record.id,
+        download_path: download_bill_module_record_path("jeevika-jankar-bill-list", record),
+        status: status,
+        status_class: status_class,
+        vrp_id: data["select_vrp"],
+        name: jeevika_jankar_display_name(data["select_vrp_name"].presence || jeevika_jankar_vrp_label(data["select_vrp"])),
+        financial_year: data["financial_year"].presence || "-",
+        bill_month: data["bill_month"].presence || "-",
+        activity_groups: summary[:activity_groups].presence || "-",
+        amount: jeevika_jankar_bill_total_payment(record),
+        activity_names: summary[:activity_names].presence || "-",
+        target: jeevika_jankar_bill_total_target(record),
+        achievement: jeevika_jankar_bill_total_achievement(record),
         bank_name: bank_row[:bank_name].presence || "-",
         ifsc_code: bank_row[:ifsc_code].presence || "-",
         account_number: bank_row[:account_number].presence || "-",
         passbook_attachment: vrp&.bank_passbook_upload
-      )
+      }
     end
   end
 
@@ -12366,8 +12420,7 @@ class ModulesController < ApplicationController
     return @training_setup_sub_activities_by_main if defined?(@training_setup_sub_activities_by_main)
     return @training_setup_sub_activities_by_main = {} unless model_ready?(:ModuleRecord)
 
-    @training_setup_sub_activities_by_main = active_module_records_scope("add-vrp-activity")
-      .order(created_at: :desc)
+    @training_setup_sub_activities_by_main = training_vrp_activity_setup_records
       .each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |record, result|
         main_activity = first_present_data(record, "main_activity", "activity_group", "activity_group_name", "group_name").to_s.strip
         sub_activity = first_present_data(record, "sub_activity_name", "activity_name", "vrp_activity_name", "activity").to_s.strip
@@ -12381,8 +12434,7 @@ class ModulesController < ApplicationController
     return @jeevika_jankar_sub_activity_settings if defined?(@jeevika_jankar_sub_activity_settings)
     return @jeevika_jankar_sub_activity_settings = {} unless model_ready?(:ModuleRecord)
 
-    @jeevika_jankar_sub_activity_settings = active_module_records_scope("add-vrp-activity")
-      .order(created_at: :desc)
+    @jeevika_jankar_sub_activity_settings = training_vrp_activity_setup_records
       .each_with_object({}) do |record, settings|
         main_activity_key = normalize_dashboard_text(first_present_data(record, "main_activity", "activity_group", "activity_group_name", "group_name"))
         sub_activity_key = normalize_dashboard_text(first_present_data(record, "sub_activity_name", "activity_name", "vrp_activity_name", "activity"))
@@ -12391,6 +12443,12 @@ class ModulesController < ApplicationController
         main_setting = activity_settings[main_activity_key]
         settings[sub_activity_key] = main_setting if main_setting.present?
       end
+  end
+
+  def training_vrp_activity_setup_records
+    @training_vrp_activity_setup_records ||= active_module_records_scope("add-vrp-activity")
+      .order(created_at: :desc)
+      .to_a
   end
 
   def jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
@@ -12700,13 +12758,18 @@ class ModulesController < ApplicationController
     return nil if field.blank?
     return village_master_gram_panchayat_name(record) if record.module_slug == "village-master" && field == "Gram Panchayat"
     if field == "Contact Number" && other_target_record_source?
-      target_mapping_id = record.data["target_mapping_id"].to_s.gsub(/\D/, "")
-      vrp_id = if target_mapping_id.present?
-        TargetMapping.where(id: target_mapping_id).pick(:vrp_id)
+      if defined?(@other_target_contact_numbers) && @other_target_contact_numbers.key?(record.id)
+        contact_number = @other_target_contact_numbers[record.id]
+        return contact_number unless contact_number.nil?
+      else
+        target_mapping_id = record.data["target_mapping_id"].to_s.gsub(/\D/, "")
+        vrp_id = if target_mapping_id.present?
+          TargetMapping.where(id: target_mapping_id).pick(:vrp_id)
+        end
+        vrp_id ||= record.data["jeevika_jankar_id"].presence || record.data["vrp_id"].presence
+        vrp = Vrp.find_by(id: vrp_id) if vrp_id.present?
+        return vrp.mobile_no.to_s.gsub(/\D/, "").last(10) if vrp
       end
-      vrp_id ||= record.data["jeevika_jankar_id"].presence || record.data["vrp_id"].presence
-      vrp = Vrp.find_by(id: vrp_id) if vrp_id.present?
-      return vrp.mobile_no.to_s.gsub(/\D/, "").last(10) if vrp
     end
 
     @module_record_field_keys ||= {}
@@ -14670,7 +14733,15 @@ class ModulesController < ApplicationController
 
     saved_farmer_ids = @record&.module_slug == "training-form" ? training_record_selected_farmer_ids(@record) : []
     all_farmer_ids = (targets.flat_map { |target| Array(target.afl_ids).map(&:to_s) } + saved_farmer_ids).reject(&:blank?).uniq
-    farmers_lookup = training_farmers_for_ids(all_farmer_ids).index_by { |farmer| farmer[:id].to_s }
+    # New forms load farmers from the existing target-farmers endpoint when a
+    # target is selected. Looking up every mapped farmer while building the
+    # initial form payload duplicates that request and can make large forms slow.
+    # Edit forms retain the full lookup so saved selections keep their details.
+    farmers_lookup = if @record.present?
+      training_farmers_for_ids(all_farmer_ids).index_by { |farmer| farmer[:id].to_s }
+    else
+      {}
+    end
 
     missing_external_ids = farmers_lookup.select { |fid, f| f[:record_missing] && fid !~ /\A\d+\z/ }.keys
     if missing_external_ids.any?
