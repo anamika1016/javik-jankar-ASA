@@ -12695,8 +12695,13 @@ class ModulesController < ApplicationController
     return nil if field.blank?
     return village_master_gram_panchayat_name(record) if record.module_slug == "village-master" && field == "Gram Panchayat"
     if field == "Contact Number" && other_target_record_source?
-      target = TargetMapping.find_by(id: record.data["target_mapping_id"])
-      return target.vrp&.mobile_no.to_s.gsub(/\D/, "").last(10) if target
+      target_mapping_id = record.data["target_mapping_id"].to_s.gsub(/\D/, "")
+      vrp_id = if target_mapping_id.present?
+        TargetMapping.where(id: target_mapping_id).pick(:vrp_id)
+      end
+      vrp_id ||= record.data["jeevika_jankar_id"].presence || record.data["vrp_id"].presence
+      vrp = Vrp.find_by(id: vrp_id) if vrp_id.present?
+      return vrp.mobile_no.to_s.gsub(/\D/, "").last(10) if vrp
     end
 
     @module_record_field_keys ||= {}
