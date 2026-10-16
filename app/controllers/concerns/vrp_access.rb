@@ -618,8 +618,13 @@ module VrpAccess
     end
   end
 
+  # A name saved with a stray double space - or a first name carrying a
+  # trailing one - read as a different person, so the approval could not be
+  # acted on by the very user it was parked at. Runs of whitespace collapse
+  # here the way TrainingEditApproval and the target mapping screen already
+  # treat names.
   def normalize_approver_label(label)
-    label.to_s.sub(/\s*\([^)]*\)\s*\z/, "").strip.downcase
+    label.to_s.sub(/\s*\([^)]*\)\s*\z/, "").gsub(/\s+/, " ").strip.downcase
   end
 
   def cluster_label_matches?(expected, actual)

@@ -22,6 +22,12 @@ module VrpApp
     # in config/environments, which are processed later.
     #
     config.time_zone = "Asia/Kolkata"
+
+    # The app downloads long option lists - the location hierarchy alone runs to
+    # hundreds of kilobytes - and JSON of that shape compresses by roughly ten
+    # times. Limited to /api so the website is served exactly as it is today.
+    config.middleware.use Rack::Deflater,
+      if: ->(env, _status, _headers, _body) { env["PATH_INFO"].to_s.start_with?("/api/") }
     # config.eager_load_paths << Rails.root.join("extras")
   end
 end

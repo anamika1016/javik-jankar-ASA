@@ -538,8 +538,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_130000) do
     t.index "lower((user_name)::text)", name: "index_users_on_lower_user_name"
     t.index ["email"], name: "index_users_on_email"
     t.index ["mobile_no"], name: "index_users_on_mobile_no"
+    t.index ["updated_at"], name: "index_users_on_updated_at_desc", order: :desc
     t.index ["user_name"], name: "index_users_on_user_name"
-    t.index ["updated_at"], name: "index_users_on_updated_at_desc", order: { updated_at: :desc }
   end
 
   create_table "vrp_bank_masters", force: :cascade do |t|
