@@ -134,7 +134,10 @@ class VrpsController < ApplicationController
   end
 
   def show
-    @vrp = (visible_vrps.to_a + approval_queue).uniq.find { |vrp| vrp.id == params[:id].to_i }
+    # approval_queue is column-narrowed, so the match is reloaded in full before
+    # the detail page reads bank, address and attachment fields off it.
+    match = (visible_vrps.to_a + approval_queue).uniq.find { |vrp| vrp.id == params[:id].to_i }
+    @vrp = match && Vrp.find_by(id: match.id)
     if @vrp
       @can_approve = current_user_can_approve?(@vrp)
       @approval_history = approval_history_for(@vrp)
@@ -662,9 +665,14 @@ class VrpsController < ApplicationController
     # approval-history row or has status >= 25. approval_candidate_vrps is
     # exactly that set, so this retains visibility while avoiding an all-JJ
     # scan for every non-admin list request.
-    approval_candidate_vrps.select do |vrp|
+    # approval_candidate_vrps is column-narrowed for the approval screen, so the
+    # matches are re-loaded in full here. Handing those partial records to the
+    # Jeevika Jankar list raised MissingAttributeError on vrp_bank_master_id.
+    ids = approval_candidate_vrps.select do |vrp|
       approval_visible_after_sent?(vrp) && current_user_in_approval_channel?(vrp)
-    end
+    end.map(&:id)
+
+    ids.any? ? Vrp.where(id: ids).to_a : []
   end
 
   def approval_visible_after_sent?(vrp)
