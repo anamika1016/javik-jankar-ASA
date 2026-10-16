@@ -46,7 +46,8 @@ class ModulesController < ApplicationController
                 :approval_level_display_label, :approval_level_label_for_sequence, :approval_user_display_label,
                 :training_participation_status_label, :training_participation_status_caption,
                 :training_target_status_label, :training_target_status_caption, :training_target_status_for_percent,
-                :training_trainee_department_default, :seed_distribution_target_mappings, :seed_distribution_target_browser_payload,
+                :training_trainee_department_default, :training_record_trainer_identity, :training_saved_farmers,
+                :seed_distribution_target_mappings, :seed_distribution_target_browser_payload,
                 :seed_distribution_target_month_options, :current_seed_target_vrp_option,
                 :add_farmer_form_mappings, :dashboard_vrp_previous_status, :dashboard_vrp_status_label,
                 :training_edit_revision_for, :dashboard_weekly_report_filter_params,
@@ -12773,6 +12774,10 @@ class ModulesController < ApplicationController
   def module_record_field_value(record, field)
     return nil if field.blank?
     return village_master_gram_panchayat_name(record) if record.module_slug == "village-master" && field == "Gram Panchayat"
+    if record.module_slug == "training-form" && ["Trainer Name", "Trainer Contact"].include?(field)
+      identity = training_record_trainer_identity(record)
+      return field == "Trainer Name" ? identity[:name] : identity[:contact]
+    end
     if field == "Contact Number" && other_target_record_source?
       if defined?(@other_target_contact_numbers) && @other_target_contact_numbers.key?(record.id)
         contact_number = @other_target_contact_numbers[record.id]
@@ -13549,6 +13554,8 @@ class ModulesController < ApplicationController
       data["jeevika_jankar_id"] = mapping[:vrp_id]
       data["jeevika_jankar_name"] = mapping[:jeevika_jankar_name]
       data["jeevika_jankar_contact"] = mapping[:contact_number]
+      data["trainer_name"] = mapping[:jeevika_jankar_name] if mapping[:jeevika_jankar_name].present?
+      data["trainer_contact"] = mapping[:contact_number] if mapping[:contact_number].present?
     end
 
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
@@ -13743,6 +13750,37 @@ class ModulesController < ApplicationController
     end
 
     [current_app_user&.dig("name"), current_app_user&.dig("mobile_no")]
+  end
+
+  # Old training rows could contain the operator name (often "Admin") because
+  # the form used the current session as the trainer.  Trainer identity belongs
+  # to the Jeevika Jankar on the saved target, so edits and list reads should
+  # resolve it from that target/JJ rather than repeat the stale value.
+  def training_record_trainer_identity(record)
+    return {} unless record
+
+    @training_record_trainer_identities ||= {}
+    @training_record_trainer_identities[record.id] ||= begin
+      data = record.data
+      target_ids = Array(data["target_mapping_ids"].presence || data["target_mapping_id"])
+        .flat_map { |value| value.to_s.split(",") }.map(&:strip).compact_blank
+      target = TargetMapping.includes(:vrp).where(id: target_ids).first if model_ready?(:TargetMapping) && target_ids.any?
+      vrp_id = target&.vrp_id.presence || data["jeevika_jankar_id"].presence || data["vrp_id"].presence
+      vrp = target&.vrp
+      vrp ||= Vrp.find_by(id: vrp_id) if vrp_id.present? && model_ready?(:Vrp)
+      vrp ||= current_vrp_record if vrp_login_user?
+
+      {
+        name: vrp&.name.presence || vrp&.user_name.presence || data["jeevika_jankar_name"].presence || data["trainer_name"],
+        contact: vrp&.mobile_no.presence || data["jeevika_jankar_contact"].presence || data["trainer_contact"]
+      }
+    end
+  end
+
+  def training_saved_farmers(record)
+    return [] unless record&.module_slug == "training-form"
+
+    training_farmers_for_ids(training_record_selected_farmer_ids(record))
   end
 
   def training_trainee_department_default

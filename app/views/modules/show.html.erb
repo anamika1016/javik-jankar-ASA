@@ -2480,6 +2480,11 @@
               <% field_value = Array(@record.data["main_activities"]).join(", ") if field == "Main Activity" %>
               <% field_value = Array(@record.data["sub_activities"]).join(", ") if field == "Sub Activity" %>
             <% end %>
+            <% if @slug == "training-form" && @record.present? %>
+              <% trainer_identity = training_record_trainer_identity(@record) %>
+              <% field_value = trainer_identity[:name].to_s if field == "Trainer Name" %>
+              <% field_value = trainer_identity[:contact].to_s if field == "Trainer Contact" %>
+            <% end %>
             <% if @slug == "training-form" && field_value.blank? %>
               <% field_value = @record&.data&.[]("trainee_department").to_s if field == "FCO Name" %>
               <% field_value = @record&.data&.[]("internal_trainer_name_1").to_s if field == "Cluster Coordinator Name" %>
@@ -2720,7 +2725,9 @@
                   <p class="training-section-desc">Search the mapped farmers and select participants for this session.</p>
                 </div>
               </div>
-              <div class="training-farmer-panel" data-training-farmer-panel data-selected-farmer-ids="<%= json_escape((selected_training_farmer_ids || []).to_json) %>">
+              <div class="training-farmer-panel" data-training-farmer-panel
+                data-selected-farmer-ids="<%= json_escape((selected_training_farmer_ids || []).to_json) %>"
+                data-saved-farmers="<%= json_escape(training_saved_farmers(@record).to_json) %>">
                 <div class="target-mapping-toolbar">
                   <strong>Target Farmers</strong>
                   <button type="button" class="list-btn active training-select-all-button" data-training-farmer-select-all-button>Select all</button>

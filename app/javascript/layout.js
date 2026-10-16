@@ -2643,6 +2643,8 @@ function initDeferredLayoutPage() {
 
       const url = new URL(farmersUrl, window.location.origin);
       url.searchParams.set("target_mapping_ids", key);
+      const recordId = String(formShell.dataset.trainingRecordId || "").trim();
+      if (recordId) url.searchParams.set("record_id", recordId);
       if (selectedFarmerIds.size) {
         url.searchParams.set("existing_farmer_ids", Array.from(selectedFarmerIds).join(","));
       }
