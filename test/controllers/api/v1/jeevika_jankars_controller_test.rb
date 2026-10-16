@@ -26,6 +26,30 @@ class Api::V1::JeevikaJankarsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "Submitted", body["jeevika_jankars"].find { |row| row["id"] == vrp.id }["status_label"]
   end
 
+  test "list applies bounded pagination without per-row queries" do
+    25.times do |index|
+      create_vrp(name: "Paged JJ #{index}", user_name: "paged_jj_#{index}",
+        created_by_id: @user.id, created_by_type: "User", status: 10)
+    end
+    queries = []
+    callback = ->(*args) do
+      payload = args.last
+      queries << payload[:sql] if payload[:name] != "SCHEMA" && payload[:sql].start_with?("SELECT")
+    end
+
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      get "/api/v1/jeevika-jankars", params: { page: 2, per_page: 10 }, headers: auth_headers, as: :json
+    end
+
+    assert_response :success
+    body = response.parsed_body
+    assert_equal 10, body["count"]
+    assert_equal 2, body["page"]
+    assert_equal 10, body["per_page"]
+    assert_operator body["total_count"], :>=, 25
+    assert_operator queries.size, :<=, 17, "JJ list queries must stay constant as rows grow"
+  end
+
   test "registration creates jeevika jankar with status 10" do
     payload = registration_payload(user_name: "new_jj_user")
 
@@ -101,7 +125,14 @@ class Api::V1::JeevikaJankarsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "form options returns dropdown data" do
-    get "/api/v1/jeevika-jankars/form-options", headers: auth_headers, as: :json
+    sql = []
+    callback = ->(*args) do
+      payload = args.last
+      sql << payload[:sql] if payload[:name] != "SCHEMA"
+    end
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      get "/api/v1/jeevika-jankars/form-options", headers: auth_headers, as: :json
+    end
 
     assert_response :success
     body = response.parsed_body
@@ -109,6 +140,8 @@ class Api::V1::JeevikaJankarsControllerTest < ActionDispatch::IntegrationTest
     assert body["options"].key?("vrp_types")
     assert body["options"].key?("genders")
     assert body["options"].key?("states")
+    assert_empty sql.grep(/\A(?:INSERT|UPDATE|DELETE)/), "form-options must be a read-only fast path"
+    assert_operator sql.grep(/\ASELECT/).size, :<=, 20
   end
 
   test "show returns detail for visible record" do

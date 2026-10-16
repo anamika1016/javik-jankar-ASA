@@ -203,6 +203,24 @@ module VrpAccess
     ActiveRecord::Associations::Preloader.new(records: records, associations: :vrp_bank_master).call
   end
 
+  # Type labels are part of every JJ list row. Resolve every referenced type in
+  # two bounded queries instead of querying once for each distinct id array.
+  def preload_vrp_type_labels!(vrps)
+    ids = Array(vrps).flat_map { |vrp| Array(vrp.vrp_type_ids) }.reject(&:blank?).map(&:to_s).uniq
+    return if ids.blank?
+
+    relational = model_ready?(:VrpType) ? VrpType.where(id: ids).pluck(:id, :type_name).to_h.transform_keys(&:to_s) : {}
+    legacy = if model_ready?(:ModuleRecord)
+      ModuleRecord.where(module_slug: "add-vrp-type", id: ids).to_a.to_h do |record|
+        [record.id.to_s, first_present_data(record, "jeevika_jankar_type_name", "vrp_type_name")]
+      end
+    else
+      {}
+    end
+    @vrp_access_type_name_by_id = legacy.merge(relational)
+    @vrp_access_type_labels = {}
+  end
+
   def preload_vrp_detail_payload_data!(vrp)
     records = Array(vrp).compact
     preload_vrp_list_payload_data!(records)
@@ -1372,10 +1390,7 @@ module VrpAccess
     return [] unless model_ready?(:ModuleRecord)
 
     field_keys = Array(field_key)
-    ModuleRecord
-      .where(module_slug: module_slug)
-      .order(created_at: :desc)
-      .select { |record| active_module_record?(record) }
+    active_records_for_location(module_slug)
       .filter_map do |record|
         label = module_slug == "gram-panchayat-master" ? gram_panchayat_name_from_record(record) : first_present_data(record, *field_keys)
         [label, record.id] if label
@@ -1388,10 +1403,7 @@ module VrpAccess
     return [] unless model_ready?(:ModuleRecord)
 
     field_keys = Array(field_key)
-    ModuleRecord
-      .where(module_slug: module_slug)
-      .order(created_at: :desc)
-      .select { |record| active_module_record?(record) }
+    active_records_for_location(module_slug)
       .flat_map { |record| field_keys.filter_map { |key| record.data[key].presence } }
       .uniq
   end
@@ -1583,7 +1595,9 @@ module VrpAccess
   end
 
   def active_records_for_location(module_slug)
-    ModuleRecord
+    @vrp_access_active_records ||= {}
+    key = Array(module_slug).map(&:to_s).sort.freeze
+    @vrp_access_active_records[key] ||= ModuleRecord
       .where(module_slug: module_slug)
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
@@ -1698,7 +1712,10 @@ module VrpAccess
     @vrp_access_type_labels ||= {}
     return @vrp_access_type_labels[ids] if @vrp_access_type_labels.key?(ids)
 
-    if model_ready?(:VrpType)
+    if defined?(@vrp_access_type_name_by_id)
+      labels = ids.filter_map { |id| @vrp_access_type_name_by_id[id.to_s].presence }
+      return @vrp_access_type_labels[ids.dup] = labels.join(", ") if labels.any?
+    elsif model_ready?(:VrpType)
       labels = VrpType.where(id: ids).pluck(:type_name)
       return @vrp_access_type_labels[ids.dup] = labels.join(", ") if labels.any?
     end
@@ -1722,38 +1739,59 @@ module VrpAccess
   def sync_existing_vrp_master_records
     return unless model_ready?(:ModuleRecord)
 
-    ModuleRecord.where(module_slug: ["bank-master", "position-type", "add-vrp-type"]).find_each do |record|
+    scope = ModuleRecord.where(module_slug: ["bank-master", "position-type", "add-vrp-type"])
+    unless Rails.env.test? || !Rails.application.config.action_controller.perform_caching
+      version = scope.pick(Arel.sql("COUNT(*)"), Arel.sql("MAX(updated_at)"), Arel.sql("MAX(id)"))
+      cache_key = "api/v1/vrp-master-sync-v2"
+      return if Rails.cache.read(cache_key) == version
+    end
+
+    records = scope.to_a
+    bank_names = records.select { |record| record.module_slug == "bank-master" }
+      .filter_map { |record| record.data["bank_name"].to_s.strip.presence }
+    type_names = records.reject { |record| record.module_slug == "bank-master" }
+      .filter_map do |record|
+        (record.data["position_type_name"].presence || record.data["jeevika_jankar_type_name"].presence ||
+          record.data["vrp_type_name"]).to_s.strip.presence
+      end
+    banks = model_ready?(:VrpBankMaster) ? VrpBankMaster.where(name: bank_names).index_by(&:name) : {}
+    types = model_ready?(:VrpType) ? VrpType.where(type_name: type_names).index_by(&:type_name) : {}
+
+    records.each do |record|
       case record.module_slug
       when "bank-master"
-        sync_bank_master(record)
+        sync_bank_master(record, banks)
       when "position-type", "add-vrp-type"
-        sync_vrp_type(record)
+        sync_vrp_type(record, types)
       end
     end
+    Rails.cache.write(cache_key, version, expires_in: 1.hour) if cache_key.present?
   end
 
-  def sync_bank_master(record)
+  def sync_bank_master(record, existing = nil)
     return unless model_ready?(:VrpBankMaster)
 
     name = record.data["bank_name"].to_s.strip
     return if name.blank?
 
-    bank = VrpBankMaster.find_or_initialize_by(name: name)
+    bank = existing&.[](name) || VrpBankMaster.new(name: name)
     bank.is_active = record.data["status"].to_s != "Inactive" if bank.respond_to?(:is_active=)
     bank.is_deleted = false if bank.respond_to?(:is_deleted=)
-    bank.save(validate: false)
+    bank.save(validate: false) if bank.new_record? || bank.changed?
+    existing[name] = bank if existing
   end
 
-  def sync_vrp_type(record)
+  def sync_vrp_type(record, existing = nil)
     return unless model_ready?(:VrpType)
 
     type_name = (record.data["position_type_name"].presence || record.data["jeevika_jankar_type_name"].presence || record.data["vrp_type_name"]).to_s.strip
     return if type_name.blank?
 
-    vrp_type = VrpType.find_or_initialize_by(type_name: type_name)
+    vrp_type = existing&.[](type_name) || VrpType.new(type_name: type_name)
     vrp_type.is_active = record.data["status"].to_s != "Inactive" if vrp_type.respond_to?(:is_active=)
     vrp_type.is_deleted = false if vrp_type.respond_to?(:is_deleted=)
-    vrp_type.save(validate: false)
+    vrp_type.save(validate: false) if vrp_type.new_record? || vrp_type.changed?
+    existing[type_name] = vrp_type if existing
   end
 
   def model_ready?(name)

@@ -4,16 +4,22 @@ module Api
       include VrpAccess
 
       def index
-        vrps = visible_vrps.to_a
+        scope = visible_vrps.order(created_at: :desc, id: :desc)
+        total_count = scope.count
+        vrps = scope.offset((page_number - 1) * per_page).limit(per_page).to_a
         preload_vrp_list_payload_data!(vrps)
         preload_vrp_creator_identity_lookups!(vrps)
+        preload_vrp_type_labels!(vrps)
         records = vrps.map { |vrp| list_row_payload(vrp) }
 
         render json: {
           success: true,
           message: "Jeevika Jankar list fetched successfully.",
           jeevika_jankars: records,
-          count: records.size
+          count: records.size,
+          total_count: total_count,
+          page: page_number,
+          per_page: per_page
         }, status: :ok
       end
 
@@ -127,6 +133,9 @@ module Api
 
         update_vrp_status!(vrp, 25)
         log_approval_history(vrp, first_step, "Sent for Approval", "Pending at #{approval_approver_name(first_step)}")
+        preload_vrp_detail_payload_data!(vrp)
+        preload_vrp_creator_identity_lookups!([vrp])
+        preload_vrp_type_labels!([vrp])
 
         render json: {
           success: true,
@@ -136,6 +145,16 @@ module Api
       end
 
       private
+
+      def page_number
+        [params[:page].to_i, 1].max
+      end
+
+      def per_page
+        requested = params[:per_page].to_i
+        requested = 100 if requested <= 0
+        requested.clamp(1, 1_000)
+      end
 
       def current_app_user
         current_api_user_payload

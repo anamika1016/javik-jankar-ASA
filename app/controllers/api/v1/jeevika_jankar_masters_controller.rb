@@ -122,11 +122,8 @@ module Api
 
       def render_master(resource_name)
         slug, fields = MASTER_CONFIG.fetch(resource_name)
-        records = ModuleRecord.where(module_slug: slug).order(created_at: :desc)
-        records = records.select { |record| active_record?(record) } unless include_inactive?
-        records = records.select { |record| matches_filters?(record) }
-        rows = records.map { |record| record_payload(record, fields) }
-        rows = rows.reject { |row| row[:jeevika_jankar_type_name].blank? } if resource_name == "types"
+        rows = cached_master_rows(resource_name, slug, fields)
+        rows = rows.reject { |row| row["jeevika_jankar_type_name"].blank? } if resource_name == "types"
 
         response = {
           success: true,
@@ -139,6 +136,33 @@ module Api
         render json: response, status: :ok
       end
 
+      def cached_master_rows(resource_name, slug, fields)
+        scope = filtered_master_scope(slug)
+        loader = -> { scope.order(created_at: :desc).map { |record| record_payload(record, fields) } }
+        return loader.call if Rails.env.test? || !Rails.application.config.action_controller.perform_caching
+
+        version = scope.reorder(nil).pick(Arel.sql("MAX(updated_at)"), Arel.sql("MAX(id)"))
+        cache_key = ["api/v1/jj-masters-v2", resource_name, include_inactive?, master_filter_values, *version]
+        Rails.cache.fetch(cache_key, expires_in: 30.minutes, &loader)
+      end
+
+      def filtered_master_scope(slug)
+        scope = ModuleRecord.where(module_slug: slug)
+        unless include_inactive?
+          scope = scope.where("COALESCE(LOWER(BTRIM(data::jsonb ->> 'status')), '') IN ('', 'active')")
+        end
+        master_filter_values.each do |key, value|
+          scope = scope.where("LOWER(BTRIM(data::jsonb ->> ?)) = ?", key, value.downcase)
+        end
+        scope
+      end
+
+      def master_filter_values
+        @master_filter_values ||= filter_keys.to_h do |key|
+          [key, params[key].to_s.strip]
+        end.reject { |_key, value| value.blank? }
+      end
+
       def record_payload(record, fields)
         payload = fields.each_with_object({ id: record.id }) do |field, result|
           result[field] = record.data[field]
@@ -148,9 +172,9 @@ module Api
           type_name = record.data["jeevika_jankar_type_name"].presence ||
             record.data["vrp_type_name"].presence ||
             record.data["position_type_name"].presence
-          payload[:jeevika_jankar_type_name] = type_name
-          payload[:label] = type_name
-          payload[:value] = record.id
+          payload["jeevika_jankar_type_name"] = type_name
+          payload["label"] = type_name
+          payload["value"] = record.id
         end
 
         payload

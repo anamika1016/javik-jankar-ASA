@@ -37,6 +37,31 @@ class Api::V1::JeevikaJankarMastersControllerTest < ActionDispatch::IntegrationT
     assert_equal [ "Patna" ], response.parsed_body["districts"].map { |row| row["district_name"] }
   end
 
+  test "large village lookup stays on a bounded SQL path" do
+    40.times do |index|
+      ModuleRecord.create!(module_slug: "village-master", data: {
+        "state" => "Madhya Pradesh", "district" => "Chhindwara", "block" => "Sausar",
+        "gram_panchayat" => "GP #{index}", "village_name" => "Village #{index}",
+        "village_code" => index.to_s, "status" => "Active"
+      })
+    end
+    queries = []
+    callback = ->(*args) do
+      payload = args.last
+      queries << payload[:sql] if payload[:name] != "SCHEMA" && payload[:sql].start_with?("SELECT")
+    end
+
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      get "/api/v1/jeevika-jankar-masters/villages",
+        params: { state: "Madhya Pradesh", district: "Chhindwara", block: "Sausar" },
+        headers: @headers, as: :json
+    end
+
+    assert_response :success
+    assert_equal 40, response.parsed_body["count"]
+    assert_operator queries.size, :<=, 4, "master list must filter in SQL without per-row queries"
+  end
+
   test "creates jeevika jankar type without module web action" do
     assert_difference("ModuleRecord.where(module_slug: 'add-vrp-type').count", 1) do
       post "/api/v1/jeevika-jankar-types",
