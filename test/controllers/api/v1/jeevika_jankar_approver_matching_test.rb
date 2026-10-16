@@ -52,6 +52,47 @@ class Api::V1::JeevikaJankarApproverMatchingTest < ActionDispatch::IntegrationTe
     assert_includes response.parsed_body["message"], "not pending for your approval"
   end
 
+  # "Not pending for your approval" on its own left nowhere to look, so the
+  # refusal now names the two people being compared.
+  test "a refusal names who it is waiting on and who you are" do
+    approver("Anurag ", " Patel", "why")
+    User.create!(first_name: "Some", last_name: "Admin", user_name: "appr_why_admin",
+      email: "why_admin@example.com", mobile_no: "9879000077", password: "secret",
+      user_type: "admin", status: "Active", stakeholder: "PAPL", role: "Admin")
+    jj = send_for_approval("why")
+
+    patch "/api/v1/jeevika-jankars/#{jj.id}/approve", params: { remarks: "ok" },
+      headers: auth("appr_why_admin"), as: :json
+
+    assert_response :forbidden
+    body = response.parsed_body
+    assert_equal APPROVER, body["pending_at"]
+    assert_equal "Some Admin", body["signed_in_as"]
+    assert_includes body["message"], "waiting on"
+  end
+
+  test "a record that was never sent reports its status instead" do
+    approver("Anurag", "Patel", "nosend")
+    registrar = User.create!(first_name: "Reg", last_name: "User", user_name: "reg_nosend",
+      email: "reg_nosend@example.com", mobile_no: "9879000088", password: "secret",
+      user_type: "User", status: "Active", stakeholder: "PAPL", role: "Data Entry")
+    jj = Vrp.create!(name: "Unsent", father_husband_name: "T", gender: :female,
+      date_of_birth: Date.new(2012, 10, 4), date_of_joining: Date.current,
+      aadhar_no: "123456789012", account_no: "1", bank_name: "B", branch: "Br",
+      ifsc_code: "SBIN0001234", address: "A", mobile_no: "9879000089",
+      email: "unsent@example.com", experience_in_years: 1, office_detail_id: 0,
+      to_office_detail_id: 0, vrp_type_ids: [1], gram_panchayat_ids: [1], village_ids: [1],
+      is_active: true, is_deleted: false, status: 10, user_name: "unsent_jj",
+      password: "secret", created_by_id: registrar.id, created_by_type: "User")
+
+    patch "/api/v1/jeevika-jankars/#{jj.id}/approve", params: { remarks: "ok" },
+      headers: auth("appr_nosend"), as: :json
+
+    assert_response :forbidden
+    assert_includes response.parsed_body["message"], "no approval step waiting"
+    assert_equal 10, response.parsed_body["jeevika_jankar_status"]
+  end
+
   def approver(first, last, tag)
     ModuleRecord.create!(module_slug: "approval-master", data: {
       "module_name" => "Jeevika Jankar Registration", "stakeholder_name" => "PAPL",

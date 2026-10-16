@@ -28,12 +28,7 @@ module Api
         merge_json_body_params!
         vrp = approvable_vrps.find { |record| record.id == params[:id].to_i }
 
-        unless vrp
-          return render json: {
-            success: false,
-            message: "This Jeevika Jankar is not pending for your approval."
-          }, status: :forbidden
-        end
+        return render(json: not_pending_payload, status: :forbidden) unless vrp
 
         remarks = params[:remarks].to_s
         step = current_approval_step(vrp)
@@ -61,12 +56,7 @@ module Api
         merge_json_body_params!
         vrp = approvable_vrps.find { |record| record.id == params[:id].to_i }
 
-        unless vrp
-          return render json: {
-            success: false,
-            message: "This Jeevika Jankar is not pending for your approval."
-          }, status: :forbidden
-        end
+        return render(json: not_pending_payload, status: :forbidden) unless vrp
 
         remarks = params[:remarks].to_s
         step = current_approval_step(vrp)
@@ -84,12 +74,7 @@ module Api
         merge_json_body_params!
         vrp = approvable_vrps.find { |record| record.id == params[:id].to_i }
 
-        unless vrp
-          return render json: {
-            success: false,
-            message: "This Jeevika Jankar is not pending for your approval."
-          }, status: :forbidden
-        end
+        return render(json: not_pending_payload, status: :forbidden) unless vrp
 
         remarks = params[:remarks].to_s
         step = current_approval_step(vrp)
@@ -107,6 +92,35 @@ module Api
 
       def current_app_user
         current_api_user_payload
+      end
+
+      # "Not pending for your approval" on its own leaves nowhere to look: the
+      # list shows the record waiting on a person, yet that person is refused.
+      # The two names being compared are spelled out so the mismatch - a
+      # different account, a different spelling, a step already closed - is
+      # visible from the response itself.
+      def not_pending_payload
+        vrp = Vrp.find_by(id: params[:id])
+        step = vrp && current_approval_step(vrp)
+        pending_at = step && (step.data["approver_approved_by"].presence || approval_approver_name(step))
+        you = current_app_user&.dig("name").presence || current_app_user&.dig("username")
+
+        reason = if vrp.nil?
+          "No Jeevika Jankar with this id."
+        elsif step.nil?
+          "This Jeevika Jankar has no approval step waiting - it may be already " \
+            "finished, rejected, or never sent for approval. Status is #{vrp.status}."
+        else
+          "It is waiting on \"#{pending_at}\" and you are signed in as \"#{you}\"."
+        end
+
+        {
+          success: false,
+          message: "This Jeevika Jankar is not pending for your approval. #{reason}",
+          pending_at: pending_at,
+          signed_in_as: you,
+          jeevika_jankar_status: vrp&.status
+        }
       end
 
       def merge_json_body_params!
