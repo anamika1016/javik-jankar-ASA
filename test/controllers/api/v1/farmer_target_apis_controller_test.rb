@@ -376,6 +376,30 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
     assert_equal 1, response.parsed_body["available_count"]
   end
 
+  test "mapped farmers remain available while editing their own training record" do
+    vrp = create_vrp(fcoc: "FCO-C Edit")
+    farmer = Afl.create!(farmer_name: "Saved Farmer", fco_id: "994", fco: "Edit",
+      ics_id: "ics-edit", ics_name: "ICS Edit", village_id: "v-edit", village_name: "Village Edit")
+    target = TargetMapping.create!(vrp: vrp, fco_id: "994", fco_name: "Edit",
+      ics_id: "ics-edit", ics_name: "ICS Edit", village_id: "v-edit", village_name: "Village Edit",
+      month_name: "July", main_activity_name: "Training", activity_name: "Edit Subject",
+      target_quantity: 1, afl_ids: [farmer.id])
+    record = ModuleRecord.create!(module_slug: "training-form", data: {
+      "target_mapping_id" => target.id.to_s, "month" => "July", "main_activity" => "Training",
+      "sub_activity" => "Edit Subject", "selected_farmer_ids" => [farmer.id.to_s]
+    })
+
+    get "/api/v1/farmer-trainings/mapped-farmers",
+      params: { record_id: record.id, month: "July", main_activity: "Training", sub_activity: "Edit Subject" },
+      headers: auth_headers, as: :json
+
+    assert_response :success
+    row = response.parsed_body["mapped_farmers"].find { |item| item["id"] == farmer.id.to_s }
+    assert row
+    assert_equal true, row["is_available"]
+    assert_equal false, row["is_completed"]
+  end
+
   def create_vrp(attributes = {})
     defaults = {
       name: "Test JJ",

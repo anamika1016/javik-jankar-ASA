@@ -523,8 +523,8 @@ class FarmerTargetApi
   def normalize_training_form_data(data)
     stamp_target_record_creator!(data)
     trainer_name, trainer_contact = training_trainer_defaults
-    data["trainer_name"] = trainer_name if trainer_name.present?
-    data["trainer_contact"] = trainer_contact if trainer_contact.present?
+    data["trainer_name"] = trainer_name if data["trainer_name"].blank? && trainer_name.present?
+    data["trainer_contact"] = trainer_contact if data["trainer_contact"].blank? && trainer_contact.present?
     data["fco_name"] = data["trainee_department"] if data["fco_name"].blank? && data["trainee_department"].present?
     data["trainee_department"] = data["fco_name"] if data["trainee_department"].blank? && data["fco_name"].present?
     data["fco_name"] = training_trainee_department_default if data["fco_name"].blank?
@@ -547,6 +547,10 @@ class FarmerTargetApi
       data["jeevika_jankar_id"] = mapping[:vrp_id]
       data["jeevika_jankar_name"] = mapping[:jeevika_jankar_name]
       data["jeevika_jankar_contact"] = mapping[:contact_number]
+      # Trainer identity belongs to the Jeevika Jankar whose target is being
+      # reported, not to an admin/CC who happens to submit or edit the form.
+      data["trainer_name"] = mapping[:jeevika_jankar_name] if mapping[:jeevika_jankar_name].present?
+      data["trainer_contact"] = mapping[:contact_number] if mapping[:contact_number].present?
       data["main_activity_type"] = mapping[:main_activity_type]
     end
 

@@ -60,6 +60,25 @@ class Api::V1::FarmerTargetUpdateApiTest < ActionDispatch::IntegrationTest
     assert_equal "July", data["month"]
   end
 
+  test "an admin edit keeps the mapped Jeevika Jankar as trainer" do
+    jj = vrp("Mapped Trainer", "9876511255")
+    mapping = TargetMapping.create!(vrp: jj, fco_id: "13", fco_name: "FCO-C Sausar",
+      ics_id: "ics-1", ics_name: "ICS-1", village_id: "village-1", village_name: "Village 1",
+      month_name: "July", main_activity_name: "Farmers' Training", activity_name: "FFS",
+      afl_ids: %w[1 2], farmer_count: 2, target_quantity: 2)
+    record = training_record
+    record.update!(data: record.data.merge("target_mapping_id" => mapping.id.to_s,
+      "jeevika_jankar_id" => jj.id.to_s, "trainer_name" => jj.name,
+      "trainer_contact" => jj.mobile_no))
+
+    patch "/api/v1/farmer-trainings/#{record.id}", params: { male_count: "9" },
+      headers: auth_headers, as: :json
+
+    assert_response :success
+    assert_equal jj.name, record.reload.data["trainer_name"]
+    assert_equal jj.mobile_no, record.data["trainer_contact"]
+  end
+
   test "a farmer training edit cannot take the record away from its creator" do
     record = training_record
     record.update!(data: record.data.merge("created_by_id" => "4242", "created_by_name" => "Pankaj"))

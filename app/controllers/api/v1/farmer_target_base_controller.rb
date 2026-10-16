@@ -11,8 +11,16 @@ module Api
         FarmerTargetApi.new(
           current_app_user: current_app_user,
           module_slug: module_slug,
-          exclude_record_id: params[:id]
+          exclude_record_id: edit_record_id
         )
+      end
+
+      # Collection endpoints are also used while editing.  Mobile clients send
+      # the edited row as record_id (older builds used id), and that row must be
+      # excluded from the "already completed" farmer calculation so its saved
+      # farmers remain available and checked on the edit form.
+      def edit_record_id
+        params[:record_id].presence || params[:id].presence
       end
 
       def render_list(resource_key)
