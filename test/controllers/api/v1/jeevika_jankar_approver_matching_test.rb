@@ -17,6 +17,22 @@ class Api::V1::JeevikaJankarApproverMatchingTest < ActionDispatch::IntegrationTe
     assert_equal 55, jj.reload.status.to_i
   end
 
+  test "assigned approver sees the record in JJ list and detail" do
+    approver("Anurag ", " Patel", "visible")
+    jj = send_for_approval("visible")
+    headers = auth("appr_visible")
+
+    get "/api/v1/jeevika-jankars", params: { per_page: 1000 }, headers: headers, as: :json
+
+    assert_response :success
+    assert_includes response.parsed_body["jeevika_jankars"].map { |row| row["id"] }, jj.id
+
+    get "/api/v1/jeevika-jankars/#{jj.id}", headers: headers, as: :json
+
+    assert_response :success
+    assert_equal jj.id, response.parsed_body.dig("jeevika_jankar", "id")
+  end
+
   test "the approver can approve when their name is saved cleanly" do
     approver("Anurag", "Patel", "clean")
     jj = send_for_approval("clean")

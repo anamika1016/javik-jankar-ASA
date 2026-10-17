@@ -4,7 +4,7 @@ module Api
       include VrpAccess
 
       def index
-        scope = visible_vrps.order(created_at: :desc, id: :desc)
+        scope = api_visible_vrps.order(created_at: :desc, id: :desc)
         total_count = scope.count
         vrps = scope.offset((page_number - 1) * per_page).limit(per_page).to_a
         preload_vrp_list_payload_data!(vrps)
@@ -158,6 +158,14 @@ module Api
 
       def current_app_user
         current_api_user_payload
+      end
+
+      def api_visible_vrps
+        return visible_vrps if current_app_user.blank? || admin_user?
+
+        own_ids = own_vrps.pluck(:id)
+        approval_ids = approval_related_vrps.map(&:id)
+        Vrp.where(id: (own_ids + approval_ids).uniq)
       end
 
       def find_api_visible_vrp(id)

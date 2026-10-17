@@ -153,11 +153,21 @@ class VrpsController < ApplicationController
   def destroy
     @vrp = find_manageable_vrp(params[:id])
 
-    if @vrp
-      @vrp.update_columns(is_deleted: true, updated_at: Time.current)
-      redirect_to vrps_path, notice: "Jeevika JankaR deleted successfully."
-    else
-      redirect_to vrps_path, alert: "Jeevika JankaR record not found."
+    unless @vrp
+      # The Delete button follows redirects and reads a 200 as success, so a
+      # redirect here looked like the delete worked while the row stayed put.
+      message = "Jeevika JankaR record not found."
+      respond_to do |format|
+        format.json { render json: { error: message }, status: :not_found }
+        format.any { render plain: message, status: :not_found }
+      end
+      return
+    end
+
+    @vrp.update_columns(is_deleted: true, updated_at: Time.current)
+    respond_to do |format|
+      format.json { render json: { ok: true } }
+      format.any { redirect_to vrps_path, notice: "Jeevika JankaR deleted successfully." }
     end
   end
 
