@@ -295,7 +295,6 @@ module VrpAccess
 
   def visible_vrps
     return Vrp.all if current_app_user.blank? || admin_user?
-    return Vrp.all unless current_app_user&.dig("record_type").to_s == "Vrp"
 
     mapped_vrps = cluster_mapped_vrps.to_a
     own_records = own_vrps.to_a
@@ -425,7 +424,7 @@ module VrpAccess
     preload_vrp_creator_identity_lookups!(records)
 
     records.select do |vrp|
-      approval_visible_after_sent?(vrp) && pending_for_current_user?(vrp)
+      approval_visible_after_sent?(vrp) && current_user_in_approval_channel?(vrp)
     end
   end
 

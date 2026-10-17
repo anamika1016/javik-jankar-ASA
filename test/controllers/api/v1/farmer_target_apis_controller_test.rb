@@ -61,7 +61,7 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
     assert response.parsed_body["options"].key?("autofill")
   end
 
-  test "staff training list includes the complete web training list" do
+  test "staff training list uses the same session grouping as the web list" do
     staff = User.create!(
       first_name: "Anurag", last_name: "Patel", user_name: "training_office_anurag",
       email: "training_office_anurag@example.com", mobile_no: "9876505678",
@@ -70,9 +70,11 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
     )
     same_office_vrp = create_vrp(fcoc: "FCO-C Bhawanipatna")
     other_office_vrp = create_vrp(fcoc: "FCO-C Sausar")
-    2.times do |index|
+    2.times do
       ModuleRecord.create!(module_slug: "training-form", data: {
-        "trainer_name" => "Trainer #{index}",
+        "month" => "September", "ics_block" => "ICS One", "gram_name" => "Village One",
+        "trainer_name" => "Same Trainer", "training_date" => "2026-09-10",
+        "training_location" => "Hall", "selected_farmer_ids" => %w[1 2],
         "jeevika_jankar_id" => same_office_vrp.id.to_s
       })
     end
@@ -86,8 +88,8 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
       headers: { "Authorization" => "Bearer #{token}" }, as: :json
 
     assert_response :success
-    assert_equal 3, response.parsed_body["count"]
-    assert_equal 3, response.parsed_body["farmer_trainings"].size
+    assert_equal 2, response.parsed_body["count"]
+    assert_equal 2, response.parsed_body["farmer_trainings"].size
   end
 
   test "training forms alias works for React Native route names" do

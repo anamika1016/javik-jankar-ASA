@@ -153,7 +153,7 @@ class Api::V1::JeevikaJankarsControllerTest < ActionDispatch::IntegrationTest
     assert_equal vrp.id, response.parsed_body.dig("jeevika_jankar", "id")
   end
 
-  test "staff user sees the complete JJ list just as the web list does" do
+  test "staff user sees the web-scoped JJ list" do
     staff = User.create!(
       first_name: "Anurag", last_name: "Patel", user_name: "office_anurag",
       email: "office_anurag@example.com", mobile_no: "9876501234", password: "secret",
@@ -176,7 +176,7 @@ class Api::V1::JeevikaJankarsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     ids = response.parsed_body["jeevika_jankars"].map { |row| row["id"] }
     assert_includes ids, same_office.id
-    assert_includes ids, other_office.id
+    refute_includes ids, other_office.id
 
     get "/api/v1/jeevika-jankars/#{same_office.id}", headers: headers, as: :json
     assert_response :success

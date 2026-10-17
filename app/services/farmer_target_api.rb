@@ -26,11 +26,9 @@ class FarmerTargetApi
       .where(module_slug: @module_slug)
       .order(created_at: :desc)
       .to_a
-    return records.map { |record| record_payload(record) } unless vrp_login_user?
-
-    records
-      .select { |record| visible?(record) }
-      .map { |record| record_payload(record) }
+    records = records.select { |record| visible?(record) } if vrp_login_user?
+    records = grouped_training_list_records(records) if @module_slug == "training-form"
+    records.map { |record| record_payload(record) }
   end
 
   def find(id)
@@ -221,6 +219,25 @@ class FarmerTargetApi
   private
 
   attr_reader :current_app_user
+
+  # The web Training Form List renders one row per training session even when
+  # legacy/imported data stores that session in several ModuleRecord rows. Keep
+  # the app list on the identical session key instead of returning raw rows.
+  def grouped_training_list_records(records)
+    records.group_by do |record|
+      data = record.data
+      farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq.sort
+      [
+        data["month"],
+        data["ics_block"].presence || data["ics"],
+        data["gram_name"].presence || data["village"],
+        data["trainer_name"],
+        data["training_date"],
+        data["training_location"],
+        farmer_ids
+      ].map { |item| item.is_a?(Array) ? item : item.to_s.strip.downcase }
+    end.values.map(&:first)
+  end
 
   def normalize_incoming(raw_attrs)
     data = {}
