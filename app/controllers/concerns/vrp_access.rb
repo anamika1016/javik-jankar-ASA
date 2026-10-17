@@ -296,7 +296,12 @@ module VrpAccess
   def visible_vrps
     return Vrp.all if current_app_user.blank? || admin_user?
 
-    ids = (own_vrps.to_a + approval_related_vrps).map(&:id).uniq
+    mapped_vrps = cluster_mapped_vrps.to_a
+    own_records = own_vrps.to_a
+    cluster_scoped = cluster_incharge_login? || mapped_vrps.any?
+    base_vrps = cluster_scoped ? own_records + mapped_vrps : own_records
+    office_vrps = cluster_scoped ? [] : office_scoped_vrps
+    ids = (base_vrps + office_vrps + approval_related_vrps).map(&:id).uniq
 
     Vrp.where(id: ids)
   end
