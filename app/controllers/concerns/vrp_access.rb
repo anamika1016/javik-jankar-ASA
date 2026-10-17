@@ -392,11 +392,12 @@ module VrpAccess
 
   def approval_queue
     records = Vrp.all.to_a
-    preload_vrp_approval_history_lookup_data!(records)
+    preload_vrp_access_lookup_data!(records)
+    preload_vrp_creator_identity_lookups!(records)
     scope = records.select { |vrp| approval_visible_after_sent?(vrp) }
     return scope if admin_user?
 
-    scope.select { |vrp| current_user_in_approval_channel?(vrp) }
+    scope.select { |vrp| pending_for_current_user?(vrp) || current_user_in_approval_channel?(vrp) }
   end
 
   def approvable_vrps
@@ -423,8 +424,16 @@ module VrpAccess
     preload_vrp_creator_identity_lookups!(records)
 
     records.select do |vrp|
-      approval_visible_after_sent?(vrp) && current_user_in_approval_channel?(vrp)
+      approval_visible_after_sent?(vrp) &&
+        (pending_for_current_user?(vrp) || current_user_in_approval_channel?(vrp))
     end
+  end
+
+  def pending_for_current_user?(vrp)
+    step = current_approval_step(vrp)
+    return true if step && approval_step_matches_current_user?(step)
+
+    persisted_pending_approver_matches_current_user?(vrp)
   end
 
   def approval_visible_after_sent?(vrp)

@@ -50,6 +50,53 @@ class Api::V1::JeevikaJankarApproverMatchingTest < ActionDispatch::IntegrationTe
     assert_includes response.parsed_body["jeevika_jankars"].map { |row| row["id"] }, jj.id
   end
 
+  test "record moves from first approver into Anurag approval queue and can be approved" do
+    first = User.create!(
+      first_name: "Soumen", last_name: "Day", user_name: "appr_first",
+      email: "appr_first@example.com", mobile_no: "9879000111", password: "secret",
+      user_type: "User", status: "Active", stakeholder: "PAPL", role: "PMC-Oprection"
+    )
+    anurag = User.create!(
+      first_name: "Anurag", last_name: "Patel", user_name: "appr_anurag_queue",
+      email: "appr_anurag_queue@example.com", mobile_no: "9879000222", password: "secret",
+      user_type: "User", status: "Active", stakeholder: "PAPL", role: "PMC-Oprection"
+    )
+    ModuleRecord.create!(module_slug: "approval-master", data: {
+      "module_name" => "Jeevika Jankar Registration", "stakeholder_name" => "PAPL",
+      "approval_level" => "First Approval", "approver_approved_by" => "Soumen Day (PMC-Oprection)",
+      "status" => "Active"
+    })
+    ModuleRecord.create!(module_slug: "approval-master", data: {
+      "module_name" => "Jeevika Jankar Registration", "stakeholder_name" => "PAPL",
+      "approval_level" => "Second Approval", "approver_approved_by" => APPROVER,
+      "status" => "Active"
+    })
+    jj = send_for_approval("two_step")
+
+    patch "/api/v1/jeevika-jankars/#{jj.id}/approve", params: { remarks: "first done" },
+      headers: auth(first.user_name), as: :json
+    assert_response :success
+    assert_equal 31, jj.reload.status.to_i
+    assert_includes response.parsed_body["message"], "Anurag Patel"
+
+    headers = auth(anurag.user_name)
+    get "/api/v1/jeevika-jankars/approvals", headers: headers, as: :json
+    assert_response :success
+    assert_includes response.parsed_body["approvals"].map { |row| row["id"] }, jj.id
+    queue_row = response.parsed_body["approvals"].find { |row| row["id"] == jj.id }
+    assert_equal true, queue_row["can_act"]
+    assert_includes queue_row["status_label"], "Anurag Patel"
+
+    get "/api/v1/jeevika-jankars", params: { per_page: 1000 }, headers: headers, as: :json
+    assert_response :success
+    assert_includes response.parsed_body["jeevika_jankars"].map { |row| row["id"] }, jj.id
+
+    patch "/api/v1/jeevika-jankars/#{jj.id}/approve", params: { remarks: "approved" },
+      headers: headers, as: :json
+    assert_response :success
+    assert_equal 55, jj.reload.status.to_i
+  end
+
   test "the approver can approve when their name is saved cleanly" do
     approver("Anurag", "Patel", "clean")
     jj = send_for_approval("clean")
