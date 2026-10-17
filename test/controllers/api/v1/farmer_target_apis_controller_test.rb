@@ -61,7 +61,7 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
     assert response.parsed_body["options"].key?("autofill")
   end
 
-  test "staff training list includes all records from the same office" do
+  test "staff training list includes the complete web training list" do
     staff = User.create!(
       first_name: "Anurag", last_name: "Patel", user_name: "training_office_anurag",
       email: "training_office_anurag@example.com", mobile_no: "9876505678",
@@ -86,8 +86,8 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
       headers: { "Authorization" => "Bearer #{token}" }, as: :json
 
     assert_response :success
-    assert_equal 2, response.parsed_body["count"]
-    assert_equal 2, response.parsed_body["farmer_trainings"].size
+    assert_equal 3, response.parsed_body["count"]
+    assert_equal 3, response.parsed_body["farmer_trainings"].size
   end
 
   test "training forms alias works for React Native route names" do

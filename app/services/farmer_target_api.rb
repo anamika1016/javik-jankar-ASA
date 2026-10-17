@@ -26,12 +26,8 @@ class FarmerTargetApi
       .where(module_slug: @module_slug)
       .order(created_at: :desc)
       .to_a
-    unless admin_user? || vrp_login_user?
-      ids = records.filter_map do |record|
-        record.data["jeevika_jankar_id"].presence || record.data["vrp_id"].presence || record.data["select_vrp"].presence
-      end
-      @visibility_vrps_by_id = Vrp.where(id: ids).index_by { |vrp| vrp.id.to_s } if model_ready?(:Vrp)
-    end
+    return records.map { |record| record_payload(record) } unless vrp_login_user?
+
     records
       .select { |record| visible?(record) }
       .map { |record| record_payload(record) }
