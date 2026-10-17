@@ -35,6 +35,13 @@ class Api::V1::JeevikaJankarApproverMatchingTest < ActionDispatch::IntegrationTe
       headers: auth("appr_ret"), as: :json
 
     assert_response :success
+    assert_equal 10, jj.reload.status.to_i
+    assert_equal 10, response.parsed_body.dig("jeevika_jankar", "status").to_i
+    history = ModuleRecord.where(module_slug: "vrp-approval-history").order(:created_at).select do |record|
+      record.data["vrp_id"].to_i == jj.id
+    end
+    assert_equal "Returned", history.last.data["action"]
+    assert_equal "fix", history.last.data["remarks"]
   end
 
   # Collapsing spaces must not let anyone else in.

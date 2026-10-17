@@ -62,6 +62,34 @@ class Api::V1::JeevikaJankarMastersControllerTest < ActionDispatch::IntegrationT
     assert_operator queries.size, :<=, 4, "master list must filter in SQL without per-row queries"
   end
 
+  test "mobile location master endpoints return their configured collections" do
+    ModuleRecord.create!(module_slug: "gram-panchayat-master", data: {
+      "state" => "Bihar", "district" => "Patna", "block" => "Bihta",
+      "gram_panchayat_name" => "Amhara", "gp_code" => "GP1", "status" => "Active"
+    })
+    ModuleRecord.create!(module_slug: "village-master", data: {
+      "state" => "Bihar", "district" => "Patna", "block" => "Bihta",
+      "gram_panchayat" => "Amhara", "village_name" => "Painal",
+      "village_code" => "V1", "status" => "Active"
+    })
+    ModuleRecord.create!(module_slug: "lg-directory-list", data: {
+      "state_name" => "Bihar", "district_name" => "Patna", "block_name" => "Bihta",
+      "gram_name" => "Amhara", "village_name" => "Painal"
+    })
+
+    {
+      "gram-panchayats" => "gram_panchayats",
+      "villages" => "villages",
+      "all-list" => "all_list"
+    }.each do |path, response_key|
+      get "/api/v1/jeevika-jankar-masters/#{path}", headers: @headers, as: :json
+
+      assert_response :success
+      assert_equal true, response.parsed_body["success"]
+      assert_equal 1, response.parsed_body[response_key].size
+    end
+  end
+
   test "creates jeevika jankar type without module web action" do
     assert_difference("ModuleRecord.where(module_slug: 'add-vrp-type').count", 1) do
       post "/api/v1/jeevika-jankar-types",

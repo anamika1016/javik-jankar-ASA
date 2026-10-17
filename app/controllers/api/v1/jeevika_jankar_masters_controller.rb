@@ -144,6 +144,22 @@ module Api
         version = scope.reorder(nil).pick(Arel.sql("MAX(updated_at)"), Arel.sql("MAX(id)"))
         cache_key = ["api/v1/jj-masters-v2", resource_name, include_inactive?, master_filter_values, *version]
         Rails.cache.fetch(cache_key, expires_in: 30.minutes, &loader)
+      rescue StandardError => error
+        # A cache backend/serializer mismatch or a database with older JSON
+        # support must not turn these read-only dropdown APIs into a 500. Keep
+        # the original Ruby filtering path as a production-safe fallback.
+        Rails.logger.warn(
+          "Jeevika Jankar master fast path failed for #{resource_name}: " \
+          "#{error.class}: #{error.message}"
+        )
+        fallback_master_rows(slug, fields)
+      end
+
+      def fallback_master_rows(slug, fields)
+        records = ModuleRecord.where(module_slug: slug).order(created_at: :desc).to_a
+        records.select! { |record| active_record?(record) } unless include_inactive?
+        records.select! { |record| matches_filters?(record) }
+        records.map { |record| record_payload(record, fields) }
       end
 
       def filtered_master_scope(slug)

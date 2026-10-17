@@ -378,6 +378,17 @@ module VrpAccess
     Vrp.all.select { |vrp| approval_pending_for_action?(vrp) && current_user_can_approve?(vrp) }
   end
 
+  def find_approvable_vrp(id)
+    vrp = Vrp.find_by(id: id)
+    return unless vrp
+
+    preload_vrp_access_lookup_data!([vrp])
+    preload_vrp_creator_identity_lookups!([vrp])
+    return unless approval_pending_for_action?(vrp) && current_user_can_approve?(vrp)
+
+    vrp
+  end
+
   def approval_related_vrps
     records = Vrp.all.to_a
     # approval_history_for keeps legacy numeric-ID matching in Ruby.  Populate

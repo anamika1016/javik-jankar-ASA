@@ -26,7 +26,7 @@ module Api
 
       def approve
         merge_json_body_params!
-        vrp = approvable_vrps.find { |record| record.id == params[:id].to_i }
+        vrp = find_approvable_vrp(params[:id])
 
         return render(json: not_pending_payload, status: :forbidden) unless vrp
 
@@ -37,6 +37,7 @@ module Api
 
         update_vrp_status!(vrp, next_status)
         log_approval_history(vrp, step, "Approved", remarks)
+        preload_approval_response_data!(vrp)
 
         message = if next_sequence.present?
           next_step = current_approval_step(vrp)
@@ -54,7 +55,7 @@ module Api
 
       def reject
         merge_json_body_params!
-        vrp = approvable_vrps.find { |record| record.id == params[:id].to_i }
+        vrp = find_approvable_vrp(params[:id])
 
         return render(json: not_pending_payload, status: :forbidden) unless vrp
 
@@ -62,6 +63,7 @@ module Api
         step = current_approval_step(vrp)
         update_vrp_status!(vrp, 99)
         log_approval_history(vrp, step, "Rejected", remarks)
+        preload_approval_response_data!(vrp)
 
         render json: {
           success: true,
@@ -72,7 +74,7 @@ module Api
 
       def return_record
         merge_json_body_params!
-        vrp = approvable_vrps.find { |record| record.id == params[:id].to_i }
+        vrp = find_approvable_vrp(params[:id])
 
         return render(json: not_pending_payload, status: :forbidden) unless vrp
 
@@ -80,6 +82,7 @@ module Api
         step = current_approval_step(vrp)
         update_vrp_status!(vrp, 10)
         log_approval_history(vrp, step, "Returned", remarks)
+        preload_approval_response_data!(vrp)
 
         render json: {
           success: true,
@@ -92,6 +95,12 @@ module Api
 
       def current_app_user
         current_api_user_payload
+      end
+
+      def preload_approval_response_data!(vrp)
+        preload_vrp_detail_payload_data!(vrp)
+        preload_vrp_creator_lookup_data!([vrp])
+        preload_vrp_type_labels!([vrp])
       end
 
       # "Not pending for your approval" on its own leaves nowhere to look: the
