@@ -33,6 +33,23 @@ class Api::V1::JeevikaJankarApproverMatchingTest < ActionDispatch::IntegrationTe
     assert_equal jj.id, response.parsed_body.dig("jeevika_jankar", "id")
   end
 
+  test "saved pending approver remains visible when approval master later changes" do
+    approver("Anurag", "Patel", "persisted")
+    jj = send_for_approval("persisted")
+    ModuleRecord.where(module_slug: "approval-master").delete_all
+    history = ModuleRecord.where(module_slug: "vrp-approval-history").order(:created_at).last
+    history.update!(data: history.data.merge(
+      "status" => "Pending at #{APPROVER}",
+      "remarks" => "Pending at #{APPROVER}"
+    ))
+
+    get "/api/v1/jeevika-jankars", params: { per_page: 1000 },
+      headers: auth("appr_persisted"), as: :json
+
+    assert_response :success
+    assert_includes response.parsed_body["jeevika_jankars"].map { |row| row["id"] }, jj.id
+  end
+
   test "the approver can approve when their name is saved cleanly" do
     approver("Anurag", "Patel", "clean")
     jj = send_for_approval("clean")

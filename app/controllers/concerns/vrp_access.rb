@@ -452,7 +452,27 @@ module VrpAccess
 
   def current_user_in_approval_channel?(vrp)
     approval_steps_for(vrp).any? { |step| approval_step_matches_current_user?(step) } ||
-      approval_history_for(vrp).any? { |record| approval_history_matches_current_user?(record) }
+      approval_history_for(vrp).any? { |record| approval_history_matches_current_user?(record) } ||
+      persisted_pending_approver_matches_current_user?(vrp)
+  end
+
+  # Approval-master rows can be edited after a JJ was routed. The web list can
+  # still show the saved "Pending at ..." state, while recalculating only from
+  # today's master would hide that same JJ from the app. Treat the persisted
+  # pending approver as visibility evidence; action authorization continues to
+  # use current_user_can_approve? and the live current step.
+  def persisted_pending_approver_matches_current_user?(vrp)
+    approval_history_for(vrp).reverse_each.any? do |record|
+      values = [record.data["status"], record.data["remarks"]]
+      pending_at = values.filter_map do |value|
+        value.to_s[/\bpending\s+at\s+(.+)\z/i, 1]&.strip
+      end
+      next approver_matches_current_user?(pending_at.first) if pending_at.any?
+
+      # Stop at the most recent workflow-changing row: an older pending label
+      # must not grant access after a return or rejection.
+      break false if %w[Returned Rejected].include?(record.data["action"].to_s)
+    end || false
   end
 
   def approval_step_matches_current_user?(step)
