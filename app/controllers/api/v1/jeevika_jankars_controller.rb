@@ -161,11 +161,7 @@ module Api
       end
 
       def api_visible_vrps
-        return visible_vrps if current_app_user.blank? || admin_user?
-
-        own_ids = own_vrps.pluck(:id)
-        approval_ids = approval_related_vrps.map(&:id)
-        Vrp.where(id: (own_ids + approval_ids).uniq)
+        visible_vrps
       end
 
       def find_api_visible_vrp(id)

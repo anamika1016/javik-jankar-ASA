@@ -296,7 +296,32 @@ module VrpAccess
   def visible_vrps
     return Vrp.all if current_app_user.blank? || admin_user?
 
-    own_vrps
+    mapped_vrps = cluster_mapped_vrps.to_a
+    own_records = own_vrps.to_a
+    cluster_scoped = cluster_incharge_login? || mapped_vrps.any?
+    base_vrps = cluster_scoped ? own_records + mapped_vrps : own_records
+    office_vrps = cluster_scoped ? [] : office_scoped_vrps
+    ids = (base_vrps + office_vrps + approval_related_vrps).map(&:id).uniq
+
+    Vrp.where(id: ids)
+  end
+
+  def office_scoped_vrps
+    return [] if current_app_user&.dig("record_type").to_s == "Vrp"
+
+    offices = AgreementVrpScope.user_office_keys(current_app_user)
+    return [] if offices.blank?
+
+    matching_fcoc_values = Vrp.where.not(fcoc: [nil, ""])
+      .distinct
+      .pluck(:fcoc)
+      .select do |fcoc|
+        key = AgreementVrpScope.office_key(fcoc)
+        key.present? && offices.include?(key)
+      end
+    return [] if matching_fcoc_values.blank?
+
+    Vrp.where(fcoc: matching_fcoc_values).order(:id).to_a
   end
 
   def find_visible_vrp(id)

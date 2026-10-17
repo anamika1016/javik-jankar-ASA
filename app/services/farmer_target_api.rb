@@ -423,6 +423,12 @@ class FarmerTargetApi
   end
 
   def vrp_office_visible?(vrp)
+    office_keys = @current_agreement_office_keys ||= AgreementVrpScope.user_office_keys(current_app_user)
+    vrp_keys = [vrp.fcoc, vrp.to_name].filter_map do |office|
+      AgreementVrpScope.office_key(office).presence
+    end
+    return true if office_keys.any? && (office_keys & vrp_keys).any?
+
     vrp_fcoc = visibility_values(vrp.fcoc)
     vrp_to = visibility_values(vrp.to_name)
     # The signed-in user's offices are the same for every record.

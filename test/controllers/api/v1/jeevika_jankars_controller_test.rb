@@ -153,6 +153,35 @@ class Api::V1::JeevikaJankarsControllerTest < ActionDispatch::IntegrationTest
     assert_equal vrp.id, response.parsed_body.dig("jeevika_jankar", "id")
   end
 
+  test "staff user sees unsent JJs from the same office in list and detail" do
+    staff = User.create!(
+      first_name: "Anurag", last_name: "Patel", user_name: "office_anurag",
+      email: "office_anurag@example.com", mobile_no: "9876501234", password: "secret",
+      user_type: "User", status: "Active", role: "PMC-Oprection",
+      office_name: "Bhawanipatna"
+    )
+    same_office = create_vrp(
+      name: "Office JJ", user_name: "office_jj", created_by_id: @user.id,
+      fcoc: "FCO-Bhawanipatna", status: 10
+    )
+    other_office = create_vrp(
+      name: "Other JJ", user_name: "other_office_jj", created_by_id: @user.id,
+      fcoc: "FCO-Sausar", status: 10
+    )
+    token = api_login_token(login: staff.user_name, password: "secret")
+    headers = { "Authorization" => "Bearer #{token}" }
+
+    get "/api/v1/jeevika-jankars", params: { per_page: 1000 }, headers: headers, as: :json
+
+    assert_response :success
+    ids = response.parsed_body["jeevika_jankars"].map { |row| row["id"] }
+    assert_includes ids, same_office.id
+    refute_includes ids, other_office.id
+
+    get "/api/v1/jeevika-jankars/#{same_office.id}", headers: headers, as: :json
+    assert_response :success
+  end
+
   test "show returns not found without scanning the JJ catalogue" do
     12.times { |index| create_vrp(user_name: "unrelated_jj_#{index}", created_by_id: @user.id) }
     queries = []

@@ -61,6 +61,35 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
     assert response.parsed_body["options"].key?("autofill")
   end
 
+  test "staff training list includes all records from the same office" do
+    staff = User.create!(
+      first_name: "Anurag", last_name: "Patel", user_name: "training_office_anurag",
+      email: "training_office_anurag@example.com", mobile_no: "9876505678",
+      password: "secret", user_type: "User", status: "Active",
+      role: "PMC-Oprection", office_name: "Bhawanipatna"
+    )
+    same_office_vrp = create_vrp(fcoc: "FCO-C Bhawanipatna")
+    other_office_vrp = create_vrp(fcoc: "FCO-C Sausar")
+    2.times do |index|
+      ModuleRecord.create!(module_slug: "training-form", data: {
+        "trainer_name" => "Trainer #{index}",
+        "jeevika_jankar_id" => same_office_vrp.id.to_s
+      })
+    end
+    ModuleRecord.create!(module_slug: "training-form", data: {
+      "trainer_name" => "Outside Trainer",
+      "jeevika_jankar_id" => other_office_vrp.id.to_s
+    })
+    token = api_login_token(login: staff.user_name, password: "secret")
+
+    get "/api/v1/farmer-trainings",
+      headers: { "Authorization" => "Bearer #{token}" }, as: :json
+
+    assert_response :success
+    assert_equal 2, response.parsed_body["count"]
+    assert_equal 2, response.parsed_body["farmer_trainings"].size
+  end
+
   test "training forms alias works for React Native route names" do
     ModuleRecord.create!(
       module_slug: "training-form",
