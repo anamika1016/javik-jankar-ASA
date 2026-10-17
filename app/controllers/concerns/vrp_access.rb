@@ -336,9 +336,11 @@ module VrpAccess
     labels = current_cluster_incharge_labels
     return Vrp.none if labels.blank?
 
-    Vrp.where.not(cluster_incharge: [nil, ""]).select do |vrp|
-      labels.any? { |label| cluster_label_matches?(label, vrp.cluster_incharge) }
-    end
+    matching_labels = Vrp.where.not(cluster_incharge: [nil, ""])
+      .distinct
+      .pluck(:cluster_incharge)
+      .select { |cluster_label| labels.any? { |label| cluster_label_matches?(label, cluster_label) } }
+    matching_labels.any? ? Vrp.where(cluster_incharge: matching_labels).order(:id).to_a : []
   end
 
   def current_cluster_incharge_labels

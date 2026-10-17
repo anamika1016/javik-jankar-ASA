@@ -27,7 +27,10 @@ class FarmerTargetApi
       .order(created_at: :desc)
       .to_a
     records = records.select { |record| visible?(record) } if vrp_login_user?
-    records = grouped_training_list_records(records) if @module_slug == "training-form"
+    # Web intentionally shows the newest 100 raw rows, then collapses rows
+    # belonging to the same session. On current production data that is 99
+    # visible sessions; grouping all historic rows instead produced 401.
+    records = grouped_training_list_records(records.first(100)) if @module_slug == "training-form"
     records.map { |record| record_payload(record) }
   end
 
