@@ -97,6 +97,33 @@ class Api::V1::JeevikaJankarApproverMatchingTest < ActionDispatch::IntegrationTe
     assert_equal 55, jj.reload.status.to_i
   end
 
+  test "status sequence dynamically puts JJ in Anurag queue when creator channel lookup is missing" do
+    approver("Anurag", "Patel", "sequence")
+    registrar = User.create!(
+      first_name: "Legacy", last_name: "Registrar", user_name: "legacy_sequence_registrar",
+      email: "legacy_sequence_registrar@example.com", mobile_no: "9879000333",
+      password: "secret", user_type: "User", status: "Active",
+      stakeholder: "Different Stakeholder", role: "Data Entry"
+    )
+    jj = Vrp.create!(name: "Sequence JJ", father_husband_name: "T", gender: :female,
+      date_of_birth: Date.new(2012, 10, 4), date_of_joining: Date.current,
+      aadhar_no: "123456789012", account_no: "1", bank_name: "B", branch: "Br",
+      ifsc_code: "SBIN0001234", address: "A", mobile_no: "9879000444",
+      email: "sequence_jj@example.com", experience_in_years: 1, office_detail_id: 0,
+      to_office_detail_id: 0, vrp_type_ids: [1], gram_panchayat_ids: [1], village_ids: [1],
+      is_active: true, is_deleted: false, status: 30, user_name: "sequence_jj",
+      password: "secret", created_by_id: registrar.id, created_by_type: "User")
+
+    headers = auth("appr_sequence")
+    get "/api/v1/jeevika-jankars/approvals", headers: headers, as: :json
+    assert_response :success
+    assert_includes response.parsed_body["approvals"].map { |row| row["id"] }, jj.id
+
+    get "/api/v1/jeevika-jankars", params: { per_page: 1000 }, headers: headers, as: :json
+    assert_response :success
+    assert_includes response.parsed_body["jeevika_jankars"].map { |row| row["id"] }, jj.id
+  end
+
   test "the approver can approve when their name is saved cleanly" do
     approver("Anurag", "Patel", "clean")
     jj = send_for_approval("clean")

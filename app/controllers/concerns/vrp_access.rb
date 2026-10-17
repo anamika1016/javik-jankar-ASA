@@ -296,12 +296,7 @@ module VrpAccess
   def visible_vrps
     return Vrp.all if current_app_user.blank? || admin_user?
 
-    mapped_vrps = cluster_mapped_vrps.to_a
-    own_records = own_vrps.to_a
-    cluster_scoped = cluster_incharge_login? || mapped_vrps.any?
-    base_vrps = cluster_scoped ? own_records + mapped_vrps : own_records
-    office_vrps = cluster_scoped ? [] : office_scoped_vrps
-    ids = (base_vrps + office_vrps + approval_related_vrps).map(&:id).uniq
+    ids = (own_vrps.to_a + approval_related_vrps).map(&:id).uniq
 
     Vrp.where(id: ids)
   end
@@ -397,7 +392,7 @@ module VrpAccess
     scope = records.select { |vrp| approval_visible_after_sent?(vrp) }
     return scope if admin_user?
 
-    scope.select { |vrp| pending_for_current_user?(vrp) || current_user_in_approval_channel?(vrp) }
+    scope.select { |vrp| pending_for_current_user?(vrp) }
   end
 
   def approvable_vrps
@@ -424,8 +419,7 @@ module VrpAccess
     preload_vrp_creator_identity_lookups!(records)
 
     records.select do |vrp|
-      approval_visible_after_sent?(vrp) &&
-        (pending_for_current_user?(vrp) || current_user_in_approval_channel?(vrp))
+      approval_visible_after_sent?(vrp) && pending_for_current_user?(vrp)
     end
   end
 
@@ -433,7 +427,24 @@ module VrpAccess
     step = current_approval_step(vrp)
     return true if step && approval_step_matches_current_user?(step)
 
-    persisted_pending_approver_matches_current_user?(vrp)
+    persisted_pending_approver_matches_current_user?(vrp) ||
+      status_sequence_assigned_to_current_user?(vrp)
+  end
+
+  def status_sequence_assigned_to_current_user?(vrp)
+    sequence = if vrp.status.to_i == 25
+      1
+    elsif vrp.status.to_i.between?(30, 54)
+      vrp.status.to_i - 29
+    end
+    return false unless sequence
+
+    cached_vrp_approval_master_records.any? do |record|
+      active_module_record?(record) &&
+        approval_registration_module?(record.data["module_name"]) &&
+        approval_sequence(record) == sequence &&
+        approval_step_matches_current_user?(record)
+    end
   end
 
   def approval_visible_after_sent?(vrp)
