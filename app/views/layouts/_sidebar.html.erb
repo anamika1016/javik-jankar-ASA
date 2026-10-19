@@ -37,7 +37,13 @@
         <span class="side-user-avatar"><%= current_app_user["name"].presence&.first || current_app_user["username"].presence&.first || "U" %></span>
         <span>
           <strong><%= current_app_user["name"].presence || current_app_user["username"].presence || "User" %></strong>
-          <small><%= current_app_user["user_type"].presence || "User" %></small>
+          <%# Show what the person does. user_type is only the generic account
+              kind ("User"), so it is the last resort rather than the label. %>
+          <small><%= current_app_user["role_name"].presence ||
+                     current_app_user["role"].presence ||
+                     current_app_user["stakeholder_role"].presence ||
+                     current_app_user["user_management_role"].presence ||
+                     current_app_user["user_type"].presence || "User" %></small>
         </span>
       </div>
       <% if (vrp_identity_url = current_vrp_identity_url).present? %>
