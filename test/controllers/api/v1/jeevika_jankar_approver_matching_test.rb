@@ -183,7 +183,7 @@ class Api::V1::JeevikaJankarApproverMatchingTest < ActionDispatch::IntegrationTe
     assert_includes response.parsed_body["jeevika_jankars"].map { |row| row["id"] }, jj.id
   end
 
-  test "legacy stale status does not hide a JJ assigned to Anurag from main list" do
+  test "legacy unsent JJ is not exposed only because Anurag exists in approval master" do
     approver("Anurag", "Patel", "stale_status")
     registrar = User.create!(
       first_name: "Legacy", last_name: "Registrar", user_name: "stale_status_owner",
@@ -203,7 +203,7 @@ class Api::V1::JeevikaJankarApproverMatchingTest < ActionDispatch::IntegrationTe
       headers: auth("appr_stale_status"), as: :json
 
     assert_response :success
-    assert_includes response.parsed_body["jeevika_jankars"].map { |row| row["id"] }, jj.id
+    refute_includes response.parsed_body["jeevika_jankars"].map { |row| row["id"] }, jj.id
   end
 
   test "the approver can approve when their name is saved cleanly" do
