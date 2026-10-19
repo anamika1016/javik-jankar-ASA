@@ -183,6 +183,29 @@ class Api::V1::JeevikaJankarApproverMatchingTest < ActionDispatch::IntegrationTe
     assert_includes response.parsed_body["jeevika_jankars"].map { |row| row["id"] }, jj.id
   end
 
+  test "legacy stale status does not hide a JJ assigned to Anurag from main list" do
+    approver("Anurag", "Patel", "stale_status")
+    registrar = User.create!(
+      first_name: "Legacy", last_name: "Registrar", user_name: "stale_status_owner",
+      email: "stale_status_owner@example.com", mobile_no: "9879001010", password: "secret",
+      user_type: "User", status: "Active", stakeholder: "PAPL", role: "Data Entry"
+    )
+    jj = Vrp.create!(name: "Stale Pending JJ", father_husband_name: "T", gender: :female,
+      date_of_birth: Date.new(2012, 10, 4), date_of_joining: Date.current,
+      aadhar_no: "123456789012", account_no: "1", bank_name: "B", branch: "Br",
+      ifsc_code: "SBIN0001234", address: "A", mobile_no: "9879001111",
+      email: "stale_pending_jj@example.com", experience_in_years: 1, office_detail_id: 0,
+      to_office_detail_id: 0, vrp_type_ids: [1], gram_panchayat_ids: [1], village_ids: [1],
+      is_active: true, is_deleted: false, status: 10, user_name: "stale_pending_jj",
+      password: "secret", created_by_id: registrar.id, created_by_type: "User")
+
+    get "/api/v1/jeevika-jankars", params: { per_page: 1000 },
+      headers: auth("appr_stale_status"), as: :json
+
+    assert_response :success
+    assert_includes response.parsed_body["jeevika_jankars"].map { |row| row["id"] }, jj.id
+  end
+
   test "the approver can approve when their name is saved cleanly" do
     approver("Anurag", "Patel", "clean")
     jj = send_for_approval("clean")

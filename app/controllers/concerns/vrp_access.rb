@@ -426,8 +426,11 @@ module VrpAccess
     preload_vrp_creator_identity_lookups!(records)
 
     records.select do |vrp|
-      approval_visible_after_sent?(vrp) &&
-        (current_user_in_approval_channel?(vrp) || pending_for_current_user?(vrp))
+      # Web visibility includes a JJ assigned through the logged-in user's
+      # approval channel even when legacy rows have not kept status/history in
+      # sync. Do not let that stale outer gate hide a record which is visibly
+      # pending with this approver. Action authorization remains stricter.
+      current_user_in_approval_channel?(vrp) || pending_for_current_user?(vrp)
     end
   end
 
