@@ -426,7 +426,8 @@ module VrpAccess
     preload_vrp_creator_identity_lookups!(records)
 
     records.select do |vrp|
-      approval_visible_after_sent?(vrp) && current_user_in_approval_channel?(vrp)
+      approval_visible_after_sent?(vrp) &&
+        (current_user_in_approval_channel?(vrp) || pending_for_current_user?(vrp))
     end
   end
 
