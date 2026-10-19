@@ -436,7 +436,19 @@ module VrpAccess
     return true if step && approval_step_matches_current_user?(step)
 
     persisted_pending_approver_matches_current_user?(vrp) ||
-      status_sequence_assigned_to_current_user?(vrp)
+      status_sequence_assigned_to_current_user?(vrp) ||
+      pending_record_assigned_to_current_approver?(vrp)
+  end
+
+  def pending_record_assigned_to_current_approver?(vrp)
+    return false unless vrp.status.to_i.between?(25, 54)
+    return false if approval_complete?(vrp) || approval_rejected?(vrp)
+
+    cached_vrp_approval_master_records.any? do |record|
+      active_module_record?(record) &&
+        approval_registration_module?(record.data["module_name"]) &&
+        approval_step_matches_current_user?(record)
+    end
   end
 
   def status_sequence_assigned_to_current_user?(vrp)

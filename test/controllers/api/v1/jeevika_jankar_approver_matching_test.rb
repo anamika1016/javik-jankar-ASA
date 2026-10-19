@@ -148,6 +148,41 @@ class Api::V1::JeevikaJankarApproverMatchingTest < ActionDispatch::IntegrationTe
     assert_includes response.parsed_body["jeevika_jankars"].map { |row| row["id"] }, jj.id
   end
 
+  test "status 25 record reaches assigned approver when configured level is not first" do
+    User.create!(
+      first_name: "Anurag", last_name: "Patel", user_name: "appr_later_level",
+      email: "appr_later_level@example.com", mobile_no: "9879000777", password: "secret",
+      user_type: "User", status: "Active", stakeholder: "PAPL", role: "PMC-Oprection"
+    )
+    ModuleRecord.create!(module_slug: "approval-master", data: {
+      "module_name" => "Jeevika Jankar Registration", "stakeholder_name" => "PAPL",
+      "approval_level" => "Second Approval", "approver_approved_by" => APPROVER,
+      "status" => "Active"
+    })
+    registrar = User.create!(
+      first_name: "Legacy", last_name: "Owner", user_name: "later_level_owner",
+      email: "later_level_owner@example.com", mobile_no: "9879000888", password: "secret",
+      user_type: "User", status: "Active", stakeholder: "Legacy", role: "Data Entry"
+    )
+    jj = Vrp.create!(name: "Later Level JJ", father_husband_name: "T", gender: :female,
+      date_of_birth: Date.new(2012, 10, 4), date_of_joining: Date.current,
+      aadhar_no: "123456789012", account_no: "1", bank_name: "B", branch: "Br",
+      ifsc_code: "SBIN0001234", address: "A", mobile_no: "9879000999",
+      email: "later_level_jj@example.com", experience_in_years: 1, office_detail_id: 0,
+      to_office_detail_id: 0, vrp_type_ids: [1], gram_panchayat_ids: [1], village_ids: [1],
+      is_active: true, is_deleted: false, status: 25, user_name: "later_level_jj",
+      password: "secret", created_by_id: registrar.id, created_by_type: "User")
+    ModuleRecord.create!(module_slug: "vrp-approval-history", data: {
+      "vrp_id" => jj.id, "action" => "Sent for Approval", "status" => "Pending"
+    })
+
+    get "/api/v1/jeevika-jankars", params: { per_page: 1000 },
+      headers: auth("appr_later_level"), as: :json
+
+    assert_response :success
+    assert_includes response.parsed_body["jeevika_jankars"].map { |row| row["id"] }, jj.id
+  end
+
   test "the approver can approve when their name is saved cleanly" do
     approver("Anurag", "Patel", "clean")
     jj = send_for_approval("clean")
