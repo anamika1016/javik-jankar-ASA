@@ -6,7 +6,9 @@ module Api
       BILL_SLUG = "jeevika-jankar-bill-process".freeze
 
       def bills
+        preload_bill_list!(bill_records)
         records = bill_records.select { |record| calculator.send(:jeevika_jankar_bill_record_visible?, record) }
+        scope_bill_history_to!(records)
         all_rows = records.map { |record| bill_payload_for(record) }
         rows = filter_month(all_rows)
 
@@ -386,6 +388,18 @@ module Api
         @bill_records ||= ModuleRecord.where(module_slug: BILL_SLUG).order(created_at: :desc, id: :desc).to_a
       end
 
+      # Keep the API list on the same preloaded path as the web bill list. Without
+      # this, every row can resolve its VRP/user and approval history separately.
+      def preload_bill_list!(records)
+        calculator.send(:preload_bill_list_identities!, records)
+      end
+
+      def scope_bill_history_to!(records)
+        calculator.instance_variable_set(:@jeevika_bill_visible_record_ids, records.map { |record| record.id.to_s })
+        calculator.remove_instance_variable(:@jeevika_bill_approval_history_by_bill_id) if
+          calculator.instance_variable_defined?(:@jeevika_bill_approval_history_by_bill_id)
+      end
+
       def payment_list_user?
         calculator.send(:jeevika_jankar_payment_list_user?)
       end
@@ -410,7 +424,7 @@ module Api
       end
 
       def bill_payload_for(record)
-        data = record.data
+        data = record.data.is_a?(Hash) ? record.data : {}
         summary = calculator.send(:jeevika_bill_summary, record)
         history = calculator.send(:jeevika_bill_approval_history, record)
         vrp_label = data["select_vrp_name"].presence || calculator.send(:jeevika_jankar_vrp_label, data["select_vrp"])
