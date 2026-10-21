@@ -1363,7 +1363,11 @@ module VrpAccess
       .where(module_slug: "user-hierarchy-mapping")
       .order(updated_at: :desc)
       .select { |record| active_module_record?(record) }
-      .select { |record| admin_user? || hierarchy_level_1_matches_current_user?(record.data["level_1_user"]) }
+      .select do |record|
+        admin_user? ||
+          hierarchy_level_1_matches_current_user?(record.data["level_1_user"]) ||
+          hierarchy_cluster_incharges_match_current_office?(record)
+      end
       .flat_map { |record| hierarchy_cluster_incharge_labels_for_record(record) }
       .compact_blank
       .uniq
@@ -1396,6 +1400,23 @@ module VrpAccess
 
     current_hierarchy_user_labels.any? do |label|
       (stored_labels & hierarchy_label_match_values(label)).any?
+    end
+  end
+
+  # FCOC logins can be office-based while level_1_user stores a person's name.
+  # Fall back to the mapped Cluster Incharge's FCOC posting, keeping the result
+  # strictly scoped to the current office.
+  def hierarchy_cluster_incharges_match_current_office?(record)
+    current_office_key = AgreementVrpScope.office_key(current_user_office_category)
+    return false if current_office_key.blank?
+
+    hierarchy_cluster_incharge_labels_for_record(record).any? do |label|
+      mapping = cluster_mapping_from_hierarchy_label(label)
+      next false unless mapping
+
+      enriched = enrich_cluster_mapping_from_user(mapping)
+      mapped_office = enriched[:office_category].presence || enriched[:parent_office]
+      AgreementVrpScope.office_key(mapped_office) == current_office_key
     end
   end
 

@@ -1654,7 +1654,11 @@ class VrpsController < ApplicationController
       .where(module_slug: "user-hierarchy-mapping")
       .order(updated_at: :desc)
       .select { |record| active_module_record?(record) }
-      .select { |record| admin_user? || hierarchy_level_1_matches_current_user?(record.data["level_1_user"]) }
+      .select do |record|
+        admin_user? ||
+          hierarchy_level_1_matches_current_user?(record.data["level_1_user"]) ||
+          hierarchy_cluster_incharges_match_current_office?(record)
+      end
       .flat_map { |record| hierarchy_cluster_incharge_labels_for_record(record) }
       .compact_blank
       .uniq
@@ -1687,6 +1691,25 @@ class VrpsController < ApplicationController
 
     current_hierarchy_user_labels.any? do |label|
       (stored_labels & hierarchy_label_match_values(label)).any?
+    end
+  end
+
+  # Some FCOC accounts are saved with an office-based login (for example
+  # FCO-Bhawanipatna), while the hierarchy's level-1 value contains a person's
+  # name. In that case identity matching cannot find the hierarchy even though
+  # its Cluster Incharges are posted to the same FCOC. Use the CC posting as a
+  # scoped fallback so an FCOC sees its own CCs, never CCs from another office.
+  def hierarchy_cluster_incharges_match_current_office?(record)
+    current_office_key = AgreementVrpScope.office_key(current_user_office_category)
+    return false if current_office_key.blank?
+
+    hierarchy_cluster_incharge_labels_for_record(record).any? do |label|
+      mapping = cluster_mapping_from_hierarchy_label(label)
+      next false unless mapping
+
+      enriched = enrich_cluster_mapping_from_user(mapping)
+      mapped_office = enriched[:office_category].presence || enriched[:parent_office]
+      AgreementVrpScope.office_key(mapped_office) == current_office_key
     end
   end
 

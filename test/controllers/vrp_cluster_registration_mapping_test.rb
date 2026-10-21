@@ -40,6 +40,28 @@ class VrpClusterRegistrationMappingTest < ActiveSupport::TestCase
 end
 
 class VrpClusterRegistrationFormTest < ActionDispatch::IntegrationTest
+  test "FCOC login sees cluster incharges posted to its office when hierarchy level-one name differs" do
+    fcoc = User.create!(first_name: "Dibya", last_name: "Ranjan Sethi", user_name: "FCO-Bhawanipatna",
+      email: "bhawanipatna-fcoc@example.test", password: "secret", role: "FCOC", status: "Active",
+      office_name: "FCO-Bhawanipatna", sub_office_name: "TO-Bhawanipatna")
+    cc = User.create!(first_name: "Bhawanipatna", last_name: "Coordinator", user_name: "bhawanipatna_cc",
+      email: "bhawanipatna-cc@example.test", password: "secret", role: "Cluster Incharge", status: "Active",
+      office_name: "FCO-Bhawanipatna", sub_office_name: "TO-Bhawanipatna")
+    ModuleRecord.create!(module_slug: "user-hierarchy-mapping", data: {
+      "status" => "Active", "level_1_user" => "Different FCO Person (FCOC)",
+      "level_2_mappings" => [{ "level_2_user" => "Bhawanipatna Coordinator (Cluster Incharge)", "level_3_users" => [] }]
+    })
+
+    post login_path, params: { login: fcoc.user_name, password: "secret" }
+    get new_vrp_path
+
+    assert_response :success
+    shell = Nokogiri::HTML(response.body).at_css("[data-vrp-office-form]")
+    mappings = JSON.parse(shell["data-cluster-users"])
+    assert mappings.any? { |mapping| mapping["value"] == cc.full_name }
+    assert_select "[data-vrp-cluster-incharge] option", text: /Bhawanipatna Coordinator/
+  end
+
   test "mapped Petlawad CC reaches the registration form with their own FCO and TO" do
     admin = User.create!(first_name: "Registration", last_name: "Admin", user_name: "cc_form_admin",
       email: "cc-form-admin@example.test", password: "secret", user_type: "admin", status: "Active")
