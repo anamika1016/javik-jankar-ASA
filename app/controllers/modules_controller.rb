@@ -9705,7 +9705,9 @@ class ModulesController < ApplicationController
         pending = revision && revision.data["status"] == "Pending" ? 0 : 1
         [pending, -(record.created_at || Time.at(0)).to_i, -record.id.to_i]
       }
-      return limit_training_list ? sorted.first(100) : sorted
+      visible_records = limit_training_list ? sorted.first(100) : sorted
+      preload_training_record_trainer_identities!(visible_records)
+      return visible_records
     end
     return records.sort_by { |record| jeevika_bill_list_sort_value(record) } if @slug == "jeevika-jankar-bill-list"
 
@@ -10149,6 +10151,7 @@ class ModulesController < ApplicationController
   def lg_directory_rows
     return [] unless model_ready?(:ModuleRecord)
 
+    preload_lg_directory_records!
     rows = []
     rows.concat(lg_rows_from_records("village-master", village: "village_name"))
     rows.concat(lg_rows_from_records("gram-panchayat-master", gram_panchayat: "gram_panchayat_name"))
@@ -10181,16 +10184,28 @@ class ModulesController < ApplicationController
   end
 
   def lg_rows_from_records(module_slug, aliases)
-    ModuleRecord
-      .where(module_slug: module_slug)
-      .order(created_at: :desc)
-      .map { |record| lg_directory_row_from_record(record, aliases) }
+    preload_lg_directory_records!
+    @lg_directory_records_by_slug.fetch(module_slug, [])
+      .map { |record| lg_directory_row_from_record(record, aliases, source_slug: module_slug) }
   end
 
-  def lg_directory_row_from_record(record, aliases = {})
+  def preload_lg_directory_records!
+    return if defined?(@lg_directory_records_by_slug)
+
+    slugs = %w[
+      village-master gram-panchayat-master block-master district-master
+      state-master lg-directory-list
+    ]
+    @lg_directory_records_by_slug = slugs.index_with { [] }
+    ModuleRecord.where(module_slug: slugs).order(created_at: :desc).pluck(:module_slug, :id, :data).each do |slug, id, data|
+      @lg_directory_records_by_slug[slug] << LocationRecord.new(id, data)
+    end
+  end
+
+  def lg_directory_row_from_record(record, aliases = {}, source_slug: nil)
     normalize_lg_gram_fields(
       record_id: record.id,
-      source_slug: record.module_slug,
+      source_slug: source_slug || record.module_slug,
       state: record.data["state"].presence || record.data[aliases[:state].to_s].presence,
       state_code: record.data["state_code"].presence || record.data[aliases[:state_code].to_s].presence,
       district: record.data["district"].presence || record.data[aliases[:district].to_s].presence,
@@ -13771,6 +13786,49 @@ class ModulesController < ApplicationController
       vrp ||= current_vrp_record if vrp_login_user?
 
       {
+        name: vrp&.name.presence || vrp&.user_name.presence || data["jeevika_jankar_name"].presence || data["trainer_name"],
+        contact: vrp&.mobile_no.presence || data["jeevika_jankar_contact"].presence || data["trainer_contact"]
+      }
+    end
+  end
+
+  def preload_training_record_trainer_identities!(records)
+    records = Array(records)
+    return if records.empty? || !model_ready?(:TargetMapping)
+
+    @training_record_trainer_identities ||= {}
+    missing_records = records.reject { |record| @training_record_trainer_identities.key?(record.id) }
+    return if missing_records.empty?
+
+    target_ids_by_record = missing_records.to_h do |record|
+      ids = Array(record.data["target_mapping_ids"].presence || record.data["target_mapping_id"])
+        .flat_map { |value| value.to_s.split(",") }.map(&:strip).compact_blank
+      [record.id, ids]
+    end
+    target_ids = target_ids_by_record.values.flatten.uniq
+    targets_by_id = TargetMapping.includes(:vrp).where(id: target_ids).index_by { |target| target.id.to_s }
+
+    selected_targets = missing_records.to_h do |record|
+      # ActiveRecord's previous `where(id: ids).first` selects the lowest primary
+      # key when several saved IDs exist. Preserve that result without N queries.
+      target = target_ids_by_record.fetch(record.id).filter_map { |id| targets_by_id[id] }.min_by(&:id)
+      [record.id, target]
+    end
+    fallback_vrp_ids = missing_records.filter_map do |record|
+      target = selected_targets[record.id]
+      next if target&.vrp.present?
+
+      target&.vrp_id.presence || record.data["jeevika_jankar_id"].presence || record.data["vrp_id"].presence
+    end.map(&:to_s).uniq
+    fallback_vrps = model_ready?(:Vrp) ? Vrp.where(id: fallback_vrp_ids).index_by { |vrp| vrp.id.to_s } : {}
+
+    missing_records.each do |record|
+      data = record.data
+      target = selected_targets[record.id]
+      vrp_id = target&.vrp_id.presence || data["jeevika_jankar_id"].presence || data["vrp_id"].presence
+      vrp = target&.vrp || fallback_vrps[vrp_id.to_s]
+      vrp ||= current_vrp_record if vrp_login_user?
+      @training_record_trainer_identities[record.id] = {
         name: vrp&.name.presence || vrp&.user_name.presence || data["jeevika_jankar_name"].presence || data["trainer_name"],
         contact: vrp&.mobile_no.presence || data["jeevika_jankar_contact"].presence || data["trainer_contact"]
       }

@@ -151,6 +151,47 @@ class ModuleReadPerformanceTest < ActiveSupport::TestCase
     vrp
   end
 
+  test "training list batches trainer identities with identical target and fallback precedence" do
+    @controller.define_singleton_method(:vrp_login_user?) { false }
+    first_vrp = performance_vrp("9000000001")
+    second_vrp = performance_vrp("9000000002")
+    fallback_vrp = performance_vrp("9000000003")
+    first_target = TargetMapping.create!(vrp: first_vrp, fco_id: "FCO", ics_id: "ICS", village_id: "Village",
+      month_name: "October", main_activity_name: "Training", activity_name: "First", target_quantity: 1)
+    second_target = TargetMapping.create!(vrp: second_vrp, fco_id: "FCO", ics_id: "ICS", village_id: "Village",
+      month_name: "October", main_activity_name: "Training", activity_name: "Second", target_quantity: 1)
+    records = [
+      ModuleRecord.create!(module_slug: "training-form", data: {
+        "target_mapping_ids" => [second_target.id.to_s, first_target.id.to_s], "trainer_name" => "Stale"
+      }),
+      ModuleRecord.create!(module_slug: "training-form", data: {
+        "target_mapping_id" => "missing", "jeevika_jankar_id" => fallback_vrp.id.to_s, "trainer_name" => "Stale"
+      }),
+      ModuleRecord.create!(module_slug: "training-form", data: {
+        "trainer_name" => "Saved trainer", "trainer_contact" => "Saved contact"
+      })
+    ]
+    queries = []
+    subscriber = lambda do |*args|
+      sql = args.last[:sql].to_s
+      queries << sql if sql.start_with?("SELECT") && (sql.include?('"target_mappings"') || sql.include?('"vrps"'))
+    end
+
+    identities = nil
+    ActiveSupport::Notifications.subscribed(subscriber, "sql.active_record") do
+      3.times { @controller.send(:preload_training_record_trainer_identities!, records) }
+      identities = 3.times.map { records.map { |record| @controller.send(:training_record_trainer_identity, record) } }
+    end
+
+    expected = [
+      { name: first_vrp.name, contact: first_vrp.mobile_no },
+      { name: fallback_vrp.name, contact: fallback_vrp.mobile_no },
+      { name: "Saved trainer", contact: "Saved contact" }
+    ]
+    identities.each { |result| assert_equal expected, result }
+    assert_equal 3, queries.size
+  end
+
   test "projected dropdowns preserve ordered values, JSON types, aliases and active filters" do
     payloads = [
       { "sample" => "First", "sample_name" => ["A", "B"], "sample_code" => 0 },
@@ -208,6 +249,35 @@ class ModuleReadPerformanceTest < ActiveSupport::TestCase
     rows.concat([{ state: "State" }, { state: "state ", village: "Village" }, {}, { state: "Unique" }])
     expected = rows.reject { |row| @controller.send(:lg_directory_prefix_covered?, row, rows) }
     assert_equal expected, @controller.send(:compact_lg_directory_rows, rows)
+  end
+
+  test "LG directory reads all source modules once while preserving rows and newest-first order" do
+    older = ModuleRecord.create!(module_slug: "state-master", data: { "state_name" => "Older State" }, created_at: 2.days.ago)
+    newer = ModuleRecord.create!(module_slug: "state-master", data: { "state_name" => "Newer State" }, created_at: 1.day.ago)
+    village = ModuleRecord.create!(module_slug: "village-master", data: {
+      "state" => "Newer State", "district" => "District", "block" => "Block",
+      "gram_panchayat" => "GP", "village_name" => "Village", "status" => "Inactive"
+    })
+    queries = []
+    subscriber = lambda do |*args|
+      sql = args.last[:sql].to_s
+      queries << sql if sql.start_with?("SELECT") && sql.include?('"module_records"')
+    end
+
+    state_rows = nil
+    all_rows = nil
+    ActiveSupport::Notifications.subscribed(subscriber, "sql.active_record") do
+      3.times do
+        state_rows = @controller.send(:lg_rows_from_records, "state-master", state: "state_name")
+        all_rows = @controller.send(:lg_directory_rows)
+      end
+    end
+
+    assert_operator state_rows.index { |row| row[:record_id] == newer.id }, :<,
+      state_rows.index { |row| row[:record_id] == older.id }
+    assert_includes all_rows.map { |row| row[:record_id] }, village.id
+    assert_equal "Inactive", all_rows.find { |row| row[:record_id] == village.id }[:status]
+    assert_equal 1, queries.size
   end
 
   test "dashboard batches FCO counts while preserving aliases, distinct JJ and month matching" do

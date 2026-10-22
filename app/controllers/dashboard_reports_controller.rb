@@ -819,6 +819,7 @@ class DashboardReportsController < ModulesController
     ]
     fco_names = dashboard_fco_names
     gender_month = (params.key?(:month) ? dashboard_filter_param(:month) : dashboard_filter_param(:training_month).presence || DashboardDefaults.month)
+    preload_dashboard_fco_active_vrp_records(fco_names, gender_month, vrps)
     gender_items = fco_names.flat_map do |fco_name|
       # Same JJ set as the FCO-wise JJ Requirement "Active" box, split by gender.
       fco_vrps = dashboard_fco_active_vrp_records(fco_name, gender_month, vrps)
@@ -2565,16 +2566,35 @@ class DashboardReportsController < ModulesController
     @dashboard_fco_active_vrp_records_cache ||= {}
     key = [AgreementVrpScope.office_key(fco), month, population.map(&:id).sort]
     return @dashboard_fco_active_vrp_records_cache[key] if @dashboard_fco_active_vrp_records_cache.key?(key)
+
+    preload_dashboard_fco_active_vrp_records([fco], month, population)
+    @dashboard_fco_active_vrp_records_cache.fetch(key)
+  end
+
+  def preload_dashboard_fco_active_vrp_records(fcos, month = nil, vrps = nil)
+    population = Array(vrps || dashboard_vrps)
+    population_ids = population.map(&:id).sort
+    @dashboard_fco_active_vrp_records_cache ||= {}
+    missing = Array(fcos).compact_blank.uniq.reject do |fco|
+      @dashboard_fco_active_vrp_records_cache.key?([AgreementVrpScope.office_key(fco), month, population_ids])
+    end
+    return if missing.empty?
+
     scope = dashboard_visible_target_scope
     scope = scope.where("LOWER(BTRIM(month_name)) = ?", month.to_s.downcase) if month.present? && !dashboard_all_filter_value?(month)
-    values = training_fcoc_filter_values(fco)
-    scope = scope.where("LOWER(BTRIM(fco_id)) IN (:values) OR LOWER(BTRIM(fco_name)) IN (:values)", values: values)
-    ids = scope.distinct.pluck(:vrp_id)
-    ids = ids.to_set
-    @dashboard_fco_active_vrp_records_cache[key] = if ids.any?
-      population.select { |vrp| ids.include?(vrp.id) }
-    else
-      population.select { |vrp| training_fcoc_text_matches?(vrp.fcoc, fco) && dashboard_vrp_active_for_requirement?(vrp) }
+    target_rows = scope.where.not(vrp_id: nil).distinct.pluck(:vrp_id, :fco_id, :fco_name)
+
+    missing.each do |fco|
+      values = training_fcoc_filter_values(fco).to_set
+      ids = target_rows.filter_map do |vrp_id, fco_id, fco_name|
+        vrp_id if values.include?(normalize_dashboard_text(fco_id)) || values.include?(normalize_dashboard_text(fco_name))
+      end.to_set
+      key = [AgreementVrpScope.office_key(fco), month, population_ids]
+      @dashboard_fco_active_vrp_records_cache[key] = if ids.any?
+        population.select { |vrp| ids.include?(vrp.id) }
+      else
+        population.select { |vrp| training_fcoc_text_matches?(vrp.fcoc, fco) && dashboard_vrp_active_for_requirement?(vrp) }
+      end
     end
   end
 

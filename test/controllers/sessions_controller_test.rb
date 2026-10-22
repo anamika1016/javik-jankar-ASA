@@ -1,6 +1,16 @@
 require "test_helper"
 
 class SessionsControllerTest < ActionDispatch::IntegrationTest
+  test "login page uses normal navigation while preserving the login form contract" do
+    get login_path
+
+    assert_response :success
+    assert_select "form.login-form[action='#{login_path}'][method='post'][data-turbo='false']"
+    assert_select "input[name='login'][required]"
+    assert_select "input[name='password'][required]"
+    assert_select "input[type='submit'][value='GO!']"
+  end
+
   test "vrp must accept agreement on first login" do
     village = ModuleRecord.create!(
       module_slug: "village-master",

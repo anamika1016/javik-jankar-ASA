@@ -435,4 +435,34 @@ class DashboardReportsControllerTest < ActionDispatch::IntegrationTest
     refute_includes xlsx_text, "Outside JJ"
   end
 
+  test "FCO active JJ records are batch loaded once without changing aliases or empty results" do
+    controller = calculator(@admin)
+    population = [@mine, @same_office, @other]
+    queries = []
+    subscriber = lambda do |_name, _start, _finish, _id, payload|
+      sql = payload[:sql].to_s
+      queries << sql if sql.include?("target_mappings") && sql.match?(/SELECT DISTINCT.*vrp_id/im)
+    end
+
+    ActiveSupport::Notifications.subscribed(subscriber, "sql.active_record") do
+      3.times do
+        controller.send(
+          :preload_dashboard_fco_active_vrp_records,
+          ["Bhawanipatna", "995", "New Office", "Absent"],
+          nil,
+          population
+        )
+      end
+
+      3.times do
+        assert_equal [@mine.id], controller.send(:dashboard_fco_active_vrp_records, "Bhawanipatna", nil, population).map(&:id)
+        assert_equal [@mine.id], controller.send(:dashboard_fco_active_vrp_records, "995", nil, population).map(&:id)
+        assert_equal [@other.id], controller.send(:dashboard_fco_active_vrp_records, "New Office", nil, population).map(&:id)
+        assert_empty controller.send(:dashboard_fco_active_vrp_records, "Absent", nil, population)
+      end
+    end
+
+    assert_equal 1, queries.size
+  end
+
 end

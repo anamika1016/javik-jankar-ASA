@@ -2043,6 +2043,12 @@ class VrpsController < ApplicationController
   end
 
   def active_records_for_location(module_slug)
+    slugs = Array(module_slug)
+    if slugs.length > 1 && defined?(@vrp_form_records_by_slug) && slugs.all? { |slug| @vrp_form_records_by_slug.key?(slug) }
+      return slugs.flat_map { |slug| @vrp_form_records_by_slug.fetch(slug) }
+        .select { |record| active_module_record?(record) }
+    end
+
     vrp_form_records_for(module_slug)
       .select { |record| active_module_record?(record) }
   end
