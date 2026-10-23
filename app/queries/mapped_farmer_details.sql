@@ -22,7 +22,8 @@ WITH august_any_mapping AS (
     FROM public.target_mappings t
 
     CROSS JOIN LATERAL jsonb_array_elements_text(
-        t.afl_ids::jsonb
+        CASE WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array'
+            THEN t.afl_ids::jsonb ELSE '[]'::jsonb END
     ) AS v(afl_id)
 
     WHERE %{target_month_filter}
@@ -43,7 +44,8 @@ august_training_mapping AS (
     FROM public.target_mappings t
 
     CROSS JOIN LATERAL jsonb_array_elements_text(
-        t.afl_ids::jsonb
+        CASE WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array'
+            THEN t.afl_ids::jsonb ELSE '[]'::jsonb END
     ) AS v(afl_id)
 
     WHERE %{target_month_filter}
@@ -68,7 +70,8 @@ training_records AS MATERIALIZED (
     -- Extract record fields once, before expanding the selected farmer array.
     SELECT
         NULLIF(TRIM(mr.data::jsonb ->> 'main_activity_type'), '') AS main_activity_type,
-        COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb) AS farmer_ids,
+        CASE WHEN jsonb_typeof(mr.data::jsonb -> 'selected_farmer_ids') = 'array'
+            THEN mr.data::jsonb -> 'selected_farmer_ids' ELSE '[]'::jsonb END AS farmer_ids,
         NULLIF(BTRIM(mr.data::jsonb ->> 'training_register_upload'), '') AS training_register_urls,
         NULLIF(BTRIM(mr.data::jsonb ->> 'training_photo_upload_with_geo_tag'), '') AS training_photo_urls
     FROM public.module_records mr

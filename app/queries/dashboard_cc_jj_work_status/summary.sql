@@ -39,7 +39,8 @@ farmer_vrp_mapping AS (
     FROM public.target_mappings t
 
     CROSS JOIN LATERAL jsonb_array_elements_text(
-        t.afl_ids::jsonb
+        CASE WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array'
+            THEN t.afl_ids::jsonb ELSE '[]'::jsonb END
     ) AS v(afl_id)
 
     LEFT JOIN vrp_details vd

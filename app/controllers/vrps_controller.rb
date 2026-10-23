@@ -2042,14 +2042,17 @@ class VrpsController < ApplicationController
     end
   end
 
+  # Asked for several masters at once, the records come back grouped by slug in
+  # the order they were asked for. That order is load bearing:
+  # gram_panchayat_name_lookup folds these into a code -> label hash where the
+  # last write wins, so a code carried by two masters resolves to whichever was
+  # read last. Going slug by slug keeps that answer the same whether the batch
+  # preload has already run or not - previously the preloaded path grouped by
+  # slug while the fallback interleaved every slug by created_at, and the two
+  # disagreed. Each slug is still memoized, so a warm preload costs no queries.
   def active_records_for_location(module_slug)
-    slugs = Array(module_slug)
-    if slugs.length > 1 && defined?(@vrp_form_records_by_slug) && slugs.all? { |slug| @vrp_form_records_by_slug.key?(slug) }
-      return slugs.flat_map { |slug| @vrp_form_records_by_slug.fetch(slug) }
-        .select { |record| active_module_record?(record) }
-    end
-
-    vrp_form_records_for(module_slug)
+    Array(module_slug)
+      .flat_map { |slug| vrp_form_records_for(slug) }
       .select { |record| active_module_record?(record) }
   end
 
@@ -2093,7 +2096,12 @@ class VrpsController < ApplicationController
 
   def location_option_data_projection
     quoted_keys = LOCATION_OPTION_DATA_KEYS.map { |key| ActiveRecord::Base.connection.quote(key) }.join(", ")
-    "(SELECT COALESCE(jsonb_object_agg(key, value), '{}'::jsonb)::text FROM jsonb_each(data::jsonb) WHERE key IN (#{quoted_keys}))"
+    # jsonb_each raises on a non-object, and the active-record filters ahead of
+    # it use ->>, which tolerates a scalar - so a single malformed data value
+    # would 500 the whole Jeevika Jankar form. Guarded the way the rest of the
+    # app guards its set returning JSON calls; objects behave exactly as before.
+    data = "CASE WHEN jsonb_typeof(data::jsonb) = 'object' THEN data::jsonb ELSE '{}'::jsonb END"
+    "(SELECT COALESCE(jsonb_object_agg(key, value), '{}'::jsonb)::text FROM jsonb_each(#{data}) WHERE key IN (#{quoted_keys}))"
   end
 
   def location_row(record, values)

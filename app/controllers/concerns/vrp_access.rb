@@ -173,18 +173,41 @@ module VrpAccess
       .reject { |mobile| @cached_vrp_creator_users_by.key?([[:mobile_no, mobile]]) }
 
     if model_ready?(:User)
-      by_email = emails.any? ? User.where(email: emails).index_by(&:email) : {}
+      by_email = emails.any? ? lowest_id_user_lookup(User.where(email: emails)) { |user| user.email } : {}
       emails.each { |email| @cached_vrp_creator_users_by[[[:email, email]]] = by_email[email] }
 
-      by_mobile = mobiles.any? ? User.where(mobile_no: mobiles).index_by(&:mobile_no) : {}
+      by_mobile = mobiles.any? ? lowest_id_user_lookup(User.where(mobile_no: mobiles)) { |user| user.mobile_no } : {}
       mobiles.each { |mobile| @cached_vrp_creator_users_by[[[:mobile_no, mobile]]] = by_mobile[mobile] }
 
       keys = emails.map { |email| email.to_s.strip.downcase }.compact_blank.uniq
         .reject { |key| @registered_by_user_email_lookup.key?(key) }
-      lowered = keys.any? ? User.where("LOWER(email) IN (?)", keys).index_by { |user| user.email.to_s.strip.downcase } : {}
+      lowered = if keys.any?
+        lowest_id_user_lookup(User.where("LOWER(email) IN (?)", keys)) { |user| user.email.to_s.strip.downcase }
+      else
+        {}
+      end
       keys.each { |key| @registered_by_user_email_lookup[key] = lowered[key] }
     end
 
+  end
+
+  # users.email and users.mobile_no carry no unique index, so one value can
+  # match several accounts. These batches stand in for User.find_by, which
+  # answers with the lowest id, and the account chosen here supplies the
+  # "registered by" label and the approval matching - so the lowest id has to
+  # win rather than whichever row the scan happened to return last.
+  # Only the winner among duplicates changes here. The set of keys stays exactly
+  # what index_by produced, blanks included: registered_by_user looks an email
+  # up without first checking it is present, so dropping a blank key would send
+  # a Jeevika Jankar with no email down a different branch than before.
+  def lowest_id_user_lookup(users)
+    ordered = users.respond_to?(:order) ? users.order(:id) : users.sort_by(&:id)
+    ordered.each_with_object({}) do |user, lookup|
+      key = yield(user)
+      next if lookup.key?(key)
+
+      lookup[key] = user
+    end
   end
 
   def preload_vrp_access_lookup_data!(vrps)
@@ -252,7 +275,11 @@ module VrpAccess
 
     @preloaded_creator_users_by_id = users.index_by(&:id)
     @preloaded_creator_records_by_id = records.index_by(&:id)
-    @preloaded_creator_users_by_email = users.index_by { |user| user.email.to_s.strip.downcase }
+    # An email can belong to more than one account, and the per-record lookup
+    # this replaces resolves it with find_by - the lowest id. The records index
+    # below keeps its own rule on purpose: it is ordered newest first and
+    # reversed so the newest "new-user" row wins.
+    @preloaded_creator_users_by_email = lowest_id_user_lookup(users) { |user| user.email.to_s.strip.downcase }
     @preloaded_creator_records_by_email = records.reverse_each.to_a.index_by { |record| record.data["email"].to_s.strip.downcase }
     # Which emails this actually asked the database about, so that a miss can be
     # read as "nobody registered them" instead of sending the same question again

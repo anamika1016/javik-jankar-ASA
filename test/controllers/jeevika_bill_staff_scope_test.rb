@@ -40,6 +40,42 @@ class JeevikaBillStaffScopeTest < ActiveSupport::TestCase
     assert_not controller.send(:jeevika_jankar_bill_record_visible?, bill(@mapped))
   end
 
+  test "bill channel follows the live mapped cluster incharge rather than the creator or viewer" do
+    owner = User.create!(user_name: "bill_channel_owner", first_name: "Akash", last_name: "Raut",
+      password: "secret", stakeholder: "ASA", role: "Cluster Incharge", status: "Active")
+    @mapped.update_columns(cluster_incharge: "Akash Raut (Cluster Incharge)")
+    record = bill(@mapped)
+    record.save!
+    steps = 5.times.map do |index|
+      ModuleRecord.create!(module_slug: "approval-master", data: {
+        "module_name" => "Jeevika Jankar Bill", "stakeholder_name" => "ASA",
+        "user_name" => "Akash Raut", "approval_level" => "Level #{index + 1}",
+        "approver_approved_by" => "Approver #{index + 1}", "status" => "Active"
+      })
+    end
+
+    assert_equal steps.map(&:id), calculator("Admin", admin: true).send(:jeevika_bill_approval_steps, record).map(&:id)
+
+    @mapped.update_columns(cluster_incharge: "Another CC")
+    User.create!(user_name: "another_bill_cc", first_name: "Another", last_name: "CC",
+      password: "secret", stakeholder: "ASA", role: "Cluster Incharge", status: "Active")
+    assert_empty calculator("Admin", admin: true).send(:jeevika_bill_approval_steps, record)
+  end
+
+  test "bill channel resolves a legacy mapped cluster incharge by username" do
+    ModuleRecord.create!(module_slug: "new-user", data: {
+      "user_name" => "legacy_bill_cc", "name" => "Legacy CC", "stakeholder" => "ASA", "status" => "Active"
+    })
+    @mapped.update_columns(cluster_incharge: "legacy_bill_cc")
+    record = bill(@mapped)
+    record.save!
+    step = ModuleRecord.create!(module_slug: "approval-master", data: {
+      "module_name" => "Jeevika Jankar Bill", "stakeholder_name" => "ASA",
+      "user_name" => "Legacy CC", "approval_level" => "First Approval", "status" => "Active"
+    })
+    assert_equal [step.id], calculator("Admin", admin: true).send(:jeevika_bill_approval_steps, record).map(&:id)
+  end
+
   test "compact training payload round trips repeated and conflicting farmer metadata exactly" do
     farmer = { id: "1", farmer_name: "A", record_missing: false }
     mappings = [{ farmer_ids: ["1"], farmers: [farmer] },

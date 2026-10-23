@@ -5,7 +5,8 @@ WITH month_any_mapping AS (
         STRING_AGG(DISTINCT t.vrp_id::text, ', ') AS vrp_ids
     FROM public.target_mappings t
     CROSS JOIN LATERAL jsonb_array_elements_text(
-        t.afl_ids::jsonb
+        CASE WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array'
+            THEN t.afl_ids::jsonb ELSE '[]'::jsonb END
     ) AS v(afl_id)
     WHERE %{target_month_filter}
     GROUP BY
@@ -20,7 +21,8 @@ month_training_mapping AS (
         STRING_AGG(DISTINCT t.vrp_id::text, ', ') AS training_vrp_ids
     FROM public.target_mappings t
     CROSS JOIN LATERAL jsonb_array_elements_text(
-        t.afl_ids::jsonb
+        CASE WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array'
+            THEN t.afl_ids::jsonb ELSE '[]'::jsonb END
     ) AS v(afl_id)
     WHERE %{target_month_filter}
       AND LOWER(COALESCE(t.main_activity_name, ''))
@@ -43,10 +45,8 @@ month_training_done AS (
         sf.farmer_id
     FROM public.module_records mr
     CROSS JOIN LATERAL jsonb_array_elements_text(
-        COALESCE(
-            mr.data::jsonb -> 'selected_farmer_ids',
-            '[]'::jsonb
-        )
+        CASE WHEN jsonb_typeof(mr.data::jsonb -> 'selected_farmer_ids') = 'array'
+            THEN mr.data::jsonb -> 'selected_farmer_ids' ELSE '[]'::jsonb END
     ) AS sf(farmer_id)
     WHERE mr.module_slug = 'training-form'
 
@@ -73,7 +73,8 @@ farmer_vrp_mapping AS (
     FROM public.target_mappings t
 
     CROSS JOIN LATERAL jsonb_array_elements_text(
-        t.afl_ids::jsonb
+        CASE WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array'
+            THEN t.afl_ids::jsonb ELSE '[]'::jsonb END
     ) AS v(afl_id)
 
     LEFT JOIN vrp_details vd

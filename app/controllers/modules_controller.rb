@@ -8823,18 +8823,40 @@ class ModulesController < ApplicationController
     @dashboard_vrps = (dashboard_own_vrps_list + hierarchy_vrps + dashboard_office_visible_vrps + dashboard_approval_related_vrps).uniq
   end
 
+  # Both helpers walk every record and ask who registered it, and that question
+  # is answered by looking the creator up by id, by email and by mobile number.
+  # Done per record it is three queries each - a dashboard of ninety Jeevika
+  # Jankars issued around 280 - so the same lookups are batched up front.
+  #
+  # Only the records that will actually be asked are batched. A record already
+  # at 55 answers from its status alone, and one below 25 was never sent, so
+  # batching those would add lookups to a page that previously needed none.
   def dashboard_approved_vrps(vrps)
-    Array(vrps).select { |vrp| vrp.status.to_i == 55 || vrp_approval_complete?(vrp) }
+    vrps = Array(vrps)
+    preload_dashboard_vrp_identity_records!(vrps.reject { |vrp| vrp.status.to_i == 55 })
+    vrps.select { |vrp| vrp.status.to_i == 55 || vrp_approval_complete?(vrp) }
   end
 
   def dashboard_pending_approval_vrps(vrps)
-    Array(vrps).select do |vrp|
+    vrps = Array(vrps)
+    preload_dashboard_vrp_identity_records!(vrps.select { |vrp| dashboard_approval_identity_candidate?(vrp) })
+    vrps.select do |vrp|
       next false unless vrp_approval_pending?(vrp)
       next true if admin_dashboard_user?
       next true if dashboard_current_user_current_approver?(vrp)
 
       dashboard_user_owns_vrp?(vrp)
     end
+  end
+
+  # Mirrors the two status guards vrp_approval_pending? applies before it
+  # consults the approval steps. Anything these reject never reaches a creator
+  # lookup, so it does not belong in the batch.
+  def dashboard_approval_identity_candidate?(vrp)
+    status = vrp.status.to_i
+    return false if [55, 99].include?(status)
+
+    status >= 25
   end
 
   def dashboard_user_owns_vrp?(vrp)
@@ -9388,6 +9410,16 @@ class ModulesController < ApplicationController
     vrps = Array(vrps)
     return if vrps.blank?
 
+    # Callers reach this from several directions for overlapping sets, so the
+    # records already batched are skipped. Without this, adding the preload to
+    # the approval helpers below would re-run the same three lookups for every
+    # caller instead of replacing the per-record queries.
+    @dashboard_identity_preloaded_vrp_ids ||= Set.new
+    vrps = vrps.reject { |vrp| @dashboard_identity_preloaded_vrp_ids.include?(vrp.id) }
+    return if vrps.blank?
+
+    @dashboard_identity_preloaded_vrp_ids.merge(vrps.map(&:id))
+
     creator_ids = vrps.filter_map { |vrp| vrp.created_by_id.to_s.presence }.uniq
 
     if model_ready?(:User)
@@ -9404,10 +9436,21 @@ class ModulesController < ApplicationController
       mobile_numbers.each { |mobile_no| @cached_user_find_by["mobile_no=#{mobile_no}"] = nil }
       users.concat(User.where(mobile_no: mobile_numbers).to_a) if mobile_numbers.any? && User.column_names.include?("mobile_no")
 
-      users.uniq(&:id).each do |user|
+      # users.email and users.mobile_no carry no unique index, so two accounts
+      # can share either value. The per-record lookup this batch stands in for
+      # was User.find_by, which answers with the lowest id, and the identity
+      # taken from it decides which approval steps a record matches. So the
+      # lowest id has to win here and a later duplicate must not replace it.
+      users.uniq(&:id).sort_by(&:id).each do |user|
         @cached_user_find_by["id=#{user.id}"] = user
-        @cached_user_find_by["email=#{user.email}"] = user if user.respond_to?(:email) && user.email.present?
-        @cached_user_find_by["mobile_no=#{user.mobile_no}"] = user if user.respond_to?(:mobile_no) && user.mobile_no.present?
+        if user.respond_to?(:email) && user.email.present?
+          email_key = "email=#{user.email}"
+          @cached_user_find_by[email_key] = user if @cached_user_find_by[email_key].nil?
+        end
+        if user.respond_to?(:mobile_no) && user.mobile_no.present?
+          mobile_key = "mobile_no=#{user.mobile_no}"
+          @cached_user_find_by[mobile_key] = user if @cached_user_find_by[mobile_key].nil?
+        end
       end
     end
 
@@ -9721,6 +9764,17 @@ class ModulesController < ApplicationController
       @slug == "training-form-list"
   end
 
+  # jsonb_each refuses anything that is not a JSON object - it raises
+  # "cannot call jsonb_each on a non-object" - and the filters that run before
+  # it use ->>, which tolerates a scalar and so lets such a row through. One
+  # malformed module_records.data value therefore took down every screen that
+  # projects JSON keys this way, the location masters included. The set
+  # returning JSON calls elsewhere in the app are already guarded with
+  # jsonb_typeof; this is the same guard, and a well formed object is untouched.
+  def jsonb_object_or_empty(column)
+    "CASE WHEN jsonb_typeof(#{column}::jsonb) = 'object' THEN #{column}::jsonb ELSE '{}'::jsonb END"
+  end
+
   # Ported from VRP's list projection. Detail/download actions still fetch the
   # complete bill, while list calculations never use nested farmer metadata.
   def bill_summary_scope(base)
@@ -9736,7 +9790,7 @@ class ModulesController < ApplicationController
           ), '[]'::jsonb)
           ELSE field.value
         END), '{}'::jsonb)
-       FROM jsonb_each(module_records.data::jsonb) AS field(key, value))::text AS data
+       FROM jsonb_each(#{jsonb_object_or_empty("module_records.data")}) AS field(key, value))::text AS data
     SQL
   end
 
@@ -11481,11 +11535,29 @@ class ModulesController < ApplicationController
     cache_key = record.id
     return @jeevika_bill_approval_identities_cache[cache_key] if @jeevika_bill_approval_identities_cache.key?(cache_key)
 
-    identities = []
-    vrp = jeevika_bill_vrp(record)
-    identities.concat(vrp_creator_identities_for_dashboard(vrp)) if vrp
-    identities << current_bill_creator_identity(record)
+    # Bills belong to the current mapped cluster incharge, who may differ
+    # from both the registration creator and the person who entered the bill.
+    identities = jeevika_bill_cluster_incharge_identities(record)
+    if identities.blank?
+      vrp = jeevika_bill_vrp(record)
+      identities.concat(vrp_creator_identities_for_dashboard(vrp)) if vrp
+      identities << current_bill_creator_identity(record)
+    end
     @jeevika_bill_approval_identities_cache[cache_key] = identities.compact.uniq
+  end
+
+  def jeevika_bill_cluster_incharge_identities(record)
+    label = jeevika_bill_cc_name(record)
+    return [] if label == "-"
+
+    @jeevika_bill_cluster_identities ||= {}
+    @jeevika_bill_cluster_identities[label] ||= begin
+      labels = [label, label.sub(/\s*\([^)]*\)\s*\z/, "").strip]
+      users = dashboard_user_ids_for_labels(labels).filter_map { |id| cached_user_find_by(id: id) }
+      legacy_records = dashboard_legacy_user_ids_for_labels(labels).filter_map { |id| cached_module_record_find_by_id(id) }
+      (users.map { |user| user_dashboard_identity(user) } +
+        legacy_records.map { |user| record_dashboard_identity(user) }).uniq
+    end
   end
 
   def current_bill_creator_identity(record)
@@ -12005,7 +12077,7 @@ class ModulesController < ApplicationController
       .where(module_slug: "jeevika-jankar-bill-process")
       .select("id", <<~SQL.squish)
         (SELECT COALESCE(jsonb_object_agg(field.key, field.value), '{}'::jsonb)
-         FROM jsonb_each(data::jsonb) AS field(key, value)
+         FROM jsonb_each(#{jsonb_object_or_empty("data")}) AS field(key, value)
          WHERE field.key IN ('select_vrp', 'bill_month', 'deleted', 'is_deleted',
                             'discarded', 'record_state', 'status'))::text AS data
       SQL
@@ -15780,7 +15852,7 @@ class ModulesController < ApplicationController
     quoted_keys = LOCATION_DATA_KEYS.map { |key| ActiveRecord::Base.connection.quote(key) }.join(", ")
     data_projection = Arel.sql(
       "(SELECT COALESCE(jsonb_object_agg(key, value), '{}'::jsonb) " \
-      "FROM jsonb_each(data::jsonb) WHERE key IN (#{quoted_keys}))"
+      "FROM jsonb_each(#{jsonb_object_or_empty('data')}) WHERE key IN (#{quoted_keys}))"
     )
     ModuleRecord.where(module_slug: missing)
       .merge(active_module_records_scope_for_all_modules)
