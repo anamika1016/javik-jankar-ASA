@@ -1,7 +1,19 @@
 # Run with RAILS_ENV=test bundle exec rails runner script/performance_audit.rb.
 # Synthetic records are rolled back; never run this against live application data.
 require "benchmark"
+require "net/http"
 abort "Use RAILS_ENV=test with a dedicated test database" unless Rails.env.test?
+
+# Synthetic audit data must not be sent to production third-party APIs. Opt in
+# explicitly when measuring real upstream latency against a suitable endpoint.
+external_http = ENV["PERFORMANCE_AUDIT_EXTERNAL_HTTP"] == "1"
+unless external_http
+  Net::HTTP.singleton_class.prepend(Module.new do
+    def start(*)
+      raise SocketError, "External HTTP disabled for local performance audit"
+    end
+  end)
+end
 
 def measure_read
   queries = 0
@@ -15,15 +27,18 @@ def measure_read
   end
   records = ->(*args) { instantiated += args.last[:record_count] }
   value = nil
+  allocated_before = GC.stat(:total_allocated_objects)
   elapsed = Benchmark.realtime do
     ActiveSupport::Notifications.subscribed(sql, "sql.active_record") do
       ActiveSupport::Notifications.subscribed(records, "instantiation.active_record") { value = yield }
     end
   end
-  [{ ms: (elapsed * 1000).round(2), queries: queries, database_ms: database_ms.round(2), instantiated: instantiated }, value]
+  [{ ms: (elapsed * 1000).round(2), queries: queries, database_ms: database_ms.round(2),
+     instantiated: instantiated, allocations: GC.stat(:total_allocated_objects) - allocated_before }, value]
 end
 
-report = { environment: Rails.env, benchmarks: {}, pages: [] }
+report = { environment: Rails.env, external_http: external_http, viewer: "admin",
+  note: "Sequential local reads; not a production concurrency or network benchmark", benchmarks: {}, pages: [] }
 ActiveRecord::Base.transaction do
   now = Time.current
   rows = 8_000.times.map do |index|
@@ -52,6 +67,34 @@ ActiveRecord::Base.transaction do
   Vrp.insert_all!(500.times.map { |index| attributes.merge(name: "Audit JJ #{index}") })
   stats, = measure_read { 10.times { controller.send(:static_field_options, "Month Name") } }
   report[:benchmarks][:ordinary_options_with_500_jjs] = stats
+
+  owner_type = Struct.new(:name, :user_name)
+  target_type = Struct.new(:id, :vrp_id, :vrp, :month_name, :ics_id, :ics_name,
+    :village_id, :village_name, :main_activity_name, :activity_name)
+  targets = 500.times.map do |i|
+    target_type.new(i + 1, i, owner_type.new("JJ #{i}", "login#{i}"), "September",
+      "ics", "ICS", "village", "Village", "Other Activity", "Soil")
+  end
+  records = 500.times.map do |i|
+    ModuleRecord.new(data: { "jeevika_jankar_id" => i.to_s, "month" => "September",
+      "ics" => "ics", "village" => "village", "main_activity" => "Other Activity", "sub_activity" => "Soil" })
+  end
+  matcher = ModulesController.new
+  matcher.instance_variable_set(:@other_target_candidate_targets, targets)
+  matcher.instance_variable_set(:@other_target_candidate_targets_by_id, targets.index_by { |target| target.id.to_s })
+  before_stats, expected = measure_read do
+    records.map do |record|
+      targets.select do |target|
+        matcher.send(:other_target_record_matches_target?, target, record.data["jeevika_jankar_id"],
+          "september", "ics", "village", "other activity", "soil")
+      end.map { |target| target.id.to_s }
+    end
+  end
+  after_stats, actual = measure_read do
+    records.map { |record| matcher.send(:other_target_record_target_mapping_ids, record) }
+  end
+  raise "Achievement matching output changed" unless expected == actual
+  report[:benchmarks][:achievement_matching_500_records_500_targets] = { before: before_stats, after: after_stats }
   raise ActiveRecord::Rollback
 end
 
@@ -65,6 +108,9 @@ ActiveRecord::Base.transaction do
 
   paths = ModulesController::MODULES.keys.map { |slug| "/modules/#{slug}" }
   paths.concat(%w[/dashboard /users /users/new /vrps /vrps/new /vrps/approvals /vrp-agreements /afls /target_mappings /asa360-mapping])
+  paths.concat(%w[/target_mappings/list /jj-mapped-farmers])
+  paths.concat(%w[assigned_farmers assigned_target mapped_villages pending_target achieved_target main_activities sub_activities]
+    .map { |type| "/dashboard/vrp-list/#{type}" })
   paths.each do |path|
     begin
       stats, = measure_read { session.get(path) }

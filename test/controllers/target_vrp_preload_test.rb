@@ -99,6 +99,51 @@ class TargetVrpPreloadTest < ActiveSupport::TestCase
     assert_equal [], preloaded([])
   end
 
+  test "JJ session refresh preserves its payload without loading the signature" do
+    controller = ApplicationController.new
+    expected = controller.send(:app_user_session_payload, @vrp)
+    stored_session = { app_user: expected }
+    controller.define_singleton_method(:session) { stored_session }
+    queries = []
+    callback = ->(*args) { queries << args.last[:sql] }
+    actual = nil
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      actual = controller.send(:refreshed_app_user_session)
+    end
+    assert_equal expected, actual
+    vrp_queries = queries.grep(/FROM "vrps"/)
+    assert_equal 1, vrp_queries.size
+    assert_not_includes vrp_queries.first, "agreement_signature_data"
+    assert_equal SIGNATURE, @vrp.reload.agreement_signature_data
+  end
+
+  test "target selector preserves all other JJ attributes without signatures" do
+    controller = TargetMappingsController.new
+    controller.instance_variable_set(:@current_app_user, { "id" => @vrp.id, "record_type" => "Vrp", "user_type" => "VRP" })
+    rows = controller.send(:target_vrps).to_a
+    assert_equal [@vrp.id], rows.map(&:id)
+    assert_equal @vrp.attributes.except("agreement_signature_data"), rows.first.attributes
+  end
+
+  test "achievement candidate fallback excludes signatures and preserves target associations" do
+    controller = ModulesController.new
+    targets = controller.send(:other_target_candidate_targets)
+    target = targets.find { |row| row.id == @target.id }
+    assert target
+    assert target.association(:vrp).loaded?
+    assert_equal @vrp.name, target.vrp.name
+    assert_not target.vrp.has_attribute?(:agreement_signature_data)
+  end
+
+  test "bill row candidate fallback excludes signatures for the same saved targets" do
+    controller = ModulesController.new
+    controller.instance_variable_set(:@jeevika_jankar_bill_rows, [{ target_mapping_ids: [@target.id] }])
+    targets = controller.send(:other_target_candidate_targets)
+    assert_equal [@target.id], targets.map(&:id)
+    assert targets.first.association(:vrp).loaded?
+    assert_not targets.first.vrp.has_attribute?(:agreement_signature_data)
+  end
+
   test "one query covers every distinct Jeevika Jankar in the batch" do
     second = TargetMapping.create!(
       vrp: @vrp, fco_id: "995", fco_name: "Bhawanipatna", ics_id: "ics",

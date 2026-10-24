@@ -4,6 +4,10 @@ class Vrp < ApplicationRecord
 
   default_scope { where(is_deleted: false) }
 
+  # Authentication and target selectors never display the stored signature.
+  # Keep this opt-in so agreement/detail reads still receive the full record.
+  scope :without_agreement_signature, -> { select(column_names - ["agreement_signature_data"]) }
+
   belongs_to :vrp_bank_master, optional: true
 
   has_one :vrp_profile, dependent: :destroy

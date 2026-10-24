@@ -58,6 +58,11 @@ class ModulesController < ApplicationController
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
   OTHER_TARGET_MODULE_SLUGS = ["seed-distribution-target", "papl360-target", "other-target", "other-target-with-farmer"].freeze
   TARGET_RECORD_MODULE_SLUGS = (["training-form", "add-farmer-form"] + OTHER_TARGET_MODULE_SLUGS).freeze
+  OTHER_TARGET_PROGRESS_DATA_KEYS = %w[
+    target_mapping_id jeevika_jankar_id jeevika_jankar_name select_vrp month ics village
+    training_topic main_activity training_subject sub_activity deleted is_deleted discarded
+    approval_status approval_state status achievement achievement_date selected_farmer_ids
+  ].freeze
   # Columns of the "Main Major Work Indicator - Other" drill-down list.
   OTHER_INDICATOR_LIST_HEADERS = {
     "Jeevika Jankar" => "jeevika_jankar_name", "FCO Name" => "fco_name",
@@ -1564,7 +1569,7 @@ class ModulesController < ApplicationController
     mappings = vrp_dashboard_mappings(@vrp)
     targets = vrp_dashboard_targets(@vrp)
     targets = dashboard_targets_for_month(targets, params[:training_month]) if params[:training_month].present?
-    bills = vrp_dashboard_bills(@vrp)
+    bills = vrp_dashboard_detail_uses_progress?(params[:list_type]) ? vrp_dashboard_bills(@vrp) : []
     @vrp_dashboard_detail = vrp_dashboard_detail_payload(params[:list_type], @vrp, mappings, targets, bills, params)
 
     respond_to do |format|
@@ -2361,7 +2366,7 @@ class ModulesController < ApplicationController
   def vrp_dashboard_targets(vrp)
     return [] unless model_ready?(:TargetMapping)
 
-    TargetMapping.includes(:vrp).where(vrp_id: vrp.id).order(Arel.sql("completion_date ASC NULLS LAST"), :month_name, :main_activity_name, :activity_name, :id).to_a
+    preload_target_vrps!(TargetMapping.where(vrp_id: vrp.id).order(Arel.sql("completion_date ASC NULLS LAST"), :month_name, :main_activity_name, :activity_name, :id).to_a)
   end
 
   def vrp_dashboard_bills(vrp)
@@ -2890,10 +2895,16 @@ class ModulesController < ApplicationController
       end
   end
 
+  def vrp_dashboard_detail_uses_progress?(list_type)
+    !%w[target_farmers mapped_farmers mapped_village_farmers ics_mapped_farmers mapped_villages].include?(list_type.to_s)
+  end
+
   def vrp_dashboard_detail_payload(list_type, vrp, mappings, targets, bills, filters = {})
     key = list_type.to_s.presence || "assigned_target"
-    target_rows = vrp_dashboard_target_progress_rows(targets, bills)
-    farmer_status_sets = vrp_dashboard_farmer_status_sets(target_rows)
+    # Mapping/location lists do not display achievement calculations. The
+    # target-farmers branch computes only its selected target below.
+    target_rows = vrp_dashboard_detail_uses_progress?(key) ? vrp_dashboard_target_progress_rows(targets, bills) : []
+    farmer_status_sets = vrp_dashboard_farmer_status_sets(target_rows) if %w[complete_farmers red_farmers green_farmers yellow_farmers].include?(key)
 
     case key
     when "target_farmers"
@@ -3127,13 +3138,24 @@ class ModulesController < ApplicationController
     approved_other_target_completed_farmer_ids_by_target[target_mapping_id.to_s] || []
   end
 
+  def other_target_progress_records_scope
+    keys = OTHER_TARGET_PROGRESS_DATA_KEYS.map { |key| ModuleRecord.connection.quote(key) }.join(", ")
+    ModuleRecord.where(module_slug: OTHER_TARGET_MODULE_SLUGS)
+      .select(:id, :module_slug, :created_at, :updated_at)
+      .select(<<~SQL.squish).readonly
+        (SELECT COALESCE(jsonb_object_agg(field.key, field.value), '{}'::jsonb)
+         FROM jsonb_each(#{jsonb_object_or_empty("module_records.data")}) AS field(key, value)
+         WHERE field.key IN (#{keys}))::text AS data
+      SQL
+  end
+
   def approved_other_target_completed_farmer_ids_by_target
     return @approved_other_target_completed_farmer_ids_by_target if defined?(@approved_other_target_completed_farmer_ids_by_target)
 
     @approved_other_target_completed_farmer_ids_by_target = Hash.new { |hash, key| hash[key] = [] }
     return @approved_other_target_completed_farmer_ids_by_target unless model_ready?(:ModuleRecord)
 
-    records = ModuleRecord.where(module_slug: OTHER_TARGET_MODULE_SLUGS)
+    records = other_target_progress_records_scope
     candidate_months = other_target_candidate_targets.map { |target| normalize_dashboard_text(target.month_name) }.reject(&:blank?).uniq
     records = records.where("LOWER(BTRIM(data::jsonb ->> 'month')) IN (?)", candidate_months) if candidate_months.present?
     records = records
@@ -12022,10 +12044,10 @@ class ModulesController < ApplicationController
   def jeevika_jankar_dashboard_target_summary
     return {} unless model_ready?(:TargetMapping)
 
-    targets = TargetMapping.includes(:vrp)
+    targets = TargetMapping.all
     targets = targets.where(vrp_id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
     targets = targets.where(vrp_id: module_cluster_visible_vrp_ids) if module_mapped_vrp_scope_active?
-    rows = vrp_dashboard_target_progress_rows(targets.to_a, [])
+    rows = vrp_dashboard_target_progress_rows(preload_target_vrps!(targets.to_a), [])
 
     rows.each_with_object({}) do |row, summary|
       vrp_id = row[:target_record]&.vrp_id.to_s
@@ -12138,7 +12160,7 @@ class ModulesController < ApplicationController
     @approved_other_target_achievement_indexes ||= {}
     return @approved_other_target_achievement_indexes[candidate_key] if @approved_other_target_achievement_indexes.key?(candidate_key)
 
-    records = ModuleRecord.where(module_slug: OTHER_TARGET_MODULE_SLUGS)
+    records = other_target_progress_records_scope
     candidate_months = other_target_candidate_targets.map { |target| normalize_dashboard_text(target.month_name) }.reject(&:blank?).uniq
     records = records.where("LOWER(BTRIM(data::jsonb ->> 'month')) IN (?)", candidate_months) if candidate_months.present?
 
@@ -12190,11 +12212,28 @@ class ModulesController < ApplicationController
     selected_subject = normalize_dashboard_text(data["training_subject"].presence || data["sub_activity"])
     return direct_ids if [selected_vrp, selected_month, selected_ics, selected_village, selected_topic, selected_subject].any?(&:blank?)
 
-    matched_ids = other_target_candidate_targets.select do |target|
+    matched_ids = other_target_candidates_for(selected_vrp, selected_month).select do |target|
       other_target_record_matches_target?(target, selected_vrp, selected_month, selected_ics, selected_village, selected_topic, selected_subject)
     end.map { |target| target.id.to_s }
 
     (direct_ids + matched_ids).uniq
+  end
+
+  def other_target_candidates_for(selected_vrp, selected_month)
+    targets = other_target_candidate_targets
+    unless @other_target_lookup_targets.equal?(targets)
+      @other_target_lookup_targets = targets
+      @other_target_candidates_by_owner_month = Hash.new { |hash, key| hash[key] = [] }
+      targets.each do |target|
+        month = normalize_dashboard_text(target.month_name)
+        owners = [target.vrp_id, target.vrp&.name, target.vrp&.user_name]
+          .map { |value| normalize_dashboard_text(value) }.reject(&:blank?).uniq
+        owners.each { |owner| @other_target_candidates_by_owner_month[[owner, month]] << target }
+      end
+    end
+    # All remaining matching rules still run below, including legacy activity
+    # aliases. Rebuild the lookup whenever bill calculation changes its scope.
+    @other_target_candidates_by_owner_month.fetch([selected_vrp, selected_month], [])
   end
 
   def other_target_candidate_targets
@@ -12205,9 +12244,9 @@ class ModulesController < ApplicationController
         @vrp_target_rows.filter_map { |row| row[:target_record] }
       elsif defined?(@jeevika_jankar_bill_rows) && @jeevika_jankar_bill_rows.present?
         ids = @jeevika_jankar_bill_rows.flat_map { |row| Array(row[:target_mapping_ids].presence || row[:target_mapping_id]) }.map(&:to_s).reject(&:blank?).uniq
-        ids.present? && model_ready?(:TargetMapping) ? TargetMapping.includes(:vrp).where(id: ids).to_a : []
+        ids.present? && model_ready?(:TargetMapping) ? preload_target_vrps!(TargetMapping.where(id: ids).to_a) : []
       elsif model_ready?(:TargetMapping)
-        TargetMapping.includes(:vrp).to_a
+        preload_target_vrps!(TargetMapping.all.to_a)
       else
         []
       end
@@ -15820,6 +15859,27 @@ class ModulesController < ApplicationController
     return @location_hierarchy_mappings if defined?(@location_hierarchy_mappings)
     return [] unless model_ready?(:ModuleRecord)
 
+    # Location masters are shared by every viewer. Check their revision on each
+    # request, but do not rebuild the entire directory for every form/tab.
+    # Counts detect creates/deletes. PostgreSQL's per-row transaction version
+    # (xmin) changes for every persisted update, including imports that bypass
+    # Rails timestamps, so an edit to an older row cannot leave a stale
+    # dropdown merely because another row has the newest updated_at value.
+    revision = ModuleRecord.where(module_slug: LOCATION_MODULE_SLUGS)
+      .group(:module_slug).order(:module_slug)
+      .pluck(
+        :module_slug,
+        Arel.sql("COUNT(*)"),
+        Arel.sql("COALESCE(SUM((xmin::text)::bigint), 0)"),
+        Arel.sql("COALESCE(MAX((xmin::text)::bigint), 0)")
+      )
+    key = ["jj-location-hierarchy-v1", Digest::SHA256.hexdigest(revision.to_json)]
+    @location_hierarchy_mappings = DashboardCacheFill.synchronize(key) do
+      Rails.cache.fetch(key, expires_in: 1.hour) { build_location_hierarchy_mappings }
+    end.deep_dup
+  end
+
+  def build_location_hierarchy_mappings
     preload_location_records!(LOCATION_MODULE_SLUGS)
     states = active_records_for_location("state-master").map do |record|
       location_row(record, state: first_present_data(record, "state_name"))
@@ -15864,7 +15924,7 @@ class ModulesController < ApplicationController
         village: first_present_data(record, "village", "village_name"))
     end
 
-    @location_hierarchy_mappings = states + districts + blocks + gram_panchayats + villages + lg_directory_rows
+    states + districts + blocks + gram_panchayats + villages + lg_directory_rows
   end
 
   # Batch the same ordered datasets; keep Ruby filtering so legacy whitespace,

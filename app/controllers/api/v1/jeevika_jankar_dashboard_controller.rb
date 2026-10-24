@@ -7,7 +7,7 @@ module Api
         vrp = current_dashboard_vrp
         return render json: { success: false, message: "Valid Jeevika Jankar login required." }, status: :unprocessable_entity unless vrp
 
-        targets = TargetMapping.includes(:vrp).where(vrp_id: vrp.id).order(:month_name, :main_activity_name, :activity_name, :id).to_a
+        targets = preload_dashboard_target_vrps(TargetMapping.where(vrp_id: vrp.id).order(:month_name, :main_activity_name, :activity_name, :id).to_a)
         months = targets.filter_map { |target| target.month_name.to_s.strip.presence }.uniq
         selected_month = params[:month].presence || params[:training_month].presence || default_month(months)
         targets = targets.select { |target| same_text?(target.month_name, selected_month) } if selected_month.present?
@@ -44,8 +44,8 @@ module Api
       end
 
       def render_admin_dashboard
-        vrps = Vrp.where(is_deleted: false).to_a
-        targets = TargetMapping.includes(:vrp).order(updated_at: :desc).to_a
+        vrps = Vrp.without_agreement_signature.where(is_deleted: false).to_a
+        targets = preload_dashboard_target_vrps(TargetMapping.order(updated_at: :desc).to_a)
         filter_options = admin_filter_options(vrps, targets)
         vrps = filter_admin_vrps(vrps)
         if admin_vrp_filters_present?
@@ -190,10 +190,17 @@ module Api
         status.to_s.downcase.include?("approved") && !status.to_s.downcase.include?("pending")
       end
 
+      def preload_dashboard_target_vrps(targets)
+        ActiveRecord::Associations::Preloader.new(
+          records: targets, associations: :vrp, scope: Vrp.without_agreement_signature
+        ).call
+        targets
+      end
+
       def current_dashboard_vrp
         user = current_api_user_payload
-        return Vrp.find_by(id: user["id"]) if user["record_type"] == "Vrp"
-        return Vrp.find_by(id: params[:vrp_id]) if user["user_type"].to_s.casecmp("admin").zero? && params[:vrp_id].present?
+        return Vrp.without_agreement_signature.find_by(id: user["id"]) if user["record_type"] == "Vrp"
+        return Vrp.without_agreement_signature.find_by(id: params[:vrp_id]) if user["user_type"].to_s.casecmp("admin").zero? && params[:vrp_id].present?
       end
 
       def default_month(months)

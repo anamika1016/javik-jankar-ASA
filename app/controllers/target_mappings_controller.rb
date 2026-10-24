@@ -30,7 +30,10 @@ class TargetMappingsController < ApplicationController
       [fco_id, office_block_options(option[:value])]
     end
     @target_mappings = dashboard_filtered_target_mappings(visible_target_mappings)
-      .includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc)
+      .preload(:vrp_ics_mapping).order(updated_at: :desc).to_a
+    ActiveRecord::Associations::Preloader.new(
+      records: @target_mappings, associations: :vrp, scope: Vrp.without_agreement_signature
+    ).call
     # The table is deliberately rendered from row hashes (it also supports
     # summary rows).  Build the normal record rows here; previously this was
     # never assigned, so a successfully saved mapping always looked empty.
@@ -754,9 +757,9 @@ class TargetMappingsController < ApplicationController
   end
 
   def target_vrps
-    return Vrp.where(id: current_app_user["id"]).order(:name, :id) if non_admin_vrp_login?
+    return Vrp.without_agreement_signature.where(id: current_app_user["id"]).order(:name, :id) if non_admin_vrp_login?
 
-    scope = Vrp.all
+    scope = Vrp.without_agreement_signature
     scope = scope.where(status: 55) if Vrp.column_names.include?("status")
     scope = scope.where(is_active: true) if Vrp.column_names.include?("is_active")
     scope = scope.merge(own_registered_vrps) unless admin_login?
@@ -775,7 +778,7 @@ class TargetMappingsController < ApplicationController
   #   anyone posted to an office -> that office's (Agronomist, FCO, ...)
   #   otherwise                  -> the ones they registered or were handed
   def jj_mapped_farmer_vrps
-    scope = Vrp.all
+    scope = Vrp.without_agreement_signature
     scope = scope.where(status: 55) if Vrp.column_names.include?("status")
     scope = scope.where(is_active: true) if Vrp.column_names.include?("is_active")
 

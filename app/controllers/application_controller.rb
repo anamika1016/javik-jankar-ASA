@@ -54,7 +54,7 @@ class ApplicationController < ActionController::Base
     # Recheck JJ accounts on every request so deactivation immediately closes
     # an already-open session instead of waiting for the refresh interval.
     if stored_user["record_type"] == "Vrp"
-      vrp = Vrp.where(is_active: true, is_deleted: false).find_by(id: stored_user["id"])
+      vrp = Vrp.without_agreement_signature.where(is_active: true, is_deleted: false).find_by(id: stored_user["id"])
       unless vrp
         reset_session
         return
