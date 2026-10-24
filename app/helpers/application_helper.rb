@@ -1,4 +1,14 @@
 module ApplicationHelper
+  # Production Rails.cache is Solid Cache, so even a sidebar cache hit issues a
+  # database query. This badge is non-authoritative UI state and was already
+  # allowed to be up to two minutes old; retain that TTL in each web process
+  # without making every rendered layout contend for the database.
+  SIDEBAR_PENDING_MEMORY_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 2.megabytes)
+  # Branding is display-only (logo and stakeholder name), never an access
+  # decision. Keep these read-mostly records out of the request path instead of
+  # repeatedly loading the same master records on every page.
+  BRANDING_MEMORY_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 4.megabytes)
+
   # Section headings used by the Training Form (show.html.erb). The edit-request
   # page reuses them so a reviewer sees the changes laid out exactly like the
   # form they were made on.
@@ -413,13 +423,21 @@ module ApplicationHelper
     flags = {}
     if defined?(TrainingEditApproval) && current_app_user.present?
       cache_key = ["sidebar_pending", current_app_user["id"]]
-      has_pending = Rails.cache.fetch(cache_key, expires_in: 2.minutes) do
+      has_pending = sidebar_pending_cache.fetch(cache_key, expires_in: 2.minutes) do
         TrainingEditApproval.summaries_for(current_app_user, pending_only: true)
           .any? { |revision| TrainingEditApproval.can_decide?(revision, current_app_user) }
       end
       flags["Training Form List"] = has_pending
     end
     flags
+  end
+
+  def sidebar_pending_cache
+    # Tests intentionally use the configured store: they update an approval in
+    # the same example and assert the visible result immediately. Production
+    # uses the local store above so a cache *read* never becomes another SQL
+    # query through Solid Cache.
+    Rails.env.test? ? Rails.cache : SIDEBAR_PENDING_MEMORY_CACHE
   end
 
   def sidebar_access_key(link)
@@ -753,18 +771,22 @@ module ApplicationHelper
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
     @active_stakeholder_records ||= {}
-    @active_stakeholder_records[module_slug] ||= ModuleRecord
-      .where(module_slug: module_slug)
-      # This is called by every application layout. Keep the exact previous
-      # definition of active, but have PostgreSQL discard inactive records
-      # before Ruby materializes JSON payloads.
-      .where(<<~SQL.squish)
-        COALESCE(data::jsonb ->> 'status', '') = ''
-        OR BTRIM(data::jsonb ->> 'status') = ''
-        OR LOWER(data::jsonb ->> 'status') = 'active'
-      SQL
-      .order(updated_at: :desc)
-      .to_a
+    @active_stakeholder_records[module_slug] ||= branding_cache.fetch(
+      ["active-stakeholder-records", module_slug], expires_in: 2.minutes
+    ) do
+      ModuleRecord
+        .where(module_slug: module_slug)
+        # This is called by every application layout. Keep the exact previous
+        # definition of active, but have PostgreSQL discard inactive records
+        # before Ruby materializes JSON payloads.
+        .where(<<~SQL.squish)
+          COALESCE(data::jsonb ->> 'status', '') = ''
+          OR BTRIM(data::jsonb ->> 'status') = ''
+          OR LOWER(data::jsonb ->> 'status') = 'active'
+        SQL
+        .order(updated_at: :desc)
+        .to_a
+    end
   end
 
   def matching_stakeholder_record(module_slug)
@@ -782,9 +804,19 @@ module ApplicationHelper
   def current_user_stakeholder_names
     return @current_user_stakeholder_names if defined?(@current_user_stakeholder_names)
 
-    names = [current_app_user&.dig("stakeholder")]
     username = current_app_user&.dig("username").to_s
     user_id = current_app_user&.dig("id")
+    session_stakeholder = current_app_user&.dig("stakeholder")
+
+    @current_user_stakeholder_names = branding_cache.fetch(
+      ["current-user-stakeholder-names", user_id, username, session_stakeholder], expires_in: 2.minutes
+    ) do
+      current_user_stakeholder_names_uncached(username, user_id, session_stakeholder)
+    end
+  end
+
+  def current_user_stakeholder_names_uncached(username, user_id, session_stakeholder)
+    names = [session_stakeholder]
 
     # Signed out there is nothing to match on, and the two halves of the
     # condition below become "user_name = '' OR id IS NULL" - which no row can
@@ -811,14 +843,20 @@ module ApplicationHelper
       names << legacy_user&.data&.[]("stakeholder")
     end
 
-    @current_user_stakeholder_names = names.compact_blank.map { |name| name.to_s.strip }.uniq
+    names.compact_blank.map { |name| name.to_s.strip }.uniq
   rescue ActiveRecord::StatementInvalid
     legacy_user = ModuleRecord
       .where(module_slug: "new-user")
       .order(updated_at: :desc)
       .detect { |record| record_data(record)["user_name"].to_s == username }
     names << legacy_user&.data&.[]("stakeholder")
-    @current_user_stakeholder_names = names.compact_blank.map { |name| name.to_s.strip }.uniq
+    names.compact_blank.map { |name| name.to_s.strip }.uniq
+  end
+
+  def branding_cache
+    # Tests must observe a just-saved branding/user record in the same example;
+    # bypassing the process cache there keeps that contract exact.
+    Rails.env.test? ? ActiveSupport::Cache::NullStore.new : BRANDING_MEMORY_CACHE
   end
 
   def stakeholder_record_matches?(record, stakeholder_name)

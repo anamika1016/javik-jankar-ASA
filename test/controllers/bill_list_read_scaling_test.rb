@@ -128,6 +128,44 @@ class BillListReadScalingTest < ActiveSupport::TestCase
     }], rows
   end
 
+  test "bill identity preload only caches JJs referenced by the current bill rows" do
+    matching = build_bill_lookup_vrp("Bill Lookup JJ", "bill_lookup_jj")
+    unrelated = build_bill_lookup_vrp("Unrelated JJ", "unrelated_jj")
+    matching.update_columns(agreement_signature_data: "signature payload" * 100)
+    record = ModuleRecord.new(module_slug: "jeevika-jankar-bill-process", data: {
+      "select_vrp" => matching.id.to_s,
+      "select_vrp_name" => "BILL LOOKUP JJ",
+      "bill_items" => [{ "vrp_name" => matching.user_name }]
+    })
+
+    controller = calculator
+    controller.send(:preload_bill_list_identities!, [record])
+    cached = controller.instance_variable_get(:@cached_vrps_by_id)
+
+    assert_equal [matching.id.to_s], cached.keys
+    assert_equal matching.id, controller.send(:cached_vrp_lookup, "bill lookup jj").id
+    assert_nil controller.send(:cached_vrp_lookup, unrelated.id)
+    assert_not cached.fetch(matching.id.to_s).has_attribute?(:agreement_signature_data)
+  end
+
+  test "bill creator identity preload batches ID username and email into one query" do
+    user = User.create!(user_name: "bill_creator_batch", password: "secret", first_name: "Bill", last_name: "Creator", email: "bill-creator@example.test")
+    record = ModuleRecord.new(module_slug: "jeevika-jankar-bill-process", data: {
+      "created_by_id" => user.id.to_s,
+      "created_by_username" => user.user_name,
+      "created_by_email" => user.email
+    })
+    controller = calculator
+    user_queries, = read_queries do
+      controller.send(:preload_bill_list_identities!, [record])
+    end
+
+    assert_equal user, controller.send(:cached_user_find_by, id: user.id.to_s)
+    assert_equal user, controller.send(:cached_user_find_by, user_name: user.user_name)
+    assert_equal user, controller.send(:cached_user_find_by, email: user.email)
+    assert_equal 1, user_queries
+  end
+
   test "bill process duplicate keys preserve rejection flags without loading bill evidence" do
     controller = calculator
     ["Active", "Rejected", "Returned", "Submitted"].each_with_index do |status, index|
@@ -168,5 +206,14 @@ class BillListReadScalingTest < ActiveSupport::TestCase
     end
     result = ActiveSupport::Notifications.subscribed(callback, "sql.active_record") { yield }
     [queries, result]
+  end
+
+  def build_bill_lookup_vrp(name, user_name)
+    vrp = Vrp.new(name: name, user_name: user_name, aadhar_no: "123456789012", account_no: "123",
+      address: "Test", branch: "Test", date_of_birth: Date.new(1990, 1, 1), date_of_joining: Date.current,
+      email: "#{user_name}@example.test", experience_in_years: 0, father_husband_name: "Test",
+      gender: 1, ifsc_code: "TEST0123456", mobile_no: "9876543210", office_detail_id: 0, to_office_detail_id: 0)
+    vrp.save!(validate: false)
+    vrp
   end
 end

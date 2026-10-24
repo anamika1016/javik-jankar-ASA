@@ -17,6 +17,20 @@ class ModulesController < ApplicationController
     village village_id village_code name deleted is_deleted discarded status
   ]).uniq.freeze
   LOCATION_MODULE_SLUGS = %w[state-master district-master block-master gram-panchayat-master village-master lg-directory-list].freeze
+  # These shared, read-mostly option rows can be large. In production Rails.cache
+  # is Solid Cache (database backed), so using it for each form reintroduces a
+  # database round-trip even when the catalogue has not changed. A process-local
+  # copy avoids that read; the revision in location_hierarchy_mappings still
+  # invalidates immediately after any location row changes.
+  LOCATION_CATALOGUE_MEMORY_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 24.megabytes)
+  # The LG directory is assembled from the same six location sources, but its
+  # compaction and code lookups are considerably more CPU intensive than a
+  # dropdown. Keep that derived, read-only table separate so a large directory
+  # cannot evict the form catalogue.
+  LG_DIRECTORY_MEMORY_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 32.megabytes)
+  # Dashboard count keys include source table revisions. Keep their short-lived
+  # values local so an ordinary cache hit does not contend on Solid Cache's DB.
+  DASHBOARD_READ_MEMORY_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 32.megabytes)
   before_action :authorize_farmer_target_access
   before_action :authorize_jeevika_payment_module_access
 
@@ -5422,7 +5436,7 @@ class ModulesController < ApplicationController
     cache_key = training_participation_dashboard_counts_cache_key(month_name: month_name, fcoc_name: fcoc_name, week_number: week_number)
     return training_participation_dashboard_counts_uncached(month_name: month_name, fcoc_name: fcoc_name, week_number: week_number) if cache_key.blank?
 
-    Rails.cache.fetch(cache_key, expires_in: 30.minutes) do
+    dashboard_read_cache.fetch(cache_key, expires_in: 30.minutes) do
       training_participation_dashboard_counts_uncached(month_name: month_name, fcoc_name: fcoc_name, week_number: week_number)
     end
   end
@@ -5476,7 +5490,7 @@ class ModulesController < ApplicationController
   def dashboard_table_version(model_class)
     return unless model_ready?(model_class.name)
 
-    Rails.cache.fetch(["dashboard/table-version", model_class.table_name], expires_in: 1.minute) do
+    dashboard_read_cache.fetch(["dashboard/table-version", model_class.table_name], expires_in: 1.minute) do
       version = model_class.pick(Arel.sql("COUNT(*)"), Arel.sql("COALESCE(MAX(id), 0)"), Arel.sql("COALESCE(EXTRACT(EPOCH FROM MAX(updated_at))::bigint, 0)"))
       version.join(":")
     end
@@ -5485,10 +5499,14 @@ class ModulesController < ApplicationController
   def dashboard_module_record_version(module_slug)
     return unless model_ready?(:ModuleRecord)
 
-    Rails.cache.fetch(["dashboard/module-record-version", module_slug], expires_in: 1.minute) do
+    dashboard_read_cache.fetch(["dashboard/module-record-version", module_slug], expires_in: 1.minute) do
       version = ModuleRecord.where(module_slug: module_slug).pick(Arel.sql("COUNT(*)"), Arel.sql("COALESCE(MAX(id), 0)"), Arel.sql("COALESCE(EXTRACT(EPOCH FROM MAX(updated_at))::bigint, 0)"))
       version.join(":")
     end
+  end
+
+  def dashboard_read_cache
+    Rails.env.test? ? Rails.cache : DASHBOARD_READ_MEMORY_CACHE
   end
 
   def training_participation_dashboard_counts(month_name:, fcoc_name:, records:, targets: nil, week_number: nil)
@@ -8484,7 +8502,11 @@ class ModulesController < ApplicationController
       next path if path.match?(/\Ahttps?:\/\//i)
 
       path = "/#{path}" unless path.start_with?("/")
-      "#{request.base_url}#{path}"
+      # A normal web request keeps the public absolute URL. The helper is also
+      # used by invoice/export code outside a request context, where the saved
+      # relative upload path is already the correct public value.
+      base_url = request&.base_url.to_s
+      base_url.present? ? "#{base_url}#{path}" : path
     end
   end
 
@@ -8832,7 +8854,9 @@ class ModulesController < ApplicationController
   def dashboard_vrps
     return @dashboard_vrps if defined?(@dashboard_vrps)
     return @dashboard_vrps = [] unless model_ready?(:Vrp)
-    return @dashboard_vrps = Vrp.all.to_a if current_app_user.blank? || dashboard_global_view_user?
+    # Dashboard cards never display the agreement signature. Loading it for
+    # every JJ inflates memory and GC time under the global dashboard scope.
+    return @dashboard_vrps = Vrp.select(Vrp.column_names - ["agreement_signature_data"]).to_a if current_app_user.blank? || dashboard_global_view_user?
 
     mapped_vrps = module_cluster_visible_vrps
     return @dashboard_vrps = mapped_vrps if module_mapped_vrp_scope_active?
@@ -9469,17 +9493,23 @@ class ModulesController < ApplicationController
 
     if model_ready?(:User)
       @cached_user_find_by ||= {}
-      users = []
       creator_ids.each { |id| @cached_user_find_by["id=#{id}"] = nil }
-      users.concat(User.where(id: creator_ids).to_a) if creator_ids.any?
 
       emails = vrps.filter_map { |vrp| vrp.email.to_s.strip.presence }.uniq
       emails.each { |email| @cached_user_find_by["email=#{email}"] = nil }
-      users.concat(User.where(email: emails).to_a) if emails.any? && User.column_names.include?("email")
 
       mobile_numbers = vrps.filter_map { |vrp| vrp.mobile_no.to_s.strip.presence }.uniq
       mobile_numbers.each { |mobile_no| @cached_user_find_by["mobile_no=#{mobile_no}"] = nil }
-      users.concat(User.where(mobile_no: mobile_numbers).to_a) if mobile_numbers.any? && User.column_names.include?("mobile_no")
+      # Each of these is an alternate identity for the same small JJ batch.
+      # One OR query has the exact same candidate set as the former three
+      # queries, but avoids serial database waits while a bill list renders.
+      user_scope = User.none
+      user_scope = user_scope.or(User.where(id: creator_ids)) if creator_ids.any?
+      user_scope = user_scope.or(User.where(email: emails)) if emails.any? && User.column_names.include?("email")
+      if mobile_numbers.any? && User.column_names.include?("mobile_no")
+        user_scope = user_scope.or(User.where(mobile_no: mobile_numbers))
+      end
+      users = user_scope.to_a
 
       # users.email and users.mobile_no carry no unique index, so two accounts
       # can share either value. The per-record lookup this batch stands in for
@@ -9741,19 +9771,70 @@ class ModulesController < ApplicationController
   end
 
   def preload_bill_list_identities!(records)
-    ids = records.flat_map do |record|
-      [record.data["select_vrp"], record.data["vrp_id"]] + jeevika_bill_detail_rows(record).map { |item| item["vrp_id"] }
+    lookup_values = records.flat_map do |record|
+      data = record.data || {}
+      [data["select_vrp"], data["vrp_id"], data["select_vrp_name"], data["jeevika_jankar_name"]] +
+        jeevika_bill_detail_rows(record).flat_map { |item| [item["vrp_id"], item["vrp_name"], item["jeevika_jankar_id"], item["jeevika_jankar_name"]] }
     end.compact_blank.map(&:to_s).uniq
-    ids = ids.to_set
-    vrps = cached_vrps_by_id.values.select { |vrp| ids.include?(vrp.id.to_s) }
+    # Bill and payment lists previously called cached_vrps_by_id here. That
+    # materializes every Jeevika Jankar (and its bank association) for each
+    # request although this page only needs the people named by its bills.
+    # Populate the same request-local ID/name lookup with just those people;
+    # cached_vrp_lookup keeps its original ID, username, mobile and case
+    # insensitive name precedence.
+    vrps = preload_vrp_lookup_values!(lookup_values)
     preload_dashboard_vrp_identity_records!(vrps)
     @cached_user_find_by ||= {}
+    creator_values = { id: [], user_name: [], email: [] }
     { id: "created_by_id", user_name: "created_by_username", email: "created_by_email" }.each do |column, field|
-      values = records.filter_map { |record| record.data[field].presence }.map(&:to_s).uniq
-      next if values.empty?
-      values.each { |value| @cached_user_find_by["#{column}=#{value}"] = nil }
-      User.where(column => values).each { |user| @cached_user_find_by["#{column}=#{user.public_send(column)}"] = user }
+      creator_values[column] = records.filter_map { |record| record.data[field].presence }.map(&:to_s).uniq
+      creator_values[column].each { |value| @cached_user_find_by["#{column}=#{value}"] = nil }
     end
+
+    # All three fields identify the same small set of bill creators. Querying
+    # them one by one multiplied DB waits for every bill/payment page. Preserve
+    # find_by's lowest-ID result for duplicate legacy emails/usernames.
+    user_scope = User.none
+    creator_values.each do |column, values|
+      user_scope = user_scope.or(User.where(column => values)) if values.any?
+    end
+    user_scope.to_a.uniq(&:id).sort_by(&:id).each do |user|
+      creator_values.each_key do |column|
+        value = user.public_send(column).to_s
+        cache_key = "#{column}=#{value}"
+        @cached_user_find_by[cache_key] = user if creator_values[column].include?(value) && @cached_user_find_by[cache_key].nil?
+      end
+    end
+  end
+
+  def preload_vrp_lookup_values!(values)
+    return [] unless model_ready?(:Vrp)
+
+    values = Array(values).map { |value| value.to_s.strip }.reject(&:blank?).uniq
+    return [] if values.empty?
+
+    # Do not replace an existing complete lookup: other screens deliberately
+    # ask for every JJ to support broad fuzzy matching. On bill screens this
+    # method runs first and avoids creating that much larger cache at all.
+    return cached_vrps_by_id.values if defined?(@cached_vrps_by_id)
+
+    numeric_ids = values.grep(/\A\d+\z/)
+    scope = Vrp.none
+    scope = scope.or(Vrp.where(id: numeric_ids)) if numeric_ids.any?
+    scope = scope.or(Vrp.where(name: values)) if Vrp.column_names.include?("name")
+    scope = scope.or(Vrp.where(user_name: values)) if Vrp.column_names.include?("user_name")
+    scope = scope.or(Vrp.where(mobile_no: values)) if Vrp.column_names.include?("mobile_no")
+
+    # The legacy lookup accepts a name with different case. Preserve that
+    # fallback without selecting the signature image or every unrelated JJ.
+    if Vrp.column_names.include?("name")
+      scope = scope.or(Vrp.where("LOWER(name) IN (?)", values.map(&:downcase)))
+    end
+
+    vrps = scope.select(Vrp.column_names - ["agreement_signature_data"])
+      .includes(:vrp_bank_master).to_a
+    @cached_vrps_by_id = vrps.index_by { |vrp| vrp.id.to_s }
+    vrps
   end
 
   def module_records
@@ -9784,7 +9865,10 @@ class ModulesController < ApplicationController
       end
       @jeevika_bill_visible_record_ids = records.map { |record| record.id.to_s }
     end
-    records = records.select { |record| target_record_visible?(record) } if target_record_source?
+    if target_record_source?
+      preload_target_visibility_vrps!(records)
+      records = records.select { |record| target_record_visible?(record) }
+    end
     preload_other_target_contact_numbers!(records) if other_target_record_source?
     if @slug == "training-form-list"
       @training_edit_revision_record_ids = records.map { |record| record.id.to_s }
@@ -9886,11 +9970,7 @@ class ModulesController < ApplicationController
       [record.id, record.data["target_mapping_id"].to_s.gsub(/\D/, "")]
     end
     target_mapping_ids = target_mapping_ids_by_record.values.reject(&:blank?).uniq
-    vrp_ids_by_target_mapping = if target_mapping_ids.empty?
-      {}
-    else
-      TargetMapping.where(id: target_mapping_ids).pluck(:id, :vrp_id).to_h.transform_keys(&:to_s)
-    end
+    vrp_ids_by_target_mapping = target_mapping_vrp_ids_for(target_mapping_ids)
 
     vrp_ids_by_record = records.to_h do |record|
       target_mapping_id = target_mapping_ids_by_record[record.id]
@@ -9910,6 +9990,54 @@ class ModulesController < ApplicationController
       mobile_number = mobile_numbers_by_vrp[vrp_id.to_s] if vrp_id.present?
       [record.id, mobile_number.nil? && !mobile_numbers_by_vrp.key?(vrp_id.to_s) ? nil : mobile_number.to_s.gsub(/\D/, "").last(10)]
     end
+  end
+
+  # Target screens check a record's JJ during the permission filter. Previously
+  # that path could materialize every JJ when every displayed record already had
+  # an explicit JJ or target-mapping reference. Resolve the small referenced set
+  # first. If even one legacy row cannot be resolved, leave the old full lookup
+  # fallback available so its fuzzy visibility behaviour is unchanged.
+  def preload_target_visibility_vrps!(records)
+    return unless model_ready?(:Vrp)
+
+    direct_values_by_record = records.to_h do |record|
+      data = record.data || {}
+      values = [data["jeevika_jankar_id"], data["vrp_id"], data["select_vrp"]].compact_blank.map(&:to_s)
+      values << data["created_by_id"].to_s if values.empty? && data["created_by_record_type"] == "Vrp"
+      [record.id, values]
+    end
+    mapping_ids = records.filter_map do |record|
+      next if direct_values_by_record.fetch(record.id).any?
+
+      record.data["target_mapping_id"].to_s.gsub(/\D/, "").presence
+    end.uniq
+    mapped_vrp_ids = target_mapping_vrp_ids_for(mapping_ids)
+
+    resolved_values = direct_values_by_record.values.flatten
+    unresolved_record = records.any? do |record|
+      direct_values_by_record.fetch(record.id).blank? &&
+        mapped_vrp_ids[record.data["target_mapping_id"].to_s.gsub(/\D/, "")].blank?
+    end
+    resolved_values.concat(mapped_vrp_ids.values.compact.map(&:to_s))
+
+    # A partial lookup must never replace the complete legacy fallback used for
+    # records with no usable identifier.
+    preload_vrp_lookup_values!(resolved_values) unless unresolved_record
+  end
+
+  def target_mapping_vrp_ids_for(target_mapping_ids)
+    target_mapping_ids = Array(target_mapping_ids).map(&:to_s).reject(&:blank?).uniq
+    return {} if target_mapping_ids.empty? || !model_ready?(:TargetMapping)
+
+    @target_mapping_vrp_ids ||= {}
+    missing_ids = target_mapping_ids.reject { |id| @target_mapping_vrp_ids.key?(id) }
+    return @target_mapping_vrp_ids.slice(*target_mapping_ids) if missing_ids.empty?
+
+    missing_ids.each { |id| @target_mapping_vrp_ids[id] = nil }
+    TargetMapping.where(id: missing_ids).pluck(:id, :vrp_id).each do |id, vrp_id|
+      @target_mapping_vrp_ids[id.to_s] = vrp_id
+    end
+    @target_mapping_vrp_ids.slice(*target_mapping_ids)
   end
 
   def target_record_source?
@@ -10250,6 +10378,13 @@ class ModulesController < ApplicationController
   def lg_directory_rows
     return [] unless model_ready?(:ModuleRecord)
 
+    key = ["jj-lg-directory-v1", location_catalogue_revision]
+    DashboardCacheFill.synchronize(key) do
+      LG_DIRECTORY_MEMORY_CACHE.fetch(key, expires_in: 1.hour) { build_lg_directory_rows }
+    end.deep_dup
+  end
+
+  def build_lg_directory_rows
     preload_lg_directory_records!
     rows = []
     rows.concat(lg_rows_from_records("village-master", village: "village_name"))
@@ -11809,7 +11944,10 @@ class ModulesController < ApplicationController
 
     cache_key = ["jj-achievement-keys", current_app_user&.dig("record_type"), current_app_user&.dig("id"), stamp.to_i]
     DashboardCacheFill.synchronize(cache_key) do
-      Rails.cache.fetch(cache_key, expires_in: 1.hour) do
+      # This key includes the latest target/activity write. A local hit is
+      # therefore safe and avoids one more Solid Cache database request on the
+      # bill form's JJ dropdown.
+      dashboard_read_cache.fetch(cache_key, expires_in: 1.hour) do
         jeevika_jankar_bill_rows(totals_only: true).filter_map do |row|
           next unless dashboard_numeric(row[:achievement_count]).positive?
 
@@ -15865,7 +16003,16 @@ class ModulesController < ApplicationController
     # (xmin) changes for every persisted update, including imports that bypass
     # Rails timestamps, so an edit to an older row cannot leave a stale
     # dropdown merely because another row has the newest updated_at value.
-    revision = ModuleRecord.where(module_slug: LOCATION_MODULE_SLUGS)
+    key = ["jj-location-hierarchy-v1", location_catalogue_revision]
+    @location_hierarchy_mappings = DashboardCacheFill.synchronize(key) do
+      location_catalogue_cache.fetch(key, expires_in: 1.hour) { build_location_hierarchy_mappings }
+    end.deep_dup
+  end
+
+  def location_catalogue_revision
+    return @location_catalogue_revision if defined?(@location_catalogue_revision)
+
+    @location_catalogue_revision = ModuleRecord.where(module_slug: LOCATION_MODULE_SLUGS)
       .group(:module_slug).order(:module_slug)
       .pluck(
         :module_slug,
@@ -15873,10 +16020,13 @@ class ModulesController < ApplicationController
         Arel.sql("COALESCE(SUM((xmin::text)::bigint), 0)"),
         Arel.sql("COALESCE(MAX((xmin::text)::bigint), 0)")
       )
-    key = ["jj-location-hierarchy-v1", Digest::SHA256.hexdigest(revision.to_json)]
-    @location_hierarchy_mappings = DashboardCacheFill.synchronize(key) do
-      Rails.cache.fetch(key, expires_in: 1.hour) { build_location_hierarchy_mappings }
-    end.deep_dup
+    Digest::SHA256.hexdigest(@location_catalogue_revision.to_json)
+  end
+
+  def location_catalogue_cache
+    # Tests use their isolated store so cache lifecycle and invalidation remain
+    # directly verifiable. Production uses the fast local copy described above.
+    Rails.env.test? ? Rails.cache : LOCATION_CATALOGUE_MEMORY_CACHE
   end
 
   def build_location_hierarchy_mappings

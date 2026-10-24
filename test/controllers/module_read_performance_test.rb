@@ -277,7 +277,9 @@ class ModuleReadPerformanceTest < ActiveSupport::TestCase
       state_rows.index { |row| row[:record_id] == older.id }
     assert_includes all_rows.map { |row| row[:record_id] }, village.id
     assert_equal "Inactive", all_rows.find { |row| row[:record_id] == village.id }[:status]
-    assert_equal 1, queries.size
+    # The directory checks one compact source revision so cached results remain
+    # fresh across requests; all source payloads are still read only once.
+    assert_equal 2, queries.size
   end
 
   test "dashboard batches FCO counts while preserving aliases, distinct JJ and month matching" do

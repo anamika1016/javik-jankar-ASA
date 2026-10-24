@@ -2,12 +2,10 @@
 # checks source revisions, and
 # fully scoped SQL is part of the key so filters and office access stay separate.
 class DashboardSqlCache
-  # Production uses Solid Cache on its dedicated cache database.  Keeping this
-  # aggregate cache in a per-worker MemoryStore makes every Puma worker execute
-  # the same expensive dashboard query after expiry.  Share it through the
-  # configured Rails cache instead.  The in-memory store is retained in test so
-  # cache behaviour remains isolated and deterministic there.
-  STORE = Rails.env.test? ? ActiveSupport::Cache::MemoryStore.new(size: 16.megabytes) : Rails.cache
+  # Cache keys embed a live source revision, so values invalidate as soon as
+  # source rows change. A local store therefore preserves the same result while
+  # avoiding a Solid Cache database round trip for every dashboard cache hit.
+  STORE = ActiveSupport::Cache::MemoryStore.new(size: 64.megabytes)
   TABLES = %w[afls target_mappings vrps module_records].freeze
 
   def source_revision

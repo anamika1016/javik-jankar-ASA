@@ -4,6 +4,7 @@ class LocationCatalogueCacheTest < ActiveSupport::TestCase
   setup do
     @original_cache = Rails.cache
     Rails.cache = ActiveSupport::Cache::MemoryStore.new
+    ModulesController::LG_DIRECTORY_MEMORY_CACHE.clear
   end
 
   teardown { Rails.cache = @original_cache }
@@ -58,5 +59,27 @@ class LocationCatalogueCacheTest < ActiveSupport::TestCase
     catalogue
     record.update_columns(data: { "state_name" => "After update" })
     assert_equal "After update", catalogue.find { |row| row[:id] == record.id.to_s }[:state]
+  end
+
+  test "LG directory reuses its derived rows and invalidates after a location edit" do
+    record = ModuleRecord.create!(module_slug: "state-master", data: { "state_name" => "Cached LG State" })
+    first = ModulesController.new.send(:lg_directory_rows)
+    assert_includes first.map { |row| row[:state] }, "Cached LG State"
+
+    payload_reads = []
+    callback = ->(*args) do
+      sql = args.last[:sql].to_s
+      payload_reads << sql if sql.include?(%Q{"module_records"."data"})
+    end
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      second = ModulesController.new.send(:lg_directory_rows)
+      assert_equal first, second
+    end
+    assert_empty payload_reads
+
+    record.update_columns(data: { "state_name" => "Updated LG State" })
+    updated = ModulesController.new.send(:lg_directory_rows)
+    assert_includes updated.map { |row| row[:state] }, "Updated LG State"
+    assert_not_includes updated.map { |row| row[:state] }, "Cached LG State"
   end
 end

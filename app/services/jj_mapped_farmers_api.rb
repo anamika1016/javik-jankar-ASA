@@ -138,7 +138,10 @@ class JjMappedFarmersApi
   def staff_jeevika_jankars
     return [] unless model_ready?(:Vrp)
 
-    scope = Vrp.all
+    # This endpoint only returns identity/location fields. Avoid carrying the
+    # agreement image for every candidate JJ while applying the same access
+    # rules below; the signature remains available to agreement screens.
+    scope = Vrp.select(Vrp.column_names - ["agreement_signature_data"])
     scope = scope.where(status: 55) if Vrp.column_names.include?("status")
     scope = scope.where(is_active: true) if Vrp.column_names.include?("is_active")
 

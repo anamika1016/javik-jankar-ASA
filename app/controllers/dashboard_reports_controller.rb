@@ -1332,7 +1332,10 @@ class DashboardReportsController < ModulesController
     return training_participation_dashboard_counts_uncached(month_name: month_name, fcoc_name: fcoc_name, week_number: week_number) if cache_key.blank?
 
     DashboardCacheFill.synchronize(cache_key) do
-      Rails.cache.fetch(cache_key, expires_in: 30.minutes) do
+      # The key carries DashboardSqlCache's live source revision. Keep this
+      # read-mostly aggregate in the process so a cache hit cannot queue behind
+      # Solid Cache database traffic while the dashboard is under load.
+      dashboard_read_cache.fetch(cache_key, expires_in: 30.minutes) do
         training_participation_dashboard_counts_uncached(month_name: month_name, fcoc_name: fcoc_name, week_number: week_number)
       end
     end
