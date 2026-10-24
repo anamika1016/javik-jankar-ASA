@@ -2011,6 +2011,17 @@ class ModulesController < ApplicationController
   def jeevika_jankar_bill_target_rows
     return render json: { rows: [], achievement_summary: {}, target_summary: {} } unless current_slug == "jeevika-jankar-bill-process"
 
+    # A new bill does not need the full cross-JJ achievement aggregate to
+    # render its form.  Loading it in the initial HTML request made this page
+    # wait behind every target/activity query and caused the reverse proxy to
+    # time out.  The form asks for this small eligibility index immediately
+    # after it is visible, then keeps the JJ selector disabled until it arrives.
+    # Edit screens still embed their index so their selected JJ is available
+    # synchronously.
+    if params[:achievement_keys_only] == "true"
+      return render json: { achievement_keys: jeevika_jankar_achievement_keys }
+    end
+
     rows = jeevika_jankar_bill_rows(
       vrp_id: params[:vrp_id].presence,
       month_name: params[:month].presence
@@ -9855,7 +9866,11 @@ class ModulesController < ApplicationController
     # fell outside the newest N overall saw only the few that happened to land in it.
     limit_training_list = @slug == "training-form-list" && request.format.html? && params[:all].blank?
     records_scope = records_scope.order(created_at: :desc) if limit_training_list
-    records = records_scope.to_a
+    records = if location_master_list_cacheable?(records_scope)
+      cached_location_master_records(record_source_slug)
+    else
+      records_scope.to_a
+    end
     preload_bill_list_identities!(records) if record_source_slug == "jeevika-jankar-bill-process"
     if record_source_slug == "jeevika-jankar-bill-process"
       records = if ["jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail"].include?(@slug) && jeevika_jankar_payment_module_access?(@slug)
@@ -9891,6 +9906,32 @@ class ModulesController < ApplicationController
       params[:all].blank? &&
       @record.blank? &&
       @slug == "training-form-list"
+  end
+
+  # Location-master forms render the complete saved-record table so the browser
+  # search/export controls continue to see every row. Re-reading and JSON
+  # decoding that same table for every visit was the expensive part, not the
+  # table itself. Cache attributes under the same transaction-version revision
+  # used by location dropdowns, then instantiate fresh read-only model objects
+  # for each request so view code cannot mutate the cached copy.
+  def location_master_list_cacheable?(scope)
+    scope && LOCATION_MODULE_SLUGS.include?(record_source_slug) &&
+      @record.blank? && request&.format&.html?
+  end
+
+  def cached_location_master_records(module_slug)
+    key = ["jj-location-master-records-v1", module_slug, location_catalogue_revision]
+    attribute_rows = DashboardCacheFill.synchronize(key) do
+      location_catalogue_cache.fetch(key, expires_in: 1.hour) do
+        ModuleRecord.where(module_slug: module_slug).order(created_at: :desc).map do |record|
+          # instantiate receives database-form attributes. `attributes` exposes
+          # the already-deserialized Hash for this serialized column, which
+          # would otherwise be parsed a second time on a cache hit.
+          record.attributes.merge("data" => record.data.to_json)
+        end
+      end
+    end
+    attribute_rows.map { |attributes| ModuleRecord.instantiate(attributes) }
   end
 
   # jsonb_each refuses anything that is not a JSON object - it raises
@@ -10802,7 +10843,11 @@ class ModulesController < ApplicationController
     @jeevika_jankar_target_summary ||= jeevika_jankar_target_summary_from_rows(@jeevika_jankar_bill_rows)
     @jeevika_jankar_saved_items = jeevika_jankar_saved_items
     @jeevika_jankar_existing_bills = jeevika_jankar_existing_bill_keys
-    @jeevika_jankar_achievement_keys = jeevika_jankar_achievement_keys
+    # Target rows are already loaded on demand by the form.  Defer only the
+    # all-JJ eligibility index for a new record; it has no effect on a saved
+    # bill being edited and leaving it inline there preserves that workflow.
+    @jeevika_jankar_achievement_keys_loaded = @record.present?
+    @jeevika_jankar_achievement_keys = @record.present? ? jeevika_jankar_achievement_keys : []
   end
 
   def prepare_jeevika_jankar_bill_list
@@ -12256,6 +12301,33 @@ class ModulesController < ApplicationController
   def jeevika_jankar_existing_bill_keys
     return [] unless model_ready?(:ModuleRecord)
 
+    # This is requested by every new/edit bill form only to disable an already
+    # billable JJ/month combination.  It must never deserialize `bill_items`
+    # (which can contain a large farmer list), and the small projected result
+    # is identical for every viewer except that an edit may include its own id.
+    # PostgreSQL xmin changes on all persisted updates, including imports that
+    # bypass updated_at, while COUNT also detects deletes.  Keeping that live
+    # revision in the key retains the immediate duplicate-check behaviour.
+    cache_key = ["jj-existing-bill-keys-v1", jeevika_jankar_bill_process_revision, params[:id].to_s]
+    DashboardCacheFill.synchronize(cache_key) do
+      dashboard_read_cache.fetch(cache_key, expires_in: 1.hour) do
+        build_jeevika_jankar_existing_bill_keys
+      end
+    end.deep_dup
+  end
+
+  def jeevika_jankar_bill_process_revision
+    return @jeevika_jankar_bill_process_revision if defined?(@jeevika_jankar_bill_process_revision)
+
+    version = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process").pick(
+      Arel.sql("COUNT(*)"),
+      Arel.sql("COALESCE(SUM((xmin::text)::bigint), 0)"),
+      Arel.sql("COALESCE(MAX((xmin::text)::bigint), 0)")
+    )
+    @jeevika_jankar_bill_process_revision = version.join(":")
+  end
+
+  def build_jeevika_jankar_existing_bill_keys
     ModuleRecord
       .where(module_slug: "jeevika-jankar-bill-process")
       .select("id", <<~SQL.squish)

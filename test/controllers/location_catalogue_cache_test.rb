@@ -13,6 +13,13 @@ class LocationCatalogueCacheTest < ActiveSupport::TestCase
     ModulesController.new.send(:location_hierarchy_mappings)
   end
 
+  def location_master_controller(slug)
+    controller = ModulesController.new
+    controller.instance_variable_set(:@slug, slug)
+    controller.define_singleton_method(:request) { Struct.new(:format).new(Mime[:html]) }
+    controller
+  end
+
   test "separate requests reuse the catalogue without rereading location payloads" do
     record = ModuleRecord.create!(module_slug: "state-master", data: { "state_name" => "Cache State" })
     expected = catalogue
@@ -81,5 +88,28 @@ class LocationCatalogueCacheTest < ActiveSupport::TestCase
     updated = ModulesController.new.send(:lg_directory_rows)
     assert_includes updated.map { |row| row[:state] }, "Updated LG State"
     assert_not_includes updated.map { |row| row[:state] }, "Cached LG State"
+  end
+
+  test "location master saved records reuse payloads and invalidate after a direct edit" do
+    record = ModuleRecord.create!(module_slug: "village-master", data: {
+      "state_name" => "Cache State", "village_name" => "Before Village"
+    })
+    first = location_master_controller("village-master").send(:module_records)
+    assert_equal "Before Village", first.find { |row| row.id == record.id }.data["village_name"]
+
+    payload_reads = []
+    callback = ->(*args) do
+      sql = args.last[:sql].to_s
+      payload_reads << sql if sql.include?(%Q{"module_records"."data"})
+    end
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      second = location_master_controller("village-master").send(:module_records)
+      assert_equal first.map(&:id), second.map(&:id)
+    end
+    assert_empty payload_reads
+
+    record.update_columns(data: record.data.merge("village_name" => "After Village"))
+    updated = location_master_controller("village-master").send(:module_records)
+    assert_equal "After Village", updated.find { |row| row.id == record.id }.data["village_name"]
   end
 end

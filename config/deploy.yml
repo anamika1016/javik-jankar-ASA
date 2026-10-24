@@ -45,11 +45,14 @@ env:
     # When you start using multiple servers, you should split out job processing to a dedicated machine.
     SOLID_QUEUE_IN_PUMA: true
 
-    # Set number of processes dedicated to Solid Queue (default: 1)
-    # JOB_CONCURRENCY: 3
+    # Jobs share this small host and database with browser requests.  One
+    # worker keeps imports/emails progressing without allowing background work
+    # to consume the connections and memory needed for an interactive page.
+    JOB_CONCURRENCY: 1
 
-    # This deployment runs on a small-memory host; keep one Puma worker.
-    WEB_CONCURRENCY: 1
+    # Single-mode Puma avoids the otherwise idle cluster master process.  Set
+    # this to 2+ only after the host has enough RAM for a Ruby heap per worker.
+    WEB_CONCURRENCY: 0
     RAILS_MAX_THREADS: 2
 
     # Emit only duration and application callsite for database operations that

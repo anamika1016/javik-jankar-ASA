@@ -17,7 +17,7 @@ class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
     assert_equal 1, queries.size
   end
 
-  test "VRP location hierarchy loads all active master modules in one query" do
+  test "VRP location hierarchy loads all active masters in one payload query plus its revision check" do
     ModuleRecord.create!(module_slug: "state-master", data: {
       "state_name" => "Batch State", "state_id" => "STATE-1", "unused_large_payload" => "x" * 10_000
     })
@@ -63,12 +63,16 @@ class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
       end
     end
 
-    assert_equal 1, queries.size
-    assert_includes queries.first, "module_slug"
-    assert_includes queries.first, "jsonb_each"
-    assert_not_includes queries.first, "unused_large_payload"
+    # The live xmin/count revision detects direct imports and deletes before a
+    # cached payload is reused.  It is intentionally a small aggregate query;
+    # there is still only one full JSON payload read for every master.
+    assert_equal 2, queries.size
+    payload_query = queries.find { |sql| sql.include?("jsonb_each") }
+    assert payload_query
+    assert_includes payload_query, "module_slug"
+    assert_not_includes payload_query, "unused_large_payload"
     %w[state_id district_id block_id gram_panchayat_id village_id].each do |key|
-      assert_includes queries.first, key
+      assert_includes payload_query, key
     end
   end
 

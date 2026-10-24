@@ -6326,6 +6326,7 @@ function initDeferredLayoutPage() {
     const initialVrpValue = String(vrpSelect?.value || "");
 
     let achievementKeys = new Set();
+    let achievementKeysLoaded = billForm.dataset.achievementKeysLoaded === "true";
 
     try {
       billRows = JSON.parse(billForm.dataset.billRows || "[]");
@@ -6417,6 +6418,17 @@ function initDeferredLayoutPage() {
       vrpSelect.appendChild(blank);
 
       if (!selectedMonth) {
+        vrpSelect.value = "";
+        vrpSelect.disabled = true;
+        return;
+      }
+
+      // Do not briefly show ineligible JJs while the new-bill form loads its
+      // server-authoritative eligibility index. This keeps the existing
+      // dropdown rule intact while allowing the initial HTML response to open
+      // without calculating every JJ's target totals.
+      if (!achievementKeysLoaded) {
+        blank.textContent = "Loading available Jeevika Jankar...";
         vrpSelect.value = "";
         vrpSelect.disabled = true;
         return;
@@ -6589,6 +6601,26 @@ function initDeferredLayoutPage() {
       return request;
     };
 
+    const loadAchievementKeys = async () => {
+      if (achievementKeysLoaded || !billRowsUrl) return;
+
+      const url = new URL(billRowsUrl, window.location.origin);
+      url.searchParams.set("achievement_keys_only", "true");
+      try {
+        const data = await fetchJson(url.toString());
+        achievementKeys = new Set(Array.isArray(data.achievement_keys) ? data.achievement_keys : []);
+        achievementKeysLoaded = true;
+        syncJeevikaVrpOptions();
+        renderJeevikaBillRows();
+      } catch (_error) {
+        // Leaving the selector disabled is intentional: allowing every JJ
+        // through on an incomplete eligibility index would change billing
+        // behaviour. A later navigation retries this lightweight request.
+        const blank = vrpSelect?.options?.[0];
+        if (blank && monthSelect?.value) blank.textContent = "Available Jeevika Jankar load nahi hua. Please reload.";
+      }
+    };
+
     const renderJeevikaBillRows = async () => {
       if (!rowsBody) return;
 
@@ -6719,6 +6751,7 @@ function initDeferredLayoutPage() {
     });
     syncJeevikaVrpOptions();
     renderJeevikaBillRows();
+    loadAchievementKeys();
     syncPaymentRemarks();
   });
 

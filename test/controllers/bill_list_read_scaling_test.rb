@@ -188,6 +188,48 @@ class BillListReadScalingTest < ActiveSupport::TestCase
     assert checked.all? { |data| !data.key?("bill_items") }, "Duplicate checks must not load unused evidence"
   end
 
+  test "bill process duplicate keys reuse the projected result and invalidate on a direct update" do
+    bill = ModuleRecord.create!(module_slug: "jeevika-jankar-bill-process", data: {
+      "select_vrp" => "cache-jj", "bill_month" => "September", "status" => "Submitted",
+      "bill_items" => [{ "farmer_details" => [{ "name" => "x" * 100_000 }] }]
+    })
+
+    first_controller = calculator
+    first = first_controller.send(:jeevika_jankar_existing_bill_keys)
+    assert_includes first, { id: bill.id.to_s, vrp_id: "cache-jj", month: "September" }
+
+    projected_queries, second = read_queries do
+      calculator.send(:jeevika_jankar_existing_bill_keys)
+    end
+    assert_equal first, second
+    assert_operator projected_queries, :<=, 1, "warm read should only check the lightweight source revision"
+
+    # update_columns deliberately bypasses callbacks/timestamps; xmin in the
+    # revision still makes the next form see the changed duplicate state.
+    bill.update_columns(data: bill.data.merge("status" => "Rejected"))
+    refetched = calculator.send(:jeevika_jankar_existing_bill_keys)
+    assert_not_includes refetched, { id: bill.id.to_s, vrp_id: "cache-jj", month: "September" }
+  end
+
+  test "new bill form defers eligibility aggregate while an edit keeps its current synchronous data" do
+    new_bill = calculator
+    stub_bill_form_dependencies(new_bill)
+    new_bill.define_singleton_method(:jeevika_jankar_achievement_keys) { raise "new form must not calculate all JJ totals" }
+
+    new_bill.send(:prepare_jeevika_jankar_bill_data)
+    assert_equal [], new_bill.instance_variable_get(:@jeevika_jankar_achievement_keys)
+    assert_not new_bill.instance_variable_get(:@jeevika_jankar_achievement_keys_loaded)
+
+    edited_bill = calculator
+    stub_bill_form_dependencies(edited_bill)
+    edited_bill.instance_variable_set(:@record, ModuleRecord.new(data: { "select_vrp" => "12", "bill_month" => "September" }))
+    edited_bill.define_singleton_method(:jeevika_jankar_achievement_keys) { ["12|september"] }
+
+    edited_bill.send(:prepare_jeevika_jankar_bill_data)
+    assert_equal ["12|september"], edited_bill.instance_variable_get(:@jeevika_jankar_achievement_keys)
+    assert edited_bill.instance_variable_get(:@jeevika_jankar_achievement_keys_loaded)
+  end
+
   private
 
   def calculator
@@ -215,5 +257,17 @@ class BillListReadScalingTest < ActiveSupport::TestCase
       gender: 1, ifsc_code: "TEST0123456", mobile_no: "9876543210", office_detail_id: 0, to_office_detail_id: 0)
     vrp.save!(validate: false)
     vrp
+  end
+
+  def stub_bill_form_dependencies(controller)
+    controller.define_singleton_method(:active_month_master_rows) { [] }
+    controller.define_singleton_method(:approved_vrp_id_options) { [] }
+    controller.define_singleton_method(:month_master_month_options) { |_| [] }
+    controller.define_singleton_method(:month_master_financial_year_options) { |_| [] }
+    controller.define_singleton_method(:jeevika_jankar_bill_rows) { |**_| [] }
+    controller.define_singleton_method(:jeevika_jankar_achievement_summary) { |_| {} }
+    controller.define_singleton_method(:jeevika_jankar_target_summary_from_rows) { |_| {} }
+    controller.define_singleton_method(:jeevika_jankar_saved_items) { [] }
+    controller.define_singleton_method(:jeevika_jankar_existing_bill_keys) { [] }
   end
 end

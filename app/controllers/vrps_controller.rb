@@ -9,6 +9,12 @@ class VrpsController < ApplicationController
     state-master district-master block-master gram-panchayat-master village-master lg-directory-list
   ].freeze
   VrpLocationRecord = Struct.new(:id, :data)
+  # Production Rails.cache is backed by the same database that serves these
+  # forms.  Keeping this read-mostly catalogue in-process removes a cache-table
+  # query from every VRP new/edit request.  Its key contains a database row
+  # revision, so creates, edits, imports and deletes still take effect on the
+  # very next request.
+  VRP_LOCATION_MEMORY_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 24.megabytes)
   LOCATION_OPTION_DATA_KEYS = %w[
     deleted is_deleted discarded status
     state_name state state_code state_id
@@ -2062,13 +2068,18 @@ class VrpsController < ApplicationController
     return if missing_slugs.empty?
 
     missing_slugs.each { |slug| @vrp_form_records_by_slug[slug] = [] }
-    records = ModuleRecord.where(module_slug: missing_slugs)
-      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
-      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
-      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
-      .where("COALESCE(BTRIM(data::jsonb ->> 'status'), '') = '' OR LOWER(BTRIM(data::jsonb ->> 'status')) = 'active'")
-      .order(created_at: :desc)
-      .pluck(:module_slug, :id, Arel.sql(location_option_data_projection))
+    cache_key = ["vrp/location-catalogue-v1", missing_slugs, vrp_location_catalogue_revision]
+    records = DashboardCacheFill.synchronize(cache_key) do
+      vrp_location_catalogue_cache.fetch(cache_key, expires_in: 1.hour) do
+        ModuleRecord.where(module_slug: missing_slugs)
+          .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
+          .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
+          .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
+          .where("COALESCE(BTRIM(data::jsonb ->> 'status'), '') = '' OR LOWER(BTRIM(data::jsonb ->> 'status')) = 'active'")
+          .order(created_at: :desc)
+          .pluck(:module_slug, :id, Arel.sql(location_option_data_projection))
+      end
+    end
 
     records.each do |module_slug, id, data|
       # The projection is cast to SQL text so PostgreSQL returns only the
@@ -2076,8 +2087,30 @@ class VrpsController < ApplicationController
       # treating the JSON string as a Hash silently made every location label
       # and parent reference disappear.
       data = JSON.parse(data) if data.is_a?(String)
-      @vrp_form_records_by_slug[module_slug] << VrpLocationRecord.new(id, data)
+      # A cache hit can hand back the same Hash instance from MemoryStore.  The
+      # form helpers treat data as read-only today; duplicating it here makes
+      # that guarantee explicit and prevents a future helper mutation from
+      # leaking into a later request.
+      @vrp_form_records_by_slug[module_slug] << VrpLocationRecord.new(id, data.deep_dup)
     end
+  end
+
+  def vrp_location_catalogue_revision
+    return @vrp_location_catalogue_revision if defined?(@vrp_location_catalogue_revision)
+
+    rows = ModuleRecord.where(module_slug: LOCATION_HIERARCHY_MODULE_SLUGS)
+      .group(:module_slug).order(:module_slug)
+      .pluck(
+        :module_slug,
+        Arel.sql("COUNT(*)"),
+        Arel.sql("COALESCE(SUM((xmin::text)::bigint), 0)"),
+        Arel.sql("COALESCE(MAX((xmin::text)::bigint), 0)")
+      )
+    @vrp_location_catalogue_revision = Digest::SHA256.hexdigest(rows.to_json)
+  end
+
+  def vrp_location_catalogue_cache
+    Rails.env.test? ? Rails.cache : VRP_LOCATION_MEMORY_CACHE
   end
 
   def vrp_form_records_for(module_slug)

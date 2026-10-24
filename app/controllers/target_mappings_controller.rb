@@ -1849,8 +1849,9 @@ end
 
   def main_activity_type_map
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+    return @main_activity_type_map if defined?(@main_activity_type_map)
 
-    ModuleRecord.where(module_slug: "add-activity-group")
+    @main_activity_type_map = ModuleRecord.where(module_slug: "add-activity-group")
       .order(created_at: :desc)
       .select { |record| record.data["status"].blank? || record.data["status"] == "Active" }
       .filter_map do |record|
@@ -1867,8 +1868,9 @@ end
 
   def target_sub_activity_map
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+    return @target_sub_activity_map if defined?(@target_sub_activity_map)
 
-    ModuleRecord.where(module_slug: "add-vrp-activity")
+    @target_sub_activity_map = ModuleRecord.where(module_slug: "add-vrp-activity")
       .order(created_at: :desc)
       .select { |record| record.data["status"].blank? || record.data["status"] == "Active" }
       .filter_map do |record|

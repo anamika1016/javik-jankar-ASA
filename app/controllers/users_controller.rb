@@ -1,4 +1,10 @@
 class UsersController < ApplicationController
+  # The user-management form opens several master tables at once.  Rails.cache
+  # is database-backed in production, which meant even a warm cache added a
+  # database request while the server was already saturated.  The source
+  # revision remains part of the key, preserving the existing invalidation and
+  # option values while making warm reads process-local.
+  USER_FORM_OPTIONS_MEMORY_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 16.megabytes)
   FORM_OPTION_SLUGS = %w[
     stakeholder-master stakeholder-role role-name user-management-role person-type
     state-master district-master block-master gram-panchayat-master village-master
@@ -99,7 +105,11 @@ class UsersController < ApplicationController
       .pick(Arel.sql("COUNT(*)"), Arel.sql("MAX(updated_at)"))
     cache_key = ["users/form-options-v2", version.first, version.last&.utc&.iso8601(6)]
 
-    Rails.cache.fetch(cache_key, expires_in: 1.hour) { build_user_form_options_payload }
+    user_form_options_cache.fetch(cache_key, expires_in: 1.hour) { build_user_form_options_payload }.deep_dup
+  end
+
+  def user_form_options_cache
+    Rails.env.test? ? Rails.cache : USER_FORM_OPTIONS_MEMORY_CACHE
   end
 
   def build_user_form_options_payload

@@ -90,4 +90,19 @@ class VrpLocationLookupOrderTest < ActiveSupport::TestCase
     assert_empty queries,
       "the grouped request re-queried masters the preload had already loaded"
   end
+
+  test "location catalogue cache is invalidated by a direct master update" do
+    first = VrpsController.new
+    first.send(:preload_vrp_form_location_records!)
+    assert_equal "Kalapan", first.send(:active_records_for_location, "village-master").first.data["village_name"]
+
+    # Imports and maintenance tasks can bypass Rails timestamps, so this is
+    # deliberately update_column rather than update!. The PostgreSQL xmin-based
+    # revision must still make the next form show the current master value.
+    @village.update_column(:data, @village.data.merge("village_name" => "Updated Kalapan"))
+
+    second = VrpsController.new
+    second.send(:preload_vrp_form_location_records!)
+    assert_equal "Updated Kalapan", second.send(:active_records_for_location, "village-master").first.data["village_name"]
+  end
 end
