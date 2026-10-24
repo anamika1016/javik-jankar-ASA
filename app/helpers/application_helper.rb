@@ -478,35 +478,19 @@ module ApplicationHelper
     return nil if admin_access_user?
     return @allowed_sidebar_keys = [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
-    @allowed_sidebar_keys = Rails.cache.fetch(sidebar_access_cache_key, expires_in: 10.minutes, race_condition_ttl: 30.seconds) do
-      compute_allowed_sidebar_keys
-    end
-  rescue StandardError => error
-    Rails.logger.warn("Sidebar access cache skipped: #{error.class}: #{error.message}")
+    # Computing these reads the access-control records once - a single small
+    # query. The cache that used to wrap it costs more than that on this
+    # deployment: the store lives in the database, so a lookup was one query for
+    # the fingerprint that built the key plus another to read the entry, and a
+    # miss added a delete and an insert on top. Reading the records directly is
+    # fewer queries for the same answer, and it is still computed once per
+    # request by the memo above.
+    #
+    # The rescue that used to sit here existed for cache failures and fell back
+    # to this same computation. With no cache left there is nothing for it to
+    # catch, and swallowing an error here would hand back an empty list - which
+    # reads as "no permissions" and would silently empty somebody's menu.
     @allowed_sidebar_keys = compute_allowed_sidebar_keys
-  end
-
-  def sidebar_access_cache_key
-    [
-      "sidebar-access-keys",
-      sidebar_access_user_cache_key,
-      sidebar_access_records_fingerprint
-    ].to_json
-  end
-
-  def sidebar_access_user_cache_key
-    current_app_user
-      .slice("id", "user_id", "username", "user_name", "user_type", "stakeholder", "stakeholder_role", "role", "role_name", "user_management_role", "person_type", "vrp_types", "record_type")
-      .sort
-      .to_h
-  end
-
-  def sidebar_access_records_fingerprint
-    @sidebar_access_records_fingerprint ||= ModuleRecord
-      .where(module_slug: "access-control")
-      # Preserve sub-second precision so an edit made immediately after a
-      # create invalidates the sidebar permission cache on the next request.
-      .pick(Arel.sql("COUNT(*)"), Arel.sql("COALESCE(MAX(id), 0)"), Arel.sql("COALESCE(MAX(updated_at)::text, '')"))
   end
 
   def compute_allowed_sidebar_keys
@@ -800,10 +784,17 @@ module ApplicationHelper
 
     names = [current_app_user&.dig("stakeholder")]
     username = current_app_user&.dig("username").to_s
+    user_id = current_app_user&.dig("id")
 
-    if defined?(User) && User.table_exists?
+    # Signed out there is nothing to match on, and the two halves of the
+    # condition below become "user_name = '' OR id IS NULL" - which no row can
+    # satisfy, because user_name is required. The layout asks for this on every
+    # page, so without the guard the login screen itself paid for a full scan of
+    # the users table that could only ever answer nil. The legacy lookup below
+    # has always been guarded the same way.
+    if defined?(User) && User.table_exists? && (username.present? || user_id.present?)
       username_match = User.arel_table[:user_name].eq(username)
-      id_match = User.arel_table[:id].eq(current_app_user&.dig("id"))
+      id_match = User.arel_table[:id].eq(user_id)
       username_first = User.connection.quote(username)
       user = User.where(username_match.or(id_match))
         .order(Arel.sql("CASE WHEN user_name = #{username_first} THEN 0 ELSE 1 END"))

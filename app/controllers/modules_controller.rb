@@ -8889,12 +8889,35 @@ class ModulesController < ApplicationController
       .gsub("public.afls", "(#{dashboard_visible_farmer_scope.to_sql})")
   end
 
+  # includes(:vrp) brings every column of every Jeevika Jankar along, and one of
+  # them - agreement_signature_data - holds the signature image captured when
+  # the agreement was accepted. Nothing on these screens reads it, but on an
+  # unbounded load it is the bulk of what comes back. This attaches the same
+  # associations without that column, which is already how cached_vrps_by_id and
+  # the dashboard report build their Jeevika Jankar lists.
+  def preload_target_vrps!(targets)
+    targets = Array(targets)
+    return targets unless model_ready?(:Vrp)
+
+    # Some callers build the form from lightweight stand-ins rather than
+    # records. Those already carry the Jeevika Jankar they need and have no
+    # association to attach one to, so they are left exactly as they arrived.
+    attachable = targets.select { |target| target.respond_to?(:association) }
+    vrp_ids = attachable.filter_map(&:vrp_id).uniq
+    return targets if vrp_ids.empty?
+
+    vrps = Vrp.select(Vrp.column_names - ["agreement_signature_data"])
+      .where(id: vrp_ids).index_by(&:id)
+    attachable.each { |target| target.association(:vrp).target = vrps[target.vrp_id] }
+    targets
+  end
+
   def dashboard_target_mappings
     return @dashboard_target_mappings if defined?(@dashboard_target_mappings)
     return @dashboard_target_mappings = [] unless model_ready?(:TargetMapping)
 
-    scope = TargetMapping.includes(:vrp).order(updated_at: :desc)
-    return @dashboard_target_mappings = scope.to_a if dashboard_global_view_user?
+    scope = TargetMapping.order(updated_at: :desc)
+    return @dashboard_target_mappings = preload_target_vrps!(scope.to_a) if dashboard_global_view_user?
 
     visible_vrp_ids = dashboard_vrps.map(&:id)
     current_ids = dashboard_current_app_user_ids
@@ -8902,7 +8925,7 @@ class ModulesController < ApplicationController
     visible_scope = visible_scope.or(scope.where(vrp_id: visible_vrp_ids)) if visible_vrp_ids.any?
     visible_scope = visible_scope.or(scope.where(created_by_id: current_ids)) if current_ids.any? && TargetMapping.column_names.include?("created_by_id")
 
-    @dashboard_target_mappings = visible_scope.to_a
+    @dashboard_target_mappings = preload_target_vrps!(visible_scope.to_a)
   end
 
   def dashboard_target_summary_rows(targets)
@@ -12234,7 +12257,7 @@ class ModulesController < ApplicationController
 
     selected_vrp_ids = jeevika_jankar_bill_selected_vrp_ids(vrp_id)
     return [] if vrp_id.present? && selected_vrp_ids.blank?
-    targets = TargetMapping.includes(:vrp)
+    targets = TargetMapping.all
     targets = targets.where(vrp_id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
     targets = targets.where(vrp_id: module_cluster_visible_vrp_ids) if module_mapped_vrp_scope_active?
     targets = targets.where(vrp_id: selected_vrp_ids) if selected_vrp_ids.present?
@@ -12242,20 +12265,21 @@ class ModulesController < ApplicationController
     targets = targets.where("LOWER(BTRIM(month_name)) = ?", month_name.to_s.strip.downcase) if month_name.present?
     targets = targets.order(:month_name, :vrp_id, :village_name, :main_activity_name, :activity_name, :id).load
     if vrp_id.present? && targets.none?
-      targets = TargetMapping.includes(:vrp)
+      targets = TargetMapping.all
       targets = selected_vrp_ids.present? ? targets.where(vrp_id: selected_vrp_ids) : targets.none
       targets = targets.where("LOWER(BTRIM(month_name)) = ?", month_name.to_s.strip.downcase) if month_name.present?
       targets = targets.order(:month_name, :vrp_id, :village_name, :main_activity_name, :activity_name, :id).load
     end
     if month_name.present? && targets.none? && selected_vrp_ids.present?
       month_numbers = month_number_candidates(month_name)
-      targets = TargetMapping.includes(:vrp).where(vrp_id: selected_vrp_ids)
+      targets = TargetMapping.where(vrp_id: selected_vrp_ids)
       if month_numbers.any?
         target_ids = targets.select { |target| month_numbers.include?(month_number_value(target.month_name)) }.map(&:id)
-        targets = TargetMapping.includes(:vrp).where(id: target_ids)
+        targets = TargetMapping.where(id: target_ids)
       end
     end
     targets = targets.loaded? ? targets.to_a : targets.order(:month_name, :vrp_id, :village_name, :main_activity_name, :activity_name, :id).to_a
+    preload_target_vrps!(targets)
     @other_target_candidate_targets = targets
     @other_target_candidate_targets_by_id = targets.index_by { |target| target.id.to_s }
     farmers_by_id = totals_only ? {} : jeevika_jankar_farmers_by_id(targets)
@@ -14908,10 +14932,11 @@ class ModulesController < ApplicationController
     sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
 
     saved_target_ids = @record&.module_slug == "training-form" ? Array(@record.data["target_mapping_ids"].presence || @record.data["target_mapping_id"]).map(&:to_s) : []
-    targets = training_target_scope.or(TargetMapping.where(id: saved_target_ids))
-      .includes(:vrp)
-      .order(:ics_name, :ics_id, :village_name, :village_id, :id)
-      .to_a
+    targets = preload_target_vrps!(
+      training_target_scope.or(TargetMapping.where(id: saved_target_ids))
+        .order(:ics_name, :ics_id, :village_name, :village_id, :id)
+        .to_a
+    )
       .select do |target|
         activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
         saved_target_ids.include?(target.id.to_s) || (activity_setting.present? && training_main_activity_type?(activity_setting[:main_activity_type]))
@@ -15013,10 +15038,11 @@ class ModulesController < ApplicationController
     activity_settings = jeevika_jankar_main_activity_settings
     sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
 
-    targets = training_target_scope
-      .includes(:vrp)
-      .order(:ics_name, :ics_id, :village_name, :village_id, :id)
-      .to_a
+    targets = preload_target_vrps!(
+      training_target_scope
+        .order(:ics_name, :ics_id, :village_name, :village_id, :id)
+        .to_a
+    )
     other_with_farmer = record_source_slug == "other-target-with-farmer"
     # Other with Farmer uses the existing selected-target request for its live
     # village list. Building every village's rows before rendering the form
