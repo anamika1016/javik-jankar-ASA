@@ -453,7 +453,7 @@
             <% seq = approval_sequence_from_level(step.data["approval_level"]) %>
             <% is_last = (idx == total_steps - 1) %>
             <% ordinal_label = is_last ? "Financial Approver" : approval_level_label_for_sequence(seq).sub(" Approval", " Approver") %>
-            <% step_history = jeevika_bill_approval_history(detail_record).find { |history| approval_sequence_from_level(history.data["approval_level"]) == seq && ["Approved", "Rejected", "Returned"].include?(history.data["action"]) } %>
+            <% step_history = jeevika_bill_current_approval_history(detail_record).find { |history| approval_sequence_from_level(history.data["approval_level"]) == seq && ["Approved", "Rejected", "Returned"].include?(history.data["action"]) } %>
             <% closing_action = step_history&.data&.[]("action") %>
             <% state = ["Rejected", "Returned"].include?(closing_action) ? "rejected" : (step_history ? "approved" : (jeevika_bill_current_approval_step(detail_record)&.id == step.id ? "current" : "pending")) %>
             <div class="approval-progress-card <%= state %>">
@@ -476,6 +476,7 @@
           <div class="module-form-actions">
             <button type="button" class="list-btn active" data-open-approval-modal data-approval-action="approve" data-approval-url="<%= approve_bill_module_record_path("jeevika-jankar-bill-list", detail_record) %>">Approve</button>
             <button type="button" class="list-btn deactive" data-open-approval-modal data-approval-action="reject" data-approval-url="<%= reject_bill_module_record_path("jeevika-jankar-bill-list", detail_record) %>">Reject</button>
+            <button type="button" class="list-btn deactive" data-open-approval-modal data-approval-action="return" data-approval-url="<%= return_bill_module_record_path("jeevika-jankar-bill-list", detail_record) %>">Return</button>
           </div>
         <% end %>
       </div>

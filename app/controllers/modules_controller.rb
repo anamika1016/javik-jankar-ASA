@@ -42,7 +42,7 @@ class ModulesController < ApplicationController
                 :parent_office_mappings, :user_hierarchy_list_rows, :jeevika_jankar_cluster_rows,
                 :jeevika_bill_status_label, :jeevika_bill_status_class, :jeevika_bill_rows,
                 :jeevika_bill_detail_rows, :jeevika_bill_display_items, :jeevika_bill_current_approval_step,
-                :jeevika_bill_approval_history, :jeevika_bill_current_approver?,
+                :jeevika_bill_approval_history, :jeevika_bill_current_approval_history, :jeevika_bill_current_approver?,
                 :jeevika_bill_approval_steps, :jeevika_bill_summary,
                 :jeevika_bill_attachment_rows, :jeevika_bill_other_activity_uploads, :jeevika_bill_training_uploads, :jeevika_jankar_display_name,
                 :jeevika_jankar_vrp_label, :jeevika_bill_time_slot_rows,
@@ -11874,11 +11874,17 @@ class ModulesController < ApplicationController
     @jeevika_bill_approval_history_by_bill_id ||= begin
       scope = ModuleRecord
       .where(module_slug: "jeevika-jankar-bill-approval-history")
-      .order(created_at: :asc)
+      .order(created_at: :asc, id: :asc)
       bill_ids = Array(@jeevika_bill_visible_record_ids).map(&:to_s).reject(&:blank?)
       scope = scope.where("data::jsonb ->> 'bill_id' IN (?)", bill_ids) if bill_ids.any?
       scope.group_by { |history| history.data["bill_id"].to_s }
     end
+  end
+
+  def jeevika_bill_current_approval_history(record)
+    history = jeevika_bill_approval_history(record)
+    submission_index = history.rindex { |entry| entry.data["action"] == "Sent for Approval" }
+    submission_index ? history.drop(submission_index + 1) : history
   end
 
   def jeevika_bill_current_approval_step(record)
@@ -11896,7 +11902,7 @@ class ModulesController < ApplicationController
     step_sequence = approval_sequence_from_level(step.data["approval_level"])
     step_approver = step.data["approver_approved_by"]
 
-    jeevika_bill_approval_history(record).any? do |history|
+    jeevika_bill_current_approval_history(record).any? do |history|
       next false unless ["Approved", "Rejected"].include?(history.data["action"].to_s)
 
       approval_sequence_from_level(history.data["approval_level"]) == step_sequence ||
@@ -11905,7 +11911,7 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_bill_approved_sequences(record)
-    jeevika_bill_approval_history(record)
+    jeevika_bill_current_approval_history(record)
       .select { |history| history.data["action"].to_s == "Approved" }
       .map { |history| approval_sequence_from_level(history.data["approval_level"]) }
       .uniq
