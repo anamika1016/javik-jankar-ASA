@@ -192,31 +192,6 @@ module ApplicationHelper
     end
   end
 
-  def farmer_farm_information_select_options
-    return [] unless "FarmerFarmInformation".safe_constantize&.table_exists?
-
-    FarmerFarmInformation
-      .order(:farm_id, :farmer_name)
-      .limit(1_000)
-      .map { |record| [farmer_farm_information_option_label(record), record.id] }
-  end
-
-  def farmer_farm_information_option_label(record)
-    [record.farm_id, record.farmer_name, record.ics_name].compact_blank.join(" - ")
-  end
-
-  def linked_farmer_farm_id(record)
-    record.farmer_farm_information&.farm_id.presence || "-"
-  end
-
-  def linked_farmer_name(record)
-    record.farmer_farm_information&.farmer_name.presence || "-"
-  end
-
-  def linked_ics_name(record)
-    record.farmer_farm_information&.ics_name.presence || "-"
-  end
-
   SIDEBAR_SECTIONS = [
     {
       title: "LG Directory",
@@ -313,14 +288,6 @@ module ApplicationHelper
     #   ]
     # },
     {
-      title: "Weekly Target",
-      icon: "▨",
-      links: [
-        ["Weekly Activity Progress Report", :route, :weekly_activity_target_report_path],
-        ["Target Status List", :route, :farmer_training_target_status_path]
-      ]
-    },
-    {
       title: "Target Mapping",
       icon: "▤",
       links: [
@@ -342,7 +309,6 @@ module ApplicationHelper
         ["Other Target List", :module, "other-target-list"],
         ["Other Target with Farmer", :module, "other-target-with-farmer"],
         ["Other Target with Farmer List", :module, "other-target-with-farmer-list"],
-        ["Farmer Participation Report", :route, :farmer_participation_report_path],
       ]
     },
     # {
@@ -397,8 +363,6 @@ module ApplicationHelper
     if type == :module
       request.path.include?(target)
     else
-      return request.path.start_with?(public_send(target)) if target == :ics_exit_declaration_farmer_farm_information_path
-
       request.path == public_send(target)
     end
   end
@@ -586,36 +550,6 @@ module ApplicationHelper
     when "PAPL360 Targate List", "ASA360 Targate List"
       keys << "papl360-target-list"
     end
-    if ["Farmer Farm Information", "Farmer FARM Information", "Farmer_FARM _Information"].include?(name.to_s.strip)
-      keys.concat(["farmer-farm-information", "application-format-for-exit-of-farmer-from-ics"])
-    end
-    if ["All Basic Detail List", "All Land List", "Land List", "Farmer Farm Information List"].include?(name.to_s.strip)
-      keys.concat(["all-basic-detail-list", "all-land-list", "land-list", "farmer-farm-information-list"])
-    end
-    if ["Farm Map", "Farm Map (lat long gps)", "FRAM MAP (lat long gps)"].include?(name.to_s.strip)
-      keys.concat(["farm-map", "farm-map-lat-long-gps", "fram-map-lat-long-gps"])
-    end
-    if ["Crop Map Session Wise Farm Map", "Crop Map Session Wise Farm Map (lat long gps)"].include?(name.to_s.strip)
-      keys << "crop-map-session-wise-farm-map-lat-long-gps"
-    end
-    if ["Farm-Crop-Area Details", "Farm Crop Area Details"].include?(name.to_s.strip)
-      keys << "farm-crop-area-details"
-    end
-    if ["Seed & Planting Material", "Seed Planting Material"].include?(name.to_s.strip)
-      keys << "seed-planting-material"
-    end
-    if ["Soil Conditioners & Fertility Input Records", "Soil Conditioner Fertility Input Records"].include?(name.to_s.strip)
-      keys << "soil-conditioners-fertility-input-records"
-    end
-    if ["On Farm Input Records", "Record of on farm input"].include?(name.to_s.strip)
-      keys << "on-farm-input-records"
-    end
-    if ["Disease, Insects, Pests & Weed Management Record", "Disease Insects Pests Weed Management Record"].include?(name.to_s.strip)
-      keys << "disease-insects-pests-weed-management-record"
-    end
-    if ["Contamination Control Records", "Contamination Control"].include?(name.to_s.strip)
-      keys << "contamination-control-records"
-    end
     if ["Target Mapping Master", "Target Mapping", "VRP Targets", "Target Mapped JJ"].include?(name.to_s.strip)
       keys.concat(["target-mapping-master", "target-mapping", "vrp-targets", "target-mapped-jj"])
     end
@@ -706,7 +640,6 @@ module ApplicationHelper
         ["Other Target List", :module, "other-target-list"],
         ["Other Target with Farmer", :module, "other-target-with-farmer"],
         ["Other Target with Farmer List", :module, "other-target-with-farmer-list"],
-        ["Farmer Participation Report", :route, :farmer_participation_report_path],
         ]
       },
       {

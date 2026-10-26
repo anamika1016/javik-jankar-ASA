@@ -168,9 +168,6 @@ Rails.application.routes.draw do
   get "dashboard/vrp-list/:list_type", to: "dashboard_reports#vrp_dashboard_list", as: :vrp_dashboard_list
   delete "dashboard/vrp-mapped-villages/:id", to: "modules#destroy_vrp_mapped_village", as: :destroy_vrp_mapped_village
   get "dashboard/farmer-training-participation", to: "dashboard_reports#farmer_training_participation", as: :farmer_training_participation
-  get "dashboard/farmer-training-target-status", to: "dashboard_reports#farmer_training_target_status", as: :farmer_training_target_status
-  get "dashboard/weekly-activity-target-report", to: "dashboard_reports#weekly_activity_target_report", as: :weekly_activity_target_report
-  get "dashboard/farmer-participation-report", to: "dashboard_reports#farmer_participation_report", as: :farmer_participation_report
   get "dashboard/ics-wise-farmer-report", to: "dashboard_reports#ics_wise_farmer_report", as: :ics_wise_farmer_report
 
   resources :users, except: [:show] do
@@ -216,79 +213,6 @@ Rails.application.routes.draw do
     get :user_blocks, on: :collection
     get :jj_mapped_farmers, on: :collection
   end
-
-  get "farmer-farm-information", to: "farmer_farm_information#index", as: :farmer_farm_information
-  post "farmer-farm-information", to: "farmer_farm_information#create"
-  post "farmer-farm-information/import", to: "farmer_farm_information#import", as: :import_farmer_farm_information
-  get "farmer-farm-information/export", to: "farmer_farm_information#export", as: :export_farmer_farm_information
-  get "farmer-farm-information/list", to: "farmer_farm_information#list", as: :list_farmer_farm_information
-  get "farmer-farm-information/ics-exit-declaration", to: "farmer_farm_information#ics_exit_declaration", as: :ics_exit_declaration_farmer_farm_information
-  post "farmer-farm-information/ics-exit-declaration", to: "farmer_farm_information#create_ics_exit_declaration"
-  get "farmer-farm-information/ics-exit-declaration/:id/edit", to: "farmer_farm_information#edit_ics_exit_declaration", as: :edit_ics_exit_declaration_record
-  get "farmer-farm-information/ics-exit-declaration/:id", to: "farmer_farm_information#show_ics_exit_declaration", as: :ics_exit_declaration_record
-  patch "farmer-farm-information/ics-exit-declaration/:id", to: "farmer_farm_information#update_ics_exit_declaration"
-  delete "farmer-farm-information/ics-exit-declaration/:id", to: "farmer_farm_information#destroy_ics_exit_declaration"
-  get "farmer-farm-information/farm-map", to: "farmer_farm_map_uploads#farm_map", as: :farm_map_farmer_farm_information
-  get "farmer-farm-information/crop-map-session-wise", to: "farmer_farm_map_uploads#crop_map_session_wise", as: :crop_map_session_wise_farmer_farm_information
-  post "farmer-farm-information/map-uploads", to: "farmer_farm_map_uploads#create", as: :farmer_farm_map_uploads
-  get "farmer-farm-information/map-uploads/:id/edit", to: "farmer_farm_map_uploads#edit", as: :edit_farmer_farm_map_upload
-  patch "farmer-farm-information/map-uploads/:id/set_status", to: "farmer_farm_map_uploads#set_status"
-  patch "farmer-farm-information/map-uploads/:id", to: "farmer_farm_map_uploads#update", as: :farmer_farm_map_upload
-  delete "farmer-farm-information/map-uploads/:id", to: "farmer_farm_map_uploads#destroy"
-  resources :farm_crop_area_details, path: "farmer-farm-information/farm-crop-area-details", only: [:index, :create, :edit, :update, :destroy] do
-    post :import, on: :collection
-    get :export, on: :collection
-    patch :set_status, on: :member
-  end
-  resources :seed_planting_materials, path: "farmer-farm-information/seed-planting-materials", only: [:index, :create, :edit, :update, :destroy] do
-    post :import, on: :collection
-    get :export, on: :collection
-    patch :set_status, on: :member
-  end
-  resources :soil_conditioner_fertility_input_records, path: "farmer-farm-information/soil-conditioner-fertility-input-records", only: [:index, :create, :edit, :update, :destroy] do
-    post :import, on: :collection
-    get :export, on: :collection
-    patch :set_status, on: :member
-  end
-  resources :on_farm_input_records, path: "farmer-farm-information/on-farm-input-records", only: [:index, :create, :edit, :update, :destroy] do
-    post :import, on: :collection
-    get :export, on: :collection
-    patch :set_status, on: :member
-  end
-  resources :disease_pest_weed_management_records, path: "farmer-farm-information/disease-pest-weed-management-records", only: [:index, :create, :edit, :update, :destroy] do
-    post :import, on: :collection
-    get :export, on: :collection
-    patch :set_status, on: :member
-  end
-  resources :contamination_control_records, path: "farmer-farm-information/contamination-control-records", only: [:index, :create, :edit, :update, :destroy] do
-    post :import, on: :collection
-    get :export, on: :collection
-    patch :set_status, on: :member
-  end
-  resources :production_harvest_details, path: "farmer-farm-information/production-harvest-details", only: [:index, :create, :edit, :update, :destroy] do
-    post :import, on: :collection
-    get :export, on: :collection
-    patch :set_status, on: :member
-  end
-  resources :post_harvest_handling_storage_records, path: "farmer-farm-information/post-harvest-handling-storage-records", only: [:index, :create, :edit, :update, :destroy] do
-    post :import, on: :collection
-    get :export, on: :collection
-    patch :set_status, on: :member
-  end
-  resources :sale_records, path: "farmer-farm-information/sale-records", only: [:index, :create, :edit, :update, :destroy] do
-    post :import, on: :collection
-    get :export, on: :collection
-    patch :set_status, on: :member
-  end
-  resources :dispatch_records, path: "farmer-farm-information/dispatch-records", only: [:index, :create, :edit, :update, :destroy] do
-    post :import, on: :collection
-    get :export, on: :collection
-    patch :set_status, on: :member
-  end
-  get "farmer-farm-information/:id/edit", to: "farmer_farm_information#edit", as: :edit_farmer_farm_information_record
-  patch "farmer-farm-information/:id/set_status", to: "farmer_farm_information#set_status"
-  patch "farmer-farm-information/:id", to: "farmer_farm_information#update", as: :farmer_farm_information_record
-  delete "farmer-farm-information/:id", to: "farmer_farm_information#destroy"
 
   resources :modules, param: :slug, only: [:show], controller: :modules do
     post :records, action: :create, on: :member

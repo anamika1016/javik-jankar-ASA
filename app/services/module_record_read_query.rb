@@ -1,0 +1,41 @@
+# Read projections belong here so lists can avoid loading large JSON payloads
+# before the controller has applied the current user's visibility rules.
+class ModuleRecordReadQuery
+  def self.training_list_candidates(scope)
+    omitted_keys = TrainingEditApproval::IMAGE_KEYS + %w[farmer_ids selected_farmer_ids farmers farmer_details]
+    quoted_keys = omitted_keys.map { |key| ModuleRecord.connection.quote(key) }.join(",")
+    scope.select(:id, :module_slug, :created_at, :updated_at)
+      .select("(data::jsonb - ARRAY[#{quoted_keys}])::text AS data")
+      .order(created_at: :desc)
+  end
+
+  def self.latest_training_revision_summaries(record_ids: nil)
+    scope = ModuleRecord.where(module_slug: TrainingEditApproval::SLUG)
+    scope = scope.where("data::jsonb ->> 'record_id' IN (?)", record_ids) if record_ids.present?
+    # The existing (record_id, id DESC) partial index supports latest-wins.
+    # Project large JSON summaries only after choosing each latest revision.
+    latest_ids = scope.select("DISTINCT ON ((data::jsonb ->> 'record_id')) id")
+      .order(Arel.sql("(data::jsonb ->> 'record_id'), id DESC"))
+    TrainingEditApproval.summary_scope(ModuleRecord.where(id: latest_ids))
+  end
+
+  def self.hydrate(records)
+    return [] if records.empty?
+
+    by_id = ModuleRecord.where(id: records.map(&:id)).index_by(&:id)
+    records.filter_map { |record| by_id[record.id] }
+  end
+
+  def self.selected_location_records(row_tokens, allowed_slugs:)
+    tokens = Array(row_tokens).filter_map do |token|
+      slug, id = token.to_s.split(":", 2)
+      [slug, id] if allowed_slugs.include?(slug) && id.present?
+    end.uniq
+    return [] if tokens.empty?
+
+    # Preserve token order, reject wrong-slug IDs, and fetch the selection once.
+    by_token = ModuleRecord.where(id: tokens.map(&:last), module_slug: tokens.map(&:first).uniq)
+      .index_by { |record| [record.module_slug, record.id.to_s] }
+    tokens.filter_map { |slug, id| by_token[[slug, id.to_i.to_s]] }.uniq
+  end
+end

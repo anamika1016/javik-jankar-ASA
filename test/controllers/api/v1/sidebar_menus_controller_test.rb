@@ -67,7 +67,7 @@ class Api::V1::SidebarMenusControllerTest < ActionDispatch::IntegrationTest
     refute_includes menu_names, "Add Farmer Form"
   end
 
-  test "farmer farm information access does not expose sibling menus without separate access" do
+  test "removed farm feature stays absent despite legacy access records" do
     user = create_limited_user
     token = ApiAuthToken.encode(user)
     create_access_record(user, "Farmer Farm Information")
@@ -76,7 +76,7 @@ class Api::V1::SidebarMenusControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     menu_names = response.parsed_body["sidebar_sections"].flat_map { |section| section["menus"].map { |menu| menu["name"] } }
-    assert_includes menu_names, "Farmer Farm Information"
+    refute_includes menu_names, "Farmer Farm Information"
     refute_includes menu_names, "All Basic Detail List"
     refute_includes menu_names, "Farm Map (lat long gps)"
     refute_includes menu_names, "Crop Map Session Wise Farm Map (lat long gps)"

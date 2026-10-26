@@ -518,62 +518,6 @@ function initDeferredLayoutPage() {
     });
   });
 
-  document.querySelectorAll("[data-ics-exit-form]").forEach((form) => {
-    const select = form.querySelector("[data-ics-exit-farmer-select]");
-    const fieldFor = (name) => form.querySelector(`[data-ics-exit-field='${name}']`);
-    const previewFor = (name) => document.querySelectorAll(`[data-ics-exit-preview='${name}']`);
-    const today = new Date().toISOString().slice(0, 10);
-
-    let farmerDetails = {};
-    try {
-      farmerDetails = JSON.parse(form.dataset.farmerDetails || "{}");
-    } catch (_error) {
-      farmerDetails = {};
-    }
-
-    const setFieldValue = (name, value) => {
-      const field = fieldFor(name);
-      if (!field) return;
-
-      field.value = value || "";
-      field.dispatchEvent(new Event("input", { bubbles: true }));
-    };
-
-    const syncPreview = (field) => {
-      const name = field.dataset.icsExitField;
-      if (!name) return;
-
-      previewFor(name).forEach((preview) => {
-        preview.textContent = field.value || "";
-      });
-    };
-
-    fieldFor("declaration_date") && (fieldFor("declaration_date").value ||= today);
-
-    select?.addEventListener("change", () => {
-      const details = farmerDetails[select.value] || {};
-
-      [
-        "farm_id",
-        "farmer_name",
-        "id_number",
-        "farmer_address",
-        "farmer_contact_no",
-        "farmer_village",
-        "tracenet_no",
-        "ics_name",
-        "grower_group_name",
-        "certification_status"
-      ].forEach((name) => setFieldValue(name, details[name]));
-    });
-
-    form.querySelectorAll("[data-ics-exit-field]").forEach((field) => {
-      syncPreview(field);
-      field.addEventListener("input", () => syncPreview(field));
-      field.addEventListener("change", () => syncPreview(field));
-    });
-  });
-
   initPasswordToggles();
 
   const capitalizeFirstLetter = (input) => {

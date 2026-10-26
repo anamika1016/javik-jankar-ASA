@@ -16,7 +16,6 @@
           <strong data-dashboard-clock-time><%= @dashboard_generated_at.strftime("%I:%M:%S %p") %></strong>
           <small data-dashboard-clock-date><%= @dashboard_generated_at.strftime("%d %b %Y") %></small>
         </div>
-        <%= link_to "Participation Report", farmer_participation_report_path, class: "list-btn" %>
         <%= link_to "View Targets", target_mappings_path, class: "list-btn active" %>
       </div>
     </div>
@@ -76,7 +75,7 @@
               <strong><%= card[:value] %></strong>
               <div class="dashboard-summary-actions">
                 <span class="dashboard-summary-action-popover">
-                  <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true, turbo_prefetch: false } %>
+                  <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true, turbo_prefetch: false } if card[:path].present? %>
                 <%= link_to "Export Excel", card[:export_path], class: "table-action" if card[:export_path].present? %>
                   <% if Array(card[:popup_items]).any? %>
                     <span class="dashboard-card-hover-popup" role="tooltip">
@@ -504,7 +503,7 @@
             <strong><%= card[:value] %></strong>
             <div class="dashboard-summary-actions">
               <span class="dashboard-summary-action-popover">
-                <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true, turbo_prefetch: false } %>
+                <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true, turbo_prefetch: false } if card[:path].present? %>
                 <% if Array(card[:popup_items]).any? %>
                   <span class="dashboard-card-hover-popup" role="tooltip">
                     <% Array(card[:popup_items]).each do |item| %>

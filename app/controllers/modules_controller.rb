@@ -1326,214 +1326,6 @@ class ModulesController < ApplicationController
     end
   end
 
-  def farmer_training_target_status
-    targets = dashboard_participation_targets
-    selected_month = dashboard_filter_param(:training_month, :month)
-    selected_sub_activity = dashboard_filter_param(:training_sub_activity, :sub_activity)
-    selected_status = normalize_training_target_status(params[:status]) || "green"
-    filtered_targets = if selected_month.present? && selected_sub_activity.present?
-      dashboard_targets_for_filters(targets, selected_month, selected_sub_activity)
-    elsif selected_month.present?
-      dashboard_targets_for_month(targets, selected_month)
-    else
-      targets
-    end
-
-    preload_training_farmers_for_targets!(filtered_targets)
-    @training_target_status = selected_status
-    @training_target_status_title = training_target_status_label(selected_status)
-    @training_target_status_caption = training_target_status_caption(selected_status)
-    all_status_rows = training_target_status_rows(filtered_targets)
-    @training_target_status_rows = all_status_rows
-      .select { |row| row[:status_class] == selected_status }
-    @training_target_status_totals = training_target_status_counts_for_rows(all_status_rows)
-    @training_selected_month = selected_month
-    @training_selected_sub_activity = selected_sub_activity
-
-    respond_to do |format|
-      format.html
-      format.csv do
-        send_data(
-          training_target_status_rows_csv(@training_target_status_rows),
-          filename: "farmer-training-target-#{selected_status}-#{Time.current.strftime("%Y%m%d%H%M")}.csv",
-          type: "text/csv"
-        )
-      end
-      format.xlsx do
-        send_xlsx(
-          rows: training_target_status_rows_csv(@training_target_status_rows),
-          filename: "farmer-training-target-#{selected_status}-#{Time.current.strftime("%Y%m%d%H%M")}.xlsx",
-          sheet_name: "Training Target"
-        )
-      end
-    end
-  end
-
-  def farmer_participation_report
-    all_entries = farmer_participation_entries
-    entries = all_entries
-    selected_farmer_ids = Array(params[:farmer_ids].presence || params[:farmer_id]).map(&:to_s).reject(&:blank?).uniq
-    selected_fcocs = Array(params[:fcocs].presence || params[:fcoc]).map(&:to_s).reject(&:blank?).uniq
-    @farmer_participation_filters_applied = selected_farmer_ids.any? || selected_fcocs.any? || params[:month].present? || params[:vrp_id].present?
-
-    farmer_options = all_entries
-      .group_by { |entry| entry[:farmer_id] }
-      .map { |farmer_id, farmer_entries| [farmer_entries.map { |entry| entry[:farmer_label] }.find { |label| !label.start_with?("Farmer #") } || farmer_entries.first[:farmer_label], farmer_id] }
-      .sort_by { |label, _id| label.downcase }
-    month_options = (participation_text_filter_options(all_entries, :month) + month_master_month_options)
-      .uniq { |month| normalize_dashboard_text(month) }
-      .sort_by { |month| [dashboard_month_index(month), month] }
-    visible_fcoc_options = farmer_participation_visible_vrps.filter_map do |vrp|
-      vrp.fcoc.to_s.strip.presence
-    end
-    fcoc_options = (participation_text_filter_options(all_entries, :fcoc) + visible_fcoc_options).uniq.sort
-    vrp_options = all_entries.map { |entry| [entry[:vrp_name], entry[:vrp_id]] }.reject { |label, id| label.blank? || id.blank? }.uniq.sort_by { |label, _id| label.downcase }
-
-    entries = entries.select { |entry| selected_farmer_ids.include?(entry[:farmer_id].to_s) } if selected_farmer_ids.any?
-    entries = entries.select { |entry| entry[:month] == params[:month].to_s } if params[:month].present?
-    entries = entries.select { |entry| selected_fcocs.include?(entry[:fcoc].to_s) } if selected_fcocs.any?
-    entries = entries.select { |entry| entry[:vrp_id] == params[:vrp_id].to_s } if params[:vrp_id].present?
-
-    @farmer_participation_selected_filters = {
-      farmer_ids: selected_farmer_ids,
-      month: params[:month].to_s,
-      fcocs: selected_fcocs,
-      vrp_id: params[:vrp_id].to_s
-    }
-
-    @farmer_participation_filter_options = {
-      farmers: farmer_options,
-      months: month_options,
-      fcocs: fcoc_options,
-      vrps: vrp_options
-    }
-    @farmer_participation_vrp_fcoc_map = all_entries
-      .reject { |entry| entry[:vrp_id].blank? || entry[:fcoc].blank? || entry[:fcoc] == "-" }
-      .group_by { |entry| entry[:vrp_id] }
-      .transform_values { |vrp_entries| vrp_entries.map { |entry| entry[:fcoc] }.uniq.sort }
-    @farmer_participation_farmer_filter_map = all_entries
-      .group_by { |entry| entry[:farmer_id].to_s }
-      .transform_values do |farmer_entries|
-        {
-          months: farmer_entries.map { |entry| entry[:month] }.compact_blank.uniq,
-          fcocs: farmer_entries.map { |entry| entry[:fcoc] }.compact_blank.reject { |value| value == "-" }.uniq
-        }
-      end
-
-    if params[:vrp_id].present? && selected_fcocs.any?
-      compatible_fcocs = @farmer_participation_vrp_fcoc_map[params[:vrp_id].to_s] || []
-      incompatible_fcocs = selected_fcocs - compatible_fcocs
-      if incompatible_fcocs.any?
-        selected_vrp_name = vrp_options.find { |_label, id| id == params[:vrp_id].to_s }&.first || "Selected Jeevika Jankar"
-        @farmer_participation_filter_warning = "#{selected_vrp_name} ke saath #{incompatible_fcocs.join(', ')} compatible nahi hai. Available FCOC: #{compatible_fcocs.join(', ').presence || 'koi nahi'}."
-      end
-    end
-
-    entries = [] unless @farmer_participation_filters_applied
-
-    @farmer_participation_rows = entries
-      .group_by { |entry| [entry[:farmer_id], entry[:month], entry[:main_activity], entry[:sub_activity], entry[:training_method], entry[:vrp_id]] }
-      .map do |_key, grouped|
-        first = grouped.first
-        first.merge(
-          participation_count: grouped.size,
-          training_dates: grouped.map { |entry| entry[:training_date] }.compact_blank.uniq.sort.join(", ").presence || "-",
-          training_register_urls: grouped.flat_map { |entry| Array(entry[:training_register_urls]) }.compact_blank.uniq,
-          training_photo_urls: grouped.flat_map { |entry| Array(entry[:training_photo_urls]) }.compact_blank.uniq
-        )
-      end
-      .sort_by { |row| [row[:farmer_name].downcase, row[:main_activity].downcase, row[:sub_activity].downcase, row[:training_method].downcase] }
-
-    @farmer_participation_totals = {
-      farmers: entries.map { |entry| entry[:farmer_id] }.uniq.size,
-      participations: entries.size,
-      activities: entries.map { |entry| [entry[:main_activity], entry[:sub_activity]] }.uniq.size,
-      trainings: entries.map { |entry| entry[:training_method] }.reject { |value| ["-", "Not Recorded"].include?(value) }.uniq.size
-    }
-
-    respond_to do |format|
-      format.html
-      format.xlsx do
-        headers = ["Farmer Name", "Tracenet No.", "Village", "Month", "FCOC", "Jeevika Jankar", "Main Activity", "Sub Activity", "Training Method", "Participation Count", "Training Dates", "Training Register Upload", "Training Photo Upload with Geo Tag"]
-        rows = @farmer_participation_rows.map do |row|
-          [row[:farmer_name], row[:tracenet_no], row[:village], row[:month], row[:fcoc], row[:vrp_name], row[:main_activity], row[:sub_activity], row[:training_method], row[:participation_count], row[:training_dates], Array(row[:training_register_urls]).join(", "), Array(row[:training_photo_urls]).join(", ")]
-        end
-        send_xlsx(headers: headers, rows: rows, filename: "farmer-participation-#{Time.current.strftime('%Y%m%d%H%M')}.xlsx", sheet_name: "Farmer Participation")
-      end
-    end
-  end
-
-  def weekly_activity_target_report
-    targets = dashboard_participation_targets
-    selected_month = dashboard_filter_param(:training_month, :month)
-    selected_activity = dashboard_filter_param(:activity, :main_activity)
-    selected_sub_activity = dashboard_filter_param(:training_sub_activity, :sub_activity)
-    selected_fcoc = dashboard_filter_param(:training_fcoc, :fcoc)
-    selected_fcoc = Array(params[:fco_id]).reject(&:blank?) if selected_fcoc.blank? && params[:fco_id].present?
-    selected_week = params[:week].to_i if params[:week].present?
-    selected_week = nil unless (1..4).include?(selected_week)
-    requested_status = params[:status].to_s.downcase.presence
-    selected_status = normalize_training_target_status(requested_status)
-    selected_status_key = requested_status == "total" ? "total" : selected_status
-
-    filtered_targets = targets.to_a
-    filtered_targets = dashboard_targets_for_month(filtered_targets, selected_month) if selected_month.present?
-    filtered_targets = filter_weekly_activity_targets(
-      filtered_targets,
-      activity: selected_activity,
-      sub_activity: selected_sub_activity,
-      fcoc: selected_fcoc
-    )
-
-    all_rows = weekly_activity_target_farmer_status_rows(filtered_targets, month_name: selected_month, fcoc_name: selected_fcoc, week_number: selected_week)
-    rows = all_rows
-    rows = if selected_status.present?
-      rows.select { |row| row[:status_class] == selected_status }
-    elsif selected_status_key == "total"
-      rows
-    else
-      []
-    end
-
-    @weekly_report_rows = rows
-    @weekly_report_totals = weekly_activity_target_status_counts_for_rows(all_rows)
-    @weekly_report_status = selected_status_key
-    @weekly_selected_month = selected_month
-    @weekly_selected_activity = selected_activity
-    @weekly_selected_sub_activity = selected_sub_activity
-    @weekly_selected_fcoc = selected_fcoc
-    @weekly_selected_week = selected_week
-    @weekly_month_options = dashboard_month_options_for_targets(targets)
-    @weekly_activity_options = Array(targets).map(&:main_activity_name).uniq.compact_blank.sort
-    @weekly_fcoc_options = Array(targets).filter_map { |target| target.vrp&.fcoc.to_s.strip.presence }.uniq.sort
-    @weekly_sub_activity_options = Array(targets)
-      .select { |target| selected_activity.blank? || normalize_dashboard_text(target.main_activity_name) == normalize_dashboard_text(selected_activity) }
-      .map(&:activity_name)
-      .uniq
-      .compact_blank
-      .sort
-
-    respond_to do |format|
-      format.html
-      format.csv do
-        week_suffix = selected_week.present? ? "-week-#{selected_week}" : "-all-weeks"
-        send_data(
-          weekly_activity_target_report_csv(@weekly_report_rows),
-          filename: "weekly-activity-target-report#{week_suffix}-#{Time.current.strftime("%Y%m%d%H%M")}.csv",
-          type: "text/csv"
-        )
-      end
-      format.xlsx do
-        week_suffix = selected_week.present? ? "-week-#{selected_week}" : "-all-weeks"
-        send_xlsx(
-          rows: weekly_activity_target_report_csv(@weekly_report_rows),
-          filename: "weekly-activity-target-report#{week_suffix}-#{Time.current.strftime("%Y%m%d%H%M")}.xlsx",
-          sheet_name: selected_week.present? ? "Week #{selected_week} Report" : "All Weeks Report"
-        )
-      end
-    end
-  end
-
   def ics_wise_farmer_report
     selected_month_value = params[:training_month].presence || params[:ics_report_month].presence || params[:month].presence
     selected_month = selected_month_value == "all" ? nil : selected_month_value
@@ -3454,150 +3246,32 @@ class ModulesController < ApplicationController
     value.to_s.strip.presence
   end
 
-  def dashboard_preferred_text(*values)
-    values.filter_map { |value| dashboard_text_value(value) }.first
-  end
-
-  def dashboard_farmer_profile_from_records(id, afl = nil, farmer_info = nil, declaration = nil)
-    {
-      id: id.to_s,
-      farmer_name: dashboard_preferred_text(afl&.farmer_name, farmer_info&.farmer_name, declaration&.farmer_name).presence || "Farmer ##{id}",
-      father_name: dashboard_preferred_text(afl&.father_name, farmer_info&.father_mother_name),
-      mobile_no: dashboard_preferred_text(afl&.mobile_no, farmer_info&.farmer_contact_no, declaration&.farmer_contact_no),
-      tracenet_no: dashboard_preferred_text(afl&.tracenet_no, farmer_info&.tracenet_no, declaration&.tracenet_no),
-      khasara_no: dashboard_preferred_text(afl&.khasara_no, farmer_info&.khasra_no),
-      ics_name: dashboard_preferred_text(afl&.ics_name, farmer_info&.ics_name, declaration&.ics_name),
-      ics_id: dashboard_text_value(afl&.ics_id),
-      village_name: dashboard_preferred_text(afl&.village_name, farmer_info&.farmer_village, farmer_info&.farm_village, declaration&.farmer_village),
-      village_id: dashboard_text_value(afl&.village_id),
-      status: dashboard_preferred_text(afl&.status, farmer_info&.status, declaration&.status),
-      work_date: afl ? afl_work_date(afl) : nil
-    }
-  end
-
   def dashboard_farmer_profiles_by_id(farmer_ids)
     ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
-    return {} if ids.blank?
+    return {} if ids.empty?
 
     @dashboard_farmer_profiles_by_id_cache ||= {}
     cache_key = ids.sort.join("|")
     return @dashboard_farmer_profiles_by_id_cache[cache_key] if @dashboard_farmer_profiles_by_id_cache.key?(cache_key)
 
-    afls = if model_ready?(:Afl)
-      Afl.where(id: ids).to_a.index_by { |farmer| farmer.id.to_s }
-    else
-      {}
-    end
-
-    farmer_infos = dashboard_farmer_information_records(afls.values)
-    declarations = dashboard_exit_declarations_for_afls(afls.values)
-
-    farmer_info_by_farm_id = farmer_infos.index_by { |farmer| farmer.farm_id.to_s }
-    farmer_info_by_tracenet = farmer_infos.each_with_object({}) do |farmer_info, index|
-      key = dashboard_text_value(farmer_info.tracenet_no)
-      index[key] ||= farmer_info if key.present?
-    end
-    farmer_info_by_aadhar = farmer_infos.each_with_object({}) do |farmer_info, index|
-      key = dashboard_text_value(farmer_info.aadhar_number)
-      index[key] ||= farmer_info if key.present?
-    end
-    farmer_info_by_mobile = farmer_infos.each_with_object({}) do |farmer_info, index|
-      key = dashboard_text_value(farmer_info.farmer_contact_no)
-      index[key] ||= farmer_info if key.present?
-    end
-    farmer_info_by_name = farmer_infos.each_with_object({}) do |farmer_info, index|
-      key = dashboard_text_value(farmer_info.farmer_name)
-      index[key] ||= farmer_info if key.present?
-    end
-    farmer_info_by_id = farmer_infos.index_by { |farmer| farmer.id.to_s }
-
-    profiles = ids.each_with_object({}) do |id, memo|
+    afls = model_ready?(:Afl) ? Afl.where(id: ids).index_by { |farmer| farmer.id.to_s } : {}
+    @dashboard_farmer_profiles_by_id_cache[cache_key] = ids.to_h do |id|
       afl = afls[id]
-      declaration = dashboard_farmer_declaration_for_afl(afl, declarations)
-      farmer_info = farmer_info_by_farm_id[id]
-      farmer_info ||= farmer_info_by_tracenet[dashboard_text_value(afl&.tracenet_no)] if afl.present?
-      farmer_info ||= farmer_info_by_aadhar[dashboard_text_value(afl&.aadhar)] if afl.present?
-      farmer_info ||= farmer_info_by_aadhar[dashboard_text_value(afl&.qr_aadhar)] if afl.present?
-      farmer_info ||= farmer_info_by_mobile[dashboard_text_value(afl&.mobile_no)] if afl.present?
-      farmer_info ||= farmer_info_by_name[dashboard_text_value(afl&.farmer_name)] if afl.present?
-      farmer_info ||= farmer_info_by_id[declaration&.farmer_farm_information_id.to_s] if declaration&.farmer_farm_information_id.present?
-      memo[id] = dashboard_farmer_profile_from_records(id, afl, farmer_info, declaration)
+      [id, {
+        id: id,
+        farmer_name: dashboard_text_value(afl&.farmer_name).presence || "Farmer ##{id}",
+        father_name: dashboard_text_value(afl&.father_name),
+        mobile_no: dashboard_text_value(afl&.mobile_no),
+        tracenet_no: dashboard_text_value(afl&.tracenet_no),
+        khasara_no: dashboard_text_value(afl&.khasara_no),
+        ics_name: dashboard_text_value(afl&.ics_name),
+        ics_id: dashboard_text_value(afl&.ics_id),
+        village_name: dashboard_text_value(afl&.village_name),
+        village_id: dashboard_text_value(afl&.village_id),
+        status: dashboard_text_value(afl&.status),
+        work_date: afl ? afl_work_date(afl) : nil
+      }]
     end
-
-    @dashboard_farmer_profiles_by_id_cache[cache_key] = profiles
-  end
-
-  def dashboard_farmer_information_records(afls)
-    return [] unless model_ready?(:FarmerFarmInformation)
-
-    afls = Array(afls)
-    ids = afls.map { |afl| afl.id.to_s }.reject(&:blank?).uniq
-    tracenets = afls.map { |afl| dashboard_text_value(afl&.tracenet_no) }.compact
-    aadhars = afls.flat_map { |afl| [afl.aadhar, afl.qr_aadhar] }.map { |value| dashboard_text_value(value) }.compact
-    mobiles = afls.map { |afl| dashboard_text_value(afl&.mobile_no) }.compact
-    names = afls.map { |afl| dashboard_text_value(afl&.farmer_name) }.compact
-    declaration_ids = dashboard_exit_declarations_for_afls(afls).values.map { |declaration| declaration&.farmer_farm_information_id.to_s }.reject(&:blank?).uniq
-
-    scope = FarmerFarmInformation.none
-    scope = scope.or(FarmerFarmInformation.where(farm_id: ids)) if ids.any?
-    scope = scope.or(FarmerFarmInformation.where(tracenet_no: tracenets)) if tracenets.any?
-    scope = scope.or(FarmerFarmInformation.where(aadhar_number: aadhars)) if aadhars.any?
-    scope = scope.or(FarmerFarmInformation.where(farmer_contact_no: mobiles)) if mobiles.any?
-    scope = scope.or(FarmerFarmInformation.where(farmer_name: names)) if names.any?
-    scope = scope.or(FarmerFarmInformation.where(id: declaration_ids)) if declaration_ids.any?
-
-    scope.to_a.uniq { |farmer| farmer.id }
-  end
-
-  def dashboard_exit_declarations_for_afls(afls)
-    return {} unless model_ready?(:IcsExitDeclaration)
-
-    afls = Array(afls)
-    ids = afls.map { |afl| afl.id.to_s }.reject(&:blank?).uniq
-    tracenets = afls.map { |afl| dashboard_text_value(afl&.tracenet_no) }.compact
-    mobiles = afls.map { |afl| dashboard_text_value(afl&.mobile_no) }.compact
-    names = afls.map { |afl| dashboard_text_value(afl&.farmer_name) }.compact
-    id_numbers = afls.flat_map { |afl| [afl.aadhar, afl.qr_aadhar] }.map { |value| dashboard_text_value(value) }.compact
-
-    scope = IcsExitDeclaration.none
-    scope = scope.or(IcsExitDeclaration.where(farm_id: ids)) if ids.any?
-    scope = scope.or(IcsExitDeclaration.where(tracenet_no: tracenets)) if tracenets.any?
-    scope = scope.or(IcsExitDeclaration.where(farmer_contact_no: mobiles)) if mobiles.any?
-    scope = scope.or(IcsExitDeclaration.where(farmer_name: names)) if names.any?
-    scope = scope.or(IcsExitDeclaration.where(id_number: id_numbers)) if id_numbers.any?
-
-    scope.to_a.each_with_object({}) do |declaration, index|
-      [
-        declaration.farm_id,
-        declaration.tracenet_no,
-        declaration.farmer_contact_no,
-        declaration.farmer_name,
-        declaration.id_number,
-        declaration.farmer_farm_information_id
-      ].map { |value| dashboard_text_value(value) }.reject(&:blank?).each do |key|
-        index[key] ||= declaration
-      end
-    end
-  end
-
-  def dashboard_farmer_declaration_for_afl(afl, declarations_by_key)
-    return nil unless afl.present?
-
-    keys = [
-      afl.id,
-      afl.tracenet_no,
-      afl.mobile_no,
-      afl.aadhar,
-      afl.qr_aadhar,
-      afl.farmer_name
-    ].map { |value| dashboard_text_value(value) }.reject(&:blank?)
-
-    keys.each do |key|
-      declaration = declarations_by_key[key]
-      return declaration if declaration.present?
-    end
-
-    nil
   end
 
   def dashboard_cards
@@ -4841,28 +4515,28 @@ class ModulesController < ApplicationController
         title: "Target Assigned",
         value: target_quantity.to_i,
         caption: "Distinct mapped farmers.",
-        path: weekly_activity_target_report_path(filter_params.merge(status: "total"))
+        path: nil
       },
       {
         status: "green",
         title: "1+ Trainings",
         value: completed_quantity.to_i,
         caption: "Farmer attended more than 1 training.",
-        path: weekly_activity_target_report_path(filter_params.merge(status: "green"))
+        path: nil
       },
       {
         status: "yellow",
         title: "Only 1 Training",
         value: partial_quantity.to_i,
         caption: "Farmer attended only 1 training.",
-        path: weekly_activity_target_report_path(filter_params.merge(status: "yellow"))
+        path: nil
       },
       {
         status: "red",
         title: "No Training",
         value: pending_quantity.to_i,
         caption: "Farmer not attended training. Missing training.",
-        path: weekly_activity_target_report_path(filter_params.merge(status: "red"))
+        path: nil
       }
     ]
   end
@@ -4956,38 +4630,6 @@ class ModulesController < ApplicationController
     }.compact_blank
     params_hash[:fco_id] = dashboard_visible_fco_ids if params_hash[:training_fcoc].blank? && !dashboard_global_view_user? && dashboard_visible_fco_ids.any?
     params_hash
-  end
-
-  def weekly_activity_target_report_rows(targets, week_number: nil)
-    training_target_status_rows(targets).map do |row|
-      completion = row[:completion_date_sort]
-      week_label = if completion.present?
-        week_start = completion.beginning_of_week
-        week_end = completion.end_of_week
-        "Week #{completion.cweek} (#{week_start.strftime("%d-%m")} - #{week_end.strftime("%d-%m")})"
-      else
-        "-"
-      end
-
-      next row.merge(week: week_label) if week_number.blank?
-
-      index = week_number - 1
-      target_quantity = Array(row[:weekly_targets])[index].to_f
-      completed_quantity = Array(row[:weekly_achievements])[index].to_f
-      pending_quantity = [target_quantity - completed_quantity, 0].max
-      progress_percent = target_quantity.positive? ? ((completed_quantity / target_quantity) * 100).round : 0
-      status_class = training_target_status_for_percent(progress_percent)
-
-      row.merge(
-        week: "Week #{week_number}",
-        target_quantity: target_quantity,
-        completed_quantity: completed_quantity,
-        pending_quantity: pending_quantity,
-        progress_percent: progress_percent,
-        status_class: status_class,
-        status_label: training_target_status_label(status_class)
-      )
-    end
   end
 
   def weekly_activity_target_farmer_status_rows(targets, month_name: nil, fcoc_name: nil, week_number: nil)
@@ -5129,58 +4771,6 @@ class ModulesController < ApplicationController
     return 0.0 if dates.blank?
 
     dates.any? { |date| [((date.day - 1) / 7) + 1, 4].min == week_number.to_i } ? achievement[:achievement].to_f : 0.0
-  end
-
-  def weekly_activity_target_report_csv(rows)
-    CSV.generate(headers: true) do |csv|
-      csv << [
-        "Week",
-        "Month",
-        "Completion Date",
-        "Jeevika Jankar Name",
-        "FCO",
-        "Cluster Incharge",
-        "Registered By",
-        "Main Activity",
-        "Sub Activity",
-        "ICS",
-        "Village",
-        "FCOC",
-        "ClusterCoordinator",
-        "Target",
-        "Completed",
-        "Pending",
-        "Progress %",
-        "Status",
-        "Training Register Upload",
-        "Training Photo Upload with Geo Tag"
-      ]
-
-      Array(rows).each do |row|
-        csv << [
-          row[:week],
-          row[:month],
-          row[:completion_date],
-          row[:vrp],
-          row[:fco],
-          row[:cluster_incharge],
-          row[:registered_by],
-          row[:main_activity],
-          row[:sub_activity],
-          row[:ics],
-          row[:village],
-          row[:fco].presence || row[:fcoc],
-          row[:cluster_incharge],
-          dashboard_quantity(row[:target_quantity]),
-          dashboard_quantity(row[:completed_quantity]),
-          dashboard_quantity(row[:pending_quantity]),
-          row[:progress_percent],
-          row[:status_label],
-          Array(row[:training_register_urls]).join(", "),
-          Array(row[:training_photo_urls]).join(", ")
-        ]
-      end
-    end
   end
 
   def weekly_activity_target_status_counts_for_rows(rows)
@@ -7524,7 +7114,7 @@ class ModulesController < ApplicationController
         title: training_target_status_label(status),
         value: counts[status.to_sym].to_i,
         caption: training_target_status_caption(status),
-        path: farmer_training_target_status_path(path_params)
+        path: nil
       }
     end
   end
@@ -7625,48 +7215,6 @@ class ModulesController < ApplicationController
     return "yellow" if value >= 75
 
     "red"
-  end
-
-  def training_target_status_rows_csv(rows)
-    CSV.generate(headers: true) do |csv|
-      csv << [
-        "Target Mapping ID",
-        "VRP",
-        "Month",
-        "Completion Date",
-        "ICS",
-        "Village",
-        "Main Activity",
-        "Sub Activity",
-        "Target",
-        "Completed",
-        "Pending",
-        "Progress %",
-        "Status",
-        "Training Register Upload",
-        "Training Photo Upload with Geo Tag"
-      ]
-
-      Array(rows).each do |row|
-        csv << [
-          row[:target_mapping_id],
-          row[:vrp],
-          row[:month],
-          row[:completion_date],
-          row[:ics],
-          row[:village],
-          row[:main_activity],
-          row[:sub_activity],
-          dashboard_quantity(row[:target_quantity]),
-          dashboard_quantity(row[:completed_quantity]),
-          dashboard_quantity(row[:pending_quantity]),
-          row[:progress_percent],
-          row[:status_label],
-          Array(row[:training_register_urls]).join(", "),
-          Array(row[:training_photo_urls]).join(", ")
-        ]
-      end
-    end
   end
 
   def training_participation_summary(targets, month_name: nil)
@@ -9733,11 +9281,10 @@ class ModulesController < ApplicationController
     return if admin_dashboard_user?
     slug = current_slug.to_s
     source = RECORD_SOURCE_SLUGS.fetch(slug, slug)
-    report = action_name == "farmer_participation_report"
-    return unless %w[training-form other-target seed-distribution-target papl360-target add-farmer-form].include?(source) || report
+    return unless %w[training-form other-target seed-distribution-target papl360-target add-farmer-form].include?(source)
     return head :forbidden if %w[destroy toggle_status set_status import].include?(action_name)
     keys = view_context.allowed_sidebar_keys || []
-    requested = report ? "farmer-participation-report" : slug
+    requested = slug
     requested = "#{source}-list" if %w[edit update selected_farmers training_target_farmers].include?(action_name)
     head :forbidden unless keys.include?(requested)
   end
@@ -9745,20 +9292,22 @@ class ModulesController < ApplicationController
   def training_edit_revision_for(record, skip_auto_assign: false)
     return unless record&.module_slug == "training-form"
 
-    revision_scope = TrainingEditApproval.summary_scope
-    if defined?(@training_edit_revision_record_ids) && @training_edit_revision_record_ids.present?
-      revision_scope = revision_scope.where("data::jsonb ->> 'record_id' IN (?)", @training_edit_revision_record_ids)
-    end
+    revision_scope = ModuleRecordReadQuery.latest_training_revision_summaries(
+      record_ids: @training_edit_revision_record_ids
+    )
     @training_edit_revisions_by_record ||= revision_scope
       .order(id: :desc).to_a.each_with_object({}) do |revision, index|
         index[revision.data["record_id"].to_s] ||= revision
       end
     revision = @training_edit_revisions_by_record[record.id.to_s]
-    if !skip_auto_assign && revision && revision.data["status"] == "Pending" && revision.data["approval_role"] != "agronomist"
+    @training_edit_auto_assigned_ids ||= Set.new
+    if !skip_auto_assign && revision && revision.data["status"] == "Pending" && revision.data["approval_role"] != "agronomist" &&
+        !@training_edit_auto_assigned_ids.include?(revision.id)
       @training_edit_staff_catalogue ||= TrainingStaffScope.staff_catalogue
       full_revision = ModuleRecord.find(revision.id)
       TrainingEditApproval.assign_automatic_approver!(full_revision, staff_catalogue: @training_edit_staff_catalogue)
       revision.data = full_revision.data.except("before", "proposed", "evidence", "history")
+      @training_edit_auto_assigned_ids << revision.id
     end
     revision
   end
@@ -9866,7 +9415,11 @@ class ModulesController < ApplicationController
     # in SQL discarded rows before we knew who owned them, so a user whose records
     # fell outside the newest N overall saw only the few that happened to land in it.
     limit_training_list = @slug == "training-form-list" && request.format.html? && params[:all].blank?
-    records_scope = records_scope.order(created_at: :desc) if limit_training_list
+    if limit_training_list
+      # Visibility and pending-first ordering do not need upload payloads or
+      # participant arrays. Hydrate only the final visible page below.
+      records_scope = ModuleRecordReadQuery.training_list_candidates(records_scope)
+    end
     records = if cached_bill_summary
       cached_jeevika_bill_summary_records
     elsif location_master_list_cacheable?(records_scope)
@@ -9890,12 +9443,14 @@ class ModulesController < ApplicationController
     preload_other_target_contact_numbers!(records) if other_target_record_source?
     if @slug == "training-form-list"
       @training_edit_revision_record_ids = records.map { |record| record.id.to_s }
-      sorted = records.sort_by { |record|
+      sort_key = lambda do |record|
         revision = training_edit_revision_for(record, skip_auto_assign: true)
         pending = revision && revision.data["status"] == "Pending" ? 0 : 1
         [pending, -(record.created_at || Time.at(0)).to_i, -record.id.to_i]
-      }
-      visible_records = limit_training_list ? sorted.first(100) : sorted
+      end
+      # Keep the same order while selecting only the best 100 candidates.
+      visible_records = limit_training_list ? records.min_by(100, &sort_key) : records.sort_by(&sort_key)
+      visible_records = ModuleRecordReadQuery.hydrate(visible_records) if limit_training_list
       preload_training_record_trainer_identities!(visible_records)
       return visible_records
     end
@@ -10234,7 +9789,7 @@ class ModulesController < ApplicationController
   def training_approver_record_ids
     @training_approver_record_ids ||= begin
       aliases = TrainingEditApproval.actor_usernames(current_app_user || {})
-      ModuleRecord.where(module_slug: TrainingEditApproval::SLUG).filter_map do |revision|
+      TrainingEditApproval.summary_scope.filter_map do |revision|
         approvers = Array(revision.data["approvers"]).map { |label| TrainingEditApproval.username(label) }
         revision.data["record_id"].to_s if (aliases & approvers).any?
       end.to_set
@@ -10663,12 +10218,7 @@ class ModulesController < ApplicationController
   end
 
   def lg_directory_selected_records
-    Array(params[:row_tokens]).filter_map do |token|
-      slug, id = token.to_s.split(":", 2)
-      next unless lg_directory_allowed_slugs.include?(slug) && id.present?
-
-      ModuleRecord.where(module_slug: slug).find_by(id: id)
-    end.uniq
+    ModuleRecordReadQuery.selected_location_records(params[:row_tokens], allowed_slugs: lg_directory_allowed_slugs)
   end
 
   def lg_directory_allowed_slugs

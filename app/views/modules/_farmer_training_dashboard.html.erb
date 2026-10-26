@@ -43,7 +43,7 @@
           <strong><%= card[:value].to_i %></strong>
           <div class="dashboard-summary-actions">
             <span class="dashboard-summary-action-popover">
-              <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true, turbo_prefetch: false } %>
+              <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true, turbo_prefetch: false } if card[:path].present? %>
               <% if card[:status] == "red" && Array(@training_red_fco_details).any? %>
                 <span class="dashboard-card-hover-popup red-popup-breakdown" role="tooltip">
                   <% @training_red_fco_details.each do |fco| %>
