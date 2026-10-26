@@ -10,6 +10,9 @@ class ApprovalUserDisplayDirectory
 
   def label(value)
     original = value.to_s
+    # Extract any parenthetical suffix already present in the saved label
+    # e.g. "Pritesh Jain (FCO-Ranapur)" → suffix = "(FCO-Ranapur)"
+    saved_suffix = original.match(/\s*(\([^)]*\))\s*\z/)&.captures&.first
     identity = key(original.sub(/\s*\([^)]*\)\s*\z/, ""))
     return original if identity.blank?
 
@@ -18,7 +21,18 @@ class ApprovalUserDisplayDirectory
 
     user = matches.first
     name = user.full_name.presence || user.user_name
-    user.role.present? ? "#{name} (#{user.role})" : name
+
+    # If the saved label already had a parenthetical suffix (office/role tag),
+    # preserve it so that an updated approval channel (e.g. FCO-Ranapur) is
+    # not silently overwritten by the User's stale database role (e.g. FCO-Jobat).
+    # Only fall back to User.role when no suffix was present in the original label.
+    if saved_suffix.present?
+      "#{name} #{saved_suffix}"
+    elsif user.role.present?
+      "#{name} (#{user.role})"
+    else
+      name
+    end
   end
 
   private
