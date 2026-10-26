@@ -28,8 +28,13 @@
 # The production host runs memory-heavy reports and forms alongside web
 # requests. Two web threads keep interactive requests responsive without
 # allowing three large JSON/report allocations to pressure Ruby GC and the
-# primary database at the same time. An explicit environment value still wins.
-threads_count = ENV.fetch("RAILS_MAX_THREADS", ENV.fetch("RAILS_ENV", "development") == "production" ? 2 : 3)
+# primary database at the same time. A systemd environment override previously
+# raised this to five, which let several minutes-long reads contend at once.
+# A lower explicit value is still respected; raising the production limit
+# requires an intentional deployment/configuration change after host capacity
+# has been verified.
+requested_threads = Integer(ENV.fetch("RAILS_MAX_THREADS", ENV.fetch("RAILS_ENV", "development") == "production" ? 2 : 3))
+threads_count = ENV.fetch("RAILS_ENV", "development") == "production" ? [requested_threads, 2].min : requested_threads
 threads threads_count, threads_count
 
 # This deployment is configured for a small-memory host.  A Puma cluster with

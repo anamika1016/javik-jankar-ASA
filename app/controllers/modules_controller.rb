@@ -16139,6 +16139,34 @@ class ModulesController < ApplicationController
     Rails.env.test? ? Rails.cache : LOCATION_CATALOGUE_MEMORY_CACHE
   end
 
+  # Forms such as VRP, target and JJ screens need the same compact location
+  # payload as the hierarchy builder.  Previously every controller instance
+  # ran jsonb_each/jsonb_object_agg again, even when the source catalogue had
+  # not changed.  Keep the projected rows by catalogue revision, then create
+  # fresh LocationRecord/data objects per request below.  That preserves the
+  # existing ordering and prevents a caller from mutating cached option data.
+  def cached_location_projection_rows(slugs)
+    normalized_slugs = slugs.map(&:to_s).sort.freeze
+    key = ["jj-location-projection-v1", normalized_slugs, location_catalogue_revision]
+
+    DashboardCacheFill.synchronize(key) do
+      location_catalogue_cache.fetch(key, expires_in: 1.hour) do
+        quoted_keys = LOCATION_DATA_KEYS.map { |key| ActiveRecord::Base.connection.quote(key) }.join(", ")
+        data_projection = Arel.sql(
+          "(SELECT COALESCE(jsonb_object_agg(key, value), '{}'::jsonb) " \
+          "FROM jsonb_each(#{jsonb_object_or_empty('data')}) WHERE key IN (#{quoted_keys}))"
+        )
+
+        ModuleRecord.where(module_slug: normalized_slugs)
+          .merge(active_module_records_scope_for_all_modules)
+          .order(created_at: :desc)
+          .pluck(:module_slug, :id, data_projection)
+          .map { |slug, id, data| [slug, id, data].freeze }
+          .freeze
+      end
+    end
+  end
+
   def build_location_hierarchy_mappings
     preload_location_records!(LOCATION_MODULE_SLUGS)
     states = active_records_for_location("state-master").map do |record|
@@ -16195,18 +16223,10 @@ class ModulesController < ApplicationController
     return if missing.empty?
 
     missing.each { |slug| @active_records_for_location[slug] = [] }
-    quoted_keys = LOCATION_DATA_KEYS.map { |key| ActiveRecord::Base.connection.quote(key) }.join(", ")
-    data_projection = Arel.sql(
-      "(SELECT COALESCE(jsonb_object_agg(key, value), '{}'::jsonb) " \
-      "FROM jsonb_each(#{jsonb_object_or_empty('data')}) WHERE key IN (#{quoted_keys}))"
-    )
-    ModuleRecord.where(module_slug: missing)
-      .merge(active_module_records_scope_for_all_modules)
-      .order(created_at: :desc)
-      .pluck(:module_slug, :id, data_projection).each do |slug, id, data|
-        record = LocationRecord.new(id, data)
-        @active_records_for_location[slug] << record
-      end
+    cached_location_projection_rows(missing).each do |slug, id, data|
+      record = LocationRecord.new(id, data.deep_dup)
+      @active_records_for_location[slug] << record
+    end
   end
 
   def active_records_for_location(module_slug)

@@ -112,4 +112,40 @@ class LocationCatalogueCacheTest < ActiveSupport::TestCase
     updated = location_master_controller("village-master").send(:module_records)
     assert_equal "After Village", updated.find { |row| row.id == record.id }.data["village_name"]
   end
+
+  test "form location projections are shared across requests and still invalidate" do
+    record = ModuleRecord.create!(module_slug: "village-master", data: {
+      "state_name" => "Projection State", "village_name" => "Before Projection"
+    })
+
+    first_controller = ModulesController.new
+    first_controller.send(:preload_location_records!, ["village-master"])
+    first = first_controller.send(:active_records_for_location, "village-master")
+    assert_equal "Before Projection", first.find { |row| row.id == record.id }.data["village_name"]
+
+    projection_reads = []
+    callback = ->(*args) do
+      sql = args.last[:sql].to_s
+      projection_reads << sql if sql.include?("jsonb_object_agg")
+    end
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      second_controller = ModulesController.new
+      second_controller.send(:preload_location_records!, ["village-master"])
+      second = second_controller.send(:active_records_for_location, "village-master")
+      assert_equal first.map(&:id), second.map(&:id)
+      second.find { |row| row.id == record.id }.data["village_name"] = "Request-local edit"
+    end
+    assert_empty projection_reads
+
+    fresh_controller = ModulesController.new
+    fresh_controller.send(:preload_location_records!, ["village-master"])
+    fresh = fresh_controller.send(:active_records_for_location, "village-master")
+    assert_equal "Before Projection", fresh.find { |row| row.id == record.id }.data["village_name"]
+
+    record.update_columns(data: record.data.merge("village_name" => "After Projection"))
+    updated_controller = ModulesController.new
+    updated_controller.send(:preload_location_records!, ["village-master"])
+    updated = updated_controller.send(:active_records_for_location, "village-master")
+    assert_equal "After Projection", updated.find { |row| row.id == record.id }.data["village_name"]
+  end
 end
