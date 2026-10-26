@@ -45,7 +45,13 @@ class VrpsController < ApplicationController
   end
 
   def index
-    vrps = visible_vrps.to_a
+    # The list never renders the agreement signature itself.  On an admin
+    # session visible_vrps is the full relation, so loading that image/blob for
+    # every Jeevika Jankar turns an ordinary table visit into a large database
+    # transfer and unnecessary Ruby allocations.  Detail/agreement pages still
+    # fetch the signature explicitly where it is used.
+    visible = visible_vrps
+    vrps = (visible.is_a?(ActiveRecord::Relation) ? visible.without_agreement_signature : visible).to_a
     if params[:target_assignment] == "unassigned"
       assigned_vrp_ids = TargetMapping.where(vrp_id: vrps.map(&:id)).distinct.pluck(:vrp_id)
       vrps = vrps.reject { |vrp| assigned_vrp_ids.include?(vrp.id) }

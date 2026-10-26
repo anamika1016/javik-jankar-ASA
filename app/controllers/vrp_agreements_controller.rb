@@ -56,7 +56,12 @@ class VrpAgreementsController < ApplicationController
 
     scope = agreement_visible_vrps
       .includes(:vrp_profile)
-      .select(:id, :name, :user_name, :mobile_no, :fcoc, :agreement_accepted_at, :agreement_signature_data, :village_ids)
+      # The index/export needs only the presence flag, not the Base64 signature
+      # image. Loading that text for every accepted agreement makes the list
+      # transfer and allocate an image payload per row. The signed detail page
+      # still loads the real attribute through its own query.
+      .select(:id, :name, :user_name, :mobile_no, :fcoc, :agreement_accepted_at, :village_ids,
+        Arel.sql("NULLIF(BTRIM(agreement_signature_data), '') IS NOT NULL AS agreement_signature_present"))
       .where.not(agreement_accepted_at: nil)
       .order(agreement_accepted_at: :desc)
 
@@ -69,7 +74,7 @@ class VrpAgreementsController < ApplicationController
           fcoc: vrp.fcoc.presence || "-",
           mobile_no: vrp.mobile_no.presence || "-",
           accepted_at: vrp.agreement_accepted_at&.strftime("%d/%m/%Y %I:%M %p"),
-          signature_present: vrp.agreement_signature_data.present?
+          signature_present: vrp[:agreement_signature_present]
         }
       end
   end

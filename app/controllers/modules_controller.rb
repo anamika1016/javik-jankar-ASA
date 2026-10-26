@@ -9852,10 +9852,11 @@ class ModulesController < ApplicationController
     return [] unless ModuleRecord.table_exists?
 
     records_scope = ModuleRecord.where(module_slug: record_source_slug)
-    if @slug == "jeevika-jankar-bill-list" && @record.blank? && request&.format&.html? && params[:view_id].blank?
+    cached_bill_summary = bill_summary_list_cacheable?
+    if @slug == "jeevika-jankar-bill-list" && @record.blank? && request&.format&.html? && params[:view_id].blank? && !cached_bill_summary
       records_scope = bill_summary_scope(records_scope)
     elsif ["jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail"].include?(@slug) &&
-        @record.blank? && request&.format&.html? && jeevika_jankar_payment_module_access?(@slug)
+        @record.blank? && request&.format&.html? && jeevika_jankar_payment_module_access?(@slug) && !cached_bill_summary
       # These screens use only approved bills, and their row summaries never
       # read nested farmer details. Filter before loading records and discard
       # that unused payload while preserving the existing Ruby visibility check.
@@ -9866,7 +9867,9 @@ class ModulesController < ApplicationController
     # fell outside the newest N overall saw only the few that happened to land in it.
     limit_training_list = @slug == "training-form-list" && request.format.html? && params[:all].blank?
     records_scope = records_scope.order(created_at: :desc) if limit_training_list
-    records = if location_master_list_cacheable?(records_scope)
+    records = if cached_bill_summary
+      cached_jeevika_bill_summary_records
+    elsif location_master_list_cacheable?(records_scope)
       cached_location_master_records(record_source_slug)
     else
       records_scope.to_a
@@ -9899,6 +9902,33 @@ class ModulesController < ApplicationController
     return records.sort_by { |record| jeevika_bill_list_sort_value(record) } if @slug == "jeevika-jankar-bill-list"
 
     records.sort_by { |record| module_record_sort_value(record) }
+  end
+
+  # Bill List and the two payment screens consume the same bill summary while
+  # applying their own visibility and approval filters below.  Under concurrent
+  # navigation each screen used to repeat the expensive JSON projection at
+  # bill_summary_scope, making otherwise independent page visits block each
+  # other.  The transaction revision includes xmin, so imports/direct updates
+  # invalidate the shared read immediately; fresh instances prevent a view from
+  # mutating cached data for another request.
+  def bill_summary_list_cacheable?
+    record_source_slug == "jeevika-jankar-bill-process" &&
+      @record.blank? && request&.format&.html? &&
+      ((@slug == "jeevika-jankar-bill-list" && params[:view_id].blank?) ||
+        (["jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail"].include?(@slug) &&
+          jeevika_jankar_payment_module_access?(@slug)))
+  end
+
+  def cached_jeevika_bill_summary_records
+    key = ["jj-bill-summary-records-v1", jeevika_jankar_bill_process_revision]
+    attribute_rows = DashboardCacheFill.synchronize(key) do
+      dashboard_read_cache.fetch(key, expires_in: 1.hour) do
+        bill_summary_scope(ModuleRecord.where(module_slug: "jeevika-jankar-bill-process"))
+          .order(created_at: :desc)
+          .map { |record| record.attributes.merge("data" => record.data.to_json) }
+      end
+    end
+    attribute_rows.map { |attributes| ModuleRecord.instantiate(attributes) }
   end
 
   def screen_limited_module_records?
@@ -10420,9 +10450,17 @@ class ModulesController < ApplicationController
     return [] unless model_ready?(:ModuleRecord)
 
     key = ["jj-lg-directory-v1", location_catalogue_revision]
-    DashboardCacheFill.synchronize(key) do
-      LG_DIRECTORY_MEMORY_CACHE.fetch(key, expires_in: 1.hour) { build_lg_directory_rows }
-    end.deep_dup
+    # The directory can contain thousands of hashes.  A deep_dup on every warm
+    # request was therefore allocating the whole catalogue again merely to
+    # render/read it, which showed up as long GC pauses on master pages.  Rows
+    # are made immutable as they enter the shared cache; callers receive a new
+    # outer Array for request-local filtering without duplicating every row.
+    rows = DashboardCacheFill.synchronize(key) do
+      LG_DIRECTORY_MEMORY_CACHE.fetch(key, expires_in: 1.hour) do
+        build_lg_directory_rows.map(&:freeze).freeze
+      end
+    end
+    rows.dup
   end
 
   def build_lg_directory_rows
