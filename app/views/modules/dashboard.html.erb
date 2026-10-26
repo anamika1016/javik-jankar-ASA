@@ -31,7 +31,7 @@
               <span class="metric-card-group-title"><%= card[:title] %></span>
               <div class="metric-card-group-items">
                 <% card[:items].each do |item| %>
-                  <%= link_to item[:path], class: "metric-card-group-item metric-card-group-item-#{item[:title].to_s.parameterize}", data: { dashboard_card: true } do %>
+                  <%= link_to item[:path], class: "metric-card-group-item metric-card-group-item-#{item[:title].to_s.parameterize}", data: { dashboard_card: true, turbo_prefetch: false } do %>
                     <span><%= item[:title] %></span>
                     <strong><%= item[:value] %></strong>
                   <% end %>
@@ -44,7 +44,7 @@
           <% value   = card.is_a?(Hash) ? card[:value]   : card[1] %>
           <% caption = card.is_a?(Hash) ? card[:caption] : card[2] %>
           <% path    = card.is_a?(Hash) && card[:path].present? ? card[:path] : dashboard_path %>
-          <%= link_to path, class: "metric-card-link", data: { dashboard_card: true } do %>
+          <%= link_to path, class: "metric-card-link", data: { dashboard_card: true, turbo_prefetch: false } do %>
             <article class="metric-card <%= "featured" if index.zero? %>">
               <div>
                 <span><%= title %></span>
@@ -76,7 +76,7 @@
               <strong><%= card[:value] %></strong>
               <div class="dashboard-summary-actions">
                 <span class="dashboard-summary-action-popover">
-                  <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true } %>
+                  <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true, turbo_prefetch: false } %>
                 <%= link_to "Export Excel", card[:export_path], class: "table-action" if card[:export_path].present? %>
                   <% if Array(card[:popup_items]).any? %>
                     <span class="dashboard-card-hover-popup" role="tooltip">
@@ -179,7 +179,7 @@
           <% card = dashboard_cards_by_title[title] %>
           <%# A card this dashboard does not build should just be left out. %>
           <% next if card.blank? %>
-          <%= link_to card[:path], class: "#{title.parameterize}", title: card[:caption], data: { dashboard_card: true } do %>
+          <%= link_to card[:path], class: "#{title.parameterize}", title: card[:caption], data: { dashboard_card: true, turbo_prefetch: false } do %>
             <span><%= title %></span>
             <strong><%= card[:value] %></strong>
           <% end %>
@@ -504,7 +504,7 @@
             <strong><%= card[:value] %></strong>
             <div class="dashboard-summary-actions">
               <span class="dashboard-summary-action-popover">
-                <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true } %>
+                <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true, turbo_prefetch: false } %>
                 <% if Array(card[:popup_items]).any? %>
                   <span class="dashboard-card-hover-popup" role="tooltip">
                     <% Array(card[:popup_items]).each do |item| %>
@@ -615,7 +615,7 @@
           <button type="button" class="metric-card-popup-trigger" data-card-popup-trigger title="Open in popup" aria-label="Open <%= card[:title] %> details"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9"/><path d="M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></svg></button>
           <div class="metric-card-group-items">
             <% card[:items].each do |item| %>
-              <%= link_to item[:path], class: "metric-card-group-item metric-card-group-item-#{item[:title].to_s.parameterize}", data: { dashboard_card: true } do %>
+              <%= link_to item[:path], class: "metric-card-group-item metric-card-group-item-#{item[:title].to_s.parameterize}", data: { dashboard_card: true, turbo_prefetch: false } do %>
                 <span><%= item[:title] %></span>
                 <strong><%= item[:value] %></strong>
               <% end %>

@@ -5,7 +5,12 @@
     </span>
   <% end %>
 
-  <nav class="side-nav" aria-label="Primary">
+  <%# Sidebar links lead to large, permission-scoped report and master pages.
+      Turbo's hover prefetch can otherwise start those expensive requests before
+      a user chooses the link, competing with the page they are currently using.
+      This only disables the speculative request; normal click navigation stays
+      under Turbo and has identical access checks and output. %>
+  <nav class="side-nav" aria-label="Primary" data-turbo-prefetch="false">
     <%= link_to dashboard_path, class: "side-link #{'active' if request.path == dashboard_path || request.path == root_path}" do %>
       <span class="side-icon">▦</span>
       Dashboard
