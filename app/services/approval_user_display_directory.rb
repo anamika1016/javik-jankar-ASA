@@ -22,14 +22,13 @@ class ApprovalUserDisplayDirectory
     user = matches.first
     name = user.full_name.presence || user.user_name
 
-    # If the saved label already had a parenthetical suffix (office/role tag),
-    # preserve it so that an updated approval channel (e.g. FCO-Ranapur) is
-    # not silently overwritten by the User's stale database role (e.g. FCO-Jobat).
-    # Only fall back to User.role when no suffix was present in the original label.
-    if saved_suffix.present?
-      "#{name} #{saved_suffix}"
-    elsif user.role.present?
+    # Prefer the current role from the User record. If present, it
+    # reflects the latest office mapping (e.g., FCO‑Ranapur). If the role is
+    # missing, fall back to any saved suffix that may have been stored.
+    if user.role.present?
       "#{name} (#{user.role})"
+    elsif saved_suffix.present?
+      "#{name} #{saved_suffix}"
     else
       name
     end
