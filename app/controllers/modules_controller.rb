@@ -9483,7 +9483,50 @@ class ModulesController < ApplicationController
     end
     return records.sort_by { |record| jeevika_bill_list_sort_value(record) } if @slug == "jeevika-jankar-bill-list"
 
-    records.sort_by { |record| module_record_sort_value(record) }
+    sorted_records = records.sort_by { |record| module_record_sort_value(record) }
+    return paginated_master_records(sorted_records) if server_paginated_master_list?
+
+    sorted_records
+  end
+
+  # These catalogues used client-side pagination but still rendered every row,
+  # action and CSRF form into the response. Village Master alone has thousands
+  # of rows, making the HTML/GC cost dominate an otherwise cached read. Keep
+  # the same ordering, search result set and actions, while rendering only
+  # the requested page on the server.
+  def server_paginated_master_list?
+    %w[state-master district-master block-master gram-panchayat-master village-master].include?(@slug) &&
+      @record.blank? && request&.format&.html?
+  end
+
+  def paginated_master_records(records)
+    query = params[:q].to_s.strip.downcase
+    matching_records = if query.blank?
+      records
+    else
+      records.select { |record| module_record_list_search_text(record).include?(query) }
+    end
+
+    per_page = 15 # Matches the existing client-side page size.
+    @module_records_total_count = matching_records.length
+    @module_records_page_count = [(@module_records_total_count.to_f / per_page).ceil, 1].max
+    @module_records_page = params[:page].to_i
+    @module_records_page = 1 if @module_records_page < 1
+    @module_records_page = [@module_records_page, @module_records_page_count].min
+
+    matching_records.slice((@module_records_page - 1) * per_page, per_page) || []
+  end
+
+  def module_record_list_search_text(record)
+    visible_fields = (@module&.dig(:fields) || []).reject { |field| field == "Status" }
+    values = visible_fields.map { |field| module_record_field_value(record, field) }
+    values << record.created_at&.strftime("%d-%m-%Y %I:%M %p")
+    values << record.data["status"].presence || "Active"
+    # The former client-side search matched the full rendered row, including
+    # action labels. Keep those matches available after moving pagination to
+    # the server so searching for an action has the same result set.
+    values.concat(["Edit", record.data["status"] == "Inactive" ? "Activate" : "Deactivate", "Delete"])
+    values.compact.join(" ").downcase
   end
 
   # Bill List and the two payment screens consume the same bill summary while
@@ -10595,6 +10638,21 @@ class ModulesController < ApplicationController
       data = record.data
       summary = jeevika_bill_summary(record)
       approval_history = jeevika_bill_approval_history(record)
+      # The status label resolves approval history and the active approval
+      # channel. Reusing it for the CSS class avoids executing that same
+      # per-bill matching work a second time while rendering long bill lists.
+      status = jeevika_bill_status_label(record)
+      status_class = if status.downcase.include?("final approved")
+        "approved"
+      elsif status.downcase.include?("returned")
+        "returned"
+      elsif status.downcase.include?("rejected")
+        "rejected"
+      elsif status.downcase.include?("pending")
+        "pending"
+      else
+        "submitted"
+      end
       {
         id: record.id,
         edit_path: edit_module_record_path("jeevika-jankar-bill-process", record),
@@ -10606,8 +10664,8 @@ class ModulesController < ApplicationController
         active_path: set_bill_state_module_record_path("jeevika-jankar-bill-list", record, state: "Active"),
         inactive_path: set_bill_state_module_record_path("jeevika-jankar-bill-list", record, state: "Inactive"),
         delete_path: module_record_path("jeevika-jankar-bill-list", record),
-        status: jeevika_bill_status_label(record),
-        status_class: jeevika_bill_status_class(record),
+        status: status,
+        status_class: status_class,
         current_approver: jeevika_bill_current_approver?(record),
         created_by_current_user: jeevika_bill_created_by_current_user?(record),
         approver_visible: jeevika_bill_approver_visible?(record),

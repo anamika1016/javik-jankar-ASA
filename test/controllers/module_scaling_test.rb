@@ -108,6 +108,32 @@ class ModuleScalingTest < ActiveSupport::TestCase
     end
   end
 
+  test "large master lists keep their order and searchable result set with server pagination" do
+    records = 16.times.map do |index|
+      ModuleRecord.create!(module_slug: "village-master", data: { "village" => format("Village %02d", index) })
+    end
+    controller = ModulesController.new
+    controller.instance_variable_set(:@slug, "village-master")
+    controller.instance_variable_set(:@module, { fields: ["Village"] })
+    controller.request = ActionDispatch::TestRequest.create
+    controller.params = ActionController::Parameters.new(page: "2")
+
+    page_two = controller.send(:module_records)
+    assert_equal [records.last.id], page_two.map(&:id)
+    assert_equal 16, controller.instance_variable_get(:@module_records_total_count)
+    assert_equal 2, controller.instance_variable_get(:@module_records_page_count)
+    assert_equal 2, controller.instance_variable_get(:@module_records_page)
+
+    controller.params = ActionController::Parameters.new(q: "Village 07")
+    matching_page = controller.send(:module_records)
+    assert_equal [records[7].id], matching_page.map(&:id)
+    assert_equal 1, controller.instance_variable_get(:@module_records_total_count)
+
+    controller.params = ActionController::Parameters.new(q: "Deactivate")
+    assert_equal records.first(15).map(&:id), controller.send(:module_records).map(&:id)
+    assert_equal 16, controller.instance_variable_get(:@module_records_total_count)
+  end
+
   test "farmer profiles use AFL without removed farm tables" do
     farmer = Afl.create!(farmer_name: " AFL Farmer ", father_name: " Parent ", tracenet_no: "T1", village_name: "Village")
     controller = ModulesController.new

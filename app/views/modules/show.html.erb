@@ -747,8 +747,14 @@
                     <td>
                       <div class="table-actions">
                         <%= link_to "Edit", edit_module_record_path(@slug, record), class: "table-action" %>
-                        <%= button_to(record.data["status"] == "Inactive" ? "Activate" : "Deactivate", toggle_module_record_path(@slug, record), method: :patch, class: "table-action") %>
-                        <%= button_to "Delete", module_record_path(@slug, record), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this record?" } } %>
+                        <%# Master catalogues can contain thousands of rows. `button_to`
+                            emits a complete CSRF form for every action, turning one
+                            Village Master table into thousands of form/input nodes.
+                            Turbo submits these method links with the same PATCH/DELETE
+                            routes, CSRF protection and confirmation, without duplicating
+                            those nodes for every saved row. %>
+                        <%= link_to(record.data["status"] == "Inactive" ? "Activate" : "Deactivate", toggle_module_record_path(@slug, record), class: "table-action", data: { turbo_method: :patch }) %>
+                        <%= link_to "Delete", module_record_path(@slug, record), class: "table-action danger", data: { turbo_method: :delete, turbo_confirm: "Delete this record?" } %>
                       </div>
                     </td>
                   </tr>
@@ -2843,16 +2849,24 @@
       <% saved_record_fields = @module[:fields].reject { |field| field == "Status" } %>
       <% full_saved_record_slugs = ["state-master", "district-master", "block-master", "gram-panchayat-master", "village-master", "person-type"] %>
       <% saved_record_fields = saved_record_fields.first(4) unless full_saved_record_slugs.include?(@slug) || @slug == "jeevika-jankar-transfer-list" %>
+      <% server_paginated_master_list = defined?(@module_records_total_count) %>
       <section class="module-card">
         <div class="module-card-header">
           <h2>Saved Records</h2>
-          <span class="record-count"><%= @records.size %> records</span>
+          <span class="record-count"><%= server_paginated_master_list ? @module_records_total_count : @records.size %> records</span>
         </div>
         <div class="list-controls">
-          <div class="list-search">
-            <span>⌕</span>
-            <input type="search" placeholder="Search records" data-table-search="module_saved_records">
-          </div>
+          <% if server_paginated_master_list %>
+            <%= form_with url: module_path(@slug), method: :get, local: true, class: "list-search" do %>
+              <span>⌕</span>
+              <input type="search" name="q" value="<%= params[:q] %>" placeholder="Search records">
+            <% end %>
+          <% else %>
+            <div class="list-search">
+              <span>⌕</span>
+              <input type="search" placeholder="Search records" data-table-search="module_saved_records">
+            </div>
+          <% end %>
           <%= form_with url: import_module_path(@slug), method: :post, multipart: true, local: true, class: "list-control-actions" do |form| %>
             <label class="import-btn">
               Choose Excel
@@ -2863,7 +2877,7 @@
           <% end %>
         </div>
         <div class="table-shell">
-          <table class="module-table" id="module_saved_records" data-paginated-table data-page-size="15">
+          <table class="module-table" id="module_saved_records"<%= " data-paginated-table data-page-size=15" unless server_paginated_master_list %>>
             <thead>
               <tr>
                 <% saved_record_fields.each do |field| %>
@@ -2886,8 +2900,10 @@
                     <td>
                       <div class="table-actions">
                         <%= link_to "Edit", edit_module_record_path(@slug, record), class: "table-action" %>
-                        <%= button_to(record.data["status"] == "Inactive" ? "Activate" : "Deactivate", toggle_module_record_path(@slug, record), method: :patch, class: "table-action") %>
-                        <%= button_to "Delete", module_record_path(@slug, record), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this record?" } } %>
+                        <%# See the master-table note above: method links retain the
+                            same routes/actions while avoiding two forms per row. %>
+                        <%= link_to(record.data["status"] == "Inactive" ? "Activate" : "Deactivate", toggle_module_record_path(@slug, record), class: "table-action", data: { turbo_method: :patch }) %>
+                        <%= link_to "Delete", module_record_path(@slug, record), class: "table-action danger", data: { turbo_method: :delete, turbo_confirm: "Delete this record?" } %>
                       </div>
                     </td>
                   </tr>
@@ -2900,7 +2916,21 @@
             </tbody>
           </table>
         </div>
-        <div class="table-pagination" data-pagination-for="module_saved_records"></div>
+        <% if server_paginated_master_list %>
+          <% if @module_records_page_count > 1 %>
+            <nav class="table-pagination" aria-label="Saved record pages">
+              <% if @module_records_page > 1 %>
+                <%= link_to "Previous", module_path(@slug, page: @module_records_page - 1, q: params[:q].presence), class: "page-link" %>
+              <% end %>
+              <span>Page <%= @module_records_page %> of <%= @module_records_page_count %></span>
+              <% if @module_records_page < @module_records_page_count %>
+                <%= link_to "Next", module_path(@slug, page: @module_records_page + 1, q: params[:q].presence), class: "page-link" %>
+              <% end %>
+            </nav>
+          <% end %>
+        <% else %>
+          <div class="table-pagination" data-pagination-for="module_saved_records"></div>
+        <% end %>
       </section>
     <% end %>
   </div>
