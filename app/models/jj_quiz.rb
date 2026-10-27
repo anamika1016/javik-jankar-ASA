@@ -20,8 +20,17 @@ class JjQuiz < ApplicationRecord
   end
 
   def shareable_for_exam?
-    published? &&
+    return false unless published?
+
+    # The admin index preloads questions to render their count. Reuse that
+    # collection for the availability check instead of issuing one EXISTS query
+    # per quiz while rendering the state badge. Other call sites retain the
+    # database-backed check when the association has not been loaded.
+    if association(:questions).loaded?
+      questions.any? { |question| question.status == "active" }
+    else
       active_questions.exists?
+    end
   end
 
   def inactive_for_exam_reason

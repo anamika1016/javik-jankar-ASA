@@ -4386,8 +4386,17 @@ class ModulesController < ApplicationController
 
   def dashboard_target_assignment_key(target, group_key_counts = nil)
     group_key = target.mapping_group_key.to_s.strip if target.respond_to?(:mapping_group_key)
-    group_key_counts ||= dashboard_target_mapping_group_key_counts(dashboard_target_mappings)
-    return [:mapping_group_key, group_key] if group_key.present? && group_key_counts[group_key].to_i > 1
+    # Most persisted target mappings do not have a mapping_group_key.  In that
+    # normal case the fallback key below is all that is used, so loading every
+    # mapping in the system merely to calculate an empty tally is unnecessary.
+    # This was especially costly on the payment pages, where it turned a
+    # record-local comparison into an unbounded TargetMapping + VRP load.
+    #
+    # Keep the grouping rule exactly the same when a group key does exist.
+    if group_key.present?
+      group_key_counts ||= dashboard_target_mapping_group_key_counts(dashboard_target_mappings)
+      return [:mapping_group_key, group_key] if group_key_counts[group_key].to_i > 1
+    end
 
     dashboard_target_assignment_signature(target) + [
       normalize_dashboard_text(target.main_activity_name),

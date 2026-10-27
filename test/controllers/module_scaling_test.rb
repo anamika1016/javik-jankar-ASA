@@ -124,6 +124,20 @@ class ModuleScalingTest < ActiveSupport::TestCase
     refute projected.data.key?("attachment_upload")
   end
 
+  test "plain target assignment keys do not load unrelated dashboard mappings" do
+    target = Struct.new(:id, :month_name, :vrp_id, :fco_id, :fco_name, :ics_id, :ics_name, :village_id, :village_name,
+      :completion_date, :opg_training_target, :week_wise_opg_target, :input_demo_inm_target, :input_demo_pm_target,
+      :ffs_target, :afl_ids, :main_activity_name, :activity_name, :updated_at).new(
+        12, "October", 4, "FCO", nil, "ICS", nil, "Village", nil,
+        nil, nil, nil, nil, nil, nil, ["100"], "Farmers' Training", "Topic", Time.current
+      )
+    controller = ModulesController.new
+    controller.define_singleton_method(:dashboard_target_mappings) { raise "must not load all mappings" }
+
+    assert_equal [4, "FCO", "ICS", "Village", "October", nil, "", "", "", "", "", ["100"], "farmers' training", "topic"],
+      controller.send(:dashboard_target_assignment_key, target)
+  end
+
   test "large master lists keep their order and searchable result set with server pagination" do
     records = 16.times.map do |index|
       ModuleRecord.create!(module_slug: "village-master", data: { "village" => format("Village %02d", index) })
