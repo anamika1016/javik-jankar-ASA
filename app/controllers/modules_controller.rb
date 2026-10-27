@@ -2317,6 +2317,16 @@ class ModulesController < ApplicationController
       end
       completed = [completed.to_f, effective_target].min
       pending = [effective_target - completed, 0].max
+      if @jeevika_bill_totals_progress_only
+        next {
+          month: target.month_name, completion_date_sort: target.completion_date,
+          fco: target.fco_name.presence || target.fco_id, village: target.village_name.presence || target.village_id,
+          target_mapping_id: target.id.to_s, target_record: target,
+          assigned_farmer_ids: assigned_farmer_ids, completed_farmer_ids: completed_farmer_ids,
+          training_completion: training_completion, completion_uses_farmer_ids: completion_uses_farmer_ids,
+          target: effective_target, completed: completed
+        }
+      end
       week_targets = target.respond_to?(:weekly_target_values) ? target.weekly_target_values : [0, 0, 0, 0]
       weekly_completed_farmer_ids = training_weekly_achievement_farmer_ids(target, assigned_farmer_ids)
 
@@ -2366,12 +2376,16 @@ class ModulesController < ApplicationController
       batch_keys[record.id] || dashboard_target_assignment_key(record, group_key_counts)
     end.values.map do |rows|
       first = rows.first
-      main_activities = rows.map { |row| row[:main_activity].to_s.strip }.reject(&:blank?).uniq
-      sub_activities = rows.map { |row| row[:activity].to_s.strip }.reject(&:blank?).uniq
+      unless @jeevika_bill_totals_progress_only
+        main_activities = rows.map { |row| row[:main_activity].to_s.strip }.reject(&:blank?).uniq
+        sub_activities = rows.map { |row| row[:activity].to_s.strip }.reject(&:blank?).uniq
+      end
       effective_target = first[:target].to_f
       assigned_farmer_ids = rows.flat_map { |row| Array(row[:assigned_farmer_ids]).map(&:to_s) }.reject(&:blank?).uniq
-      weekly_completed_farmer_ids = 4.times.map do |index|
-        unique_training_farmer_ids(rows.flat_map { |row| Array(row[:weekly_completed_farmer_ids])[index] || [] }) & assigned_farmer_ids
+      unless @jeevika_bill_totals_progress_only
+        weekly_completed_farmer_ids = 4.times.map do |index|
+          unique_training_farmer_ids(rows.flat_map { |row| Array(row[:weekly_completed_farmer_ids])[index] || [] }) & assigned_farmer_ids
+        end
       end
       training_completion_rows = rows.select { |row| row[:training_completion] }
       farmer_completion_rows = training_completion_rows.presence || rows.select { |row| row[:completion_uses_farmer_ids] }
@@ -2392,6 +2406,10 @@ class ModulesController < ApplicationController
         rows.map { |row| row[:completed].to_f }.max.to_f
       end
       completed_total = [completed_total, effective_target].min
+      if @jeevika_bill_totals_progress_only
+        next first.merge(completed: completed_total, assigned_farmer_ids: assigned_farmer_ids,
+          completed_farmer_ids: completed_farmer_ids)
+      end
 
       first.merge(
         main_activity: main_activities.join("\n"),
@@ -10681,11 +10699,28 @@ class ModulesController < ApplicationController
     JEEVIKA_PAYMENT_TRANSACTION_TYPES
   end
 
+  def preload_jeevika_payment_bill_histories!(records)
+    @jeevika_payment_history_by_bill_id ||= {}
+    ids = Array(records).map { |record| record.id.to_s }.uniq
+      .reject { |id| @jeevika_payment_history_by_bill_id.key?(id) }
+    return if ids.empty? || !model_ready?(:ModuleRecord)
+
+    ids.each { |id| @jeevika_payment_history_by_bill_id[id] = [] }
+    if defined?(@jeevika_bill_visible_record_ids)
+      ids &= Array(@jeevika_bill_visible_record_ids).map(&:to_s).reject(&:blank?)
+      return if ids.empty?
+    end
+    ModuleRecord.where(module_slug: "jeevika-jankar-bill-approval-history")
+      .where("data::jsonb ->> 'bill_id' IN (?)", ids).order(created_at: :asc, id: :asc).each do |history|
+        @jeevika_payment_history_by_bill_id[history.data["bill_id"].to_s] << history
+      end
+  end
+
   def jeevika_payment_bill_date_options(records)
-    Array(records)
-      .select { |record| jeevika_bill_final_approved?(record) }
+    eligible = Array(records).select { |record| jeevika_bill_final_approved?(record) }
       .reject { |record| jeevika_paid_bill_ids.include?(record.id.to_s) }
-      .filter_map { |record| jeevika_bill_final_approval_date(record).presence }
+    preload_jeevika_payment_bill_histories!(eligible)
+    eligible.filter_map { |record| jeevika_bill_final_approval_date(record).presence }
       .uniq
       .sort
       .reverse
@@ -10693,23 +10728,23 @@ class ModulesController < ApplicationController
 
   def jeevika_payment_selectable_rows(records)
     paid_ids = jeevika_paid_bill_ids
-    Array(records)
-      .select { |record| jeevika_bill_final_approved?(record) }
+    eligible = Array(records).select { |record| jeevika_bill_final_approved?(record) }
       .reject { |record| paid_ids.include?(record.id.to_s) }
-      .map do |record|
-        vrp = jeevika_bill_vrp(record)
-        {
-          id: record.id,
-          approval_date: jeevika_bill_final_approval_date(record),
-          approval_date_label: bill_display_date(jeevika_bill_final_approval_date(record)),
-          vrp_id: record.data["select_vrp"].presence || "-",
-          name: jeevika_jankar_display_name(record.data["select_vrp_name"].presence || jeevika_jankar_vrp_label(record.data["select_vrp"])).presence || "-",
-          mobile_no: vrp&.mobile_no.presence || "-",
-          bill_month: record.data["bill_month"].presence || "-",
-          financial_year: record.data["financial_year"].presence || "-",
-          amount: format("%.2f", jeevika_jankar_bill_total_payment(record).to_f)
-        }
-      end
+    preload_jeevika_payment_bill_histories!(eligible)
+    eligible.map do |record|
+      vrp = jeevika_bill_vrp(record)
+      {
+        id: record.id,
+        approval_date: jeevika_bill_final_approval_date(record),
+        approval_date_label: bill_display_date(jeevika_bill_final_approval_date(record)),
+        vrp_id: record.data["select_vrp"].presence || "-",
+        name: jeevika_jankar_display_name(record.data["select_vrp_name"].presence || jeevika_jankar_vrp_label(record.data["select_vrp"])).presence || "-",
+        mobile_no: vrp&.mobile_no.presence || "-",
+        bill_month: record.data["bill_month"].presence || "-",
+        financial_year: record.data["financial_year"].presence || "-",
+        amount: format("%.2f", jeevika_jankar_bill_total_payment(record).to_f)
+      }
+    end
   end
 
   def jeevika_payment_detail_rows
@@ -10837,10 +10872,12 @@ class ModulesController < ApplicationController
   def jeevika_payment_detail_records
     return [] unless model_ready?(:ModuleRecord)
 
-    @jeevika_payment_detail_records ||= ModuleRecord
-      .where(module_slug: JEEVIKA_JANKAR_PAYMENT_DETAIL_SLUG)
-      .order(created_at: :desc, id: :desc)
-      .to_a
+    @jeevika_payment_detail_records ||= if @slug == "jeevika-jankar-completed-payment-list" && @record.blank? && @records
+      Array(@records).sort_by { |record| [record.created_at, record.id] }.reverse
+    else
+      ModuleRecord.where(module_slug: JEEVIKA_JANKAR_PAYMENT_DETAIL_SLUG)
+        .order(created_at: :desc, id: :desc).to_a
+    end
   end
 
   def jeevika_bill_final_approved?(record)
@@ -11432,6 +11469,9 @@ class ModulesController < ApplicationController
   def jeevika_bill_approval_history(record)
     return [] unless model_ready?(:ModuleRecord)
 
+    if @jeevika_payment_history_by_bill_id&.key?(record.id.to_s)
+      return @jeevika_payment_history_by_bill_id[record.id.to_s]
+    end
     jeevika_bill_approval_history_by_bill_id[record.id.to_s] || []
   end
 
@@ -11556,6 +11596,7 @@ class ModulesController < ApplicationController
       }
     )
     @jeevika_bill_approval_history_by_bill_id = nil
+    @jeevika_payment_history_by_bill_id = nil
     @jeevika_bill_current_approval_step_cache&.delete(record.id)
   end
 
@@ -11972,6 +12013,19 @@ class ModulesController < ApplicationController
     !record.data["status"].to_s.downcase.match?(/reject|return/)
   end
 
+  def other_target_records_for_calculation(order)
+    months = other_target_candidate_targets.map { |target| normalize_dashboard_text(target.month_name) }.reject(&:blank?).uniq
+    build = lambda do
+      scope = other_target_progress_records_scope
+      scope = scope.where("LOWER(BTRIM(data::jsonb ->> 'month')) IN (?)", months) if months.present?
+      scope.order(order).to_a
+    end
+    return build.call unless @jeevika_bill_calculation_reads
+
+    key = [months.sort, order]
+    @jeevika_bill_calculation_reads[key] ||= build.call
+  end
+
   def approved_other_target_achievement_index
     return {} unless model_ready?(:ModuleRecord)
 
@@ -11981,12 +12035,9 @@ class ModulesController < ApplicationController
     @approved_other_target_achievement_indexes ||= {}
     return @approved_other_target_achievement_indexes[candidate_key] if @approved_other_target_achievement_indexes.key?(candidate_key)
 
-    records = other_target_progress_records_scope
-    candidate_months = other_target_candidate_targets.map { |target| normalize_dashboard_text(target.month_name) }.reject(&:blank?).uniq
-    records = records.where("LOWER(BTRIM(data::jsonb ->> 'month')) IN (?)", candidate_months) if candidate_months.present?
+    records = other_target_records_for_calculation(updated_at: :desc)
 
     @approved_other_target_achievement_indexes[candidate_key] = records
-      .order(updated_at: :desc)
       .select { |record| approved_other_target_record?(record) }
       .each_with_object({}) do |record, index|
         target_mapping_ids = other_target_record_target_mapping_ids(record)
@@ -12112,11 +12163,17 @@ class ModulesController < ApplicationController
     normalized_status == "active" || normalized_status.include?("approved")
   end
 
-  def jeevika_jankar_bill_rows(vrp_id: nil, month_name: nil, totals_only: false)
-    return [] unless model_ready?(:TargetMapping)
-
-    selected_vrp_ids = jeevika_jankar_bill_selected_vrp_ids(vrp_id)
-    return [] if vrp_id.present? && selected_vrp_ids.blank?
+  def jeevika_jankar_bill_target_records(selected_vrp_ids:, vrp_id:, month_name:)
+    batch = @jeevika_bill_target_read_batch
+    if batch&.covers?(selected_vrp_ids, month_name)
+      scoped_ids = nil
+      scoped_ids = [current_vrp_record.id] if vrp_login_user? && current_vrp_record.present?
+      if module_mapped_vrp_scope_active?
+        mapped = module_cluster_visible_vrp_ids.map(&:to_i)
+        scoped_ids = scoped_ids ? scoped_ids & mapped : mapped
+      end
+      return batch.records_for(owner_ids: selected_vrp_ids, month: month_name, scoped_owner_ids: scoped_ids)
+    end
     targets = TargetMapping.all
     targets = targets.where(vrp_id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
     targets = targets.where(vrp_id: module_cluster_visible_vrp_ids) if module_mapped_vrp_scope_active?
@@ -12139,7 +12196,16 @@ class ModulesController < ApplicationController
       end
     end
     targets = targets.loaded? ? targets.to_a : targets.order(:month_name, :vrp_id, :village_name, :main_activity_name, :activity_name, :id).to_a
-    preload_target_vrps!(targets)
+    targets
+  end
+
+  def jeevika_jankar_bill_rows(vrp_id: nil, month_name: nil, totals_only: false)
+    return [] unless model_ready?(:TargetMapping)
+
+    selected_vrp_ids = jeevika_jankar_bill_selected_vrp_ids(vrp_id)
+    return [] if vrp_id.present? && selected_vrp_ids.blank?
+    targets = jeevika_jankar_bill_target_records(selected_vrp_ids: selected_vrp_ids, vrp_id: vrp_id, month_name: month_name)
+    preload_target_vrps!(targets) unless @jeevika_bill_target_read_batch&.covers?(selected_vrp_ids, month_name)
     # Totals already loaded these targets and owners. Training references can
     # reuse them instead of fetching the same IDs again while matching sessions.
     @training_record_target_mapping_cache ||= {}
@@ -12165,7 +12231,14 @@ class ModulesController < ApplicationController
 
     # Use the dashboard's assignment grouping and completion calculation for both
     # the bill totals and its detail rows. Training sessions are evidence, not targets.
-    rows = vrp_dashboard_target_progress_rows(targets, []).map do |progress|
+    previous_totals_mode = @jeevika_bill_totals_progress_only
+    begin
+      @jeevika_bill_totals_progress_only = totals_only
+      progress_rows = vrp_dashboard_target_progress_rows(targets, [])
+    ensure
+      @jeevika_bill_totals_progress_only = previous_totals_mode
+    end
+    rows = progress_rows.map do |progress|
       target = progress[:target_record]
       if totals_only
         next {
@@ -13275,9 +13348,17 @@ class ModulesController < ApplicationController
     return nil unless model_ready?(:Vrp)
 
     data = record&.data || {}
-    candidates = [data["select_vrp"], data["vrp_id"], data["select_vrp_name"]] +
-      jeevika_bill_detail_rows(record).flat_map { |item| [item["vrp_id"], item["vrp_name"]] }
-    candidates.filter_map { |value| cached_vrp_lookup(value) }.first
+    [data["select_vrp"], data["vrp_id"], data["select_vrp_name"]].each do |value|
+      vrp = cached_vrp_lookup(value)
+      return vrp if vrp
+    end
+    jeevika_bill_detail_rows(record).each do |item|
+      [item["vrp_id"], item["vrp_name"]].each do |value|
+        vrp = cached_vrp_lookup(value)
+        return vrp if vrp
+      end
+    end
+    nil
   end
 
   def jeevika_bill_cc_name(record)
@@ -16335,10 +16416,40 @@ class ModulesController < ApplicationController
       "Submitted"
     end
   end
+  def preload_scoped_jeevika_bill_totals(records)
+    @jeevika_bill_process_totals ||= {}
+    candidates = Array(records).select do |record|
+      id = record.data["select_vrp"].to_s
+      month = record.data["bill_month"]
+      id.match?(/\A\d+\z/) && month.present? && !@jeevika_bill_process_totals.key?([id, normalize_dashboard_text(month)])
+    end
+    return if candidates.empty? || !model_ready?(:TargetMapping)
+
+    previous_batch = @jeevika_bill_target_read_batch
+    previous_reads = @jeevika_bill_calculation_reads
+    begin
+      @jeevika_bill_calculation_reads = {}
+      @jeevika_bill_target_read_batch = BillTargetReadBatch.new(
+        owner_ids: candidates.map { |record| record.data["select_vrp"] },
+        months: candidates.map { |record| record.data["bill_month"] }, month_number: method(:month_number_value))
+      preload_target_vrps!(@jeevika_bill_target_read_batch.records)
+      @training_record_target_mapping_cache ||= {}
+      @jeevika_bill_target_read_batch.records.each do |target|
+        key = target.id.to_s
+        @training_record_target_mapping_cache[key] = target unless @training_record_target_mapping_cache.key?(key)
+      end
+      candidates.each { |record| jeevika_jankar_bill_process_totals(record) }
+    ensure
+      @jeevika_bill_target_read_batch = previous_batch
+      @jeevika_bill_calculation_reads = previous_reads
+    end
+  end
+
   def preload_jeevika_bill_process_totals(records)
     return if records.blank?
-    # Retain the existing per-owner scope/fallback path for mapped and JJ logins.
-    return if vrp_login_user? || module_mapped_vrp_scope_active?
+    # Retain each scoped viewer's original per-owner calculation and fallbacks,
+    # while reading the required target rows/owners once for this batch.
+    return preload_scoped_jeevika_bill_totals(records) if vrp_login_user? || module_mapped_vrp_scope_active?
 
     @jeevika_bill_process_totals ||= {}
     numeric_bills = Array(records).select do |bill|

@@ -73,12 +73,20 @@ class BillListReadScalingTest < ActiveSupport::TestCase
     assert_operator after_queries, :<, before_queries
   end
 
-  test "mapped and JJ logins retain the individual totals path" do
+  test "mapped logins preload reads while retaining individual owner calculations" do
     controller = calculator
     controller.define_singleton_method(:module_mapped_vrp_scope_active?) { true }
-    controller.define_singleton_method(:jeevika_jankar_bill_rows) { |**_| raise "Scope fallback must stay individual" }
-    controller.send(:preload_jeevika_bill_process_totals, [ModuleRecord.new(data: { "select_vrp" => "1", "bill_month" => "September" })])
-    assert_nil controller.instance_variable_get(:@jeevika_bill_process_totals)
+    calls = []
+    controller.define_singleton_method(:jeevika_jankar_bill_rows) do |**options|
+      calls << options
+      @jeevika_jankar_target_summary = { "1" => { "september" => { target: "7", achievement: "3" } } }
+      []
+    end
+    bill = ModuleRecord.new(data: { "select_vrp" => "1", "bill_month" => "September" })
+    controller.send(:preload_jeevika_bill_process_totals, [bill])
+    assert_equal [{ vrp_id: "1", month_name: "September", totals_only: true }], calls
+    assert_equal "7", controller.send(:jeevika_jankar_bill_total_target, bill)
+    assert_equal "3", controller.send(:jeevika_jankar_bill_total_achievement, bill)
   end
 
   test "payment rows contain the same displayed bill values without building full bill-list actions" do

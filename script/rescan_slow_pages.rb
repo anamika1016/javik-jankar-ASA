@@ -24,6 +24,15 @@ if ENV["RESCAN_BASELINE_REF"].present?
   ModulesController.prepend_view_path(baseline_root)
 end
 
+if ENV["RESCAN_SCOPED_BILL_TOTALS"] == "1"
+  # Exercise the mapped-owner branch for the same synthetic viewer in both
+  # baseline/current runs. This never changes application authorization rules.
+  ModulesController.prepend(Module.new do
+    def module_mapped_vrp_scope_active?; true; end
+    def module_cluster_visible_vrp_ids; (9_000_000...9_000_010).to_a; end
+  end)
+end
+
 Net::HTTP.singleton_class.prepend(Module.new do
   def start(*)
     raise SocketError, "External HTTP disabled for isolated render audit"
@@ -89,10 +98,20 @@ Object.new.extend(ActiveSupport::Testing::TimeHelpers).travel_to(Time.zone.parse
         end
       end
       observations = ModulesController::JEEVIKA_JANKAR_OBSERVATION_PARAMETERS.to_h { |parameter| [parameter[:key], "good"] }
-      add_module.call("jeevika-jankar-bill-process", { "select_vrp" => owner.id.to_s, "select_vrp_name" => owner.name,
+      bill = add_module.call("jeevika-jankar-bill-process", { "select_vrp" => owner.id.to_s, "select_vrp_name" => owner.name,
         "bill_month" => "October", "financial_year" => "2026-2027", "status" => "Final Approved", "grand_total" => "5000.00",
         "observations" => observations, "bill_items" => [{ "main_activity" => "Training", "activity" => "Work Training", "assigned_count" => 10,
           "achievement_count" => 5, "farmer_details" => farmers.map { |farmer| { "id" => farmer.id.to_s, "name" => farmer.farmer_name, "evidence" => "x" * 1024 } } }] })
+      if ENV["RESCAN_PAYMENTS"] == "1"
+        add_module.call("jeevika-jankar-bill-approval-history", { "bill_id" => bill.id.to_s, "action" => "Approved",
+          "action_at" => "2026-10-20T10:00:00Z", "approval_level" => "Final Approval", "approver" => "Audit Approver" })
+        if number.even?
+          add_module.call(ModulesController::JEEVIKA_JANKAR_PAYMENT_DETAIL_SLUG, { "selected_bill_ids" => [bill.id.to_s],
+            "approval_date" => "2026-10-20", "transaction_date" => "2026-10-21", "transaction_id" => "AUDIT-#{number}",
+            "payment_items" => [{ "bill_id" => bill.id.to_s, "jeevika_jankar_id" => owner.id.to_s, "jeevika_jankar_name" => owner.name,
+              "bill_month" => "October", "financial_year" => "2026-2027", "amount" => "5000.00", "approval_date" => "2026-10-20" }] })
+        end
+      end
     end
     session = ActionDispatch::Integration::Session.new(Rails.application)
     session.post("/login", params: { login: admin.user_name, password: "rescan-secret" })
@@ -100,7 +119,7 @@ Object.new.extend(ActiveSupport::Testing::TimeHelpers).travel_to(Time.zone.parse
     paths = %w[jeevika-jankar-payment-list training-form jeevika-jankar-observation-list jeevika-jankar-payment-list-detail other-target
       other-target-with-farmer gram-panchayat-master jeevika-jankar-bill-list jeevika-jankar-bill-process other-target-list
       other-target-with-farmer-list access-control-list approval-master user-hierarchy-mapping training-form-list].map { |slug| "/modules/#{slug}" }
-    paths += %w[/dashboard /target_mappings/list /vrps/new /vrps/approvals]
+    paths += %w[/dashboard /target_mappings/list /vrps/new /vrps/approvals /modules/jeevika-jankar-completed-payment-list]
     if ENV["RESCAN_EXPORTS"] == "1"
       paths = %w[training-form-list other-target-list jeevika-jankar-bill-list].map { |slug| "/modules/#{slug}/export.xlsx" }
     end
