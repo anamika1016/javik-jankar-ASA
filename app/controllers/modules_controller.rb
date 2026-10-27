@@ -2720,7 +2720,9 @@ class ModulesController < ApplicationController
     # Reject blocked revisions before decoding full photos/participant data.
     # Keep the original Ruby status semantics for the surviving records.
     @unapproved_training_record_ids ||= TrainingEditApproval.unapproved_record_ids.to_set
-    countable_scope = ModuleRecordReadQuery.without_unapproved_training_records(scope, @unapproved_training_record_ids)
+    countable_scope = ModuleRecordReadQuery.training_progress_records(
+      ModuleRecordReadQuery.without_unapproved_training_records(scope, @unapproved_training_record_ids)
+    )
     records = countable_scope
       .select { |record| training_record_status_countable?(record) }
     preload_training_target_mappings_for_records!(records)

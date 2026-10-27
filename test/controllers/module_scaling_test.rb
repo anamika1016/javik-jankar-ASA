@@ -108,6 +108,22 @@ class ModuleScalingTest < ActiveSupport::TestCase
     end
   end
 
+  test "training progress projection retains every calculation field without attachment payloads" do
+    data = {
+      "month" => "October", "training_date" => "2026-10-01", "selected_farmer_ids" => ["10"],
+      "target_mapping_id" => "22", "ics" => "ICS", "village" => "Village", "training_location" => "Hall", "training_method" => "FFS",
+      "main_activity" => "Training", "sub_activity" => "Topic", "trainer_name" => "JJ",
+      "status" => "Active", "field_photo" => ["x" * 100_000], "attachment_upload" => ["y" * 100_000]
+    }
+    record = ModuleRecord.create!(module_slug: "training-form", data: data)
+
+    projected = ModuleRecordReadQuery.training_progress_records(ModuleRecord.where(id: record.id)).first
+    assert_equal data.except("field_photo", "attachment_upload"), projected.data
+    assert_equal ["10"], projected.data["selected_farmer_ids"]
+    refute projected.data.key?("field_photo")
+    refute projected.data.key?("attachment_upload")
+  end
+
   test "large master lists keep their order and searchable result set with server pagination" do
     records = 16.times.map do |index|
       ModuleRecord.create!(module_slug: "village-master", data: { "village" => format("Village %02d", index) })
