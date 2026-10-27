@@ -113,7 +113,7 @@ class ModuleScalingTest < ActiveSupport::TestCase
       "month" => "October", "training_date" => "2026-10-01", "selected_farmer_ids" => ["10"],
       "target_mapping_id" => "22", "ics" => "ICS", "village" => "Village", "training_location" => "Hall", "training_method" => "FFS",
       "main_activity" => "Training", "sub_activity" => "Topic", "trainer_name" => "JJ",
-      "status" => "Active", "field_photo" => ["x" * 100_000], "attachment_upload" => ["y" * 100_000]
+      "status" => "Active", "legacy_metadata" => "preserved fallback", "field_photo" => ["x" * 100_000], "attachment_upload" => ["y" * 100_000]
     }
     record = ModuleRecord.create!(module_slug: "training-form", data: data)
 

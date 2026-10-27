@@ -13,25 +13,15 @@ class ModuleRecordReadQuery
   # status and training labels below. Training records can additionally hold
   # multiple uploaded photos/documents; loading those JSON values for every
   # monthly calculation creates needless database transfer and Ruby GC work.
-  # Return the same records with precisely the fields read by the progress
-  # matcher, preserving all completion and approval decisions.
+  # Removing those payloads directly is materially cheaper than rebuilding a
+  # JSON object with jsonb_each/jsonb_object_agg for every training row. The
+  # calculation receives the same fields it uses for completion and approval
+  # decisions, while harmless legacy metadata remains available for fallback
+  # readers.
   def self.training_progress_records(scope)
-    keys = %w[
-      month training_month training_date selected_farmer_ids
-      target_mapping_ids target_mapping_id
-      ics_block ics gram_name village training_location training_method
-      main_activities main_activity training_topic
-      sub_activities sub_activity training_subject
-      jeevika_jankar_id vrp_id select_vrp vrp_name jeevika_jankar_name
-      trainer_contact trainer_name department trainee_department
-      status approval_status approval_state deleted is_deleted discarded record_state
-    ]
-    quoted_keys = keys.map { |key| ModuleRecord.connection.quote(key) }.join(",")
-    projection = <<~SQL.squish
-      (SELECT COALESCE(jsonb_object_agg(field.key, field.value), '{}'::jsonb)
-       FROM jsonb_each(COALESCE(module_records.data::jsonb, '{}'::jsonb)) AS field(key, value)
-       WHERE field.key IN (#{quoted_keys}))::text AS data
-    SQL
+    omitted_keys = (TrainingEditApproval::IMAGE_KEYS + %w[attachment_upload field_photo farmer_details farmers]).uniq
+    quoted_keys = omitted_keys.map { |key| ModuleRecord.connection.quote(key) }.join(",")
+    projection = "(COALESCE(module_records.data::jsonb, '{}'::jsonb) - ARRAY[#{quoted_keys}])::text AS data"
 
     scope.select(:id, :module_slug, :created_at, :updated_at).select(projection)
   end
