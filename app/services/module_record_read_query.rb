@@ -19,6 +19,13 @@ class ModuleRecordReadQuery
     TrainingEditApproval.summary_scope(ModuleRecord.where(id: latest_ids))
   end
 
+  def self.without_unapproved_training_records(scope, blocked_ids)
+    # id::text preserves exact legacy reference matching (including leading
+    # zeros/non-numeric references) without PostgreSQL integer coercion.
+    ids = blocked_ids.select { |id| id.is_a?(String) }
+    ids.empty? ? scope : scope.where.not("module_records.id::text IN (?)", ids)
+  end
+
   def self.hydrate(records)
     return [] if records.empty?
 

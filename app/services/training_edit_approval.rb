@@ -14,20 +14,18 @@ class TrainingEditApproval
 
   # Only the latest revision controls billing; untouched records remain eligible.
   def self.unapproved_record_ids
-    # Keep the existing newest-revision-wins rule in PostgreSQL. Loading every
-    # revision into Ruby on each dashboard, bill, and training-form request was
-    # needlessly expensive and made unrelated pages wait behind this scan.
+    # Keep the newest-revision-wins rule in PostgreSQL. Read scalar ID/status
+    # pairs instead of instantiating each latest revision as an Active Record.
     ModuleRecord
       .where(module_slug: SLUG)
-      .select(<<~SQL.squish)
-        DISTINCT ON ((data::jsonb ->> 'record_id'))
-        (data::jsonb ->> 'record_id') AS approval_record_id,
-        (data::jsonb ->> 'status') AS approval_status
-      SQL
       .order(Arel.sql("(data::jsonb ->> 'record_id'), id DESC"))
-      .filter_map do |revision|
-        record_id = revision.attributes["approval_record_id"].to_s
-        record_id if record_id.present? && revision.attributes["approval_status"] != "Approved"
+      .pluck(
+        Arel.sql("DISTINCT ON ((data::jsonb ->> 'record_id')) (data::jsonb ->> 'record_id')"),
+        Arel.sql("data::jsonb ->> 'status'")
+      )
+      .filter_map do |record_id, status|
+        record_id = record_id.to_s
+        record_id if record_id.present? && status != "Approved"
       end
   end
 

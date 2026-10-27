@@ -36,7 +36,7 @@ class ModulesController < ApplicationController
 
   helper_method :module_field_options, :module_select_field?, :static_field_options, :role_management_mappings,
                 :access_control_role_mappings, :access_control_field_options,
-                :location_hierarchy_mappings, :office_category_mappings, :training_target_mappings,
+                :location_hierarchy_mappings, :location_hierarchy_browser_json, :office_category_mappings, :training_target_mappings,
                 :training_activity_setup_mappings, :training_target_month_options, :user_hierarchy_cc_to_head_map,
                 :training_activity_mappings, :approval_user_mappings, :approval_user_options,
                 :parent_office_mappings, :user_hierarchy_list_rows, :jeevika_jankar_cluster_rows,
@@ -2699,7 +2699,12 @@ class ModulesController < ApplicationController
 
     scope = active_module_records_scope("training-form").order(created_at: :desc)
     scope = scope.where("LOWER(BTRIM(data::jsonb ->> 'month')) = ?", month) if month.present?
-    records = scope.select { |record| training_record_countable?(record) }
+    # Reject blocked revisions before decoding full photos/participant data.
+    # Keep the original Ruby status semantics for the surviving records.
+    @unapproved_training_record_ids ||= TrainingEditApproval.unapproved_record_ids.to_set
+    countable_scope = ModuleRecordReadQuery.without_unapproved_training_records(scope, @unapproved_training_record_ids)
+    records = countable_scope
+      .select { |record| training_record_status_countable?(record) }
     preload_training_target_mappings_for_records!(records)
     @dashboard_training_form_records_by_month[month] = records
   end
@@ -7948,7 +7953,9 @@ class ModulesController < ApplicationController
     @training_record_target_mapping_cache ||= {}
     return @training_record_target_mapping_cache[mapping_id] if @training_record_target_mapping_cache.key?(mapping_id)
 
-    @dashboard_target_mapping_index ||= dashboard_target_mappings.index_by { |target| target.id.to_s }
+    # Reuse the dashboard's rows only when that screen has already loaded them.
+    # Bill totals/selected-target lookups must not load every mapping and owner.
+    @dashboard_target_mapping_index ||= Array(@dashboard_target_mappings).index_by { |target| target.id.to_s }
     return @training_record_target_mapping_cache[mapping_id] = @dashboard_target_mapping_index[mapping_id] if @dashboard_target_mapping_index.key?(mapping_id)
 
     @training_record_target_mapping_cache[mapping_id] = TargetMapping.includes(:vrp).find_by(id: mapping_id)
@@ -7965,7 +7972,9 @@ class ModulesController < ApplicationController
     return if mapping_ids.blank?
 
     @training_record_target_mapping_cache ||= {}
-    @dashboard_target_mapping_index ||= dashboard_target_mappings.index_by { |target| target.id.to_s }
+    # Reuse the dashboard's rows only when that screen has already loaded them.
+    # Bill totals/selected-target lookups must not load every mapping and owner.
+    @dashboard_target_mapping_index ||= Array(@dashboard_target_mappings).index_by { |target| target.id.to_s }
 
     mapping_ids.each do |mapping_id|
       if @dashboard_target_mapping_index.key?(mapping_id)
@@ -10475,6 +10484,8 @@ class ModulesController < ApplicationController
     # value predicate in SQL first so old bills from other months do not need
     # JSON projection or identity preloading for this page.
     records_scope = records_scope.where("data::jsonb ->> 'bill_month' = ?", selected_month) if selected_month.present?
+    records_scope = records_scope.where("jsonb_typeof(data::jsonb -> 'observations') = 'object'")
+      .where("data::jsonb -> 'observations' <> '{}'::jsonb")
     records = bill_summary_scope(records_scope)
       .order(created_at: :desc)
       .to_a
@@ -10655,6 +10666,10 @@ class ModulesController < ApplicationController
 
   def preload_jeevika_payment_passbooks!(records)
     vrps = Array(records).filter_map { |record| jeevika_bill_vrp(record) }.uniq(&:id)
+    vrps.reject! do |vrp|
+      attachment = vrp.association(:bank_passbook_upload_attachment)
+      attachment.loaded? && (attachment.target.nil? || attachment.target.association(:blob).loaded?)
+    end
     return if vrps.empty?
 
     ActiveRecord::Associations::Preloader.new(
@@ -11425,8 +11440,10 @@ class ModulesController < ApplicationController
       scope = ModuleRecord
       .where(module_slug: "jeevika-jankar-bill-approval-history")
       .order(created_at: :asc, id: :asc)
-      bill_ids = Array(@jeevika_bill_visible_record_ids).map(&:to_s).reject(&:blank?)
-      scope = scope.where("data::jsonb ->> 'bill_id' IN (?)", bill_ids) if bill_ids.any?
+      if defined?(@jeevika_bill_visible_record_ids)
+        bill_ids = Array(@jeevika_bill_visible_record_ids).map(&:to_s).reject(&:blank?)
+        scope = bill_ids.empty? ? scope.none : scope.where("data::jsonb ->> 'bill_id' IN (?)", bill_ids)
+      end
       scope.group_by { |history| history.data["bill_id"].to_s }
     end
   end
@@ -12123,6 +12140,13 @@ class ModulesController < ApplicationController
     end
     targets = targets.loaded? ? targets.to_a : targets.order(:month_name, :vrp_id, :village_name, :main_activity_name, :activity_name, :id).to_a
     preload_target_vrps!(targets)
+    # Totals already loaded these targets and owners. Training references can
+    # reuse them instead of fetching the same IDs again while matching sessions.
+    @training_record_target_mapping_cache ||= {}
+    targets.each do |target|
+      key = target.id.to_s
+      @training_record_target_mapping_cache[key] = target unless @training_record_target_mapping_cache.key?(key)
+    end
     @other_target_candidate_targets = targets
     @other_target_candidate_targets_by_id = targets.index_by { |target| target.id.to_s }
     farmers_by_id = totals_only ? {} : jeevika_jankar_farmers_by_id(targets)
@@ -12579,6 +12603,7 @@ class ModulesController < ApplicationController
       .where(module_slug: "month-master")
       .merge(active_module_records_scope_for_all_modules)
       .order(created_at: :desc)
+      .to_a
   end
 
   def month_master_month_options(records = active_month_master_rows)
@@ -14775,15 +14800,17 @@ class ModulesController < ApplicationController
     sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
 
     saved_target_ids = @record&.module_slug == "training-form" ? Array(@record.data["target_mapping_ids"].presence || @record.data["target_mapping_id"]).map(&:to_s) : []
-    targets = preload_target_vrps!(
-      training_target_scope.or(TargetMapping.where(id: saved_target_ids))
-        .order(:ics_name, :ics_id, :village_name, :village_id, :id)
-        .to_a
-    )
+    scope = training_target_scope.or(TargetMapping.where(id: saved_target_ids))
+    scope = TargetFormReadQuery.filter(scope) do |target|
+      activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
+      saved_target_ids.include?(target.id.to_s) || (activity_setting.present? && training_main_activity_type?(activity_setting[:main_activity_type]))
+    end
+    targets = scope.order(:ics_name, :ics_id, :village_name, :village_id, :id).to_a
       .select do |target|
         activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
         saved_target_ids.include?(target.id.to_s) || (activity_setting.present? && training_main_activity_type?(activity_setting[:main_activity_type]))
       end
+    preload_target_vrps!(targets)
     include_completed_state = @record.present?
 
     saved_farmer_ids = @record&.module_slug == "training-form" ? training_record_selected_farmer_ids(@record) : []
@@ -15176,6 +15203,10 @@ class ModulesController < ApplicationController
     @unapproved_training_record_ids ||= TrainingEditApproval.unapproved_record_ids.to_set
     return false if @unapproved_training_record_ids.include?(record.id.to_s)
 
+    training_record_status_countable?(record)
+  end
+
+  def training_record_status_countable?(record)
     statuses = [
       record.data["status"],
       record.data["approval_status"],
@@ -15565,10 +15596,16 @@ class ModulesController < ApplicationController
     ).compact_blank.uniq
   end
 
+  def training_staff_option_users
+    @training_staff_option_users ||= User.order(updated_at: :desc)
+      .select(:id, :first_name, :last_name, :user_name, :role, :role_name,
+        :stakeholder_role, :user_management_role, :person_type).to_a
+  end
+
   def registered_app_user_rows_matching(pattern)
     return [] unless model_ready?(:User)
 
-    User.order(updated_at: :desc).filter_map do |user|
+    training_staff_option_users.filter_map do |user|
       values = [
         user.try(:role),
         user.try(:role_name),
@@ -15582,23 +15619,31 @@ class ModulesController < ApplicationController
     end
   end
 
+  def training_staff_option_module_users
+    @training_staff_option_module_users ||= begin
+      keys = %w[role role_name stakeholder_role user_management_role person_type first_name last_name user_name]
+      projection = keys.map { |key| "'#{key}', data::json -> '#{key}'" }.join(", ")
+      active_module_records_scope("new-user").order(updated_at: :desc)
+        .select(:id, :module_slug, :created_at, :updated_at)
+        .select("json_build_object(#{projection})::text AS data").to_a
+    end
+  end
+
   def registered_module_user_rows_matching(pattern)
     return [] unless model_ready?(:ModuleRecord)
 
-    active_module_records_scope("new-user")
-      .order(updated_at: :desc)
-      .filter_map do |record|
-        values = [
-          record.data["role"],
-          record.data["role_name"],
-          record.data["stakeholder_role"],
-          record.data["user_management_role"],
-          record.data["person_type"]
-        ].map(&:to_s)
-        next unless values.any? { |value| value.match?(pattern) }
+    training_staff_option_module_users.filter_map do |record|
+      values = [
+        record.data["role"],
+        record.data["role_name"],
+        record.data["stakeholder_role"],
+        record.data["user_management_role"],
+        record.data["person_type"]
+      ].map(&:to_s)
+      next unless values.any? { |value| value.match?(pattern) }
 
-        [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ").presence || record.data["user_name"].presence
-      end
+      [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ").presence || record.data["user_name"].presence
+    end
   end
 
   def training_form_initial_render?
@@ -15675,10 +15720,21 @@ class ModulesController < ApplicationController
     end.deep_dup
   end
 
+  def location_hierarchy_browser_json
+    return @location_hierarchy_browser_json if defined?(@location_hierarchy_browser_json)
+
+    key = ["jj-location-browser-json-v1", location_catalogue_revision]
+    @location_hierarchy_browser_json = DashboardCacheFill.synchronize(key) do
+      location_catalogue_cache.fetch(key, expires_in: 1.hour) do
+        location_hierarchy_mappings.to_json
+      end
+    end
+  end
+
   def location_catalogue_revision
     return @location_catalogue_revision if defined?(@location_catalogue_revision)
 
-    @location_catalogue_revision = ModuleRecord.where(module_slug: LOCATION_MODULE_SLUGS)
+    version_rows = ModuleRecord.where(module_slug: LOCATION_MODULE_SLUGS)
       .group(:module_slug).order(:module_slug)
       .pluck(
         :module_slug,
@@ -15686,7 +15742,7 @@ class ModulesController < ApplicationController
         Arel.sql("COALESCE(SUM((xmin::text)::bigint), 0)"),
         Arel.sql("COALESCE(MAX((xmin::text)::bigint), 0)")
       )
-    Digest::SHA256.hexdigest(@location_catalogue_revision.to_json)
+    @location_catalogue_revision = Digest::SHA256.hexdigest(version_rows.to_json)
   end
 
   def location_catalogue_cache
@@ -16297,12 +16353,25 @@ class ModulesController < ApplicationController
         remove_instance_variable(:@approved_other_target_completed_farmer_ids_by_target) if instance_variable_defined?(:@approved_other_target_completed_farmer_ids_by_target)
         ids = bills.map { |bill| bill.data["select_vrp"].to_s }.uniq
         jeevika_jankar_bill_rows(vrp_id: ids.join(","), month_name: bills.first.data["bill_month"], totals_only: true)
+        canonical_summaries = @jeevika_jankar_target_summary || {}
+        missing_bills = bills.reject { |bill| canonical_summaries.dig(bill.data["select_vrp"].to_s, month_key) }
+        fallback_summaries = {}
+        # If every owner is missing, the first calculator call already ran
+        # its month-alias fallback for that entire set.
+        if missing_bills.any? && missing_bills.size < bills.size
+          missing_ids = missing_bills.map { |bill| bill.data["select_vrp"].to_s }.uniq
+          # These owners have no canonical-month targets. Keep the original
+          # numeric/abbreviated-month fallback, once for the missing owner set.
+          jeevika_jankar_bill_rows(vrp_id: missing_ids.join(","), month_name: bills.first.data["bill_month"], totals_only: true)
+          fallback_summaries = @jeevika_jankar_target_summary || {}
+        end
         bills.each do |bill|
           id = bill.data["select_vrp"].to_s
-          summary = @jeevika_jankar_target_summary&.dig(id, month_key)
-          # A missing canonical-month result must still take the original
-          # numeric-month or legacy owner-label fallback when that bill is read.
-          @jeevika_bill_process_totals[[id, month_key]] = summary if summary
+          summary = canonical_summaries.dig(id, month_key) || fallback_summaries.dig(id, month_key)
+          # Numeric month aliases retain their own summary keys in the original
+          # calculator. Cache nil as well: the displayed saved-item fallback is
+          # still applied by total_target/achievement without another DB scan.
+          @jeevika_bill_process_totals[[id, month_key]] = summary
         end
       ensure
         @jeevika_jankar_target_summary = previous_summary

@@ -1,12 +1,14 @@
 class SlowQueryTrace
-  def self.message(duration_ms, sql, locations = caller_locations)
+  def self.message(duration_ms, sql, locations = caller_locations, metadata = {})
     operation = sql.to_s.lstrip[/\A\w+/].to_s.upcase
     return unless %w[SELECT WITH INSERT UPDATE DELETE].include?(operation)
 
     root = Rails.root.to_s + "/"
     location = locations.find { |frame| frame.path.start_with?(root + "app/") && frame.path != __FILE__ }
     source = location ? "#{location.path.delete_prefix(root)}:#{location.lineno}" : "unavailable"
-    "PERFORMANCE_SQL duration_ms=#{duration_ms.round(1)} operation=#{operation} source=#{source}"
+    category = metadata[:name] == "SCHEMA" ? "schema" : "application"
+    async = metadata[:async] == true
+    "PERFORMANCE_SQL duration_ms=#{duration_ms.round(1)} operation=#{operation} source=#{source} category=#{category} async=#{async}"
   end
 
   def self.attach(threshold_ms)
@@ -16,7 +18,7 @@ class SlowQueryTrace
       duration_ms = (finished - started) * 1000
       next if duration_ms < threshold_ms || payload[:cached]
 
-      message = message(duration_ms, payload[:sql])
+      message = message(duration_ms, payload[:sql], caller_locations, payload)
       Rails.logger.info(message) if message
     end
   end
