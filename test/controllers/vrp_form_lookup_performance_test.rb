@@ -164,6 +164,32 @@ class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
     assert_match(/WHERE.*cluster_incharge/m, queries.last)
   end
 
+  test "legacy cluster labels read only the newest exact username record" do
+    username = "legacy_cluster_#{SecureRandom.hex(4)}"
+    ModuleRecord.create!(module_slug: "new-user", created_at: 2.days.ago,
+      data: { "user_name" => "older_#{username}", "first_name" => "Older", "last_name" => "Person" })
+    newest = ModuleRecord.create!(module_slug: "new-user", created_at: 1.day.ago,
+      data: { "user_name" => "newer_#{username}", "first_name" => "Newer", "last_name" => "Person", "name" => "Legacy" })
+    # Imports can contain a replaced legacy username without running model
+    # validations; the lookup must still choose its newest exact row.
+    newest.update_columns(data: newest.data.merge("user_name" => username))
+    ModuleRecord.create!(module_slug: "new-user", data: { "user_name" => "other_#{username}" })
+    controller = VrpsController.new
+    controller.define_singleton_method(:current_app_user) { { "username" => username } }
+
+    queries = []
+    callback = ->(*args) { queries << args.last[:sql] if args.last[:sql].include?(%Q{FROM "module_records"}) }
+    labels = nil
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      labels = controller.send(:legacy_user_cluster_labels)
+    end
+
+    assert_equal ["Newer Person", username, "Legacy"], labels
+    assert_equal 1, queries.size
+    assert_match(/data::jsonb ->> 'user_name'/, queries.first)
+    assert_match(/ORDER BY.*created_at.*DESC/i, queries.first)
+  end
+
   test "office scoped VRP list preserves normalized FCO matching" do
     office = "Performance#{SecureRandom.hex(4)}"
     matching = create_test_vrp("Office Match", fcoc: "FCO-C #{office}")

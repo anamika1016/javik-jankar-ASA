@@ -1321,9 +1321,15 @@ end
   def office_list_items
     return @office_list_items if defined?(@office_list_items)
 
-    @office_list_items = Rails.cache.fetch("office-list-api-items-v4", expires_in: 10.minutes, skip_nil: true) do
-      office_list_api_urls.lazy.map { |url| fetch_office_list_items(url) }
-        .find(&:present?)
+    # Rails.cache can be database backed in production. Coalesce a cold fill in
+    # this Puma worker so simultaneous target pages do not each wait on the
+    # external Office List request. The cache key, TTL, successful-response
+    # semantics and empty-response retry behavior remain unchanged.
+    @office_list_items = DashboardCacheFill.synchronize("office-list-api-items-v4") do
+      Rails.cache.fetch("office-list-api-items-v4", expires_in: 10.minutes, skip_nil: true) do
+        office_list_api_urls.lazy.map { |url| fetch_office_list_items(url) }
+          .find(&:present?)
+      end
     end || []
   end
 

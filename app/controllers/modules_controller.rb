@@ -14,7 +14,7 @@ class ModulesController < ApplicationController
   LOCATION_DATA_KEYS = (LOCATION_ALIAS_KEYS.keys + %w[
     state state_id state_code district district_id district_code block block_id block_code cd_block_name cd_block_code
     gram_panchayat gram_panchayat_id gram_panchayat_code gp_name gp_code gram_name gram_code
-    village village_id village_code name deleted is_deleted discarded status
+    village village_id village_code sub_district_name sub_district_code name deleted is_deleted discarded status
   ]).uniq.freeze
   LOCATION_MODULE_SLUGS = %w[state-master district-master block-master gram-panchayat-master village-master lg-directory-list].freeze
   # These shared, read-mostly option rows can be large. In production Rails.cache
@@ -10087,12 +10087,14 @@ class ModulesController < ApplicationController
   def preload_lg_directory_records!
     return if defined?(@lg_directory_records_by_slug)
 
-    slugs = %w[
-      village-master gram-panchayat-master block-master district-master
-      state-master lg-directory-list
-    ]
+    slugs = LOCATION_MODULE_SLUGS
     @lg_directory_records_by_slug = slugs.index_with { [] }
-    ModuleRecord.where(module_slug: slugs).order(created_at: :desc).pluck(:module_slug, :id, :data).each do |slug, id, data|
+    # LG only reads the location keys.  Some historical master rows contain
+    # uploads/import payloads, so materializing full JSON here made a cold
+    # directory cache build allocate far more than the rendered directory uses.
+    # This deliberately does not apply the active-record filter: LG has always
+    # displayed saved inactive/legacy source rows and their status.
+    cached_lg_directory_projection_rows(slugs).each do |slug, id, data|
       @lg_directory_records_by_slug[slug] << LocationRecord.new(id, data)
     end
   end
@@ -13824,10 +13826,15 @@ class ModulesController < ApplicationController
       data = record.data
       target_ids = Array(data["target_mapping_ids"].presence || data["target_mapping_id"])
         .flat_map { |value| value.to_s.split(",") }.map(&:strip).compact_blank
-      target = TargetMapping.includes(:vrp).where(id: target_ids).first if model_ready?(:TargetMapping) && target_ids.any?
+      if model_ready?(:TargetMapping) && target_ids.any?
+        # This lookup only needs the target owner. Avoid decoding the target's
+        # farmer payload or a JJ agreement just to display trainer identity.
+        target = TargetMapping.select(:id, :vrp_id).where(id: target_ids).first
+        preload_target_vrps!([target]) if target
+      end
       vrp_id = target&.vrp_id.presence || data["jeevika_jankar_id"].presence || data["vrp_id"].presence
       vrp = target&.vrp
-      vrp ||= Vrp.find_by(id: vrp_id) if vrp_id.present? && model_ready?(:Vrp)
+      vrp ||= Vrp.without_agreement_signature.find_by(id: vrp_id) if vrp_id.present? && model_ready?(:Vrp)
       vrp ||= current_vrp_record if vrp_login_user?
 
       {
@@ -13851,7 +13858,8 @@ class ModulesController < ApplicationController
       [record.id, ids]
     end
     target_ids = target_ids_by_record.values.flatten.uniq
-    targets_by_id = TargetMapping.includes(:vrp).where(id: target_ids).index_by { |target| target.id.to_s }
+    targets = TargetMapping.select(:id, :vrp_id).where(id: target_ids).to_a
+    targets_by_id = preload_target_vrps!(targets).index_by { |target| target.id.to_s }
 
     selected_targets = missing_records.to_h do |record|
       # ActiveRecord's previous `where(id: ids).first` selects the lowest primary
@@ -13865,7 +13873,11 @@ class ModulesController < ApplicationController
 
       target&.vrp_id.presence || record.data["jeevika_jankar_id"].presence || record.data["vrp_id"].presence
     end.map(&:to_s).uniq
-    fallback_vrps = model_ready?(:Vrp) ? Vrp.where(id: fallback_vrp_ids).index_by { |vrp| vrp.id.to_s } : {}
+    fallback_vrps = if model_ready?(:Vrp)
+      Vrp.without_agreement_signature.where(id: fallback_vrp_ids).index_by { |vrp| vrp.id.to_s }
+    else
+      {}
+    end
 
     missing_records.each do |record|
       data = record.data
@@ -15860,6 +15872,30 @@ class ModulesController < ApplicationController
     end
   end
 
+  # This is the unfiltered counterpart used only by the LG directory.  It has
+  # the same revision key/invalidation model as form projections, while
+  # retaining the directory's legacy inclusion of inactive records.
+  def cached_lg_directory_projection_rows(slugs)
+    normalized_slugs = slugs.map(&:to_s).sort.freeze
+    key = ["jj-lg-directory-projection-v1", normalized_slugs, location_catalogue_revision]
+
+    DashboardCacheFill.synchronize(key) do
+      location_catalogue_cache.fetch(key, expires_in: 1.hour) do
+        quoted_keys = LOCATION_DATA_KEYS.map { |field| ActiveRecord::Base.connection.quote(field) }.join(", ")
+        data_projection = Arel.sql(
+          "(SELECT COALESCE(jsonb_object_agg(key, value), '{}'::jsonb) " \
+          "FROM jsonb_each(#{jsonb_object_or_empty('data')}) WHERE key IN (#{quoted_keys}))"
+        )
+
+        ModuleRecord.where(module_slug: normalized_slugs)
+          .order(created_at: :desc)
+          .pluck(:module_slug, :id, data_projection)
+          .map { |slug, id, data| [slug, id, data].freeze }
+          .freeze
+      end
+    end
+  end
+
   def build_location_hierarchy_mappings
     preload_location_records!(LOCATION_MODULE_SLUGS)
     states = active_records_for_location("state-master").map do |record|
@@ -16294,7 +16330,10 @@ class ModulesController < ApplicationController
   def build_approver_options
     user_options = []
     if model_ready?(:User)
-      user_options = User.order(created_at: :desc).filter_map do |user|
+      # Dropdown labels use only these four fields.  Do not materialize user
+      # uploads or profile columns on forms that merely need an approver label.
+      user_options = User.select(:first_name, :last_name, :user_name, :role)
+        .order(created_at: :desc).filter_map do |user|
         full_name = user.full_name.presence || user.user_name.presence
         next if full_name.blank?
 

@@ -661,10 +661,14 @@ class VrpsController < ApplicationController
     username = current_app_user&.dig("username").to_s
     return [] if username.blank?
 
+    # The old ordered Ruby detect decoded every legacy user row.  The predicate
+    # is an exact JSON username comparison, so PostgreSQL can return the same
+    # newest matching record without materializing unrelated profiles/uploads.
     record = ModuleRecord
       .where(module_slug: "new-user")
+      .where("data::jsonb ->> 'user_name' = ?", username)
       .order(created_at: :desc)
-      .detect { |row| row.data["user_name"].to_s == username }
+      .first
     return [] unless record
 
     full_name = [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ").presence

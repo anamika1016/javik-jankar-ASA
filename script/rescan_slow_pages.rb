@@ -119,7 +119,8 @@ Object.new.extend(ActiveSupport::Testing::TimeHelpers).travel_to(Time.zone.parse
     paths = %w[jeevika-jankar-payment-list training-form jeevika-jankar-observation-list jeevika-jankar-payment-list-detail other-target
       other-target-with-farmer gram-panchayat-master jeevika-jankar-bill-list jeevika-jankar-bill-process other-target-list
       other-target-with-farmer-list access-control-list approval-master user-hierarchy-mapping training-form-list].map { |slug| "/modules/#{slug}" }
-    paths += %w[/dashboard /target_mappings/list /vrps/new /vrps/approvals /modules/jeevika-jankar-completed-payment-list]
+    paths += %w[/dashboard /target_mappings /target_mappings/list /vrps /vrps/new /vrps/approvals
+      /modules/village-master /modules/jeevika-jankar-completed-payment-list]
     if ENV["RESCAN_EXPORTS"] == "1"
       paths = %w[training-form-list other-target-list jeevika-jankar-bill-list].map { |slug| "/modules/#{slug}/export.xlsx" }
     end
