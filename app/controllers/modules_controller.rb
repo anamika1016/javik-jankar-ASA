@@ -10646,6 +10646,12 @@ class ModulesController < ApplicationController
         (selected_month.blank? || record.data["bill_month"].to_s.strip.casecmp(selected_month.to_s.strip).zero?)
     end
 
+    # Payment List renders one selected month. Status rendering needs approval
+    # history, but loading the history for every visible bill (including other
+    # months) makes this screen's JSONB lookup grow with the whole archive.
+    # The per-bill history is complete for every row rendered below, so labels
+    # and approval behaviour remain identical.
+    preload_jeevika_payment_bill_histories!(filtered_records)
     preload_jeevika_payment_passbooks!(filtered_records)
     preload_jeevika_bill_process_totals(filtered_records)
     filtered_records.map do |record|

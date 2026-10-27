@@ -117,6 +117,31 @@ class BillingPageScalingTest < ActiveSupport::TestCase
     assert_empty c.send(:jeevika_bill_approval_history, bill)
   end
 
+  test "payment rows preload history only for the displayed month" do
+    october = ModuleRecord.create!(module_slug: "jeevika-jankar-bill-process", data: {
+      "status" => "Final Approved", "bill_month" => "October"
+    })
+    september = ModuleRecord.create!(module_slug: "jeevika-jankar-bill-process", data: {
+      "status" => "Final Approved", "bill_month" => "September"
+    })
+    [october, september].each do |bill|
+      ModuleRecord.create!(module_slug: "jeevika-jankar-bill-approval-history", data: {
+        "bill_id" => bill.id.to_s, "action" => "Approved"
+      })
+    end
+    c = calculator(nil)
+    c.instance_variable_set(:@jeevika_bill_visible_record_ids, [october.id.to_s, september.id.to_s])
+    c.define_singleton_method(:preload_jeevika_payment_passbooks!) { |_| nil }
+    c.define_singleton_method(:preload_jeevika_bill_process_totals) { |_| nil }
+    c.define_singleton_method(:jeevika_bill_vrp) { |_| nil }
+    c.define_singleton_method(:jeevika_bill_bank_rows) { |_| [] }
+    c.define_singleton_method(:jeevika_bill_summary) { |_| { activity_groups: nil, activity_names: nil } }
+    c.define_singleton_method(:jeevika_jankar_bill_total_payment) { |_| 100 }
+
+    capture { c.send(:jeevika_bill_payment_rows, [october, september], "October") }
+    assert_equal [october.id.to_s], c.instance_variable_get(:@jeevika_payment_history_by_bill_id).keys
+  end
+
   private
 
   def calculator(mapped)

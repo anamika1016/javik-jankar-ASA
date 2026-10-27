@@ -65,8 +65,12 @@ class VrpAgreementsController < ApplicationController
       .where.not(agreement_accepted_at: nil)
       .order(agreement_accepted_at: :desc)
 
-    @agreement_village_resolver = AgreementVillageName.new.preload(scope.to_a)
-    scope.map do |vrp|
+    # Materialize the narrowed result once. Calling `scope.to_a` for the
+    # resolver and then `scope.map` issued the identical accepted-agreement
+    # query twice on every list/export request.
+    vrps = scope.to_a
+    @agreement_village_resolver = AgreementVillageName.new.preload(vrps)
+    vrps.map do |vrp|
         {
           id: vrp.id,
           name: vrp.name.presence || vrp.user_name.presence || "-",
