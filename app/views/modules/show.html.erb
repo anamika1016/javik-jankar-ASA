@@ -119,11 +119,14 @@
                 <% is_last = (idx == total_steps - 1) %>
                 <% label = is_last ? "Financial Approver" : approval_level_label_for_sequence(seq).sub(" Approval", " Approver") %>
                 <% step_hist = jeevika_bill_step_history(detail_record, step) %>
+                <% final_approved = jeevika_bill_final_approval_recorded?(detail_record) %>
                 <% approver_name = approval_user_display_label(step.data["approver_approved_by"].presence || "-") %>
                 <% role_label = step.data["approval_level"].to_s.sub(/\A(first|second|third|fourth|fifth)\s+approval\z/i, "").strip.presence %>
                 <% display_label = role_label.present? && !is_last ? "#{label} (#{role_label})" : label %>
                 <% if step_hist %>
                   <span><%= display_label %> ==> <%= step_hist.data["action_by"].presence || approver_name %> <%= bill_display_datetime(step_hist.data["action_at"]) %></span>
+                <% elsif final_approved %>
+                  <span><%= display_label %> ==> Approval completed</span>
                 <% else %>
                   <span><%= display_label %> ==> <%= approver_name %> (Pending)</span>
                 <% end %>
@@ -454,8 +457,9 @@
             <% is_last = (idx == total_steps - 1) %>
             <% ordinal_label = is_last ? "Financial Approver" : approval_level_label_for_sequence(seq).sub(" Approval", " Approver") %>
             <% step_history = jeevika_bill_step_history(detail_record, step) %>
+            <% final_approved = jeevika_bill_final_approval_recorded?(detail_record) %>
             <% closing_action = step_history&.data&.[]("action") %>
-            <% state = ["Rejected", "Returned"].include?(closing_action) ? "rejected" : (step_history ? "approved" : (jeevika_bill_current_approval_step(detail_record)&.id == step.id ? "current" : "pending")) %>
+            <% state = ["Rejected", "Returned"].include?(closing_action) ? "rejected" : (step_history || final_approved ? "approved" : (jeevika_bill_current_approval_step(detail_record)&.id == step.id ? "current" : "pending")) %>
             <div class="approval-progress-card <%= state %>">
               <div class="approval-progress-icon"><%= state == "approved" ? "✓" : (closing_action == "Returned" ? "↩" : (state == "rejected" ? "×" : "•")) %></div>
               <h3><%= ordinal_label %></h3>
@@ -465,6 +469,8 @@
                 <% if step_history.data["remarks"].present? %>
                   <div class="bill-approval-remarks"><strong>Remarks</strong><p><%= step_history.data["remarks"] %></p></div>
                 <% end %>
+              <% elsif final_approved %>
+                <small>Approval completed</small>
               <% else %>
                 <small class="approval-pending-label">Waiting for approval</small>
               <% end %>

@@ -42,7 +42,7 @@ class ModulesController < ApplicationController
                 :parent_office_mappings, :user_hierarchy_list_rows, :jeevika_jankar_cluster_rows,
                 :jeevika_bill_status_label, :jeevika_bill_status_class, :jeevika_bill_rows,
                 :jeevika_bill_detail_rows, :jeevika_bill_display_items, :jeevika_bill_current_approval_step,
-                :jeevika_bill_approval_history, :jeevika_bill_current_approval_history, :jeevika_bill_step_history, :jeevika_bill_current_approver?,
+                :jeevika_bill_approval_history, :jeevika_bill_current_approval_history, :jeevika_bill_step_history, :jeevika_bill_final_approval_recorded?, :jeevika_bill_current_approver?,
                 :jeevika_bill_approval_steps, :jeevika_bill_summary,
                 :jeevika_bill_attachment_rows, :jeevika_bill_other_activity_uploads, :jeevika_bill_training_uploads, :jeevika_jankar_display_name,
                 :jeevika_jankar_vrp_label, :jeevika_bill_time_slot_rows,
@@ -11353,6 +11353,7 @@ class ModulesController < ApplicationController
   def jeevika_bill_status_label(record)
     status = record.data["status"].presence || "Submitted (Not sent for approval)"
     status = status.sub(/\APending at\s+(.+)\z/i) { "Pending at #{approval_user_display_label(Regexp.last_match(1))}" }
+    return "Final Approved" if jeevika_bill_final_approval_recorded?(record)
     return status if status.to_s.downcase.match?(/rejected|returned/)
 
     history_actions = jeevika_bill_current_approval_history(record).map { |history| history.data["action"].to_s }
@@ -11586,6 +11587,18 @@ class ModulesController < ApplicationController
       (history.data["approval_level"].present? && approval_sequence_from_level(history.data["approval_level"]) == sequence) ||
         dashboard_user_label_matches?(history.data["approver"], [approver])
     end
+  end
+
+  # The final approver's approval is the terminal event for a bill. Older
+  # records can have gaps in earlier approver history (for example after an
+  # approval-channel edit); do not let those gaps reopen a completed bill.
+  def jeevika_bill_final_approval_recorded?(record)
+    return true if record.data["status"].to_s.casecmp("Final Approved").zero?
+
+    final_step = jeevika_bill_approval_steps(record).last
+    return false unless final_step
+
+    jeevika_bill_step_history(record, final_step)&.data&.[]("action").to_s == "Approved"
   end
 
   def reset_jeevika_bill_approval_for_edit(record, next_data)
