@@ -453,6 +453,8 @@ module Api
         bank_row = calculator.send(:jeevika_bill_bank_rows, record).first || {}
         vrp = calculator.send(:jeevika_bill_vrp, record)
         payload = bill_payload_for(record).merge(
+          status: "Final Approved",
+          status_class: "approved",
           bank_name: bank_row[:bank_name].presence || "-",
           ifsc_code: bank_row[:ifsc_code].presence || "-",
           account_number: bank_row[:account_number].presence || "-"

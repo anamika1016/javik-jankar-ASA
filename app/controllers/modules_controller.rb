@@ -10728,7 +10728,9 @@ class ModulesController < ApplicationController
       data = record.data
       vrp = jeevika_bill_vrp(record)
       bank_row = jeevika_bill_bank_rows(record).first || {}
-      status = jeevika_bill_status_label(record)
+      # Every row here passed the final-approval predicate above. Keep the
+      # payment status aligned with that filter if legacy history is incomplete.
+      status = jeevika_bill_final_approved?(record) ? "Final Approved" : jeevika_bill_status_label(record)
       normalized_status = status.downcase
       status_class = if normalized_status.include?("final approved") then "approved"
       elsif normalized_status.include?("returned") then "returned"
@@ -10959,7 +10961,8 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_bill_final_approved?(record)
-    record.data["status"].to_s.downcase.include?("final approved")
+    record.data["status"].to_s.strip.downcase.include?("final approved") ||
+      jeevika_bill_final_approval_recorded?(record)
   end
 
   def jeevika_bill_final_approved_scope(scope)
@@ -11593,7 +11596,7 @@ class ModulesController < ApplicationController
   # records can have gaps in earlier approver history (for example after an
   # approval-channel edit); do not let those gaps reopen a completed bill.
   def jeevika_bill_final_approval_recorded?(record)
-    return true if record.data["status"].to_s.casecmp("Final Approved").zero?
+    return true if record.data["status"].to_s.strip.casecmp("Final Approved").zero?
 
     final_step = jeevika_bill_approval_steps(record).last
     return false unless final_step
@@ -11604,7 +11607,7 @@ class ModulesController < ApplicationController
   def reset_jeevika_bill_approval_for_edit(record, next_data)
     # Approved bills are closed business records. Editing their descriptive or
     # accounting data must not reopen the approval workflow.
-    if jeevika_bill_status_label(record).to_s.casecmp("Final Approved").zero?
+    if jeevika_bill_status_label(record).to_s.strip.casecmp("Final Approved").zero?
       return next_data.merge("status" => "Final Approved", "approval_current_sequence" => "")
     end
 
