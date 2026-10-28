@@ -42,7 +42,7 @@ class ModulesController < ApplicationController
                 :parent_office_mappings, :user_hierarchy_list_rows, :jeevika_jankar_cluster_rows,
                 :jeevika_bill_status_label, :jeevika_bill_status_class, :jeevika_bill_rows,
                 :jeevika_bill_detail_rows, :jeevika_bill_display_items, :jeevika_bill_current_approval_step,
-                :jeevika_bill_approval_history, :jeevika_bill_current_approval_history, :jeevika_bill_current_approver?,
+                :jeevika_bill_approval_history, :jeevika_bill_current_approval_history, :jeevika_bill_step_history, :jeevika_bill_current_approver?,
                 :jeevika_bill_approval_steps, :jeevika_bill_summary,
                 :jeevika_bill_attachment_rows, :jeevika_bill_other_activity_uploads, :jeevika_bill_training_uploads, :jeevika_jankar_display_name,
                 :jeevika_jankar_vrp_label, :jeevika_bill_time_slot_rows,
@@ -1541,6 +1541,7 @@ class ModulesController < ApplicationController
     return if reject_invalid_other_target_uploads
 
     next_data = record.data.merge(normalized_module_data)
+    next_data = reset_jeevika_bill_approval_for_edit(record, next_data) if record_source_slug == "jeevika-jankar-bill-process"
     next_data = preserve_training_uploads(record.data, next_data) if record_source_slug == "training-form"
 
     data_errors = module_data_error_messages(next_data)
@@ -11354,7 +11355,7 @@ class ModulesController < ApplicationController
     status = status.sub(/\APending at\s+(.+)\z/i) { "Pending at #{approval_user_display_label(Regexp.last_match(1))}" }
     return status if status.to_s.downcase.match?(/rejected|returned/)
 
-    history_actions = jeevika_bill_approval_history(record).map { |history| history.data["action"].to_s }
+    history_actions = jeevika_bill_current_approval_history(record).map { |history| history.data["action"].to_s }
     approval_started = status.to_s.downcase.include?("pending") ||
       history_actions.any? { |action| ["Sent for Approval", "Approved"].include?(action) }
 
@@ -11567,8 +11568,55 @@ class ModulesController < ApplicationController
 
   def jeevika_bill_current_approval_history(record)
     history = jeevika_bill_approval_history(record)
-    submission_index = history.rindex { |entry| entry.data["action"] == "Sent for Approval" }
-    submission_index ? history.drop(submission_index + 1) : history
+    # A successful edit after a submission explicitly returns the bill to the
+    # draft state. Use that event as a hard boundary so actions from the old
+    # approval run cannot make the new run appear partially approved.
+    boundary_index = history.rindex do |entry|
+      ["Sent for Approval", "Bill Edited"].include?(entry.data["action"].to_s)
+    end
+    boundary_index ? history.drop(boundary_index + 1) : history
+  end
+
+  def jeevika_bill_step_history(record, step)
+    sequence = approval_sequence_from_level(step.data["approval_level"])
+    approver = step.data["approver_approved_by"]
+    jeevika_bill_current_approval_history(record).reverse.find do |history|
+      next false unless ["Approved", "Rejected", "Returned"].include?(history.data["action"].to_s)
+
+      (history.data["approval_level"].present? && approval_sequence_from_level(history.data["approval_level"]) == sequence) ||
+        dashboard_user_label_matches?(history.data["approver"], [approver])
+    end
+  end
+
+  def reset_jeevika_bill_approval_for_edit(record, next_data)
+    # Approved bills are closed business records. Editing their descriptive or
+    # accounting data must not reopen the approval workflow.
+    if jeevika_bill_status_label(record).to_s.casecmp("Final Approved").zero?
+      return next_data.merge("status" => "Final Approved", "approval_current_sequence" => "")
+    end
+
+    history = jeevika_bill_approval_history(record)
+    approval_started = history.any? { |entry| ["Sent for Approval", "Approved", "Rejected", "Returned"].include?(entry.data["action"].to_s) } ||
+      record.data["status"].to_s.match?(/\Apending at\b/i)
+    return next_data unless approval_started
+
+    ModuleRecord.create!(
+      module_slug: "jeevika-jankar-bill-approval-history",
+      data: {
+        "bill_id" => record.id.to_s,
+        "action" => "Bill Edited",
+        "approval_level" => "",
+        "approver" => "",
+        "remarks" => "Bill edited; previous approval run closed.",
+        "action_by" => current_app_user&.dig("name").presence || current_app_user&.dig("username").to_s,
+        "action_at" => Time.current.iso8601
+      }
+    )
+
+    next_data.merge(
+      "status" => "Submitted (Not sent for approval)",
+      "approval_current_sequence" => ""
+    )
   end
 
   def jeevika_bill_current_approval_step(record)
@@ -11587,9 +11635,9 @@ class ModulesController < ApplicationController
     step_approver = step.data["approver_approved_by"]
 
     jeevika_bill_current_approval_history(record).any? do |history|
-      next false unless ["Approved", "Rejected"].include?(history.data["action"].to_s)
+      next false unless ["Approved", "Rejected", "Returned"].include?(history.data["action"].to_s)
 
-      approval_sequence_from_level(history.data["approval_level"]) == step_sequence ||
+      (history.data["approval_level"].present? && approval_sequence_from_level(history.data["approval_level"]) == step_sequence) ||
         dashboard_user_label_matches?(history.data["approver"], [step_approver])
     end
   end

@@ -118,7 +118,7 @@
                 <% seq = approval_sequence_from_level(step.data["approval_level"]) %>
                 <% is_last = (idx == total_steps - 1) %>
                 <% label = is_last ? "Financial Approver" : approval_level_label_for_sequence(seq).sub(" Approval", " Approver") %>
-                <% step_hist = jeevika_bill_approval_history(detail_record).find { |h| approval_sequence_from_level(h.data["approval_level"]) == seq && ["Approved", "Rejected", "Returned"].include?(h.data["action"]) } %>
+                <% step_hist = jeevika_bill_step_history(detail_record, step) %>
                 <% approver_name = approval_user_display_label(step.data["approver_approved_by"].presence || "-") %>
                 <% role_label = step.data["approval_level"].to_s.sub(/\A(first|second|third|fourth|fifth)\s+approval\z/i, "").strip.presence %>
                 <% display_label = role_label.present? && !is_last ? "#{label} (#{role_label})" : label %>
@@ -442,7 +442,7 @@
       <% end %>
 
       <% approval_status_text = jeevika_bill_status_label(detail_record).to_s.downcase %>
-      <% show_approval_progress = !approval_status_text.include?("submitted") || jeevika_bill_approval_history(detail_record).any? %>
+      <% show_approval_progress = !approval_status_text.include?("submitted") || jeevika_bill_current_approval_history(detail_record).any? %>
       <% if show_approval_progress %>
       <div class="approval-progress-section no-print">
         <h2>Jeevika Jankar Bill Approval Progress</h2>
@@ -453,7 +453,7 @@
             <% seq = approval_sequence_from_level(step.data["approval_level"]) %>
             <% is_last = (idx == total_steps - 1) %>
             <% ordinal_label = is_last ? "Financial Approver" : approval_level_label_for_sequence(seq).sub(" Approval", " Approver") %>
-            <% step_history = jeevika_bill_current_approval_history(detail_record).find { |history| approval_sequence_from_level(history.data["approval_level"]) == seq && ["Approved", "Rejected", "Returned"].include?(history.data["action"]) } %>
+            <% step_history = jeevika_bill_step_history(detail_record, step) %>
             <% closing_action = step_history&.data&.[]("action") %>
             <% state = ["Rejected", "Returned"].include?(closing_action) ? "rejected" : (step_history ? "approved" : (jeevika_bill_current_approval_step(detail_record)&.id == step.id ? "current" : "pending")) %>
             <div class="approval-progress-card <%= state %>">
