@@ -1752,9 +1752,21 @@ end
   def module_options(module_slug, *field_keys)
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
+    # These options only read the requested labels and status. Loading each
+    # complete legacy JSON record also decodes unrelated uploads/metadata, then
+    # filters status in Ruby. Keep the exact legacy rule (blank or capital-A
+    # Active only), ordering and first-present-field precedence while asking
+    # PostgreSQL for only the JSON keys this method can observe.
+    keys = (field_keys.map(&:to_s) + ["status"]).uniq
+    projection = keys.flat_map do |key|
+      [ActiveRecord::Base.connection.quote(key), "data::jsonb -> #{ActiveRecord::Base.connection.quote(key)}"]
+    end.join(", ")
+
     ModuleRecord.where(module_slug: module_slug)
+      .where("COALESCE(data::jsonb ->> 'status', '') IN ('', 'Active')")
       .order(created_at: :desc)
-      .select { |record| record.data["status"].blank? || record.data["status"] == "Active" }
+      .select(:id)
+      .select("jsonb_build_object(#{projection})::text AS data")
       .filter_map { |record| field_keys.filter_map { |field| record.data[field].presence }.first }
       .uniq
   end

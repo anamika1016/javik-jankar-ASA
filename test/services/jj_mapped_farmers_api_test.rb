@@ -19,6 +19,23 @@ class JjMappedFarmersApiTest < ActiveSupport::TestCase
     assert_equal ["Khairi", "Palaspani"], result[:mapped_villages].map { |v| v[:name] }.sort
   end
 
+  test "keeps every farmer returned by the upstream source without a local cap" do
+    rows = 121.times.map do |index|
+      { farmer_unique_id: "TN-#{index + 1}", village_name: "Village #{index % 5}" }
+    end
+    api = JjMappedFarmersApi.new(
+      current_app_user: { "user_type" => "admin" },
+      vrp_directory: -> { DIRECTORY },
+      farmer_source: ->(**) { { farmers: rows, mapped_villages: [], count: rows.length } }
+    )
+
+    result = api.mapped_farmers(mobile_no: "9000000001", month: "10", year: "2026")
+
+    assert_equal 121, result[:count]
+    assert_equal 121, result[:total_count]
+    assert_equal rows, result[:farmers]
+  end
+
   test "an admin who picked nobody gets nobody's farmers" do
     result = build(user_type: "admin").mapped_farmers(month: "10", year: "2026")
 
