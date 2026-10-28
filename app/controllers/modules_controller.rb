@@ -8016,8 +8016,15 @@ class ModulesController < ApplicationController
     return if missing_ids.blank?
 
     missing_ids.each { |mapping_id| @training_record_target_mapping_cache[mapping_id] = nil }
-    TargetMapping.includes(:vrp).where(id: missing_ids).find_each do |target|
-      @training_record_target_mapping_cache[target.id.to_s] = target
+    # find_in_batches keeps the batch size and primary key order find_each used,
+    # so the cache is filled in the same sequence. The only change is that the
+    # Jeevika Jankar arrives via preload_target_vrps! instead of includes(:vrp),
+    # which leaves out agreement_signature_data - nothing reached from this
+    # cache reads the signature, and a form referencing thousands of mappings
+    # pays for one image per mapping otherwise.
+    TargetMapping.where(id: missing_ids).find_in_batches do |batch|
+      preload_target_vrps!(batch)
+      batch.each { |target| @training_record_target_mapping_cache[target.id.to_s] = target }
     end
   end
 
@@ -11573,6 +11580,15 @@ class ModulesController < ApplicationController
       if defined?(@jeevika_bill_visible_record_ids)
         bill_ids = Array(@jeevika_bill_visible_record_ids).map(&:to_s).reject(&:blank?)
         scope = bill_ids.empty? ? scope.none : scope.where("data::jsonb ->> 'bill_id' IN (?)", bill_ids)
+      elsif defined?(@jeevika_bill_history_record_ids)
+        # List screens narrow this to the rows they are about to render. The
+        # member actions work on exactly one bill and say so the same way, so
+        # approving a single bill no longer reads the whole history table to
+        # answer about one row. What survives is identical either way: this
+        # hash is only ever read back as [record.id.to_s], and the record being
+        # asked about is always inside the scope that was announced.
+        bill_ids = Array(@jeevika_bill_history_record_ids).map(&:to_s).reject(&:blank?)
+        scope = bill_ids.empty? ? scope.none : scope.where("data::jsonb ->> 'bill_id' IN (?)", bill_ids)
       end
       scope.group_by { |history| history.data["bill_id"].to_s }
     end
@@ -11688,6 +11704,10 @@ class ModulesController < ApplicationController
   def update_bill_approval(action)
     load_module!
     record = ModuleRecord.find(params[:id])
+    # Everything below reads approval history for this one bill and nothing
+    # else, so the history load is told that up front. Without it the lookup
+    # falls back to reading every approval-history row ever written.
+    @jeevika_bill_history_record_ids = [record.id.to_s]
     redirect_to module_path("jeevika-jankar-bill-list"), alert: "You are not allowed to update this bill." and return unless jeevika_jankar_bill_record_visible?(record)
     step = jeevika_bill_current_approval_step(record)
     redirect_to module_path("jeevika-jankar-bill-list", view_id: record.id), alert: "Approval channel not found." and return unless step
