@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_26_180000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_27_163000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -103,13 +103,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_26_180000) do
     t.string "o_type", limit: 50
   end
 
-
-
-
-
-
-
-
   create_table "jj_quiz_answers", force: :cascade do |t|
     t.boolean "correct", default: false, null: false
     t.string "correct_option", null: false
@@ -195,6 +188,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_26_180000) do
     t.index "(((data)::jsonb ->> 'status'::text))", name: "index_training_edits_on_status", where: "((module_slug)::text = 'training-form-edit-request'::text)"
     t.index "(((data)::jsonb ->> 'status'::text)), id DESC", name: "index_training_edits_on_status_and_latest_id", where: "((module_slug)::text = 'training-form-edit-request'::text)"
     t.index "(((data)::jsonb ->> 'user_name'::text)), updated_at DESC", name: "index_module_records_new_users_on_user_name_and_updated_at", where: "((module_slug)::text = 'new-user'::text)"
+    t.index "(((data)::jsonb ->> 'village_code'::text))", name: "index_module_records_village_code_lookup", where: "((module_slug)::text = ANY ((ARRAY['village-master'::character varying, 'lg-directory-list'::character varying])::text[]))"
+    t.index "(((data)::jsonb ->> 'village_id'::text))", name: "index_module_records_village_id_lookup", where: "((module_slug)::text = ANY ((ARRAY['village-master'::character varying, 'lg-directory-list'::character varying])::text[]))"
     t.index "((data)::jsonb)", name: "index_module_records_on_json_data", using: :gin
     t.index "lower(((data)::jsonb ->> 'email'::text))", name: "index_module_records_new_users_on_lower_email", where: "((module_slug)::text = 'new-user'::text)"
     t.index "lower(((data)::jsonb ->> 'user_name'::text))", name: "index_module_records_new_users_on_lower_user_name", where: "((module_slug)::text = 'new-user'::text)"
@@ -207,12 +202,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_26_180000) do
     t.index ["module_slug"], name: "index_module_records_on_module_slug"
     t.index ["updated_at"], name: "index_module_records_on_updated_at", order: :desc
   end
-
-
-
-
-
-
 
   create_table "target_mappings", force: :cascade do |t|
     t.string "activity_name", null: false
@@ -250,6 +239,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_26_180000) do
     t.index ["created_by_type", "created_by_id"], name: "index_target_mappings_on_creator"
     t.index ["fco_id", "ics_id", "village_id", "main_activity_name", "activity_name"], name: "index_target_mappings_on_activity_scope"
     t.index ["updated_at"], name: "index_target_mappings_on_updated_at", order: :desc
+    t.index ["village_id"], name: "index_target_mappings_on_village_id_for_agreements"
     t.index ["vrp_ics_mapping_id"], name: "index_target_mappings_on_vrp_ics_mapping_id"
     t.index ["vrp_id", "updated_at"], name: "index_target_mappings_on_vrp_and_updated_at", order: { updated_at: :desc }
     t.index ["vrp_id", "vrp_ics_mapping_id", "month_name", "activity_name"], name: "index_target_mappings_on_scope"
@@ -319,6 +309,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_26_180000) do
     t.string "village_name"
     t.bigint "vrp_id", null: false
     t.index ["created_by_type", "created_by_id"], name: "index_vrp_ics_mappings_on_creator"
+    t.index ["village_id"], name: "index_vrp_ics_mappings_on_village_id_for_agreements"
     t.index ["vrp_id", "fco_id", "ics_id", "village_id"], name: "index_vrp_ics_mappings_on_mapping_scope", unique: true
     t.index ["vrp_id"], name: "index_vrp_ics_mappings_on_vrp_id"
   end
