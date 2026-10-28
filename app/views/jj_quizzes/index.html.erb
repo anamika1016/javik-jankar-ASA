@@ -42,8 +42,8 @@
                 </td>
                 <td><span class="status-pill <%= quiz.published? ? "active" : "inactive" %>"><%= quiz.status.titleize %></span></td>
                 <td><%= quiz.duration_minutes %> min</td>
-                <td><%= quiz.questions.size %></td>
-                <td><%= quiz.attempts.size %></td>
+                <td><%= quiz_question_count(quiz) %></td>
+                <td><%= quiz_attempt_count(quiz) %></td>
                 <td class="jj-window-cell">
                   <span><%= quiz.start_time_label %></span>
                   <small>to <%= quiz.end_time_label %></small>

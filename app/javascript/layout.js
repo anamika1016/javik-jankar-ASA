@@ -6690,12 +6690,20 @@ function initDeferredLayoutPage() {
     });
     vrpSelect?.addEventListener("change", renderJeevikaBillRows);
     monthSelect?.addEventListener("change", () => {
+      // A new bill has no selected month or JJ on first paint. Starting the
+      // all-JJ eligibility scan at that point kept the browser request active
+      // (and its loading indicator visible) for work the user might never use.
+      // The scan still completes before any JJ is offered for the selected
+      // month, so the bill eligibility rules and submitted data are unchanged.
+      if (!achievementKeysLoaded) {
+        loadAchievementKeys();
+        return;
+      }
       syncJeevikaVrpOptions();
       renderJeevikaBillRows();
     });
     syncJeevikaVrpOptions();
     renderJeevikaBillRows();
-    loadAchievementKeys();
     syncPaymentRemarks();
   });
 

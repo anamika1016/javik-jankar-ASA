@@ -1,10 +1,18 @@
 class JjQuizzesController < ApplicationController
   before_action :require_admin_user!
   before_action :set_quiz, only: %i[show edit update destroy publish archive import_questions results export_results answers export_answers destroy_attempt]
-  helper_method :attempt_answer_rows, :answer_option_text, :answer_result_label, :answer_result_class, :attempt_vrp_label
+  helper_method :attempt_answer_rows, :answer_option_text, :answer_result_label, :answer_result_class, :attempt_vrp_label,
+    :quiz_question_count, :quiz_attempt_count
 
   def index
-    @quizzes = JjQuiz.recent.includes(:questions, :attempts)
+    @quizzes = JjQuiz.recent.to_a
+    quiz_ids = @quizzes.map(&:id)
+    # The index displays only counts. Eager loading every question and every
+    # attempt made one large exam allocate its complete history merely to call
+    # `.size` in the template. Grouped counts preserve those exact all-record
+    # totals without the view-side query or the object/GC cost.
+    @quiz_question_counts = JjQuizQuestion.where(jj_quiz_id: quiz_ids).group(:jj_quiz_id).count
+    @quiz_attempt_counts = JjQuizAttempt.where(jj_quiz_id: quiz_ids).group(:jj_quiz_id).count
   end
 
   def show
@@ -123,6 +131,14 @@ class JjQuizzesController < ApplicationController
   end
 
   private
+
+  def quiz_question_count(quiz)
+    @quiz_question_counts.fetch(quiz.id, 0)
+  end
+
+  def quiz_attempt_count(quiz)
+    @quiz_attempt_counts.fetch(quiz.id, 0)
+  end
 
   def set_quiz
     @quiz = JjQuiz.find(params[:id])

@@ -1805,10 +1805,10 @@ class ModulesController < ApplicationController
     return render json: { rows: [], achievement_summary: {}, target_summary: {} } unless current_slug == "jeevika-jankar-bill-process"
 
     # A new bill does not need the full cross-JJ achievement aggregate to
-    # render its form.  Loading it in the initial HTML request made this page
+    # render its form. Loading it in the initial HTML request made this page
     # wait behind every target/activity query and caused the reverse proxy to
-    # time out.  The form asks for this small eligibility index immediately
-    # after it is visible, then keeps the JJ selector disabled until it arrives.
+    # time out. The form asks for this eligibility index only after a month is
+    # selected, then keeps the JJ selector disabled until it arrives.
     # Edit screens still embed their index so their selected JJ is available
     # synchronously.
     if params[:achievement_keys_only] == "true"
@@ -9466,12 +9466,20 @@ class ModulesController < ApplicationController
     else
       records_scope.to_a
     end
-    preload_bill_list_identities!(records) if record_source_slug == "jeevika-jankar-bill-process"
     if record_source_slug == "jeevika-jankar-bill-process"
-      records = if ["jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail"].include?(@slug) && jeevika_jankar_payment_module_access?(@slug)
-        records.select { |record| jeevika_bill_final_approved?(record) }
+      payment_summary = ["jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail"].include?(@slug) &&
+        jeevika_jankar_payment_module_access?(@slug)
+      if payment_summary
+        # Payment screens show final-approved bills only. Resolve the JJ and
+        # creator identities after that exact existing filter, rather than
+        # expanding nested bill details for every cached bill first.
+        records = records.select { |record| jeevika_bill_final_approved?(record) }
+        preload_bill_list_identities!(records)
       else
-        records.select { |record| jeevika_jankar_bill_record_visible?(record) }
+        # The Bill List visibility predicate deliberately uses JJ identity,
+        # therefore it must retain the preload-before-filter ordering.
+        preload_bill_list_identities!(records)
+        records = records.select { |record| jeevika_jankar_bill_record_visible?(record) }
       end
       @jeevika_bill_visible_record_ids = records.map { |record| record.id.to_s }
     end
