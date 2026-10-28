@@ -3,7 +3,7 @@ class AddAgreementVillageLookupIndexes < ActiveRecord::Migration[8.1]
 
   def change
     # AgreementVillageName resolves legacy village IDs against these three
-    # tables after checking the module-record catalogue.  Their existing
+    # tables after checking the module-record catalogue. Their existing
     # composite indexes start with unrelated columns, so they cannot serve the
     # village_id-only batch lookups used by the agreement list.
     add_index :target_mappings, :village_id,
