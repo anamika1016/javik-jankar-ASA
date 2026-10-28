@@ -38,12 +38,19 @@ class JjReadOptimizationTest < ActiveSupport::TestCase
       })
     end
     controller.define_singleton_method(:jeevika_bill_approval_master_steps) { steps }
-    controller.define_singleton_method(:jeevika_bill_approval_step_matches_bill?) do |step, bill|
-      bill.data["channels"].include?(step.data["stakeholder_name"])
+    # Channel matching is driven by the bill's approval identities, so the test
+    # states each bill's identities and matches on them. The channels a bill
+    # names stand in for the identities a real bill would resolve to.
+    controller.define_singleton_method(:jeevika_bill_approval_identities) do |bill|
+      Array(bill.data["channels"]).map { |channel| { stakeholder: channel } }
+    end
+    controller.define_singleton_method(:jeevika_bill_approval_step_matches_identities?) do |step, identities|
+      identities.any? { |identity| identity[:stakeholder] == step.data["stakeholder_name"] }
     end
     [["A"], ["B"], ["A", "B"], []].each_with_index do |channels, index|
       bill = ModuleRecord.new(id: 99000 + index, data: { "channels" => channels })
-      keys = steps.select { |step| controller.send(:jeevika_bill_approval_step_matches_bill?, step, bill) }
+      identities = controller.send(:jeevika_bill_approval_identities, bill)
+      keys = steps.select { |step| controller.send(:jeevika_bill_approval_step_matches_identities?, step, identities) }
         .map { |step| controller.send(:approval_channel_key, step) }.uniq
       expected = steps.select { |step| keys.include?(controller.send(:approval_channel_key, step)) }
         .group_by { |step| controller.send(:approval_channel_key, step) }.values

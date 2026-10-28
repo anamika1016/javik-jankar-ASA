@@ -11430,8 +11430,16 @@ class ModulesController < ApplicationController
 
     steps = jeevika_bill_approval_master_steps
 
-    matching_channel_keys = steps
-      .select { |step| jeevika_bill_approval_step_matches_bill?(step, record) }
+    # A bill list is mostly bills sharing a cluster incharge or a creator, so
+    # the same identity set was being scanned against every channel once per
+    # bill - O(bills x channels) on a screen that renders hundreds of rows.
+    # The scan depends only on those identities, so the answer is kept against
+    # them. Two bills with equal identities cannot disagree about which
+    # channels match, and the per-bill cache above still answers first.
+    identities = jeevika_bill_approval_identities(record)
+    @jeevika_bill_matching_channel_keys_cache ||= {}
+    matching_channel_keys = @jeevika_bill_matching_channel_keys_cache[identities] ||= steps
+      .select { |step| jeevika_bill_approval_step_matches_identities?(step, identities) }
       .map { |step| approval_channel_key(step) }
       .uniq
 
@@ -11489,7 +11497,16 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_bill_approval_step_matches_bill?(step, record)
-    identities = jeevika_bill_approval_identities(record)
+    jeevika_bill_approval_step_matches_identities?(step, jeevika_bill_approval_identities(record))
+  end
+
+  # Whether a channel claims a bill is decided by the bill's approval
+  # identities and nothing else about it. That used to be true only by
+  # inspection, which made it unsafe to reuse an answer between two bills.
+  # Taking the identities as the argument states the rule in the signature, so
+  # the shared lookup in jeevika_bill_approval_steps is reusing a result keyed
+  # on everything the decision actually depends on.
+  def jeevika_bill_approval_step_matches_identities?(step, identities)
     return false if identities.blank?
 
     identities.any? do |identity|
