@@ -22,7 +22,13 @@ class ModulesController < ApplicationController
   # database round-trip even when the catalogue has not changed. A process-local
   # copy avoids that read; the revision in location_hierarchy_mappings still
   # invalidates immediately after any location row changes.
-  LOCATION_CATALOGUE_MEMORY_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 24.megabytes)
+  # This store now also holds the escaped form of the browser catalogue, which
+  # is roughly twice the size of the JSON it is built from. At 24MB the two
+  # together no longer fit, and the store would evict one to make room for the
+  # other on every request - turning a cache into a rebuild loop. The headroom
+  # below keeps the projections, the master rows and both forms of the
+  # catalogue resident together.
+  LOCATION_CATALOGUE_MEMORY_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 96.megabytes)
   # The LG directory is assembled from the same six location sources, but its
   # compaction and code lookups are considerably more CPU intensive than a
   # dropdown. Keep that derived, read-only table separate so a large directory
@@ -36,7 +42,7 @@ class ModulesController < ApplicationController
 
   helper_method :module_field_options, :module_select_field?, :static_field_options, :role_management_mappings,
                 :access_control_role_mappings, :access_control_field_options,
-                :location_hierarchy_mappings, :location_hierarchy_browser_json, :office_category_mappings, :training_target_mappings,
+                :location_hierarchy_mappings, :location_hierarchy_browser_json, :location_hierarchy_browser_attribute, :office_category_mappings, :training_target_mappings,
                 :training_activity_setup_mappings, :training_target_month_options, :user_hierarchy_cc_to_head_map,
                 :training_activity_mappings, :approval_user_mappings, :approval_user_options,
                 :parent_office_mappings, :user_hierarchy_list_rows, :jeevika_jankar_cluster_rows,
@@ -15989,6 +15995,34 @@ class ModulesController < ApplicationController
         location_hierarchy_mappings.to_json
       end
     end
+  end
+
+  # The form embeds the catalogue above in a data attribute, which meant every
+  # location page re-ran json_escape and then ERB's html_escape over the whole
+  # payload. The JSON was cached but its escaped form was not, so each request
+  # built two fresh copies of it - and the larger copy on its own is bigger than
+  # Ruby's default 16MB malloc limit, which forces a stop-the-world major GC
+  # that stalls the other Puma thread as well.
+  #
+  # The escaped text only changes when the catalogue revision does, so it is
+  # cached under the same revision key. The value returned is exactly what
+  # `<%= json_escape(location_hierarchy_browser_json) %>` produced, marked
+  # html_safe so ERB writes it straight out instead of escaping a second time.
+  def location_hierarchy_browser_attribute
+    return @location_hierarchy_browser_attribute if defined?(@location_hierarchy_browser_attribute)
+
+    key = ["jj-location-browser-attribute-v1", location_catalogue_revision]
+    escaped = DashboardCacheFill.synchronize(key) do
+      location_catalogue_cache.fetch(key, expires_in: 1.hour) do
+        # html_escape hands back a SafeBuffer, and SafeBuffer#to_s returns
+        # itself, so store an explicit plain String. What is cached is then
+        # unambiguous text rather than something whose html_safe? flag has to
+        # survive the store, and the line below is the single place that
+        # decides this value is safe to write out as-is.
+        String.new(ERB::Util.html_escape(ERB::Util.json_escape(location_hierarchy_browser_json)))
+      end
+    end
+    @location_hierarchy_browser_attribute = escaped.html_safe
   end
 
   def location_catalogue_revision
