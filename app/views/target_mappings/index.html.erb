@@ -52,7 +52,7 @@
 
             <label>
               <span>FCO Name <em>*</em></span>
-              <select name="target_mapping[fco_id]" data-target-fco data-selected-value="<%= [@edit_target&.fco_id, @edit_target&.fco_name].compact_blank.join("||") %>" required>
+              <select name="target_mapping[fco_id]" data-target-fco data-selected-value="<%= @edit_payload[:fco_id] %>" required>
                 <option value="">Select FCO Name</option>
               </select>
             </label>
@@ -66,10 +66,10 @@
 
             <label>
               <span>ICS <em>*</em></span>
-              <select data-target-ics data-selected-value="<%= [@edit_target&.ics_id, @edit_target&.ics_name].compact_blank.join("||") %>" required disabled>
+              <select data-target-ics data-selected-value="<%= @edit_payload[:ics_id] %>" required disabled>
                 <option value="">Select ICS</option>
               </select>
-              <input type="hidden" name="target_mapping[ics_id]" value="<%= [@edit_target&.ics_id, @edit_target&.ics_name].compact_blank.join("||") %>" data-target-ics-hidden>
+              <input type="hidden" name="target_mapping[ics_id]" value="<%= @edit_payload[:ics_id] %>" data-target-ics-hidden>
             </label>
 
             <div class="target-village-field">

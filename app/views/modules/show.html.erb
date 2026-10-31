@@ -1009,6 +1009,15 @@
                 record's value, so it is offered rather than silently dropped. %>
             <% financial_year_options = Array(@jeevika_jankar_financial_year_options) %>
             <% financial_year_options = [saved_financial_year] + financial_year_options if saved_financial_year.present? && !financial_year_options.map(&:to_s).include?(saved_financial_year) %>
+            <%# Nothing saved yet: pick the year the bill month falls in, so the
+                field arrives filled instead of making it a manual step. The
+                Indian financial year starts in April. %>
+            <% if saved_financial_year.blank? %>
+              <% bill_date = (Date.parse("1 #{@record&.data&.[]("bill_month")} #{Date.current.year}") rescue Date.current) %>
+              <% fy_start = bill_date.month >= 4 ? bill_date.year : bill_date.year - 1 %>
+              <% fy_digits = [fy_start.to_s, (fy_start + 1).to_s] %>
+              <% saved_financial_year = financial_year_options.find { |option| fy_digits.all? { |year| option.to_s.include?(year) || option.to_s.include?(year[-2..]) } }.to_s %>
+            <% end %>
             <select name="module_record[financial_year]">
               <option value="">Select Financial Year</option>
               <% financial_year_options.each do |option| %>

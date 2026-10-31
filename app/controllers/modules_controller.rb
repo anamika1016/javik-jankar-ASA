@@ -12492,7 +12492,13 @@ class ModulesController < ApplicationController
       activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
       main_activity_type = activity_setting&.dig(:main_activity_type).presence || "Training"
       completed_ids = Array(progress[:completed_farmer_ids]).map(&:to_s).to_set
-      farmer_rows = Array(progress[:assigned_farmer_ids]).map do |farmer_id|
+      # A target mapped without a farmer roll still has farmers behind its
+      # achievement -- the ones actually trained. Listing them here keeps the
+      # bill from showing a number with "No target farmer list" under it. Only
+      # the display falls back; assigned_farmer_ids still drives the target.
+      farmer_row_ids = Array(progress[:assigned_farmer_ids]).presence ||
+        Array(progress[:completed_farmer_ids])
+      farmer_rows = farmer_row_ids.map do |farmer_id|
         farmer = farmers_by_id[farmer_id.to_s]
         training_rows = Array(training_index[[target.vrp_id.to_s, target.month_name.to_s, farmer_id.to_s]])
         training = best_training_for_target(target, training_rows)
