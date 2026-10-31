@@ -2767,8 +2767,7 @@ class ModulesController < ApplicationController
 
   def training_achievement_for_records(records)
     records = Array(records).uniq(&:id)
-    selected_ids = unique_training_farmer_ids(records.flat_map { |record| training_record_selected_farmer_ids(record) })
-    selected_ids.size.to_f
+    records.sum { |record| training_form_achievement_count(record) }
   end
 
   def dashboard_training_form_records_by_month(month)
@@ -11088,6 +11087,26 @@ class ModulesController < ApplicationController
 
   def jeevika_bill_display_items(record)
     items = jeevika_bill_detail_rows(record).map(&:deep_dup)
+    items.each do |item|
+      next unless training_main_activity_type?(item["main_activity_type"].presence || "Training")
+
+      targets = bill_item_targets(item)
+      next if targets.empty?
+
+      records_by_date = jeevika_bill_training_records_for_invoice(
+        targets, record.data["bill_month"], record.data["financial_year"]
+      )
+      next if records_by_date.empty?
+
+      item_dates = item["timesheet_dates"].to_s.split(",").filter_map { |value| parse_module_date(value.strip) }.to_set
+      matching_records = records_by_date.select { |date, _records| item_dates.empty? || item_dates.include?(date) }
+      next if matching_records.empty?
+
+      achievement = matching_records.values.flatten.uniq(&:id).sum { |training| training_form_achievement_count(training) }
+      item["achievement_count"] = dashboard_quantity(achievement).to_s
+      item["pending_count"] = dashboard_quantity([item["assigned_count"].to_f - achievement, 0].max).to_s
+      item["live_training_achievement"] = true
+    end
     farmers = items.flat_map do |item|
       details = item["farmer_details"]
       Array(details.is_a?(Hash) ? details.values : details).select { |farmer| farmer.is_a?(Hash) }
@@ -12585,7 +12604,7 @@ class ModulesController < ApplicationController
         achievement_count = if is_training
           records = dashboard_training_form_records_for_month(target.month_name)
             .select { |record| training_record_matches_dashboard_target?(record, target, []) }
-          records.any? ? training_achievement_for_records(records) : progress[:completed]
+          records.any? ? records.sum { |record| training_form_achievement_count(record) } : progress[:completed]
         else
           approved_other_target_achievement_index.dig(target.id.to_s, :achievement).to_f
         end

@@ -248,10 +248,10 @@
                 farmer_details = farmer_details.values if farmer_details.is_a?(Hash)
                 completed_farmers = Array(farmer_details).select { |f| f.is_a?(Hash) && !f["status"].to_s.match?(/\Apending\z/i) }
                 is_other = item["main_activity_type"].to_s.downcase == "other"
-                dynamic_achievement = if is_other
+                dynamic_achievement = if is_other || item["live_training_achievement"]
                   stored_achievement
                 elsif completed_farmers.any?
-                  [stored_achievement, completed_farmers.size].max
+                  completed_farmers.size
                 else
                   stored_achievement
                 end
