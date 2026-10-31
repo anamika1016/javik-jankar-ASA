@@ -370,7 +370,7 @@ class FarmerTargetApi
 
   def created_by_current_user?(record)
     data = record.data
-    return true if data["created_by_id"].present? && current_user_id_set.include?(data["created_by_id"].to_s)
+    return true if creator_id_matches?(data)
 
     # The signed-in user's own labels do not change between records.
     current_values = current_user_visibility_values
@@ -386,6 +386,25 @@ class FarmerTargetApi
 
   def current_user_id_set
     @current_user_id_set ||= current_user_ids.map(&:to_s).to_set
+  end
+
+  # A login is a User, a Vrp or a new-user ModuleRecord, and those tables keep
+  # separate id sequences - User 9 and Vrp 9 are different people. Comparing the
+  # stored creator id alone therefore handed one person another's records.
+  # stamp_target_record_creator! already writes the creator's type alongside the
+  # id, so the id is only trusted together with it. The web screens guard this
+  # the same way.
+  def creator_id_matches?(data)
+    creator_id = data["created_by_id"].to_s
+    return false if creator_id.blank?
+
+    creator_type = data["created_by_record_type"].to_s
+    # Rows written before the type was stored keep the original comparison, so
+    # this cannot take an older record away from whoever owns it today.
+    return current_user_id_set.include?(creator_id) if creator_type.blank?
+    return false unless creator_type.casecmp(current_app_user["record_type"].to_s).zero?
+
+    current_user_id_set.include?(creator_id)
   end
 
   def current_user_visibility_values

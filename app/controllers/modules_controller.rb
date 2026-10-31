@@ -9957,8 +9957,7 @@ class ModulesController < ApplicationController
 
   def target_record_created_by_current_user?(record)
     data = record.data
-    current_ids = dashboard_current_app_user_ids.map(&:to_s)
-    return true if data["created_by_id"].present? && current_ids.include?(data["created_by_id"].to_s)
+    return true if target_record_creator_id_matches?(data)
 
     current_values = normalized_visibility_values(
       current_app_user&.dig("username"),
@@ -9976,6 +9975,33 @@ class ModulesController < ApplicationController
     )
 
     (current_values & record_values).any?
+  end
+
+  # A login is a User, a Vrp or a new-user ModuleRecord, and those three tables
+  # have separate id sequences - User 9 and Vrp 9 are different people. Matching
+  # the stored creator id on its own therefore handed one person another's
+  # records: a cluster incharge whose id collided with a Jeevika Jankar's saw
+  # that Jeevika Jankar's training forms, from a different office entirely.
+  #
+  # Records already record which table the creator came from, so the id is only
+  # trusted together with that type. The bill screens guard this the same way.
+  def target_record_creator_id_matches?(data)
+    creator_id = data["created_by_id"].to_s
+    return false if creator_id.blank?
+
+    creator_type = data["created_by_record_type"].to_s
+    # Rows written before the type was stored keep the original comparison, so
+    # the fix cannot take an older record away from whoever owns it today.
+    return dashboard_current_app_user_ids.map(&:to_s).include?(creator_id) if creator_type.blank?
+
+    candidate_ids = []
+    candidate_ids << current_app_user&.dig("id") if creator_type.casecmp(current_app_user&.dig("record_type").to_s).zero?
+    # A User or Vrp login also answers for the new-user row standing for the
+    # same person. That link is established by user name/email rather than by
+    # id, which is what dashboard_legacy_current_app_user_ids resolves.
+    candidate_ids.concat(dashboard_legacy_current_app_user_ids) if creator_type.casecmp("ModuleRecord").zero?
+
+    candidate_ids.compact.map(&:to_s).include?(creator_id)
   end
 
   def prepare_office_list_data
