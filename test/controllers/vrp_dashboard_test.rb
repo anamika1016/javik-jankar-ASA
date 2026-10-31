@@ -212,6 +212,48 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "dashboard and bill summary count training participants per session beyond mapped target size" do
+    vrp = create_vrp(user_name: "session_count_vrp", password: "secret", agreement_accepted_at: Time.current)
+    assigned = 5.times.map { |i| create_afl(farmer_name: "Assigned #{i}", mobile_no: "91000000#{i}") }
+    selected = 8.times.map { |i| create_afl(farmer_name: "Selected #{i}", mobile_no: "92000000#{i}") }
+    mapping = VrpIcsMapping.create!(
+      vrp: vrp, fco_id: "FCO-SESSION", ics_id: "ICS-SESSION", village_id: "V-SESSION",
+      village_name: "Session Village", afl_ids: assigned.map(&:id),
+      created_by_type: "User", created_by_id: 1
+    )
+    target = TargetMapping.create!(
+      vrp: vrp, vrp_ics_mapping: mapping, fco_id: mapping.fco_id,
+      ics_id: mapping.ics_id, village_id: mapping.village_id,
+      village_name: mapping.village_name, farmer_count: assigned.size,
+      afl_ids: assigned.map(&:id), month_name: "July", completion_date: Date.new(2026, 7, 31),
+      main_activity_name: "Farmers' Training", activity_name: "Lead Farmers Meeting",
+      target_quantity: assigned.size, created_by_type: "User", created_by_id: 1
+    )
+    2.times do |index|
+      ModuleRecord.create!(module_slug: "training-form", data: {
+        "month" => "July", "training_date" => "2026-07-#{10 + index}",
+        "main_activity" => "Farmers' Training", "sub_activity" => "Lead Farmers Meeting",
+        "ics" => mapping.ics_id, "village" => mapping.village_name,
+        "selected_farmer_ids" => selected.map { |farmer| farmer.id.to_s },
+        "farmer_count" => selected.size.to_s, "vrp_id" => vrp.id.to_s
+      })
+    end
+
+    post login_path, params: { login: vrp.user_name, password: "secret" }
+    get dashboard_path, params: { training_month: "July" }
+
+    assert_response :success
+    assert_select ".achieved-target strong", text: "16"
+    assert_select "#vrp_target_progress_table tbody tr" do
+      assert_select "td", text: "16"
+    end
+
+    controller = ModulesController.new
+    rows = controller.send(:jeevika_jankar_bill_rows, vrp_id: vrp.id.to_s, month_name: "July", totals_only: true)
+    assert_equal 16, rows.sum { |row| row[:achievement_count].to_i }
+    assert_equal target.target_quantity, rows.sum { |row| row[:target_quantity].to_i }
+  end
+
   test "vrp sees own dashboard data and read only targets" do
     vrp = create_vrp(
       user_name: "dashboard_vrp",
