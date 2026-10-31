@@ -12500,16 +12500,35 @@ class ModulesController < ApplicationController
       activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
       main_activity_type = activity_setting&.dig(:main_activity_type).presence || "Training"
       completed_ids = Array(progress[:completed_farmer_ids]).map(&:to_s).to_set
+      # Bill achievement is based on farmers selected in the JJ's training
+      # forms, even if those IDs are no longer present on the mapped target roll.
+      # Keep the full selection set for billing; assigned IDs remain the target
+      # farmer list and determine the Total Farmer Count.
+      if training_main_activity_type?(main_activity_type)
+        training_records = dashboard_training_form_records_for_month(target.month_name)
+          .select do |record|
+            training_record_vrp_scope_matches?(record, target.vrp) &&
+              training_record_matches_dashboard_target?(record, target, [])
+          end
+        completed_ids.merge(training_records.flat_map { |record| training_record_selected_farmer_ids(record) })
+      end
       # A target mapped without a farmer roll still has farmers behind its
       # achievement -- the ones actually trained. Listing them here keeps the
       # bill from showing a number with "No target farmer list" under it. Only
       # the display falls back; assigned_farmer_ids still drives the target.
       farmer_row_ids = Array(progress[:assigned_farmer_ids]).presence ||
         Array(progress[:completed_farmer_ids])
+      farmer_row_ids = (farmer_row_ids + completed_ids.to_a).uniq if training_main_activity_type?(main_activity_type)
       farmer_rows = farmer_row_ids.map do |farmer_id|
         farmer = farmers_by_id[farmer_id.to_s]
-        training_rows = Array(training_index[[target.vrp_id.to_s, target.month_name.to_s, farmer_id.to_s]])
-        training = best_training_for_target(target, training_rows)
+        training = training_records&.filter_map do |record|
+          next unless training_record_selected_farmer_ids(record).include?(farmer_id.to_s)
+          summary = training_summary(record)
+          {
+            department: record.data["department"], training_topic: summary[:training_topic],
+            training_subject: summary[:training_subject], training_date: summary[:training_date]
+          }
+        end&.max_by { |item| item[:training_date].to_s }
         {
           id: farmer_id.to_s,
           name: farmer&.farmer_name.presence || "Farmer ##{farmer_id}",
@@ -12539,11 +12558,11 @@ class ModulesController < ApplicationController
         activity: progress[:activity],
         target_quantity: progress[:target],
         assigned_count: progress[:target],
-        achievement_count: progress[:completed],
+        achievement_count: training_main_activity_type?(main_activity_type) ? completed_ids.size : progress[:completed],
         achievement_entry_mode: "Auto Fill",
         same_activity_count: completed_ids.size,
         other_activity_count: progress[:completed],
-        pending_count: progress[:pending],
+        pending_count: [progress[:target].to_f - completed_ids.size, 0].max,
         timesheet_dates: other_achievement&.dig(:achieved_at).presence || farmer_rows.filter_map { |row| row[:training_date].presence if row[:status] != "Pending" }.uniq.join(", "),
         farmer_details: farmer_rows
       }
