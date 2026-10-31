@@ -2423,7 +2423,11 @@ class ModulesController < ApplicationController
       training_targets = training_completion_rows.filter_map { |row| row[:target_record] }
       training_records = training_completion_rows.flat_map { |row| Array(row[:training_records]) }.uniq(&:id)
       training_form_farmer_ids = unique_training_farmer_ids(training_records.flat_map { |record| training_record_selected_farmer_ids(record) })
-      training_form_total = training_achievement_for_records(training_records)
+      training_form_total = if @jeevika_bill_progress_date_rows
+        training_records.sum { |training| training_form_achievement_count(training) }
+      else
+        training_achievement_for_records(training_records)
+      end
       has_training_records = training_targets.any? && training_records.any?
       completed_farmer_ids = training_form_farmer_ids & assigned_farmer_ids if has_training_records
       training_form_completed_total = training_form_total
@@ -11263,6 +11267,22 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_bill_saved_worksheet_rows(record, item)
+    daily_records = jeevika_bill_training_records_for_invoice(
+      bill_item_targets(item), record.data["bill_month"], record.data["financial_year"]
+    )
+    if daily_records.any?
+      return daily_records.sort_by(&:first).map do |date, training_records|
+        count = training_records.sum { |training| training_form_achievement_count(training) }
+        {
+          working_date: bill_display_date(date),
+          village: item["village"].presence || "-",
+          activity: item["activity"].presence || "-",
+          tci: item["main_activity"].presence || "-",
+          number: dashboard_quantity(count)
+        }
+      end
+    end
+
     details = item["farmer_details"]
     details = details.values if details.is_a?(Hash)
     completed = Array(details).select { |farmer| farmer.is_a?(Hash) && !farmer["status"].to_s.match?(/\Apending\z/i) }
@@ -11338,6 +11358,48 @@ class ModulesController < ApplicationController
       end
       .sort_by { |date, training| [date, training.id] }
       .map(&:last)
+  end
+
+  def bill_item_targets(item)
+    target_ids = (Array(item["target_mapping_ids"]) + [item["target_mapping_id"]]).map(&:to_s).reject(&:blank?).uniq
+    return [] if target_ids.blank? || !model_ready?(:TargetMapping)
+
+    TargetMapping.includes(:vrp).where(id: target_ids).to_a
+  end
+
+  def training_form_achievement_count(training)
+    total_count = dashboard_numeric(training.data["total_farmer_count"])
+    return total_count if total_count.positive?
+
+    farmer_count = dashboard_numeric(training.data["farmer_count"])
+    return farmer_count if farmer_count.positive?
+
+    training_record_selected_farmer_ids(training).size.to_f
+  end
+
+  def jeevika_bill_training_records_by_date(targets, month_name)
+    targets = Array(targets).compact
+    return {} if targets.blank?
+
+    month_number = month_number_value(month_name)
+    dashboard_training_form_records_for_month(month_name).each_with_object({}) do |training, grouped|
+      next unless targets.any? { |target| training_record_matches_dashboard_target?(training, target, []) }
+
+      date = parse_module_date(training_summary(training)[:training_date])
+      next unless date && (!month_number || date.month == month_number)
+
+      (grouped[date] ||= []) << training
+    end
+  end
+
+  def jeevika_bill_training_records_for_invoice(targets, month_name, financial_year)
+    records_by_date = jeevika_bill_training_records_by_date(targets, month_name)
+    month_number = month_number_value(month_name)
+    start_year = financial_year.to_s[/\b\d{4}\b/]&.to_i
+    year = start_year && month_number ? start_year + (month_number < 4 ? 1 : 0) : nil
+    records_by_date.select do |date, _records|
+      (!month_number || date.month == month_number) && (!year || date.year == year)
+    end
   end
 
   def jeevika_bill_time_slot_rows_for_item(item)
@@ -12524,6 +12586,7 @@ class ModulesController < ApplicationController
     ensure
       @jeevika_bill_totals_progress_only = previous_totals_mode
     end
+    @jeevika_bill_progress_date_rows = !totals_only
     rows = progress_rows.map do |progress|
       target = progress[:target_record]
       if totals_only
@@ -12617,8 +12680,37 @@ class ModulesController < ApplicationController
       }
     end
 
+    unless totals_only
+      rows = rows.flat_map do |row|
+        next [row] unless training_main_activity_type?(row[:main_activity_type])
+
+        target = @other_target_candidate_targets_by_id[row[:target_mapping_id].to_s]
+        next [row] unless target
+
+        records_by_date = jeevika_bill_training_records_by_date([target], row[:month_name])
+        next [row] if records_by_date.empty?
+
+        records_by_date.sort_by(&:first).map do |date, records|
+          count = records.sum { |training| training_form_achievement_count(training) }
+          selected_ids = records.flat_map { |training| training_record_selected_farmer_ids(training) }.uniq
+          farmers = Array(row[:farmer_details]).select { |farmer| selected_ids.include?(farmer[:id].to_s) }.map do |farmer|
+            farmer.merge(training_date: date.to_s, status: "Completed in Target")
+          end
+          row.merge(
+            target_quantity: row[:target_quantity], assigned_count: row[:assigned_count],
+            achievement_count: count, same_activity_count: count, other_activity_count: 0,
+            pending_count: [row[:target_quantity].to_f - count, 0].max,
+            timesheet_dates: date.to_s, farmer_details: farmers,
+            training_session_key: "#{row[:target_mapping_id]}|#{date.iso8601}"
+          )
+        end
+      end
+    end
+
     @jeevika_jankar_target_summary = jeevika_jankar_target_summary_from_rows(rows)
     rows
+  ensure
+    @jeevika_bill_progress_date_rows = false
   end
 
   def jeevika_jankar_bill_selected_vrp_ids(value)
@@ -13506,7 +13598,7 @@ class ModulesController < ApplicationController
       end
     end.uniq(&:id)
 
-    training_achievement_for_records(training_records)
+    training_records.sum { |training| training_form_achievement_count(training) }
   end
 
   def jeevika_jankar_bill_item_totals(items)
@@ -13531,13 +13623,13 @@ class ModulesController < ApplicationController
         grouped_totals[target_key][:achievement] += achievement
       else
         result[:target] += target
-        result[:achievement] += [achievement, target].min
+        result[:achievement] += achievement
       end
     end
 
     grouped_totals.each_value do |grouped_total|
       totals[:target] += grouped_total[:target]
-      totals[:achievement] += [grouped_total[:achievement], grouped_total[:target]].min
+      totals[:achievement] += grouped_total[:achievement]
     end
 
     totals

@@ -41,7 +41,7 @@ class TargetMappingsController < ApplicationController
     @target_farmers_by_id = {}
     @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && (@admin_mapping_actions || @remove_mapping_actions)
     @edit_payload = edit_payload(@edit_target)
-    @sub_activity_options = target_sub_activity_options(@edit_target&.main_activity_name)
+    @sub_activity_options = target_sub_activity_options(@edit_payload[:main_activity_names], @edit_payload[:activity_names])
 
     respond_to do |format|
       format.html
@@ -1813,14 +1813,16 @@ end
       .uniq
   end
 
-  def target_sub_activity_options(main_activity)
-    selected_main_activity = main_activity.to_s.strip.downcase
-    return [] if selected_main_activity.blank?
+  def target_sub_activity_options(main_activity, selected_sub_activities = [])
+    selected_main_activities = target_activity_values(main_activity).map { |value| value.to_s.strip.downcase }
+    return [] if selected_main_activities.blank?
 
-    target_sub_activity_map
-      .select { |row| row[:main_activity].to_s.strip.downcase == selected_main_activity }
+    (
+      target_sub_activity_map
+      .select { |row| selected_main_activities.include?(row[:main_activity].to_s.strip.downcase) }
       .filter_map { |row| row[:sub_activity].presence }
-      .uniq
+      .uniq + target_activity_values(selected_sub_activities)
+    ).uniq
   end
 
   def visible_target_mappings
@@ -2051,7 +2053,20 @@ end
       training_targets: (TRAINING_TARGET_FIELDS.keys + ["cc"]).index_with do |key|
         target_number_value(primary.public_send("#{key}_target")) if primary.has_attribute?("#{key}_target")
       end,
+      target_type: case main_activity_type_for(primary.main_activity_name).to_s.strip.downcase
+      when "other" then "village"
+      when "other with farmer" then "other_with_farmer"
+      else "farmer"
+      end,
       afl_ids: batch.flat_map { |t| normalized_afl_ids(t.afl_ids) }.uniq,
+      weekly_plans: batch.index_by { |t| [normalize_activity_name(t.main_activity_name), normalize_activity_name(t.activity_name)].join("|") }
+        .transform_values do |t|
+          {
+            monthly: target_number_value(t.target_quantity), week_1: t.week_1_target,
+            week_2: t.week_2_target, week_3: t.week_3_target, week_4: t.week_4_target,
+            afl_ids: normalized_afl_ids(t.afl_ids)
+          }.transform_values { |value| value.nil? ? "" : value }
+        end,
       # The saved Monthly/Week split, so editing shows the plan that was stored
       # instead of a blank table.
       weekly_plan: {
@@ -2070,6 +2085,10 @@ end
 
     match = main_activity_type_map.find { |row| row[:main_activity].to_s.strip.downcase == name }
     match&.dig(:main_activity_type).presence || "Training"
+  end
+
+  def normalize_activity_name(value)
+    value.to_s.downcase.gsub(/[^[:alnum:]]+/, " ").squish
   end
 
   # target_type is a form-only field and is never stored, so the saved target is

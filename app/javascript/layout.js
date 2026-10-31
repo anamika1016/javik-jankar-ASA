@@ -4245,7 +4245,20 @@ function initDeferredLayoutPage() {
         return;
       }
 
+      const savedSubActivities = editTarget.id && !resetSelection
+        ? [].concat(editTarget.activity_names || []).map((value) => String(value))
+        : [];
+      if (savedSubActivities.length) {
+        subActivitySelect.dataset.selectedValues = JSON.stringify(savedSubActivities);
+        subActivitySelect.dataset.selectionDirty = "false";
+      }
       fillTargetSelect(subActivitySelect, targetSubActivityOptionsForMain(), "Select Sub Activity");
+      if (savedSubActivities.length && !selectedSubActivityNames().length) {
+        Array.from(subActivitySelect.options || []).forEach((option) => {
+          option.selected = savedSubActivities.some((saved) => targetOptionMatches(option.value, saved));
+        });
+        subActivitySelect.dispatchEvent(new Event("chip:refresh"));
+      }
     };
 
     const selectedFarmerMonthlyCount = () => {
@@ -4328,7 +4341,13 @@ function initDeferredLayoutPage() {
       editTarget.farmerSelectionsRestored = true;
     };
     const selectedFarmerIdsForActiveRow = () => farmerIdsForRow(activeFarmerDialogRowKey);
-    const totalActivityFarmerSelections = () => Object.values(weeklyPlanFarmerIds).reduce((total, ids) => total + ids.size, 0);
+    const totalActivityFarmerSelections = () => {
+      const selected = Object.values(weeklyPlanFarmerIds).reduce((total, ids) => total + ids.size, 0);
+      if (selected) return selected;
+      const savedIds = savedEditFarmerIds();
+      if (savedIds.length) return savedIds.length;
+      return Number(newFarmerTargetInput?.value || 0);
+    };
     // While editing, the stored Monthly/Week split is the starting point; it is
     // only used until the row is touched, after which weeklyPlanValues wins.
     const savedEditWeeklyValue = (field) => {
@@ -4338,7 +4357,15 @@ function initDeferredLayoutPage() {
       return String(saved ?? "").trim() === "" ? undefined : String(saved);
     };
     const weeklyPlanValue = (row, field, fallback = "") => {
-      const savedValue = weeklyPlanValues[weeklyRowKey(row)]?.[field] ?? savedEditWeeklyValue(field);
+      const normalizeActivityKey = (value) => String(value || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim().replace(/\s+/g, " ");
+      const rowPlanKey = `${normalizeActivityKey(row.mainActivity)}|${normalizeActivityKey(row.subActivity)}`;
+      const savedRowPlan = editTarget.weekly_plans?.[rowPlanKey];
+      const savedBatchPlans = Object.values(editTarget.weekly_plans || {});
+      const savedBatchTotal = savedBatchPlans.length
+        ? savedBatchPlans.reduce((sum, plan) => sum + (Number(plan?.[field]) || 0), 0)
+        : undefined;
+      const savedValue = weeklyPlanValues[weeklyRowKey(row)]?.[field] ??
+        savedRowPlan?.[field] ?? (savedBatchTotal !== undefined ? String(savedBatchTotal) : savedEditWeeklyValue(field));
       return savedValue === undefined ? fallback : savedValue;
     };
     const weeklyMonthlyLimit = (rowKey) => {
@@ -4706,6 +4733,16 @@ function initDeferredLayoutPage() {
           renderTargetFarmers(data.farmers || []);
         } else {
           clearTargetFarmers();
+        }
+        if (editTarget.id) {
+          const savedMainActivities = [].concat(editTarget.main_activity_names || []).map((value) => String(value));
+          Array.from(mainActivitySelect?.options || []).forEach((option) => {
+            option.selected = savedMainActivities.some((saved) => targetOptionMatches(option.value, saved));
+          });
+          if (mainActivitySelect) mainActivitySelect.dataset.selectionDirty = "false";
+          mainActivitySelect?.dispatchEvent(new Event("chip:refresh"));
+          refreshTargetSubActivities(false);
+          renderTargetWeeklySummary();
         }
       } catch (_error) {
         if (requestId !== targetLoadRequestId) return;
@@ -6309,7 +6346,7 @@ function initDeferredLayoutPage() {
       const sameTarget = String(item.target_mapping_id || "") === String(row.target_mapping_id || "");
       const rowSession = String(row.training_session_key || "");
       const itemSession = String(item.training_session_key || "");
-      return sameTarget && (!rowSession || rowSession === itemSession);
+      return sameTarget && (!rowSession || !itemSession || rowSession === itemSession);
     }) || {};
     const rowInputs = () => Array.from(rowsBody?.querySelectorAll("tr[data-bill-row]") || []);
     const normalizedChoice = (value) => String(value || "").trim().toLowerCase().replaceAll(" ", "_");
@@ -6498,7 +6535,7 @@ function initDeferredLayoutPage() {
 
       totalsByTarget.forEach((groupedTotal) => {
         totalTarget += groupedTotal.target;
-        totalAchievement += Math.min(groupedTotal.achievement, groupedTotal.target);
+        totalAchievement += groupedTotal.achievement;
       });
 
       if (totalsByTarget.size === 0) {
