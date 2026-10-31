@@ -3991,9 +3991,12 @@ function initDeferredLayoutPage() {
     const targetOptionMatches = (optionValueText, selectedValueText) => {
       const optionParts = locationValueParts(optionValueText);
       const selectedParts = locationValueParts(selectedValueText);
-      if (selectedParts[1]) return normalizeOption(optionValueText) === normalizeOption(selectedValueText);
+      // Saved values carry "id||name". Requiring the whole string to match left
+      // an edit with nothing selected whenever the stored name had drifted from
+      // the current option label, so fall back to the id, which is the key.
+      if (selectedParts[1] && normalizeOption(optionValueText) === normalizeOption(selectedValueText)) return true;
 
-      return normalizeOption(optionParts[0]) === normalizeOption(selectedParts[0]);
+      return Boolean(optionParts[0]) && normalizeOption(optionParts[0]) === normalizeOption(selectedParts[0]);
     };
     const targetSelectedValuesFromDataset = (select) => {
       if (!select) return [];

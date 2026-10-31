@@ -3235,7 +3235,18 @@ class ModulesController < ApplicationController
       # Older/renamed activity-master rows may not resolve to a setting. Matching
       # training submissions are still authoritative completion evidence and must
       # keep the dashboard's achieved/pending figures live.
-      completed_farmer_count = completed_training_farmer_ids_for(target, target_farmer_ids(target)).size
+      assigned_ids = target_farmer_ids(target)
+      completed_farmer_count = if assigned_ids.any?
+        # With a mapped farmer list the achievement stays the distinct farmers
+        # of that list who were trained -- unchanged.
+        completed_training_farmer_ids_for(target, assigned_ids).size
+      else
+        # Without one there is no roll to count against, so each training
+        # contributes the farmers it recorded, matching the Training Form List.
+        matching_training_records_for_target(target, []).sum do |record|
+          training_record_selected_farmer_ids(record).size
+        end
+      end
       return capped_target_achievement(target, completed_farmer_count) if completed_farmer_count.positive?
     end
 

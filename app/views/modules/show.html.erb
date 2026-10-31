@@ -1004,10 +1004,15 @@
 
           <label>
             <span>Financial Year</span>
+            <% saved_financial_year = @record&.data&.[]("financial_year").to_s %>
+            <%# A year saved before it was removed from Month Master is still the
+                record's value, so it is offered rather than silently dropped. %>
+            <% financial_year_options = Array(@jeevika_jankar_financial_year_options) %>
+            <% financial_year_options = [saved_financial_year] + financial_year_options if saved_financial_year.present? && !financial_year_options.map(&:to_s).include?(saved_financial_year) %>
             <select name="module_record[financial_year]">
               <option value="">Select Financial Year</option>
-              <% @jeevika_jankar_financial_year_options.each do |option| %>
-                <option value="<%= option %>" <%= "selected" if @record&.data&.[]("financial_year").to_s == option.to_s %>><%= option == "FFS" ? "Exposer" : option %></option>
+              <% financial_year_options.each do |option| %>
+                <option value="<%= option %>" <%= "selected" if saved_financial_year == option.to_s %>><%= option == "FFS" ? "Exposer" : option %></option>
               <% end %>
             </select>
           </label>
