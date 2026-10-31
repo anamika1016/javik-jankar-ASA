@@ -2350,7 +2350,7 @@ class ModulesController < ApplicationController
           target_mapping_id: target.id.to_s, target_record: target,
           assigned_farmer_ids: assigned_farmer_ids, completed_farmer_ids: completed_farmer_ids,
           training_completion: training_completion, completion_uses_farmer_ids: completion_uses_farmer_ids,
-          target: effective_target, completed: completed,
+          target: effective_target, completed: (full_training_achievement || completed),
           full_training_achievement: full_training_achievement
         }
       end
@@ -2429,7 +2429,7 @@ class ModulesController < ApplicationController
       else
         training_records.uniq(&:id).sum { |record| dashboard_numeric(record.data["total_farmer_count"]) }.to_f
       end
-      completed_farmer_ids = training_form_farmer_ids if training_targets.any?
+      completed_farmer_ids = training_form_farmer_ids & assigned_farmer_ids if training_targets.any?
       training_form_completed_total = training_form_total
       completed_total = if training_targets.any?
         training_form_total
