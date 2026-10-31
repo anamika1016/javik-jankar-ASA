@@ -603,8 +603,7 @@ class FarmerTargetApi
     data["selected_farmer_ids"] = selected_farmer_ids
     data["selected_farmer_names"] = training_farmer_names(selected_farmer_ids)
     data["farmer_count"] = selected_farmer_ids.size.to_s
-    total = training_total_farmer_count(data)
-    data["total_farmer_count"] = total.to_s if total
+    data["total_farmer_count"] = selected_farmer_ids.size.to_s
     data.delete("status")
     data
   end
@@ -707,7 +706,7 @@ class FarmerTargetApi
     farmer_count = whole_number_value(data["farmer_count"].presence || "0")
     male_count = whole_number_value(data["male_count"])
     female_count = whole_number_value(data["female_count"])
-    total_farmer_count = whole_number_value(data["total_farmer_count"].presence || training_total_farmer_count(data).to_s)
+    total_farmer_count = selected_farmer_ids.size
 
     errors << "Target Farmers select karein." if selected_farmer_ids.blank?
     errors << "AFL Farmer Count valid whole number hona chahiye." if farmer_count.nil?

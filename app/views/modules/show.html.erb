@@ -2279,8 +2279,9 @@
                       <% value = grouped_main_activities.join(" • ") if field == "Main Activity" %>
                       <% value = grouped_sub_activities.join("\n") if field == "Sub Activity" %>
                       <% value = grouped_training_methods.map { |method| method == "FFS" ? "Exposer" : method }.join(" • ") if field == "Training Method" %>
-                      <% value = grouped_farmer_ids.size if field == "Farmer Count" %>
-                      <% value = session_counts[field_key] if ["Male Count", "Female Count", "Total Farmer Count"].include?(field) %>
+                      <% value = grouped_farmer_ids.size if ["Farmer Count", "Total Farmer Count"].include?(field) %>
+                      <% value = session_counts[field_key] if ["Male Count", "Female Count"].include?(field) %>
+                      <% session_counts["total_farmer_count"] = grouped_farmer_ids.size %>
                     <% end %>
                     <% if @slug == "access-control-list" && field == "Module Name" %>
                       <% value = Array(record.data["module_names"].presence || value).compact_blank %>
@@ -2531,7 +2532,7 @@
               <% field_value = current_app_user&.dig("name").to_s if field == "Trainer Name" %>
               <% field_value = current_app_user&.dig("mobile_no").to_s if field == "Trainer Contact" %>
               <% field_value = (selected_training_farmer_ids || []).size.to_s if field == "Farmer Count" %>
-              <% field_value = ((@record&.data&.[]("male_count").to_s.to_i + @record&.data&.[]("female_count").to_s.to_i).to_s) if field == "Total Farmer Count" && @record.present? %>
+              <% field_value = (selected_training_farmer_ids || []).size.to_s if field == "Total Farmer Count" %>
             <% end %>
             <% if other_target_form && field == "Contact Number" && field_value.blank? %>
               <% field_value = @record&.data&.[]("jeevika_jankar_contact").to_s %>

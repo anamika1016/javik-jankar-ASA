@@ -13,10 +13,9 @@ class TrainingParticipantCounts
     female = number(data["female_count"])
     result["male_count"] = male.to_s unless male.nil?
     result["female_count"] = female.to_s unless female.nil?
-    result["total_farmer_count"] = (male + female).to_s if male && female
-    if data.key?("selected_farmer_ids")
-      result["farmer_count"] = Array(data["selected_farmer_ids"]).map(&:to_s).compact_blank.uniq.size.to_s
-    end
+    selected_count = Array(data["selected_farmer_ids"]).map(&:to_s).compact_blank.uniq.size
+    result["farmer_count"] = selected_count.to_s if data.key?("selected_farmer_ids")
+    result["total_farmer_count"] = selected_count.to_s
     result
   end
 

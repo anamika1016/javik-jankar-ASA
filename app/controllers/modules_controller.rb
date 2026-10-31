@@ -2768,11 +2768,7 @@ class ModulesController < ApplicationController
   def training_achievement_for_records(records)
     records = Array(records).uniq(&:id)
     selected_ids = unique_training_farmer_ids(records.flat_map { |record| training_record_selected_farmer_ids(record) })
-    return selected_ids.size.to_f if selected_ids.any?
-
-    records.sum do |record|
-      dashboard_numeric(record.data["total_farmer_count"].presence || record.data["farmer_count"])
-    end.to_f
+    selected_ids.size.to_f
   end
 
   def dashboard_training_form_records_by_month(month)
@@ -11368,12 +11364,6 @@ class ModulesController < ApplicationController
   end
 
   def training_form_achievement_count(training)
-    total_count = dashboard_numeric(training.data["total_farmer_count"])
-    return total_count if total_count.positive?
-
-    farmer_count = dashboard_numeric(training.data["farmer_count"])
-    return farmer_count if farmer_count.positive?
-
     training_record_selected_farmer_ids(training).size.to_f
   end
 
@@ -14064,7 +14054,7 @@ class ModulesController < ApplicationController
     data["selected_farmer_ids"] = selected_farmer_ids
     data["selected_farmer_names"] = training_farmer_names(selected_farmer_ids)
     data["farmer_count"] = selected_farmer_ids.size.to_s
-    data["total_farmer_count"] = training_total_farmer_count(data).to_s if training_total_farmer_count(data)
+    data["total_farmer_count"] = selected_farmer_ids.size.to_s
     data.delete("status")
     data
   end
@@ -14766,7 +14756,7 @@ class ModulesController < ApplicationController
     farmer_count = whole_number_value(data["farmer_count"].presence || "0")
     male_count = whole_number_value(data["male_count"])
     female_count = whole_number_value(data["female_count"])
-    total_farmer_count = whole_number_value(data["total_farmer_count"].presence || training_total_farmer_count(data).to_s)
+    total_farmer_count = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq.size
 
     errors << "Target Farmers select karein." if selected_farmer_ids.blank?
     errors << "Farmer Count valid whole number hona chahiye." if farmer_count.nil?

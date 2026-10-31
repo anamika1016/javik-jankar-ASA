@@ -2619,7 +2619,7 @@ function initDeferredLayoutPage() {
     const syncTotalFarmerCount = () => {
 	      if (!totalFarmerCountInput) return;
 
-	      const total = numberValue(maleCountInput) + numberValue(femaleCountInput);
+	      const total = selectedFarmerBoxes().length;
 	      totalFarmerCountInput.value = String(total);
 	    };
 
