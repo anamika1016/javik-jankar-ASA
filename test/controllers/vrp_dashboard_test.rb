@@ -212,7 +212,7 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "dashboard and bill summary count training participants per session beyond mapped target size" do
+  test "dashboard and bill summary count distinct training participants across sessions beyond mapped target size" do
     vrp = create_vrp(user_name: "session_count_vrp", password: "secret", agreement_accepted_at: Time.current)
     assigned = 5.times.map { |i| create_afl(farmer_name: "Assigned #{i}", mobile_no: "91000000#{i}") }
     selected = 8.times.map { |i| create_afl(farmer_name: "Selected #{i}", mobile_no: "92000000#{i}") }
@@ -243,14 +243,14 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     get dashboard_path, params: { training_month: "July" }
 
     assert_response :success
-    assert_select ".achieved-target strong", text: "16"
+    assert_select ".achieved-target strong", text: "8"
     assert_select "#vrp_target_progress_table tbody tr" do
-      assert_select "td", text: "16"
+      assert_select "td", text: "8"
     end
 
     controller = ModulesController.new
     rows = controller.send(:jeevika_jankar_bill_rows, vrp_id: vrp.id.to_s, month_name: "July", totals_only: true)
-    assert_equal 16, rows.sum { |row| row[:achievement_count].to_i }
+    assert_equal 8, rows.sum { |row| row[:achievement_count].to_i }
     assert_equal target.target_quantity, rows.sum { |row| row[:target_quantity].to_i }
   end
 
