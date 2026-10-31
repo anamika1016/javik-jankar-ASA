@@ -6490,7 +6490,9 @@ function initDeferredLayoutPage() {
         if (achievementDisplay) achievementDisplay.textContent = String(achievement);
         if (pendingDisplay) pendingDisplay.textContent = String(pending);
         if (pendingInput) pendingInput.value = String(pending);
-        if (farmerSummaryCount) farmerSummaryCount.textContent = String(achievement);
+        if (farmerSummaryCount) {
+          farmerSummaryCount.textContent = String(Math.min(achievement, assigned));
+        }
         if (amountInput) amountInput.value = amount.toFixed(2);
       });
 
@@ -6670,8 +6672,8 @@ function initDeferredLayoutPage() {
           <tr class="jeevika-farmer-row">
             <td colspan="7">
               <details class="jeevika-farmer-details">
-                <summary data-jeevika-farmer-summary="${index}">Farmer List <span data-jeevika-farmer-achievement>${escapeHtml(achievementCount)}</span> / ${escapeHtml(assignedCount)}</summary>
-                ${farmerDetailsHtml(row.farmer_details || [])}
+                <summary data-jeevika-farmer-summary="${index}">Farmer List: Total Farmer Count <span data-jeevika-farmer-total>${escapeHtml(assignedCount)}</span> · Selected Farmers Count <span data-jeevika-farmer-achievement>${escapeHtml((row.farmer_details || []).filter((farmer) => farmer.status !== "Pending").length)}</span></summary>
+                <span data-jeevika-farmer-details>${farmerDetailsHtml(row.farmer_details || [])}</span>
               </details>
             </td>
           </tr>

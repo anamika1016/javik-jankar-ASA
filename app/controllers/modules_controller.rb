@@ -2407,6 +2407,7 @@ class ModulesController < ApplicationController
       training_form_total = dashboard_training_form_total_farmer_count(training_targets, assigned_farmer_ids)
       training_form_farmer_ids = dashboard_training_form_completed_farmer_ids(training_targets, assigned_farmer_ids)
       completed_farmer_ids = training_form_farmer_ids if training_targets.any?
+      training_form_completed_total = training_form_total
       completed_total = if training_targets.any?
         training_form_total
       elsif assigned_farmer_ids.any? && farmer_completion_rows.any?
@@ -2418,7 +2419,14 @@ class ModulesController < ApplicationController
       end
       completed_total = [completed_total, effective_target].min
       if @jeevika_bill_totals_progress_only
-        next first.merge(completed: completed_total, assigned_farmer_ids: assigned_farmer_ids,
+        # Bill totals need the submitted training participant count even when
+        # it exceeds the mapped target roll; dashboard progress remains capped.
+        bill_completed_total = if training_targets.any?
+          dashboard_training_form_total_farmer_count(training_targets, assigned_farmer_ids)
+        else
+          completed_total
+        end
+        next first.merge(completed: bill_completed_total, assigned_farmer_ids: assigned_farmer_ids,
           completed_farmer_ids: completed_farmer_ids)
       end
 
@@ -2443,7 +2451,7 @@ class ModulesController < ApplicationController
         input_demo_inm: rows.map { |row| row[:input_demo_inm].to_f }.max,
         input_demo_pm: rows.map { |row| row[:input_demo_pm].to_f }.max,
         ffs: rows.map { |row| row[:ffs].to_f }.max,
-        completed: completed_total,
+        completed: training_targets.any? ? training_form_completed_total : completed_total,
         pending: [effective_target - completed_total, 0].max,
         progress: percentage(completed_total, effective_target)
       )

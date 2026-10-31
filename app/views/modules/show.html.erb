@@ -251,7 +251,7 @@
                 dynamic_achievement = if is_other
                   stored_achievement
                 elsif completed_farmers.any?
-                  [completed_farmers.size, item["assigned_count"].to_f].max == 0 ? stored_achievement : completed_farmers.size
+                  [stored_achievement, completed_farmers.size].max
                 else
                   stored_achievement
                 end
