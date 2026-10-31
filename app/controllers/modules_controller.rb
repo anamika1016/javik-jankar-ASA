@@ -2306,14 +2306,10 @@ class ModulesController < ApplicationController
     raw_rows = Array(targets).map do |target|
       assigned_farmer_ids = target_farmer_ids(target)
       completed_farmer_ids = vrp_dashboard_completed_farmer_ids_for_target(target)
-      # A target mapped without a farmer list has nothing to intersect against,
-      # so the farmers actually trained stand in for both lists. Intersecting an
-      # empty list left the bill showing an achievement with no farmers behind it.
-      if assigned_farmer_ids.blank?
-        assigned_farmer_ids = completed_farmer_ids
-      else
-        completed_farmer_ids &= assigned_farmer_ids
-      end
+      # Only narrow to the mapped list when there is one. assigned_farmer_ids is
+      # left untouched because the target quantity is derived from it -- filling
+      # it in here shrank the target to the number of farmers trained.
+      completed_farmer_ids &= assigned_farmer_ids if assigned_farmer_ids.any?
       activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
       training_completion = activity_setting.blank? || training_main_activity_type?(activity_setting[:main_activity_type])
       completion_uses_farmer_ids = activity_setting.blank? || training_main_activity_type?(activity_setting[:main_activity_type]) || completed_farmer_ids.any?
