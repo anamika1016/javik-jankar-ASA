@@ -2326,6 +2326,21 @@ class ModulesController < ApplicationController
           other_target_achievement_index: other_target_achievement_index
         )
       end
+      training_records = []
+      if training_completion
+        training_records = dashboard_training_form_records_for_month(target.month_name)
+          .select do |record|
+            training_record_has_explicit_vrp_match?(record, target.vrp) &&
+              training_record_matches_dashboard_target?(record, target, [])
+          end
+        training_farmer_ids = unique_training_farmer_ids(training_records.flat_map { |record| training_record_selected_farmer_ids(record) })
+        completed = if completed_farmer_ids.any?
+          training_farmer_ids.size.to_f
+        else
+          training_records.uniq(&:id).sum { |record| dashboard_numeric(record.data["total_farmer_count"]) }.to_f
+        end
+      end
+      full_training_achievement = training_completion ? completed.to_f : nil
       completed = [completed.to_f, effective_target].min
       pending = [effective_target - completed, 0].max
       if @jeevika_bill_totals_progress_only
@@ -2335,7 +2350,8 @@ class ModulesController < ApplicationController
           target_mapping_id: target.id.to_s, target_record: target,
           assigned_farmer_ids: assigned_farmer_ids, completed_farmer_ids: completed_farmer_ids,
           training_completion: training_completion, completion_uses_farmer_ids: completion_uses_farmer_ids,
-          target: effective_target, completed: completed
+          target: effective_target, completed: completed,
+          full_training_achievement: full_training_achievement
         }
       end
       week_targets = target.respond_to?(:weekly_target_values) ? target.weekly_target_values : [0, 0, 0, 0]
@@ -2355,6 +2371,7 @@ class ModulesController < ApplicationController
         target_record: target,
         assigned_farmer_ids: assigned_farmer_ids,
         completed_farmer_ids: completed_farmer_ids,
+        training_records: training_records,
         weekly_completed_farmer_ids: weekly_completed_farmer_ids,
         training_completion: training_completion,
         completion_uses_farmer_ids: completion_uses_farmer_ids,
@@ -2373,6 +2390,7 @@ class ModulesController < ApplicationController
         input_demo_pm: target.input_demo_pm_target,
         ffs: target.ffs_target,
         completed: completed,
+        full_training_achievement: full_training_achievement,
         pending: pending,
         progress: percentage(completed, effective_target)
       }
@@ -2404,8 +2422,13 @@ class ModulesController < ApplicationController
         farmer_completion_rows.flat_map { |row| Array(row[:completed_farmer_ids]) }
       ) & assigned_farmer_ids
       training_targets = training_completion_rows.filter_map { |row| row[:target_record] }
-      training_form_total = dashboard_training_form_total_farmer_count(training_targets, assigned_farmer_ids)
-      training_form_farmer_ids = dashboard_training_form_completed_farmer_ids(training_targets, assigned_farmer_ids)
+      training_records = training_completion_rows.flat_map { |row| Array(row[:training_records]) }.uniq(&:id)
+      training_form_farmer_ids = unique_training_farmer_ids(training_records.flat_map { |record| training_record_selected_farmer_ids(record) })
+      training_form_total = if training_form_farmer_ids.any?
+        training_form_farmer_ids.size.to_f
+      else
+        training_records.uniq(&:id).sum { |record| dashboard_numeric(record.data["total_farmer_count"]) }.to_f
+      end
       completed_farmer_ids = training_form_farmer_ids if training_targets.any?
       training_form_completed_total = training_form_total
       completed_total = if training_targets.any?
@@ -2417,17 +2440,23 @@ class ModulesController < ApplicationController
         # use the greatest achieved value instead of multiplying it per activity.
         rows.map { |row| row[:completed].to_f }.max.to_f
       end
-      completed_total = [completed_total, effective_target].min
+      completed_total = [completed_total, effective_target].min unless training_targets.any?
       if @jeevika_bill_totals_progress_only
         # Bill totals need the submitted training participant count even when
         # it exceeds the mapped target roll; dashboard progress remains capped.
         bill_completed_total = if training_targets.any?
-          dashboard_training_form_total_farmer_count(training_targets, assigned_farmer_ids)
+          training_form_completed_total
         else
           completed_total
         end
         next first.merge(completed: bill_completed_total, assigned_farmer_ids: assigned_farmer_ids,
           completed_farmer_ids: completed_farmer_ids)
+      end
+
+      full_training_achievement = if training_targets.any?
+        training_form_completed_total
+      else
+        rows.sum { |row| row[:full_training_achievement].to_f }
       end
 
       first.merge(
@@ -2451,9 +2480,10 @@ class ModulesController < ApplicationController
         input_demo_inm: rows.map { |row| row[:input_demo_inm].to_f }.max,
         input_demo_pm: rows.map { |row| row[:input_demo_pm].to_f }.max,
         ffs: rows.map { |row| row[:ffs].to_f }.max,
-        completed: training_targets.any? ? training_form_completed_total : completed_total,
-        pending: [effective_target - completed_total, 0].max,
-        progress: percentage(completed_total, effective_target)
+        completed: training_completion_rows.any? ? full_training_achievement : completed_total,
+        full_training_achievement: full_training_achievement,
+        pending: [effective_target - [completed_total, effective_target].min, 0].max,
+        progress: percentage([completed_total, effective_target].min, effective_target)
       )
     end.sort_by do |row|
       [
@@ -2471,8 +2501,7 @@ class ModulesController < ApplicationController
   def vrp_dashboard_target_totals(rows)
     rows = Array(rows)
     assigned = rows.sum { |row| row[:target].to_f }
-    achieved = rows.sum { |row| row[:completed].to_f }
-    achieved = [achieved, assigned].min
+    achieved = rows.sum { |row| row[:full_training_achievement].nil? ? row[:completed].to_f : row[:full_training_achievement].to_f }
 
     { assigned: assigned, achieved: achieved, pending: [assigned - achieved, 0].max }
   end
@@ -2908,7 +2937,7 @@ class ModulesController < ApplicationController
       setting.blank? || training_main_activity_type?(setting[:main_activity_type])
     end
     completed_ids = if training_targets.any?
-      dashboard_training_form_completed_farmer_ids(training_targets, assigned_ids)
+      dashboard_training_form_all_completed_farmer_ids(training_targets)
     else
       unique_training_farmer_ids(selected_targets.flat_map { |row| vrp_dashboard_completed_farmer_ids_for_target(row) }) & assigned_ids
     end
@@ -3134,7 +3163,7 @@ class ModulesController < ApplicationController
         row[:input_demo_inm].present? ? dashboard_quantity(row[:input_demo_inm]) : "-",
         row[:input_demo_pm].present? ? dashboard_quantity(row[:input_demo_pm]) : "-",
         row[:ffs].present? ? dashboard_quantity(row[:ffs]) : "-",
-        dashboard_quantity(row[:completed]),
+        dashboard_quantity(row[:full_training_achievement].nil? ? row[:completed] : row[:full_training_achievement]),
         dashboard_quantity(row[:pending]),
         row[:progress],
         {
@@ -8117,6 +8146,17 @@ class ModulesController < ApplicationController
     ].map { |value| normalize_dashboard_text(value) }.reject(&:blank?)
 
     (record_values & vrp_values).any?
+  end
+
+  def training_record_has_explicit_vrp_match?(record, vrp)
+    return true unless vrp
+
+    values = %w[jeevika_jankar_id vrp_id select_vrp vrp_name jeevika_jankar_name trainer_contact trainer_name]
+      .filter_map { |key| normalize_dashboard_text(record.data[key]).presence }
+    return false if values.blank?
+
+    labels = [vrp.id, vrp.name, vrp.user_name, vrp.mobile_no].filter_map { |value| normalize_dashboard_text(value).presence }
+    (values & labels).any?
   end
 
   def module_upload_present?(value)
