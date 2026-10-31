@@ -2650,10 +2650,11 @@ class ModulesController < ApplicationController
     completed_farmer_ids = dashboard_training_form_completed_farmer_ids(targets, assigned_farmer_ids)
     return completed_farmer_ids.size.to_f if completed_farmer_ids.any?
 
-    # Legacy forms may have only the saved total and no farmer-id array. A
-    # combined activity form is one training event, so never add the same
-    # farmer total once per activity/topic.
-    records.map { |record| dashboard_numeric(record.data["total_farmer_count"]) }.max.to_f
+    # Legacy forms may have only the saved total and no farmer-id array. Each
+    # training event contributes its own total, so separate submissions add up.
+    # Deduplicating by record first keeps a combined activity form -- one event
+    # listed once per activity/topic -- from being counted more than once.
+    records.uniq(&:id).sum { |record| dashboard_numeric(record.data["total_farmer_count"]) }.to_f
   end
 
   def dashboard_training_form_completed_farmer_ids(targets, assigned_farmer_ids)
