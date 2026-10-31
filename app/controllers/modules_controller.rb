@@ -2684,8 +2684,13 @@ class ModulesController < ApplicationController
 
     @dashboard_training_form_records_by_scope[cache_key] ||= dashboard_training_form_records_for_month(month_name, farmer_ids: assigned_farmer_ids)
       .select do |record|
-        (training_record_selected_farmer_ids(record) & assigned_farmer_ids).any? &&
-          training_record_vrp_scope_matches?(record, vrp)
+        # With no assigned farmer list there is nothing to intersect against, so
+        # the month/VRP scope alone decides. Intersecting an empty list here hid
+        # every training from targets that were mapped without farmers.
+        farmer_scope_ok = assigned_farmer_ids.blank? ||
+          (training_record_selected_farmer_ids(record) & assigned_farmer_ids).any?
+
+        farmer_scope_ok && training_record_vrp_scope_matches?(record, vrp)
       end
       .uniq(&:id)
   end
@@ -15487,13 +15492,20 @@ class ModulesController < ApplicationController
 
   def completed_training_farmer_ids_for(target, farmer_ids)
     farmer_ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
-    return [] if farmer_ids.blank?
     return [] unless model_ready?(:ModuleRecord)
 
     # Target progress is calculated repeatedly while rendering a dashboard.
     # Restrict the candidate records to this target's month and VRP instead of
     # scanning every training form in the system once for every target row.
-    training_records_matching_dashboard_target(target, farmer_ids)
+    records = training_records_matching_dashboard_target(target, farmer_ids)
+
+    # A target mapped without a farmer list still gets credit for the work: the
+    # farmers the Jeevika Jankar actually trained are counted directly. Keeping
+    # the old empty-list shortcut left such targets stuck at zero achievement
+    # even though matching trainings had been submitted.
+    return records.flat_map { |record| training_record_selected_farmer_ids(record) }.uniq if farmer_ids.blank?
+
+    records
       .flat_map { |record| training_record_selected_farmer_ids(record) & farmer_ids }
       .uniq
   end
