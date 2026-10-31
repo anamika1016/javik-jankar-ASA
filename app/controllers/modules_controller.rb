@@ -11281,6 +11281,10 @@ class ModulesController < ApplicationController
     remaining = achievement - rows.sum { |row| row[:number] }
     if remaining.positive? || rows.empty?
       dates = item["timesheet_dates"].to_s.split(",").filter_map { |value| parse_module_date(value.strip) }.select(&date_in_period).uniq
+      attendance_dates = jeevika_bill_training_attendance_by_date(item).keys
+        .filter_map { |value| parse_module_date(value) }
+        .select(&date_in_period)
+      dates = (dates + attendance_dates).uniq.sort
       rows << base.merge(working_date: dates.map { |date| bill_display_date(date) }.presence&.join(", ") || "-", number: dashboard_quantity(remaining))
     end
     rows
