@@ -8,6 +8,7 @@ module Api
         vrps, targets, options = filtered_scope(calculator)
         bills = filtered_bills(calculator, vrps)
         set_filtered_scope(calculator, vrps, targets, bills)
+        dashboard_cards = web_dashboard_cards(calculator, vrps, targets, bills)
 
         months = calculator.send(:dashboard_month_options_for_targets, targets)
         participation_month = selected_month(:participation_month, months, calculator)
@@ -24,7 +25,7 @@ module Api
           user: user_payload,
           filters: applied_filters,
           filter_options: options,
-          cards: card_payload(calculator, vrps, targets, bills),
+          cards: card_payload(calculator, vrps, targets, bills).merge(dashboard_cards),
           farmer_training_participation_status: participation_payload(participation, participation_month, months),
           weekly_activity_target_status: weekly_payload(weekly, weekly_month),
           monthly_target_summary: monthly_summary(targets),
@@ -91,18 +92,70 @@ module Api
       end
 
       def filtered_bills(calculator, vrps)
-        ids = vrps.map { |v| v.id.to_s }
-        filters_active = %i[search activity fcoc fco cluster_incharge month post post_wise_name vrp_id].any? { |key| params[key].present? }
-        records = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process").to_a
-          .select { |record| calculator.send(:jeevika_jankar_bill_record_visible?, record) }
-          .select { |record| ids.include?(record.data["select_vrp"].to_s) || !filters_active }
-        params[:month].present? ? records.select { |record| same?(record.data["bill_month"], params[:month]) } : records
+        ids = vrps.map { |vrp| vrp.id.to_s }.to_set
+        dashboard_filters = %i[search activity main_activity sub_activity fcoc fco cluster_incharge ics month post post_wise_name vrp_id]
+        filters_active = dashboard_filters.any? { |key| params[key].present? }
+        admin = calculator.send(:admin_dashboard_user?)
+        records = calculator.send(:active_module_records_scope, "jeevika-jankar-bill-process").to_a
+        records = records.select { |record| calculator.send(:jeevika_jankar_bill_record_visible?, record) }
+        records.select! { |record| calculator.send(:jeevika_jankar_bill_blocks_duplicate?, record) }
+
+        # Match the web dashboard: scoped users count only visible JJ bills;
+        # admins also retain globally visible bills when no dashboard filter is
+        # active. With filters, the bill must belong to the filtered JJ scope.
+        if filters_active
+          records.select! { |record| ids.include?(record.data["select_vrp"].to_s) }
+        elsif !admin && ids.any?
+          records.select! { |record| ids.include?(record.data["select_vrp"].to_s) }
+        end
+
+        records.select! { |record| same?(record.data["bill_month"], params[:month]) } if params[:month].present? && !same?(params[:month], "All")
+
+        activity = params[:activity].presence
+        main_activity = params[:main_activity].presence
+        sub_activity = params[:sub_activity].presence
+        if activity || main_activity || sub_activity
+          records.select! do |record|
+            calculator.send(:jeevika_bill_detail_rows, record).any? do |item|
+              (activity.blank? || same?(item["main_activity"], activity) || same?(item["activity"], activity)) &&
+                (main_activity.blank? || same?(item["main_activity"], main_activity)) &&
+                (sub_activity.blank? || same?(item["activity"], sub_activity))
+            end
+          end
+        end
+        records
       end
 
       def set_filtered_scope(calculator, vrps, targets, bills)
         calculator.instance_variable_set(:@filtered_vrps, vrps)
         calculator.instance_variable_set(:@filtered_targets, targets)
         calculator.instance_variable_set(:@filtered_bills, bills)
+      end
+
+      # These two groups are rendered by ModulesController#dashboard_cards on
+      # the web dashboard. Keep the API values sourced from that same builder.
+      def web_dashboard_cards(calculator, vrps, targets, bills)
+        fcos = values(vrps, :fcoc)
+        gender_month = params[:month].presence || calculator.send(:default_vrp_dashboard_month, calculator.send(:dashboard_month_options_for_targets, targets), targets)
+        calculator.params = ActionController::Parameters.new(params.to_unsafe_h.merge(month: gender_month))
+        gender_counts = fcos.flat_map do |fco|
+          population = vrps.select do |vrp|
+            calculator.send(:training_fcoc_text_matches?, vrp.fcoc, fco) &&
+              calculator.send(:dashboard_vrp_active_for_requirement?, vrp)
+          end
+          [
+            { title: "#{fco} Male", value: population.count { |vrp| calculator.send(:normalize_dashboard_text, vrp.gender) == "male" } },
+            { title: "#{fco} Female", value: population.count { |vrp| calculator.send(:normalize_dashboard_text, vrp.gender) == "female" } }
+          ]
+        end
+        requirement_counts = fcos.flat_map do |fco|
+          items = calculator.send(:dashboard_jj_requirement_items, fco, vrps, targets)
+          items.map { |item| { title: item[:title], value: item[:value].to_i } }
+        end
+        {
+          gender_count: gender_counts,
+          fco_wise_jj_requirement: requirement_counts
+        }
       end
 
       def selected_month(key, months, calculator)
