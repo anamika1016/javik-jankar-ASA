@@ -11270,6 +11270,11 @@ class ModulesController < ApplicationController
         end
       end
     end
+    # Bill items that share a target each return that target's full set of daily
+    # trainings, so the same day was printed once per item -- eight trainings
+    # became sixty-four invoice lines. Identical lines are the same day's work.
+    rows = rows.uniq
+
     # Nothing was achieved on that line, so it is not worth an invoice row.
     rows.reject { |row| jeevika_bill_worksheet_row_empty?(row) }
   end
