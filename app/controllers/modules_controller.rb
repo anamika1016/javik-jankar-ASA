@@ -96,26 +96,32 @@ class ModulesController < ApplicationController
   # Observation sheet captured on the Jeevika Jankar bill. Labels are stored in
   # English so the existing language switcher can translate them like the rest
   # of the UI; only the option key is persisted.
+  # The keys are what every saved bill stores and what OBSERVATION_SCORE_POINTS
+  # scores, so they are left untouched; only the wording shown on screen moves
+  # to the agreed scale. "no_progress" is the bottom of that scale and now reads
+  # as such.
   JEEVIKA_JANKAR_OBSERVATION_OPTIONS = [
-    { key: "good", label: "Good" },
-    { key: "needs_improvement", label: "Needs Improvement" },
-    { key: "no_progress", label: "No Progress" }
+    { key: "good", label: "Good - meets standard with minor gaps" },
+    { key: "needs_improvement", label: "Needs improvement - clear gaps" },
+    { key: "no_progress", label: "Poor - standard not met" }
   ].freeze
+  # Only the short_label changes here; the stored key stays as it is so every
+  # observation already saved against a bill keeps resolving to its parameter.
   JEEVIKA_JANKAR_OBSERVATION_PARAMETERS = [
     { key: "timing",
-      short_label: "Timing",
+      short_label: "Timely Activity & Reporting",
       label: "Delivery target / training was started and completed at the scheduled time" },
     { key: "farmer_behaviour",
-      short_label: "Farmer Behaviour",
+      short_label: "Farmer Engagement Skill",
       label: "Behaviour with farmers was good and local, simple language was used in question-answer / discussion" },
     { key: "subject_clarity",
-      short_label: "Subject Clarity",
+      short_label: "Module / Subject Knowledge",
       label: "Subject information was explained clearly and correctly as per the given target / topic, and by asking questions / discussing with farmers it was ensured that they understood the main subject" },
     { key: "iec_material",
-      short_label: "IEC Material",
+      short_label: "IEC / Demo Material Usage",
       label: "Required IEC material / poster / flip chart / other material was used effectively as per the given target / topic and, where necessary, farmers were explained through subject related Practical / Field Demonstration" },
     { key: "technology",
-      short_label: "Technology",
+      short_label: "Training (Module) Delivery",
       label: "Status of JJ in operating technology (all APP / Web / Mobile / Scanner / Photo Capture) etc." }
   ].freeze
   DASHBOARD_CARDS = [
@@ -4501,7 +4507,21 @@ class ModulesController < ApplicationController
     target.updated_at || target.created_at || Time.zone.at(0)
   end
 
+  # training_record_target_assignment_matches? compares one target's signature
+  # against every target a training record names, so this is rebuilt O(targets
+  # x mappings) times while a bill list renders - on 271 targets it ran 352,891
+  # times and accounted for most of that screen's Ruby time. The value is a pure
+  # function of the target's own columns, which do not change while a request
+  # renders, so it is memoised per target the same way target_farmer_ids is.
   def dashboard_target_assignment_signature(target)
+    @dashboard_target_assignment_signature_cache ||= {}
+    cache_key = target.respond_to?(:id) && target.id.present? ? target.id : target.object_id
+    return @dashboard_target_assignment_signature_cache[cache_key] if @dashboard_target_assignment_signature_cache.key?(cache_key)
+
+    @dashboard_target_assignment_signature_cache[cache_key] = build_dashboard_target_assignment_signature(target)
+  end
+
+  def build_dashboard_target_assignment_signature(target)
     [
       target.vrp_id,
       target.fco_name.presence || target.fco_id,
@@ -13059,14 +13079,23 @@ class ModulesController < ApplicationController
     training_summary(record)[:month]
   end
 
+  # Matching training records to targets asks this for the same handful of
+  # activity strings over and over - 178,720 times while rendering 271 targets.
+  # The answer depends only on the value and the flag, so it is kept for the
+  # request instead of being split and normalised again each time.
   def training_activity_values(value, normalize: true)
+    @training_activity_values_cache ||= {}
+    cache_key = [value, normalize]
+    return @training_activity_values_cache[cache_key] if @training_activity_values_cache.key?(cache_key)
+
     values = if value.is_a?(Array)
       value
     else
       value.to_s.split(/,\s*(?=\d+\.\s*)|(?<=\))\s+(?=\d+\.\s*)/)
     end
     values = values.map(&:to_s).map(&:strip).reject(&:blank?).uniq
-    normalize ? values.map { |item| normalize_dashboard_text(item) } : values
+    @training_activity_values_cache[cache_key] =
+      normalize ? values.map { |item| normalize_dashboard_text(item) } : values
   end
 
   def best_training_for_target(target, training_rows)
