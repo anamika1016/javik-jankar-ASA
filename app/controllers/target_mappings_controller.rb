@@ -19,15 +19,19 @@ class TargetMappingsController < ApplicationController
     @vrp_target_view = non_admin_vrp_login?
     @admin_mapping_actions = admin_login? && !@list_only_view
     @remove_mapping_actions = !admin_login? && !non_admin_vrp_login? && !@list_only_view
-    @vrps = target_vrps
-    @month_options = module_options("month-master", "month_name")
-    @main_activity_options = module_options("add-activity-group", "main_activity_name", "activity_group_name")
-    @main_activity_type_map = main_activity_type_map
-    @target_sub_activity_map = target_sub_activity_map
-    @block_fco_options = filtered_office_fco_options
-    @block_options_by_fco = @block_fco_options.to_h do |option|
-      fco_id, = parse_location_value(option[:value])
-      [fco_id, office_block_options(option[:value])]
+    # Recent/JJ lists render no entry form. Avoid building its global location
+    # and activity dropdowns for these read-only pages.
+    unless @vrp_target_view || @list_only_view
+      @vrps = target_vrps
+      @month_options = module_options("month-master", "month_name")
+      @main_activity_options = module_options("add-activity-group", "main_activity_name", "activity_group_name")
+      @main_activity_type_map = main_activity_type_map
+      @target_sub_activity_map = target_sub_activity_map
+      @block_fco_options = filtered_office_fco_options
+      @block_options_by_fco = @block_fco_options.to_h do |option|
+        fco_id, = parse_location_value(option[:value])
+        [fco_id, office_block_options(option[:value])]
+      end
     end
     @target_mappings = dashboard_filtered_target_mappings(visible_target_mappings)
       .preload(:vrp_ics_mapping).order(updated_at: :desc).to_a
@@ -39,9 +43,11 @@ class TargetMappingsController < ApplicationController
     # never assigned, so a successfully saved mapping always looked empty.
     @target_mapping_rows = target_mapping_rows(@target_mappings)
     @target_farmers_by_id = {}
-    @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && (@admin_mapping_actions || @remove_mapping_actions)
-    @edit_payload = edit_payload(@edit_target)
-    @sub_activity_options = target_sub_activity_options(@edit_payload[:main_activity_names], @edit_payload[:activity_names])
+    unless @vrp_target_view || @list_only_view
+      @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && (@admin_mapping_actions || @remove_mapping_actions)
+      @edit_payload = edit_payload(@edit_target)
+      @sub_activity_options = target_sub_activity_options(@edit_payload[:main_activity_names], @edit_payload[:activity_names])
+    end
 
     respond_to do |format|
       format.html
@@ -124,7 +130,7 @@ class TargetMappingsController < ApplicationController
 
   def destroy
     visible_target_mappings.find(params[:id]).destroy
-    redirect_to target_mappings_path, notice: admin_login? ? "Target mapping deleted successfully." : "Target mapping removed successfully."
+    redirect_to target_mappings_path, status: :see_other, notice: admin_login? ? "Target mapping deleted successfully." : "Target mapping removed successfully."
   end
 
   def jj_mapped_farmers

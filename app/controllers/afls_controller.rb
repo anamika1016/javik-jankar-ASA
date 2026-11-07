@@ -64,7 +64,7 @@ class AflsController < ApplicationController
     # Come back to the same search, page and filters the row was deleted from.
     return_params = params.permit(:fcoc, :ics, fco_id: []).to_h
       .merge(q: params[:q].presence, page: params[:page].presence)
-    redirect_to afls_path(return_params), notice: "Target mapping record deleted successfully."
+    redirect_to afls_path(return_params), status: :see_other, notice: "Target mapping record deleted successfully."
   end
 
   def bulk_destroy
@@ -74,7 +74,7 @@ class AflsController < ApplicationController
 
     scoped_afls.find_each(&:destroy)
 
-    redirect_to afls_path(q: query.presence), notice: "#{destroyed_count} target mapping record(s) deleted successfully."
+    redirect_to afls_path(q: query.presence), status: :see_other, notice: "#{destroyed_count} target mapping record(s) deleted successfully."
   end
 
   private

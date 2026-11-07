@@ -26,7 +26,7 @@
     <% if controller_path.in?(%w[jj_quizzes jj_quiz_questions]) %>
       <%= render "jj_quizzes/admin_ui_styles" %>
     <% end %>
-    <%= javascript_importmap_tags %>
+    <%= javascript_importmap_tags(controller_name == "sessions" && action_name == "new" ? "login" : "application") %>
   </head>
 
   <body>

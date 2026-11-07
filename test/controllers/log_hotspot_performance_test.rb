@@ -1,6 +1,45 @@
 require "test_helper"
 
 class LogHotspotPerformanceTest < ActiveSupport::TestCase
+  test "bill training candidates are shared across owners without changing per owner farmer fallback" do
+    owners = [build_vrp(81), build_vrp(82)]
+    targets = owners.map do |owner|
+      TargetMapping.new(vrp: owner, month_name: "October", afl_ids: ["991"])
+    end
+    matching = ModuleRecord.create!(module_slug: "training-form", data: {
+      "month" => "October", "jeevika_jankar_id" => owners.first.id.to_s,
+      "selected_farmer_ids" => ["991"], "training_topic" => "Topic", "photo_front_view" => ["x" * 100000] })
+    blocked = ModuleRecord.create!(module_slug: "training-form", data: {
+      "month" => "October", "selected_farmer_ids" => ["991"], "training_topic" => "Blocked" })
+    ModuleRecord.create!(module_slug: TrainingEditApproval::SLUG,
+      data: { "record_id" => blocked.id.to_s, "status" => "Pending" })
+    expected = owners.map { |owner| [calculator.send(:training_summary, matching)] }
+    controller = calculator
+    actual = []
+    queries = capture_queries do
+      targets.each_with_index do |target, i|
+        index = controller.send(:jeevika_jankar_training_index, [target])
+        actual << index[[owners[i].id.to_s, "October", "991"]]
+      end
+    end
+    assert_equal expected, actual
+    assert_equal 1, queries.count { |sql| sql.include?("AS data") && sql.include?("photo_front_view") }
+    candidate = controller.instance_variable_get(:@bill_training_candidates_by_months).values.first.sole
+    refute candidate.data.key?("photo_front_view")
+    empty_target_queries = capture_queries do
+      result = controller.send(:jeevika_jankar_training_index, [])
+      assert_equal({}, result)
+      assert_equal [], result[["missing-owner", "October", "991"]]
+    end
+    assert_empty empty_target_queries
+    empty_queries = capture_queries do
+      result = controller.send(:jeevika_jankar_training_index, [TargetMapping.new(vrp: owners.first, afl_ids: [])])
+      assert_equal({}, result)
+      assert_equal [], result[[owners.first.id.to_s, "October", "991"]]
+    end
+    assert_empty empty_queries
+  end
+
   setup do
     @original_cache = Rails.cache
     Rails.cache = ActiveSupport::Cache::MemoryStore.new

@@ -17,7 +17,7 @@ class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
     assert_equal 1, queries.size
   end
 
-  test "VRP location hierarchy loads all active masters in one payload query plus its revision check" do
+  test "VRP location hierarchy loads all active masters once between its cold revision probes" do
     ModuleRecord.create!(module_slug: "state-master", data: {
       "state_name" => "Batch State", "state_id" => "STATE-1", "unused_large_payload" => "x" * 10_000
     })
@@ -63,10 +63,9 @@ class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
       end
     end
 
-    # The live xmin/count revision detects direct imports and deletes before a
-    # cached payload is reused.  It is intentionally a small aggregate query;
-    # there is still only one full JSON payload read for every master.
-    assert_equal 2, queries.size
+    # A cold read probes the revision before and after its one payload query.
+    # Only stable fills are cached; warm reads still need one revision probe.
+    assert_equal 3, queries.size
     payload_query = queries.find { |sql| sql.include?("jsonb_each") }
     assert payload_query
     assert_includes payload_query, "module_slug"
@@ -276,6 +275,51 @@ class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
       3.times { assert_equal "Unknown", controller.send(:module_record_label, "state-master", "Unknown", "state_name") }
     end
     assert_equal 1, queries.size
+  end
+
+  test "admin detail fetches only the selected JJ and never scans list visibility or approval queues" do
+    target = create_test_vrp("Detail Target", address: "Full detail address")
+    create_test_vrp("Unrelated Detail", agreement_signature_data: "x" * 100_000)
+    controller = VrpsController.new
+    controller.request = ActionDispatch::TestRequest.create
+    controller.params = ActionController::Parameters.new(id: target.id.to_s)
+    controller.define_singleton_method(:current_app_user) { { "user_type" => "admin" } }
+    controller.define_singleton_method(:visible_vrps) { raise "Detail must not load every JJ" }
+    controller.define_singleton_method(:approval_queue) { raise "Admin detail does not need queue visibility" }
+    controller.define_singleton_method(:current_user_can_approve?) { |_| false }
+    controller.define_singleton_method(:approval_history_for) { |_| [] }
+    controller.define_singleton_method(:approval_steps_for) { |_| [] }
+    controller.define_singleton_method(:current_approval_step) { |_| nil }
+    controller.define_singleton_method(:vrp_status_label) { |_| "Active" }
+    instantiated = 0
+    callback = ->(*args) { instantiated += args.last[:record_count] }
+    ActiveSupport::Notifications.subscribed(callback, "instantiation.active_record") { controller.show }
+    assert_equal target.attributes, controller.instance_variable_get(:@vrp).attributes
+    assert_equal 1, instantiated
+  end
+
+  test "detail location labels share one selection scan and empty selections skip catalogues" do
+    row = ModuleRecord.create!(module_slug: "village-master", data: {
+      "village_name" => "Detail Village", "state_name" => "Detail State",
+      "district_name" => "Detail District", "block_name" => "Detail Block"
+    })
+    controller = VrpsController.new
+    reads = []
+    controller.define_singleton_method(:active_records_for_location) do |slug|
+      reads << slug
+      [row]
+    end
+    empty = Vrp.new(village_ids: [], gram_panchayat_ids: [])
+    assert_equal [], controller.send(:vrp_detail_location_records, empty)
+    assert_empty reads
+    vrp = Vrp.new(village_ids: [row.id.to_s], gram_panchayat_ids: [])
+    assert_equal ["Detail State", "Detail District", "Detail Block"], %i[state district block].map { |level|
+      controller.send(:vrp_detail_hierarchy_label, vrp, level)
+    }
+    assert_equal ["village-master"], reads
+    result = controller.send(:vrp_detail_location_records, vrp)
+    result.clear
+    assert_equal [row.id], controller.send(:vrp_detail_location_records, vrp).map(&:id)
   end
 
   def create_test_vrp(name, attributes = {})

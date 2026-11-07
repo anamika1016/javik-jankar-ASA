@@ -1,6 +1,38 @@
 require "test_helper"
 
 class TrainingEditApprovalTest < ActiveSupport::TestCase
+  test "revision cache respects savepoint rollback and does not leak uncommitted approval results" do
+    row = ModuleRecord.create!(module_slug: TrainingEditApproval::SLUG,
+      data: { "record_id" => "rollback-training", "status" => "Pending" })
+    assert_includes TrainingEditApproval.unapproved_record_ids, "rollback-training"
+    ModuleRecord.transaction(requires_new: true) do
+      row.update_columns(data: row.data.merge("status" => "Approved"))
+      refute_includes TrainingEditApproval.unapproved_record_ids, "rollback-training"
+      raise ActiveRecord::Rollback
+    end
+    assert_includes TrainingEditApproval.unapproved_record_ids, "rollback-training"
+  end
+
+  test "revision cache skips snapshot JSON reads and invalidates direct updates in the same transaction" do
+    row = ModuleRecord.create!(module_slug: TrainingEditApproval::SLUG,
+      data: { "record_id" => "cache-training", "status" => "Pending", "before" => { "photo" => "x" * 100000 } })
+    assert_includes TrainingEditApproval.unapproved_record_ids, "cache-training"
+    queries = []
+    subscriber = ->(*args) { queries << args.last[:sql] if args.last[:sql].start_with?("SELECT") }
+    ActiveSupport::Notifications.subscribed(subscriber, "sql.active_record") do
+      result = TrainingEditApproval.unapproved_record_ids
+      result.clear
+      assert_includes TrainingEditApproval.unapproved_record_ids, "cache-training"
+    end
+    refute queries.any? { |sql| sql.include?("DISTINCT ON") }
+    row.update_columns(data: row.data.merge("status" => "Approved"))
+    refute_includes TrainingEditApproval.unapproved_record_ids, "cache-training"
+    row.update_columns(data: row.data.merge("status" => "Rejected"))
+    assert_includes TrainingEditApproval.unapproved_record_ids, "cache-training"
+    row.destroy!
+    refute_includes TrainingEditApproval.unapproved_record_ids, "cache-training"
+  end
+
   test "unapproved record IDs use only each record's newest revision" do
     old_revision = ModuleRecord.create!(module_slug: TrainingEditApproval::SLUG, data: {
       "record_id" => "training-1", "status" => "Approved"

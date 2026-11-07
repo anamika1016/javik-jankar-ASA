@@ -2,7 +2,7 @@ class VrpsController < ApplicationController
   helper_method :blank_display, :module_record_label, :module_record_labels, :vrp_detail_hierarchy_label,
                 :vrp_detail_location_label, :vrp_type_labels,
                 :approval_step_closed?, :closing_approval_history, :mapped_office_name?,
-                :admin_user?
+                :admin_user?, :vrp_location_browser_attribute
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
   LOCATION_HIERARCHY_MODULE_SLUGS = %w[
@@ -14,7 +14,8 @@ class VrpsController < ApplicationController
   # query from every VRP new/edit request.  Its key contains a database row
   # revision, so creates, edits, imports and deletes still take effect on the
   # very next request.
-  VRP_LOCATION_MEMORY_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 24.megabytes)
+  # Retain the escaped catalogue alongside projected rows and label lists.
+  VRP_LOCATION_MEMORY_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 64.megabytes)
   LOCATION_OPTION_DATA_KEYS = %w[
     deleted is_deleted discarded status
     state_name state state_code state_id
@@ -138,7 +139,7 @@ class VrpsController < ApplicationController
     end
 
     if @vrp.update(vrp_update_params)
-      redirect_to vrps_path, notice: "Jeevika JankaR updated successfully."
+      redirect_to vrps_path, status: :see_other, notice: "Jeevika JankaR updated successfully."
     else
       @vrp.build_vrp_profile unless @vrp.vrp_profile
       render :edit, status: :unprocessable_entity
@@ -148,8 +149,14 @@ class VrpsController < ApplicationController
   def show
     # approval_queue is column-narrowed, so the match is reloaded in full before
     # the detail page reads bank, address and attachment fields off it.
-    match = (visible_vrps.to_a + approval_queue).uniq.find { |vrp| vrp.id == params[:id].to_i }
-    @vrp = match && Vrp.find_by(id: match.id)
+    if current_app_user.blank? || admin_user?
+      # Admin visibility already includes every JJ. Fetch just this detail
+      # instead of instantiating the full list and scanning approval queues.
+      @vrp = Vrp.find_by(id: params[:id].to_i)
+    else
+      match = (visible_vrps.to_a + approval_queue).uniq.find { |vrp| vrp.id == params[:id].to_i }
+      @vrp = match && Vrp.find_by(id: match.id)
+    end
     if @vrp
       @can_approve = current_user_can_approve?(@vrp)
       @approval_history = approval_history_for(@vrp)
@@ -179,7 +186,7 @@ class VrpsController < ApplicationController
     @vrp.update_columns(is_deleted: true, updated_at: Time.current)
     respond_to do |format|
       format.json { render json: { ok: true } }
-      format.any { redirect_to vrps_path, notice: "Jeevika JankaR deleted successfully." }
+      format.any { redirect_to vrps_path, status: :see_other, notice: "Jeevika JankaR deleted successfully." }
     end
   end
 
@@ -187,13 +194,13 @@ class VrpsController < ApplicationController
     @vrp = find_manageable_vrp(params[:id])
 
     unless @vrp
-      redirect_to vrps_path, alert: "Jeevika JankaR record not found."
+      redirect_to vrps_path, status: :see_other, alert: "Jeevika JankaR record not found."
       return
     end
 
     active = ActiveModel::Type::Boolean.new.cast(params[:active])
     update_vrp_active_status!(@vrp, active)
-    redirect_to vrps_path, notice: "Jeevika JankaR marked #{active ? "active" : "inactive"}."
+    redirect_to vrps_path, status: :see_other, notice: "Jeevika JankaR marked #{active ? "active" : "inactive"}."
   end
 
   def bulk_set_active
@@ -227,7 +234,7 @@ class VrpsController < ApplicationController
     unless vrp
       respond_to do |format|
         format.json { render json: { message: "Jeevika Jankar record not found." }, status: :not_found }
-        format.html { redirect_to vrps_path, alert: "Jeevika JankaR record not found." }
+        format.html { redirect_to vrps_path, status: :see_other, alert: "Jeevika JankaR record not found." }
       end
       return
     end
@@ -238,7 +245,7 @@ class VrpsController < ApplicationController
     unless first_step
       respond_to do |format|
         format.json { render json: { message: "Approval channel is not configured for your role." }, status: :unprocessable_entity }
-        format.html { redirect_to vrps_path, alert: "Approval channel is not configured for your role." }
+        format.html { redirect_to vrps_path, status: :see_other, alert: "Approval channel is not configured for your role." }
       end
       return
     end
@@ -246,7 +253,7 @@ class VrpsController < ApplicationController
     if approval_sent?(vrp) || [31, 32, 55].include?(vrp.status.to_i)
       respond_to do |format|
         format.json { render json: { message: "This Jeevika Jankar is already in approval process." }, status: :unprocessable_entity }
-        format.html { redirect_to vrps_path, alert: "This Jeevika JankaR is already in approval process." }
+        format.html { redirect_to vrps_path, status: :see_other, alert: "This Jeevika JankaR is already in approval process." }
       end
       return
     end
@@ -264,7 +271,7 @@ class VrpsController < ApplicationController
           status_class: vrp_status_class(vrp)
         }
       end
-      format.html { redirect_to vrps_path, notice: message }
+      format.html { redirect_to vrps_path, status: :see_other, notice: message }
     end
   end
 
@@ -1405,7 +1412,7 @@ class VrpsController < ApplicationController
     @state_options = location_state_options
     @district_options = editing_vrp ? location_district_options : []
     @block_options = editing_vrp ? location_block_options : []
-    @location_hierarchy_mappings = location_hierarchy_mappings
+    # The view builds the hierarchy only on an escaped-attribute cache miss.
     @gram_panchayat_options = editing_vrp ? location_gram_panchayat_options : []
     @village_options = editing_vrp ? location_village_options : []
 
@@ -2078,17 +2085,16 @@ class VrpsController < ApplicationController
     return if missing_slugs.empty?
 
     missing_slugs.each { |slug| @vrp_form_records_by_slug[slug] = [] }
-    cache_key = ["vrp/location-catalogue-v1", missing_slugs, vrp_location_catalogue_revision]
-    records = DashboardCacheFill.synchronize(cache_key) do
-      vrp_location_catalogue_cache.fetch(cache_key, expires_in: 1.hour) do
-        ModuleRecord.where(module_slug: missing_slugs)
-          .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
-          .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
-          .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
-          .where("COALESCE(BTRIM(data::jsonb ->> 'status'), '') = '' OR LOWER(BTRIM(data::jsonb ->> 'status')) = 'active'")
-          .order(created_at: :desc)
-          .pluck(:module_slug, :id, Arel.sql(location_option_data_projection))
-      end
+    cache_key = ["vrp/location-catalogue-v2", missing_slugs, vrp_location_catalogue_revision]
+    records = CatalogueReadCache.fetch(vrp_location_catalogue_cache, cache_key,
+      version: vrp_location_catalogue_revision, current_version: -> { read_vrp_location_catalogue_revision }) do
+      ModuleRecord.where(module_slug: missing_slugs)
+        .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
+        .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
+        .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
+        .where("COALESCE(BTRIM(data::jsonb ->> 'status'), '') = '' OR LOWER(BTRIM(data::jsonb ->> 'status')) = 'active'")
+        .order(created_at: :desc)
+        .pluck(:module_slug, :id, Arel.sql(location_option_data_projection))
     end
 
     records.each do |module_slug, id, data|
@@ -2105,18 +2111,26 @@ class VrpsController < ApplicationController
     end
   end
 
+  def vrp_location_browser_attribute
+    return "[]".html_safe unless model_ready?(:ModuleRecord)
+
+    key = ["vrp/location-browser-attribute-v2", vrp_location_catalogue_revision]
+    escaped = CatalogueReadCache.fetch(vrp_location_catalogue_cache, key,
+      version: vrp_location_catalogue_revision, current_version: -> { read_vrp_location_catalogue_revision }) do
+      String.new(ERB::Util.html_escape(ERB::Util.json_escape(location_hierarchy_mappings.to_json)))
+    end
+    escaped.html_safe
+  end
+
   def vrp_location_catalogue_revision
     return @vrp_location_catalogue_revision if defined?(@vrp_location_catalogue_revision)
 
-    rows = ModuleRecord.where(module_slug: LOCATION_HIERARCHY_MODULE_SLUGS)
-      .group(:module_slug).order(:module_slug)
-      .pluck(
-        :module_slug,
-        Arel.sql("COUNT(*)"),
-        Arel.sql("COALESCE(SUM((xmin::text)::bigint), 0)"),
-        Arel.sql("COALESCE(MAX((xmin::text)::bigint), 0)")
-      )
-    @vrp_location_catalogue_revision = Digest::SHA256.hexdigest(rows.to_json)
+    @vrp_location_catalogue_revision = read_vrp_location_catalogue_revision
+  end
+
+  def read_vrp_location_catalogue_revision
+    ModuleRecord.where(module_slug: LOCATION_HIERARCHY_MODULE_SLUGS)
+      .pick(Arel.sql("MD5(COALESCE(STRING_AGG(id::text || ':' || xmin::text || ':' || ctid::text, ',' ORDER BY id), ''))"))
   end
 
   def vrp_location_catalogue_cache
@@ -2181,6 +2195,14 @@ class VrpsController < ApplicationController
   end
 
   def distinct_lg_directory_values(*value_keys, **filters)
+    key = ["vrp/location-labels-v2", vrp_location_catalogue_revision, value_keys, filters]
+    CatalogueReadCache.fetch(vrp_location_catalogue_cache, key,
+      version: vrp_location_catalogue_revision, current_version: -> { read_vrp_location_catalogue_revision }) do
+      uncached_distinct_lg_directory_values(*value_keys, **filters)
+    end.deep_dup
+  end
+
+  def uncached_distinct_lg_directory_values(*value_keys, **filters)
     master_slug = case value_keys.first
     when "state_name" then "state-master"
     when "district_name" then "district-master"
@@ -2456,14 +2478,20 @@ class VrpsController < ApplicationController
     village_ids = Array(vrp.village_ids).reject(&:blank?)
     gram_panchayat_ids = Array(vrp.gram_panchayat_ids).reject(&:blank?)
 
-    village_records = active_records_for_location("village-master").select do |record|
-      vrp_detail_location_record_matches?(record, village_ids, "village-master", "village_name")
-    end
-    gram_panchayat_records = active_records_for_location("gram-panchayat-master").select do |record|
-      vrp_detail_location_record_matches?(record, gram_panchayat_ids, "gram-panchayat-master", "gram_panchayat_name")
-    end
+    return [] if village_ids.empty? && gram_panchayat_ids.empty?
 
-    village_records + gram_panchayat_records
+    @detail_location_records_by_selection ||= {}
+    key = [village_ids, gram_panchayat_ids]
+    records = @detail_location_records_by_selection[key] ||= begin
+      village_records = village_ids.empty? ? [] : active_records_for_location("village-master").select do |record|
+        vrp_detail_location_record_matches?(record, village_ids, "village-master", "village_name")
+      end
+      gram_panchayat_records = gram_panchayat_ids.empty? ? [] : active_records_for_location("gram-panchayat-master").select do |record|
+        vrp_detail_location_record_matches?(record, gram_panchayat_ids, "gram-panchayat-master", "gram_panchayat_name")
+      end
+      village_records + gram_panchayat_records
+    end
+    records.dup
   end
 
   def vrp_detail_location_record_matches?(record, selected_values, module_slug, field_key)

@@ -20,7 +20,7 @@ class MonthlyTrainingReadScalingTest < ActiveSupport::TestCase
     assert_includes result.map(&:id), untouched.id
     assert_includes result.map(&:id), records[1].id
     refute_includes result.map(&:id), records[0].id
-    assert_equal records[1].data, result.find { |row| row.id == records[1].id }.data
+    assert_equal records[1].data.except(*TrainingEditApproval::IMAGE_KEYS), result.find { |row| row.id == records[1].id }.data
   end
 
   test "status filtering retains Ruby normalization and JSON value types" do
@@ -51,8 +51,8 @@ class MonthlyTrainingReadScalingTest < ActiveSupport::TestCase
       end
     end
     assert_equal 2, instantiated
-    assert_equal 2, queries.size
-    assert_includes queries.first, "DISTINCT ON"
+    assert_equal 3, queries.size
+    assert queries.any? { |sql| sql.include?("DISTINCT ON") }
     assert controller.instance_variable_defined?(:@unapproved_training_record_ids)
   end
 
@@ -102,6 +102,8 @@ class MonthlyTrainingReadScalingTest < ActiveSupport::TestCase
     scope = scope.where("LOWER(BTRIM(data::jsonb ->> 'month')) = ?", normalized) if normalized.present?
     expected = scope.to_a.select { |record| original.send(:training_record_countable?, record) }
     actual = ModulesController.new.send(:dashboard_training_form_records_by_month, normalized)
+    omitted = (TrainingEditApproval::IMAGE_KEYS + %w[attachment_upload field_photo farmer_details farmers]).uniq
+    expected.each { |row| row.data = row.data.except(*omitted) }
     assert_equal expected.map(&:attributes), actual.map(&:attributes)
   end
 end

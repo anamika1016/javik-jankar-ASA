@@ -1,3 +1,5 @@
+import { initPasswordToggles } from "password_toggles";
+
 const farmerIdentityMeta = (farmer) => [["Village", farmer.village_name || farmer.village], ["Father", farmer.father_name], ["Tracenet", farmer.tracenet_no]]
   .map(([label, raw]) => {
     const value = String(raw ?? "").trim();
@@ -133,6 +135,385 @@ const initAflFarmerMapping = () => {
   });
 };
 
+// Bind before deferred form/table setup, including after Turbo restores a page.
+document.addEventListener("change", (event) => {
+  const vrp = event.target.matches?.("[data-vrp-select-all]");
+  if (!vrp && !event.target.matches?.("[data-module-select-all]")) return;
+  document.querySelectorAll(vrp ? "[data-vrp-row-select]" : "[data-module-row-select]").forEach((checkbox) => {
+    checkbox.checked = event.target.checked;
+  });
+});
+
+document.addEventListener("click", (event) => {
+  const button = event.target.closest?.("[data-module-edit-selected], [data-vrp-edit-selected]");
+  if (!button) return;
+  event.preventDefault();
+  const vrp = button.matches?.("[data-vrp-edit-selected]");
+  const selected = Array.from(document.querySelectorAll(vrp ? "[data-vrp-row-select]:checked" : "[data-module-row-select]:checked"));
+  if (selected.length !== 1) {
+    window.alert(vrp ? replaceVrpUiText("Please select one VRP only") : "Please select one record only");
+    return;
+  }
+  window.location.href = vrp ? `/vrps/${selected[0].value}/edit` : selected[0].value;
+});
+
+// Bind primary list controls before deferred form and catalogue setup.
+// Turbo restores cloned bodies, so keep binding state off DOM attributes.
+const listActionBodies = new WeakSet();
+const initListActions = () => {
+  if (listActionBodies.has(document.body)) return;
+  listActionBodies.add(document.body);
+  const csrfToken = document.querySelector("meta[name='csrf-token']")?.content;
+  // A successful mutation is followed by one explicit reload. Do not fetch
+  // and render its redirect destination in the background first.
+  const deleteSelected = async (paths, message) => {
+    if (paths.length === 0) {
+      window.alert("Please select at least one record");
+      return;
+    }
+
+    if (!window.confirm(message)) return;
+
+    const responses = await Promise.all(paths.map((path) => {
+      return fetch(path, {
+        method: "DELETE",
+        redirect: "manual",
+        headers: {
+          "X-CSRF-Token": csrfToken,
+          "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml"
+        }
+      });
+    }));
+
+    if (responses.some((response) => !response.ok && response.type !== "opaqueredirect")) {
+      window.alert("Some selected record(s) could not be deleted.");
+      return;
+    }
+
+    window.location.reload();
+  };
+
+  const vrpDeleteButton = document.querySelector("[data-vrp-delete-selected]");
+  if (vrpDeleteButton) {
+    vrpDeleteButton.addEventListener("click", () => {
+      const paths = Array.from(document.querySelectorAll("[data-vrp-row-select]:checked"))
+        .map((checkbox) => `/vrps/${checkbox.value}`);
+
+      deleteSelected(paths, replaceVrpUiText("Delete selected VRP record(s)?"));
+    });
+  }
+
+  const vrpSendButton = document.querySelector("[data-vrp-send-selected]");
+  if (vrpSendButton) {
+    vrpSendButton.addEventListener("click", async () => {
+      const selected = Array.from(document.querySelectorAll("[data-vrp-row-select]:checked"));
+
+      if (selected.length === 0) {
+        window.alert(replaceVrpUiText("Please select at least one VRP"));
+        return;
+      }
+
+      const responses = await Promise.all(selected.map((checkbox) => {
+        return fetch(`/vrps/${checkbox.value}/send_for_approval`, {
+          method: "PATCH",
+          redirect: "manual",
+          headers: {
+            "X-CSRF-Token": csrfToken,
+            "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml"
+          }
+        });
+      }));
+
+      if (responses.some((response) => !response.ok && response.type !== "opaqueredirect")) {
+        window.alert(replaceVrpUiText("Some selected VRP record(s) could not be sent for approval."));
+        return;
+      }
+
+      window.location.reload();
+    });
+  }
+
+  document.querySelectorAll("[data-vrp-active-selected]").forEach((button) => {
+    if (button.dataset.vrpActiveBound === "true") return;
+
+    button.dataset.vrpActiveBound = "true";
+    button.addEventListener("click", async () => {
+      const selected = Array.from(document.querySelectorAll("[data-vrp-row-select]:checked"));
+      const active = button.dataset.vrpActiveSelected;
+
+      if (selected.length === 0) {
+        window.alert(replaceVrpUiText("Please select at least one VRP"));
+        return;
+      }
+
+      const response = await fetch("/vrps/bulk_set_active", {
+        method: "PATCH",
+        headers: {
+          "X-CSRF-Token": csrfToken,
+          "Accept": "application/json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          ids: selected.map((checkbox) => checkbox.value),
+          active: active
+        })
+      });
+
+      if (!response.ok) {
+        window.alert(replaceVrpUiText("Some selected VRP record(s) could not be updated."));
+        return;
+      }
+
+      window.location.reload();
+    });
+  });
+
+  const aflListTable = document.getElementById("afl_list");
+  if (aflListTable) {
+    const aflSelectAll = aflListTable.querySelector("[data-afl-select-all]");
+    const aflDeleteButton = document.querySelector("[data-afl-delete-selected]");
+    const aflQueryInput = document.querySelector("[data-table-search='afl_list']");
+    const aflRows = () => Array.from(aflListTable.querySelectorAll("[data-afl-row-select]"));
+    const aflSelectAllKey = () => `afl-list-select-all:${(aflQueryInput?.value || "").trim().toLowerCase()}`;
+    const restoreAflSelection = () => {
+      if (!aflSelectAll) return;
+
+      const selectAllEnabled = sessionStorage.getItem(aflSelectAllKey()) === "1";
+      aflSelectAll.checked = selectAllEnabled;
+      aflSelectAll.indeterminate = false;
+      aflRows().forEach((checkbox) => {
+        checkbox.checked = selectAllEnabled;
+      });
+    };
+    const clearAflSelectAll = () => {
+      sessionStorage.removeItem(aflSelectAllKey());
+
+      if (!aflSelectAll) return;
+
+      aflSelectAll.checked = false;
+      aflSelectAll.indeterminate = false;
+    };
+
+    restoreAflSelection();
+
+    aflSelectAll?.addEventListener("change", () => {
+      if (aflSelectAll.checked) {
+        sessionStorage.setItem(aflSelectAllKey(), "1");
+      } else {
+        clearAflSelectAll();
+      }
+
+      aflRows().forEach((checkbox) => {
+        checkbox.checked = aflSelectAll.checked;
+      });
+    });
+
+    aflRows().forEach((checkbox) => {
+      checkbox.addEventListener("change", () => {
+        if (!checkbox.checked) {
+          clearAflSelectAll();
+          return;
+        }
+
+        const rows = aflRows();
+        const checkedCount = rows.filter((row) => row.checked).length;
+        if (rows.length > 0 && checkedCount === rows.length) {
+          sessionStorage.setItem(aflSelectAllKey(), "1");
+          aflSelectAll.checked = true;
+          aflSelectAll.indeterminate = false;
+        }
+      });
+    });
+
+    aflDeleteButton?.addEventListener("click", async () => {
+      const bulkSelectAll = sessionStorage.getItem(aflSelectAllKey()) === "1";
+
+      if (bulkSelectAll) {
+        if (!window.confirm("Delete all selected AFL records across every page?")) return;
+
+        const url = new URL(aflDeleteButton.dataset.aflBulkDestroyUrl, window.location.origin);
+        const query = aflQueryInput?.value?.trim();
+        if (query) url.searchParams.set("q", query);
+
+        const response = await fetch(url, {
+          method: "DELETE",
+          redirect: "manual",
+          headers: {
+            "X-CSRF-Token": csrfToken,
+            "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml"
+          }
+        });
+
+        if (!(response.ok || response.type === "opaqueredirect")) {
+          window.alert("Some selected record(s) could not be deleted.");
+          return;
+        }
+
+        sessionStorage.removeItem(aflSelectAllKey());
+        window.location.reload();
+        return;
+      }
+
+      const paths = aflRows()
+        .filter((checkbox) => checkbox.checked)
+        .map((checkbox) => checkbox.value)
+        .map((path) => path.replace(/\/edit$/, ""));
+
+      deleteSelected(paths, "Delete selected record(s)?");
+    });
+  }
+
+  document.querySelectorAll("[data-access-control-row]").forEach((row) => {
+    const menuCheckbox = row.querySelector("[data-access-menu-checkbox]");
+    const submenuCheckboxes = Array.from(row.querySelectorAll("[data-access-submenu-checkbox]"));
+    if (!menuCheckbox || submenuCheckboxes.length === 0) return;
+
+    const syncMenuCheckbox = () => {
+      const checkedCount = submenuCheckboxes.filter((checkbox) => checkbox.checked).length;
+      menuCheckbox.checked = checkedCount === submenuCheckboxes.length;
+      menuCheckbox.indeterminate = checkedCount > 0 && checkedCount < submenuCheckboxes.length;
+    };
+
+    menuCheckbox.addEventListener("change", () => {
+      submenuCheckboxes.forEach((checkbox) => {
+        checkbox.checked = menuCheckbox.checked;
+      });
+      menuCheckbox.indeterminate = false;
+    });
+
+    submenuCheckboxes.forEach((checkbox) => {
+      checkbox.addEventListener("change", syncMenuCheckbox);
+    });
+
+    syncMenuCheckbox();
+  });
+
+  const moduleRowPaths = (checkbox) => {
+    if (!checkbox.dataset.moduleRowPaths) return [checkbox.value];
+
+    try {
+      const paths = JSON.parse(checkbox.dataset.moduleRowPaths);
+      return Array.isArray(paths) && paths.length ? paths : [checkbox.value];
+    } catch (_error) {
+      return [checkbox.value];
+    }
+  };
+
+  const selectedBillRows = () => Array.from(document.querySelectorAll("[data-module-row-select]:checked"))
+    .filter((checkbox) => checkbox.dataset.billSendPath || checkbox.dataset.billDeletePath);
+
+  // Preserve the redirect flash for the visible reload and avoid a second
+  // bill-list render (or replaying PATCH against the redirect destination).
+  const patchBillRows = async (paths, emptyMessage) => {
+    if (!paths.length) {
+      window.alert(emptyMessage);
+      return;
+    }
+
+    const responses = await Promise.all(paths.map((path) => fetch(path, {
+      method: "PATCH",
+      redirect: "manual",
+      credentials: "same-origin",
+      headers: {
+        "X-CSRF-Token": csrfToken,
+        "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml"
+      }
+    })));
+
+    if (responses.some((response) => !(response.ok || response.type === "opaqueredirect"))) {
+      window.alert("Some selected bill(s) could not be updated.");
+      return;
+    }
+
+    window.location.reload();
+  };
+
+  document.querySelector("[data-bill-send-selected]")?.addEventListener("click", () => {
+    const paths = selectedBillRows().map((checkbox) => checkbox.dataset.billSendPath).filter(Boolean);
+    patchBillRows(paths, "Please select at least one bill");
+  });
+
+  document.querySelectorAll("[data-bill-state-selected]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const state = button.dataset.billStateSelected;
+      const paths = selectedBillRows()
+        .map((checkbox) => state === "Inactive" ? checkbox.dataset.billInactivePath : checkbox.dataset.billActivePath)
+        .filter(Boolean);
+      patchBillRows(paths, "Please select at least one bill");
+    });
+  });
+
+  document.querySelector("[data-bill-delete-selected]")?.addEventListener("click", () => {
+    const paths = selectedBillRows().map((checkbox) => checkbox.dataset.billDeletePath).filter(Boolean);
+    deleteSelected(paths, "Delete selected bill(s)?");
+  });
+
+  document.querySelectorAll("[data-module-status-selected]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const selected = Array.from(document.querySelectorAll("[data-module-row-select]:checked"));
+      const status = button.dataset.moduleStatusSelected;
+
+      if (selected.length === 0) {
+        window.alert("Please select at least one record");
+        return;
+      }
+
+      const paths = selected.flatMap((checkbox) => moduleRowPaths(checkbox));
+      const responses = await Promise.all(paths.map((selectedPath) => {
+        const path = `${selectedPath.replace(/\/edit$/, "/set_status")}?status=${encodeURIComponent(status)}`;
+        return fetch(path, {
+          method: "PATCH",
+          redirect: "manual",
+          headers: {
+            "X-CSRF-Token": csrfToken,
+            "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml"
+          }
+        });
+      }));
+
+      if (responses.some((response) => !response.ok && response.type !== "opaqueredirect")) {
+        window.alert("Some selected record(s) could not be updated.");
+        return;
+      }
+
+      window.location.reload();
+    });
+  });
+
+  document.querySelectorAll("[data-user-status-selected]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const selected = Array.from(document.querySelectorAll("[data-module-row-select]:checked"));
+      const status = button.dataset.userStatusSelected;
+
+      if (selected.length === 0) {
+        window.alert("Please select at least one user");
+        return;
+      }
+
+      const responses = await Promise.all(selected.map((checkbox) => {
+        const path = `${checkbox.value.replace(/\/edit$/, "/set_status")}?status=${encodeURIComponent(status)}`;
+        return fetch(path, {
+          method: "PATCH",
+          redirect: "manual",
+          headers: {
+            "X-CSRF-Token": csrfToken,
+            "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml"
+          }
+        });
+      }));
+
+      if (responses.some((response) => !response.ok && response.type !== "opaqueredirect")) {
+        window.alert("Some selected user(s) could not be updated.");
+        return;
+      }
+
+      window.location.reload();
+    });
+  });
+
+  // End list action bindings.
+};
+
 const initFastNavigation = () => {
   const path = window.location.pathname;
   document.querySelectorAll(".side-nav a[href]").forEach((link) => {
@@ -188,23 +569,6 @@ const initFastNavigation = () => {
   });
 };
 
-const initPasswordToggles = () => {
-  document.querySelectorAll("[data-password-toggle]").forEach((button) => {
-    if (button.dataset.passwordToggleBound === "true") return;
-
-    button.dataset.passwordToggleBound = "true";
-    button.addEventListener("click", () => {
-      const input = button.closest(".password-field, .login-password-field")?.querySelector("[data-password-toggle-input]");
-      if (!input) return;
-
-      const showPassword = input.type === "password";
-      input.type = showPassword ? "text" : "password";
-      button.setAttribute("aria-label", showPassword ? "Hide password" : "Show password");
-      button.title = showPassword ? "Hide password" : "Show password";
-      button.classList.toggle("is-visible", showPassword);
-    });
-  });
-};
 
 const showClipboardButtonStatus = (button, message) => {
   const originalLabel = button.dataset.originalLabel || button.textContent.trim();
@@ -552,29 +916,6 @@ function initDeferredLayoutPage() {
     });
   });
 
-  const selectAll = document.querySelector("[data-vrp-select-all]");
-  if (selectAll) {
-    selectAll.addEventListener("change", () => {
-      document.querySelectorAll("[data-vrp-row-select]").forEach((checkbox) => {
-        checkbox.checked = selectAll.checked;
-      });
-    });
-  }
-
-  const editButton = document.querySelector("[data-vrp-edit-selected]");
-  if (editButton) {
-    editButton.addEventListener("click", () => {
-      const selected = Array.from(document.querySelectorAll("[data-vrp-row-select]:checked"));
-
-      if (selected.length !== 1) {
-        window.alert(replaceVrpUiText("Please select one VRP only"));
-        return;
-      }
-
-      window.location.href = `/vrps/${selected[0].value}/edit`;
-    });
-  }
-
   const csrfToken = document.querySelector("meta[name='csrf-token']")?.content;
 
   document.querySelectorAll("[data-dashboard-training-filter-select]").forEach((select) => {
@@ -831,361 +1172,6 @@ function initDeferredLayoutPage() {
     document.body.appendChild(form);
     form.submit();
   };
-
-  const deleteSelected = async (paths, message) => {
-    if (paths.length === 0) {
-      window.alert("Please select at least one record");
-      return;
-    }
-
-    if (!window.confirm(message)) return;
-
-    const responses = await Promise.all(paths.map((path) => {
-      return fetch(path, {
-        method: "DELETE",
-        headers: {
-          "X-CSRF-Token": csrfToken,
-          "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml"
-        }
-      });
-    }));
-
-    if (responses.some((response) => !response.ok)) {
-      window.alert("Some selected record(s) could not be deleted.");
-      return;
-    }
-
-    window.location.reload();
-  };
-
-  const vrpDeleteButton = document.querySelector("[data-vrp-delete-selected]");
-  if (vrpDeleteButton) {
-    vrpDeleteButton.addEventListener("click", () => {
-      const paths = Array.from(document.querySelectorAll("[data-vrp-row-select]:checked"))
-        .map((checkbox) => `/vrps/${checkbox.value}`);
-
-      deleteSelected(paths, replaceVrpUiText("Delete selected VRP record(s)?"));
-    });
-  }
-
-  const vrpSendButton = document.querySelector("[data-vrp-send-selected]");
-  if (vrpSendButton) {
-    vrpSendButton.addEventListener("click", async () => {
-      const selected = Array.from(document.querySelectorAll("[data-vrp-row-select]:checked"));
-
-      if (selected.length === 0) {
-        window.alert(replaceVrpUiText("Please select at least one VRP"));
-        return;
-      }
-
-      const responses = await Promise.all(selected.map((checkbox) => {
-        return fetch(`/vrps/${checkbox.value}/send_for_approval`, {
-          method: "PATCH",
-          headers: {
-            "X-CSRF-Token": csrfToken,
-            "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml"
-          }
-        });
-      }));
-
-      if (responses.some((response) => !response.ok)) {
-        window.alert(replaceVrpUiText("Some selected VRP record(s) could not be sent for approval."));
-        return;
-      }
-
-      window.location.reload();
-    });
-  }
-
-  document.querySelectorAll("[data-vrp-active-selected]").forEach((button) => {
-    if (button.dataset.vrpActiveBound === "true") return;
-
-    button.dataset.vrpActiveBound = "true";
-    button.addEventListener("click", async () => {
-      const selected = Array.from(document.querySelectorAll("[data-vrp-row-select]:checked"));
-      const active = button.dataset.vrpActiveSelected;
-
-      if (selected.length === 0) {
-        window.alert(replaceVrpUiText("Please select at least one VRP"));
-        return;
-      }
-
-      const response = await fetch("/vrps/bulk_set_active", {
-        method: "PATCH",
-        headers: {
-          "X-CSRF-Token": csrfToken,
-          "Accept": "application/json",
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          ids: selected.map((checkbox) => checkbox.value),
-          active: active
-        })
-      });
-
-      if (!response.ok) {
-        window.alert(replaceVrpUiText("Some selected VRP record(s) could not be updated."));
-        return;
-      }
-
-      window.location.reload();
-    });
-  });
-
-  const moduleSelectAll = document.querySelector("[data-module-select-all]");
-  if (moduleSelectAll) {
-    moduleSelectAll.addEventListener("change", () => {
-      document.querySelectorAll("[data-module-row-select]").forEach((checkbox) => {
-        checkbox.checked = moduleSelectAll.checked;
-      });
-    });
-  }
-
-  const aflListTable = document.getElementById("afl_list");
-  if (aflListTable) {
-    const aflSelectAll = aflListTable.querySelector("[data-afl-select-all]");
-    const aflDeleteButton = document.querySelector("[data-afl-delete-selected]");
-    const aflQueryInput = document.querySelector("[data-table-search='afl_list']");
-    const aflRows = () => Array.from(aflListTable.querySelectorAll("[data-afl-row-select]"));
-    const aflSelectAllKey = () => `afl-list-select-all:${(aflQueryInput?.value || "").trim().toLowerCase()}`;
-    const restoreAflSelection = () => {
-      if (!aflSelectAll) return;
-
-      const selectAllEnabled = sessionStorage.getItem(aflSelectAllKey()) === "1";
-      aflSelectAll.checked = selectAllEnabled;
-      aflSelectAll.indeterminate = false;
-      aflRows().forEach((checkbox) => {
-        checkbox.checked = selectAllEnabled;
-      });
-    };
-    const clearAflSelectAll = () => {
-      sessionStorage.removeItem(aflSelectAllKey());
-
-      if (!aflSelectAll) return;
-
-      aflSelectAll.checked = false;
-      aflSelectAll.indeterminate = false;
-    };
-
-    restoreAflSelection();
-
-    aflSelectAll?.addEventListener("change", () => {
-      if (aflSelectAll.checked) {
-        sessionStorage.setItem(aflSelectAllKey(), "1");
-      } else {
-        clearAflSelectAll();
-      }
-
-      aflRows().forEach((checkbox) => {
-        checkbox.checked = aflSelectAll.checked;
-      });
-    });
-
-    aflRows().forEach((checkbox) => {
-      checkbox.addEventListener("change", () => {
-        if (!checkbox.checked) {
-          clearAflSelectAll();
-          return;
-        }
-
-        const rows = aflRows();
-        const checkedCount = rows.filter((row) => row.checked).length;
-        if (rows.length > 0 && checkedCount === rows.length) {
-          sessionStorage.setItem(aflSelectAllKey(), "1");
-          aflSelectAll.checked = true;
-          aflSelectAll.indeterminate = false;
-        }
-      });
-    });
-
-    aflDeleteButton?.addEventListener("click", async () => {
-      const bulkSelectAll = sessionStorage.getItem(aflSelectAllKey()) === "1";
-
-      if (bulkSelectAll) {
-        if (!window.confirm("Delete all selected AFL records across every page?")) return;
-
-        const url = new URL(aflDeleteButton.dataset.aflBulkDestroyUrl, window.location.origin);
-        const query = aflQueryInput?.value?.trim();
-        if (query) url.searchParams.set("q", query);
-
-        const response = await fetch(url, {
-          method: "DELETE",
-          headers: {
-            "X-CSRF-Token": csrfToken,
-            "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml"
-          }
-        });
-
-        if (!(response.ok || response.redirected)) {
-          window.alert("Some selected record(s) could not be deleted.");
-          return;
-        }
-
-        sessionStorage.removeItem(aflSelectAllKey());
-        window.location.reload();
-        return;
-      }
-
-      const paths = aflRows()
-        .filter((checkbox) => checkbox.checked)
-        .map((checkbox) => checkbox.value)
-        .map((path) => path.replace(/\/edit$/, ""));
-
-      deleteSelected(paths, "Delete selected record(s)?");
-    });
-  }
-
-  document.querySelectorAll("[data-access-control-row]").forEach((row) => {
-    const menuCheckbox = row.querySelector("[data-access-menu-checkbox]");
-    const submenuCheckboxes = Array.from(row.querySelectorAll("[data-access-submenu-checkbox]"));
-    if (!menuCheckbox || submenuCheckboxes.length === 0) return;
-
-    const syncMenuCheckbox = () => {
-      const checkedCount = submenuCheckboxes.filter((checkbox) => checkbox.checked).length;
-      menuCheckbox.checked = checkedCount === submenuCheckboxes.length;
-      menuCheckbox.indeterminate = checkedCount > 0 && checkedCount < submenuCheckboxes.length;
-    };
-
-    menuCheckbox.addEventListener("change", () => {
-      submenuCheckboxes.forEach((checkbox) => {
-        checkbox.checked = menuCheckbox.checked;
-      });
-      menuCheckbox.indeterminate = false;
-    });
-
-    submenuCheckboxes.forEach((checkbox) => {
-      checkbox.addEventListener("change", syncMenuCheckbox);
-    });
-
-    syncMenuCheckbox();
-  });
-
-  const moduleRowPaths = (checkbox) => {
-    if (!checkbox.dataset.moduleRowPaths) return [checkbox.value];
-
-    try {
-      const paths = JSON.parse(checkbox.dataset.moduleRowPaths);
-      return Array.isArray(paths) && paths.length ? paths : [checkbox.value];
-    } catch (_error) {
-      return [checkbox.value];
-    }
-  };
-
-  const moduleEditButton = document.querySelector("[data-module-edit-selected]");
-  if (moduleEditButton) {
-    moduleEditButton.addEventListener("click", () => {
-      const selected = Array.from(document.querySelectorAll("[data-module-row-select]:checked"));
-
-      if (selected.length !== 1) {
-        window.alert("Please select one record only");
-        return;
-      }
-
-      window.location.href = selected[0].value;
-    });
-  }
-
-  const selectedBillRows = () => Array.from(document.querySelectorAll("[data-module-row-select]:checked"))
-    .filter((checkbox) => checkbox.dataset.billSendPath || checkbox.dataset.billDeletePath);
-
-  const patchBillRows = async (paths, emptyMessage) => {
-    if (!paths.length) {
-      window.alert(emptyMessage);
-      return;
-    }
-
-    const responses = await Promise.all(paths.map((path) => fetch(path, {
-      method: "PATCH",
-      credentials: "same-origin",
-      headers: {
-        "X-CSRF-Token": csrfToken,
-        "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml"
-      }
-    })));
-
-    if (responses.some((response) => !(response.ok || response.redirected))) {
-      window.alert("Some selected bill(s) could not be updated.");
-      return;
-    }
-
-    window.location.reload();
-  };
-
-  document.querySelector("[data-bill-send-selected]")?.addEventListener("click", () => {
-    const paths = selectedBillRows().map((checkbox) => checkbox.dataset.billSendPath).filter(Boolean);
-    patchBillRows(paths, "Please select at least one bill");
-  });
-
-  document.querySelectorAll("[data-bill-state-selected]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const state = button.dataset.billStateSelected;
-      const paths = selectedBillRows()
-        .map((checkbox) => state === "Inactive" ? checkbox.dataset.billInactivePath : checkbox.dataset.billActivePath)
-        .filter(Boolean);
-      patchBillRows(paths, "Please select at least one bill");
-    });
-  });
-
-  document.querySelector("[data-bill-delete-selected]")?.addEventListener("click", () => {
-    const paths = selectedBillRows().map((checkbox) => checkbox.dataset.billDeletePath).filter(Boolean);
-    deleteSelected(paths, "Delete selected bill(s)?");
-  });
-
-  document.querySelectorAll("[data-module-status-selected]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const selected = Array.from(document.querySelectorAll("[data-module-row-select]:checked"));
-      const status = button.dataset.moduleStatusSelected;
-
-      if (selected.length === 0) {
-        window.alert("Please select at least one record");
-        return;
-      }
-
-      const paths = selected.flatMap((checkbox) => moduleRowPaths(checkbox));
-      const responses = await Promise.all(paths.map((selectedPath) => {
-        const path = `${selectedPath.replace(/\/edit$/, "/set_status")}?status=${encodeURIComponent(status)}`;
-        return fetch(path, {
-          method: "PATCH",
-          headers: {
-            "X-CSRF-Token": csrfToken,
-            "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml"
-          }
-        });
-      }));
-
-      if (responses.some((response) => !response.ok)) {
-        window.alert("Some selected record(s) could not be updated.");
-        return;
-      }
-
-      window.location.reload();
-    });
-  });
-
-  document.querySelectorAll("[data-user-status-selected]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const selected = Array.from(document.querySelectorAll("[data-module-row-select]:checked"));
-      const status = button.dataset.userStatusSelected;
-
-      if (selected.length === 0) {
-        window.alert("Please select at least one user");
-        return;
-      }
-
-      await Promise.all(selected.map((checkbox) => {
-        const path = `${checkbox.value.replace(/\/edit$/, "/set_status")}?status=${encodeURIComponent(status)}`;
-        return fetch(path, {
-          method: "PATCH",
-          headers: {
-            "X-CSRF-Token": csrfToken,
-            "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml"
-          }
-        });
-      }));
-
-      window.location.reload();
-    });
-  });
 
   const uniquePresent = (values) => Array.from(new Set(values.map((value) => `${value || ""}`.trim()).filter(Boolean)));
   const stripDisplayName = (value) => `${value || ""}`.replace(/\s*\([^)]*\)\s*$/, "").trim();
@@ -3155,11 +3141,93 @@ function initDeferredLayoutPage() {
     const topicValues = () => uniqueOptions(rowsForSelection({ requireIcs: true, requireVillage: true }).map((mapping) => makeOption(mapping.training_topic, mapping.training_topic))).map(optionValue);
     const subjectValues = () => uniqueOptions(rowsForSelection({ requireIcs: true, requireVillage: true, requireTopic: true, includeSubject: false }).map((mapping) => makeOption(mapping.training_subject, mapping.training_subject))).map(optionValue);
 
-    const selectedSeedMapping = () => rowsForSelection({
+    // Two targets can be saved for the same Jeevika Jankar, month, ICS, village
+    // and activity, differing only in their own quantity. Every select on this
+    // form matches both, so taking the first match left the second one
+    // permanently unreachable. Collect them all instead.
+    const matchingSeedMappings = () => rowsForSelection({
       requireIcs: true,
       requireVillage: true,
       requireTopic: true
-    }).find((mapping) => normalizeOption(mapping.training_subject) === normalizeOption(subjectSelect.value));
+    }).filter((mapping) => normalizeOption(mapping.training_subject) === normalizeOption(subjectSelect.value));
+
+    let seedTargetPick = null;
+
+    // Quantity tells the two apart in practice; the id is only added when two
+    // targets carry the same quantity as well.
+    const seedTargetPickLabels = (rows) => {
+      const counts = {};
+      rows.forEach((mapping) => {
+        const key = String(mapping.target || "");
+        counts[key] = (counts[key] || 0) + 1;
+      });
+      return rows.map((mapping) => {
+        const quantity = mapping.target ? `Target ${mapping.target}` : "Target";
+        return counts[String(mapping.target || "")] > 1
+          ? `${quantity} (#${mapping.target_mapping_id})`
+          : quantity;
+      });
+    };
+
+    const ensureSeedTargetPicker = () => {
+      if (seedTargetPick) return seedTargetPick;
+
+      const host = subjectSelect.closest("label") || subjectSelect.parentElement;
+      if (!host?.parentElement) return null;
+
+      const field = document.createElement("label");
+      field.setAttribute("data-seed-target-pick-field", "true");
+      field.hidden = true;
+      const caption = document.createElement("span");
+      caption.textContent = "Target";
+      const select = document.createElement("select");
+      select.setAttribute("data-seed-target-pick", "true");
+      field.append(caption, select);
+      host.parentElement.insertBefore(field, host.nextSibling);
+      select.addEventListener("change", () => refreshTarget());
+      seedTargetPick = select;
+      return select;
+    };
+
+    // Only shown when the selects really do match more than one target, so a
+    // form with a single target looks and behaves exactly as it did before.
+    const refreshSeedTargetPicker = () => {
+      const rows = matchingSeedMappings();
+      const select = rows.length > 1 ? ensureSeedTargetPicker() : seedTargetPick;
+      if (!select) return;
+
+      const field = select.closest("[data-seed-target-pick-field]");
+      if (rows.length < 2) {
+        if (field) field.hidden = true;
+        select.innerHTML = "";
+        return;
+      }
+
+      const ids = rows.map((mapping) => String(mapping.target_mapping_id || ""));
+      const unchanged = ids.length === select.options.length &&
+        ids.every((id, index) => select.options[index].value === id);
+      if (!unchanged) {
+        const previous = select.value;
+        const labels = seedTargetPickLabels(rows);
+        select.innerHTML = "";
+        rows.forEach((mapping, index) => {
+          const option = document.createElement("option");
+          option.value = ids[index];
+          option.textContent = labels[index];
+          select.append(option);
+        });
+        select.value = ids.includes(previous) ? previous : ids[0];
+      }
+      if (field) field.hidden = false;
+    };
+
+    const selectedSeedMapping = () => {
+      const rows = matchingSeedMappings();
+      if (rows.length < 2) return rows[0];
+
+      const picked = seedTargetPick?.value;
+      return rows.find((mapping) => String(mapping.target_mapping_id || "") === picked) || rows[0];
+    };
 
     const selectedSeedMappingIsManual = () => Boolean(selectedSeedMapping()?.new_farmer_target);
 
@@ -3377,6 +3445,9 @@ function initDeferredLayoutPage() {
 
     const refreshTarget = () => {
       syncSeedMonthFromSelection();
+      // Rebuild the choice before anything reads it, so the picker reflects the
+      // selects as they are now.
+      refreshSeedTargetPicker();
       const mapping = selectedSeedMapping();
       if (targetInput) targetInput.value = mapping?.target || "";
       if (targetIdInput) targetIdInput.value = mapping?.target_mapping_id || "";
@@ -7865,6 +7936,7 @@ const bootLayoutPage = () => {
   }
 
   initFastNavigation();
+  initListActions();
   initAflFarmerMapping();
   scheduleDeferredLayoutInit();
 };
@@ -7887,9 +7959,12 @@ document.addEventListener("DOMContentLoaded", queueBootLayoutPage);
 // `turbo:render`, but the bar can remain visible until the remaining lifecycle
 // work settles.  Remove only that completed-navigation indicator here; this
 // does not cancel requests, alter form submission, or change any data shown.
-document.addEventListener("turbo:render", () => {
+const clearCompletedNavigationProgress = () => {
+  if (document.documentElement.hasAttribute("data-turbo-preview")) return;
   document.querySelectorAll(".turbo-progress-bar").forEach((bar) => bar.remove());
-});
+};
+document.addEventListener("turbo:render", clearCompletedNavigationProgress);
+document.addEventListener("turbo:load", clearCompletedNavigationProgress);
 
 if (document.readyState !== "loading") {
   queueBootLayoutPage();

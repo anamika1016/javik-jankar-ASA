@@ -2,7 +2,7 @@
 <% form_method = user.persisted? ? :patch : :post %>
 <% stakeholder_role_value = user.respond_to?(:stakeholder_role) ? user.stakeholder_role : nil %>
 
-<section class="module-card" data-user-role-form data-role-map="<%= json_escape(@role_management_mappings.to_json) %>" data-office-map="<%= json_escape((@office_category_mappings || []).to_json) %>" data-location-form data-location-map="<%= json_escape(@location_hierarchy_mappings.to_json) %>">
+<section class="module-card" data-user-role-form data-role-map="<%= json_escape(@role_management_mappings.to_json) %>" data-office-map="<%= json_escape((@office_category_mappings || []).to_json) %>" data-location-form data-location-map="<%= @location_hierarchy_browser_attribute %>">
   <%= form_with model: user, url: form_url, method: form_method, html: { class: "module-entry-form", multipart: true } do |f| %>
     <div class="module-form-grid user-registration-grid">
       <label>

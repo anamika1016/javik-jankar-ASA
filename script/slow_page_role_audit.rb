@@ -114,6 +114,11 @@ ActiveRecord::Base.transaction do
     session.post("/login", params: { login: user.user_name, password: "audit-secret" })
     raise "#{role} login failed" unless session.response.redirect? && session.response.location.end_with?("/dashboard")
     pages.each { |path| audit_request(session, report, role, path, params: { training_month: "October" }) }
+    if role == :admin
+      ["/vrps/#{vrp.id}", "/vrps/#{vrp.id}/edit", "/users/#{admin.id}/edit", "/target_mappings/list"].each do |path|
+        audit_request(session, report, role, path)
+      end
+    end
     if role == :jj
       %w[assigned_farmers assigned_target mapped_villages pending_target achieved_target main_activities sub_activities].each do |key|
         audit_request(session, report, role, "/dashboard/vrp-list/#{key}", params: { training_month: "October" })

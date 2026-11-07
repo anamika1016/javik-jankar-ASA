@@ -1896,9 +1896,9 @@ class ModulesController < ApplicationController
 
     if record.update(data: record.data.merge("status" => next_status))
       sync_vrp_master_record(record)
-      redirect_to module_path(@slug), notice: "Status changed to #{next_status}."
+      redirect_to module_path(@slug), status: :see_other, notice: "Status changed to #{next_status}."
     else
-      redirect_to module_path(@slug), alert: record.errors.full_messages.to_sentence
+      redirect_to module_path(@slug), status: :see_other, alert: record.errors.full_messages.to_sentence
     end
   end
 
@@ -1906,25 +1906,25 @@ class ModulesController < ApplicationController
     load_module!
     record = ModuleRecord.find(params[:id])
     unless ["jeevika-jankar-bill-process", "jeevika-jankar-bill-list"].include?(record.module_slug) || record_source_slug == "jeevika-jankar-bill-process"
-      redirect_to module_path(@slug), alert: "Send for approval is available only for Jeevika Jankar bills." and return
+      redirect_to module_path(@slug), status: :see_other, alert: "Send for approval is available only for Jeevika Jankar bills." and return
     end
-    redirect_to module_path("jeevika-jankar-bill-list"), alert: "You are not allowed to view this bill." and return unless jeevika_jankar_bill_record_visible?(record)
+    redirect_to module_path("jeevika-jankar-bill-list"), status: :see_other, alert: "You are not allowed to view this bill." and return unless jeevika_jankar_bill_record_visible?(record)
 
     step = jeevika_bill_approval_steps(record).first
-    redirect_to module_path("jeevika-jankar-bill-list"), alert: "Please create Jeevika Jankar Bill approval channel first." and return unless step
+    redirect_to module_path("jeevika-jankar-bill-list"), status: :see_other, alert: "Please create Jeevika Jankar Bill approval channel first." and return unless step
 
     update_bill_status!(record, "Pending at #{step.data["approver_approved_by"]}", current_sequence: approval_sequence_from_level(step.data["approval_level"]))
     create_bill_approval_history(record, "Sent for Approval", step)
-    redirect_to module_path("jeevika-jankar-bill-list"), notice: "Jeevika Jankar bill sent for approval."
+    redirect_to module_path("jeevika-jankar-bill-list"), status: :see_other, notice: "Jeevika Jankar bill sent for approval."
   end
 
   def set_bill_state
     load_module!
     record = ModuleRecord.find(params[:id])
-    redirect_to module_path("jeevika-jankar-bill-list"), alert: "You are not allowed to update this bill." and return unless jeevika_jankar_bill_record_visible?(record)
+    redirect_to module_path("jeevika-jankar-bill-list"), status: :see_other, alert: "You are not allowed to update this bill." and return unless jeevika_jankar_bill_record_visible?(record)
     state = params[:state].presence_in(["Active", "Inactive"]) || "Active"
     record.update!(data: record.data.merge("record_state" => state))
-    redirect_to module_path("jeevika-jankar-bill-list"), notice: "Bill marked #{state}."
+    redirect_to module_path("jeevika-jankar-bill-list"), status: :see_other, notice: "Bill marked #{state}."
   end
 
   def approve_bill
@@ -12987,22 +12987,30 @@ class ModulesController < ApplicationController
 
   def jeevika_jankar_training_index(targets)
     return {} unless model_ready?(:ModuleRecord)
+    return Hash.new { |hash, key| hash[key] = [] } if targets.empty?
 
     vrps = targets.map(&:vrp).compact.uniq(&:id)
     target_farmer_ids = targets.flat_map { |target| Array(target.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
+    return Hash.new { |hash, key| hash[key] = [] } if target_farmer_ids.empty?
     target_farmer_ids_by_vrp = targets.each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |target, result|
       result[target.vrp_id.to_s] |= Array(target.afl_ids).map(&:to_s).reject(&:blank?)
     end
     target_months = targets.map { |target| target.month_name.to_s }.reject(&:blank?).uniq
-    records = active_module_records_scope("training-form").order(created_at: :desc)
-    if target_months.present?
-      normalized_months = target_months.map { |month| normalize_dashboard_text(month) }.uniq
-      records = records.where("LOWER(BTRIM(data::jsonb ->> 'month')) IN (?)", normalized_months)
+    # Batch bill rendering invokes this once per JJ. Reuse the same monthly
+    # candidates while keeping each JJ's matching/farmer fallback independent.
+    normalized_months = target_months.map { |month| normalize_dashboard_text(month) }.uniq.sort
+    @bill_training_candidates_by_months ||= {}
+    records = @bill_training_candidates_by_months[normalized_months] ||= begin
+      scope = active_module_records_scope("training-form").order(created_at: :desc)
+      if normalized_months.present?
+        scope = scope.where("LOWER(BTRIM(data::jsonb ->> 'month')) IN (?)", normalized_months)
+      end
+      @bill_training_blocked_ids ||= TrainingEditApproval.unapproved_record_ids.to_set
+      ModuleRecordReadQuery.training_progress_records(
+        ModuleRecordReadQuery.without_unapproved_training_records(scope, @bill_training_blocked_ids)
+      ).to_a
     end
-    blocked_ids = TrainingEditApproval.unapproved_record_ids
     records.each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |record, index|
-      next if blocked_ids.include?(record.id.to_s)
-
       farmer_ids = Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?) & target_farmer_ids
       next if farmer_ids.blank?
 

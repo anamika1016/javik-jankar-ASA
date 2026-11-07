@@ -11,9 +11,38 @@ class TrainingEditApproval
   }.freeze
   IMAGE_KEYS = (%w[training_register_upload training_photo_upload_with_geo_tag] + PHOTO_VIEW_FIELDS.keys).freeze
   class InvalidTransition < StandardError; end
+  REVISION_READ_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 8.megabytes)
 
   # Only the latest revision controls billing; untouched records remain eligible.
   def self.unapproved_record_ids
+    # Revision JSON contains before/proposed snapshots and uploaded evidence.
+    # Check tuple versions without reading those TOAST payloads on every page.
+    # ctid also changes on a second update in the same transaction, where xmin
+    # and a manually preserved updated_at alone would miss the change.
+    scope = ModuleRecord.where(module_slug: SLUG)
+    version_sql = "MD5(COALESCE(STRING_AGG(id::text || ':' || xmin::text || ':' || ctid::text, ',' ORDER BY id), ''))"
+    version = scope.pick(Arel.sql(version_sql))
+    prefix = ["training-unapproved-v1", ModuleRecord.connection_pool.db_config.database]
+    key = [*prefix, version]
+    DashboardCacheFill.synchronize(key) do
+      cached = REVISION_READ_CACHE.read(key)
+      next cached unless cached.nil?
+
+      # The version and IDs below share one SQL snapshot. A concurrent write
+      # between the probe and this read must never cache new IDs under an old
+      # version (a different transaction may still see that old version).
+      rows = read_unapproved_revision_rows(scope.select(Arel.sql(version_sql)).to_sql)
+      actual_version = rows.first&.last || "d41d8cd98f00b204e9800998ecf8427e"
+      ids = rows.filter_map do |record_id, status, _|
+        record_id = record_id.to_s
+        record_id if record_id.present? && status != "Approved"
+      end
+      REVISION_READ_CACHE.write([*prefix, actual_version], ids, expires_in: 10.minutes)
+      ids
+    end.dup
+  end
+
+  def self.read_unapproved_revision_rows(version_query)
     # Keep the newest-revision-wins rule in PostgreSQL. Read scalar ID/status
     # pairs instead of instantiating each latest revision as an Active Record.
     ModuleRecord
@@ -21,12 +50,9 @@ class TrainingEditApproval
       .order(Arel.sql("(data::jsonb ->> 'record_id'), id DESC"))
       .pluck(
         Arel.sql("DISTINCT ON ((data::jsonb ->> 'record_id')) (data::jsonb ->> 'record_id')"),
-        Arel.sql("data::jsonb ->> 'status'")
+        Arel.sql("data::jsonb ->> 'status'"),
+        Arel.sql("(#{version_query})")
       )
-      .filter_map do |record_id, status|
-        record_id = record_id.to_s
-        record_id if record_id.present? && status != "Approved"
-      end
   end
 
   def self.identity(actor)

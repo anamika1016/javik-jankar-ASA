@@ -103,7 +103,10 @@ ActiveRecord::Base.transaction do
     email: "performance-audit@example.test", mobile_no: "9876501234", password: "audit-test-password",
     user_type: "admin", status: "Active")
   session = ActionDispatch::Integration::Session.new(Rails.application)
-  session.post("/login", params: { login: admin.user_name, password: "audit-test-password" })
+  stats, = measure_read { session.get("/login") }
+  report[:pages] << stats.merge(path: "/login", status: session.response.status)
+  stats, = measure_read { session.post("/login", params: { login: admin.user_name, password: "audit-test-password" }) }
+  report[:pages] << stats.merge(path: "/login", method: "POST", status: session.response.status)
   raise "Audit login failed" unless session.response.redirect? && session.response.location.end_with?("/dashboard")
 
   paths = ModulesController::MODULES.keys.map { |slug| "/modules/#{slug}" }
@@ -111,12 +114,14 @@ ActiveRecord::Base.transaction do
   paths.concat(%w[/target_mappings/list /jj-mapped-farmers])
   paths.concat(%w[assigned_farmers assigned_target mapped_villages pending_target achieved_target main_activities sub_activities]
     .map { |type| "/dashboard/vrp-list/#{type}" })
-  paths.each do |path|
-    begin
-      stats, = measure_read { session.get(path) }
-      report[:pages] << stats.merge(path: path, status: session.response.status, bytes: session.response.body.bytesize)
-    rescue StandardError => error
-      report[:pages] << { path: path, error: "#{error.class}: #{error.message.lines.first.to_s.strip}" }
+  Integer(ENV.fetch("PERFORMANCE_AUDIT_PASSES", "1")).times do |pass|
+    paths.each do |path|
+      begin
+        stats, = measure_read { session.get(path) }
+        report[:pages] << stats.merge(path: path, pass: pass + 1, status: session.response.status, bytes: session.response.body.bytesize)
+      rescue StandardError => error
+        report[:pages] << { path: path, error: "#{error.class}: #{error.message.lines.first.to_s.strip}" }
+      end
     end
   end
   raise ActiveRecord::Rollback

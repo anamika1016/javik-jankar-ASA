@@ -4,7 +4,8 @@ class UsersController < ApplicationController
   # database request while the server was already saturated.  The source
   # revision remains part of the key, preserving the existing invalidation and
   # option values while making warm reads process-local.
-  USER_FORM_OPTIONS_MEMORY_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 16.megabytes)
+  # Allow the escaped catalogue plus dropdowns to remain in the bounded store.
+  USER_FORM_OPTIONS_MEMORY_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 64.megabytes)
   FORM_OPTION_SLUGS = %w[
     stakeholder-master stakeholder-role role-name user-management-role person-type
     state-master district-master block-master gram-panchayat-master village-master
@@ -50,7 +51,7 @@ class UsersController < ApplicationController
 
     if @user.update(user_params)
       refresh_current_user_session_if_needed
-      redirect_to users_path, notice: "User updated successfully."
+      redirect_to users_path, status: :see_other, notice: "User updated successfully."
     else
       flash.now[:alert] = @user.errors.full_messages.to_sentence
       render :edit, status: :unprocessable_entity
@@ -59,19 +60,19 @@ class UsersController < ApplicationController
 
   def destroy
     @user.destroy
-    redirect_to users_path, notice: "User deleted successfully."
+    redirect_to users_path, status: :see_other, notice: "User deleted successfully."
   end
 
   def toggle_status
     next_status = @user.status == "Inactive" ? "Active" : "Inactive"
     @user.update(status: next_status)
-    redirect_to users_path, notice: "Status changed to #{next_status}."
+    redirect_to users_path, status: :see_other, notice: "Status changed to #{next_status}."
   end
 
   def set_status
     next_status = params[:status].presence_in(["Active", "Inactive"]) || "Active"
     @user.update(status: next_status)
-    redirect_to users_path, notice: "Status changed to #{next_status}."
+    redirect_to users_path, status: :see_other, notice: "Status changed to #{next_status}."
   end
 
   private
@@ -96,16 +97,25 @@ class UsersController < ApplicationController
     @user_type_options = ["Admin", "User"]
     @status_options = ["Active", "Inactive"]
     user_form_options_payload.each { |name, value| instance_variable_set("@#{name}", value) }
+    @location_hierarchy_browser_attribute = @location_hierarchy_browser_attribute.html_safe
   end
 
   def user_form_options_payload
     return empty_user_form_options_payload unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
-    version = ModuleRecord.where(module_slug: FORM_OPTION_SLUGS)
-      .pick(Arel.sql("COUNT(*)"), Arel.sql("MAX(updated_at)"))
-    cache_key = ["users/form-options-v2", version.first, version.last&.utc&.iso8601(6)]
+    version = user_form_catalogue_revision
+    cache_key = ["users/form-options-v4", ModuleRecord.connection_pool.db_config.database, version]
+    CatalogueReadCache.fetch(user_form_options_cache, cache_key,
+      version: version, current_version: -> { user_form_catalogue_revision }) do
+      build_user_form_options_payload
+    end.deep_dup
+  end
 
-    user_form_options_cache.fetch(cache_key, expires_in: 1.hour) { build_user_form_options_payload }.deep_dup
+  def user_form_catalogue_revision
+    # Tuple identity also detects imports preserving timestamps and repeated
+    # writes in one transaction. Keep this reader fresh for cold-fill checks.
+    ModuleRecord.where(module_slug: FORM_OPTION_SLUGS)
+      .pick(Arel.sql("MD5(COALESCE(STRING_AGG(id::text || ':' || xmin::text || ':' || ctid::text, ',' ORDER BY id), ''))"))
   end
 
   def user_form_options_cache
@@ -114,6 +124,7 @@ class UsersController < ApplicationController
 
   def build_user_form_options_payload
     preload_user_form_module_records!
+    @location_hierarchy_mappings = location_hierarchy_mappings
 
     {
       stakeholder_options: module_record_options("stakeholder-master", "stakeholder_name_in_english"),
@@ -130,7 +141,7 @@ class UsersController < ApplicationController
         module_record_options("lg-directory-list", ["gram_panchayat", "gp_code"])
       ).compact_blank.uniq,
       village_options: module_record_options(["village-master", "lg-directory-list"], ["village_name", "village", "name"]),
-      location_hierarchy_mappings: location_hierarchy_mappings,
+      location_hierarchy_browser_attribute: String.new(ERB::Util.html_escape(ERB::Util.json_escape(@location_hierarchy_mappings.to_json))),
       parent_office_options: module_record_options("parent-office-add", ["parent_office_name", "parent_category"]),
       office_name_options: module_record_options("office-category-add", ["office_name", "category_name"]),
       office_category_mappings: office_category_mappings,
@@ -144,7 +155,7 @@ class UsersController < ApplicationController
       stakeholder_options: [], stakeholder_role_options: [], role_options: [],
       user_management_role_options: [], person_type_options: [], role_management_mappings: [],
       state_options: [], district_options: [], block_options: [], gram_panchayat_options: [],
-      village_options: [], location_hierarchy_mappings: [], parent_office_options: [],
+      village_options: [], location_hierarchy_browser_attribute: "[]", parent_office_options: [],
       office_name_options: [], office_category_mappings: [], sub_office_name_options: [], ics_options: []
     }
   end

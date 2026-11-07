@@ -9,6 +9,12 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     assert_select "input[name='login'][required]"
     assert_select "input[name='password'][required]"
     assert_select "input[type='submit'][value='GO!']"
+    assert_select "script[type='module']", text: 'import "login"'
+    importmap = JSON.parse(css_select("script[type='importmap']").first.text).fetch("imports")
+    assert importmap.key?("login"), "The login entry must resolve to a compiled asset"
+    assert importmap.key?("password_toggles"), "The shared password module must resolve to a compiled asset"
+    assert_select "link[rel='modulepreload'][href*='/layout-']", count: 0
+    assert_select "link[rel='modulepreload'][href*='/assets/application-']", count: 0
   end
 
   test "vrp must accept agreement on first login" do
