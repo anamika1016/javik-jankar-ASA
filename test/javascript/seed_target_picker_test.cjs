@@ -41,18 +41,21 @@ const makeElement = (tag) => {
   return element;
 };
 
-const buildContext = (rows) => {
+const buildContext = (rows, savedTargetId = '') => {
   const host = makeElement('label');
   const container = makeElement('div');
   container.append(host);
   const subjectSelect = makeElement('select');
   subjectSelect.value = 'Farmer Internal Inspection';
   subjectSelect.closest = () => host;
+  const targetIdInput = makeElement('input');
+  targetIdInput.value = savedTargetId;
 
   const context = vm.createContext({
     rowsForSelection: () => rows,
     normalizeOption: (value) => String(value == null ? '' : value).trim().toLowerCase(),
     subjectSelect,
+    targetIdInput,
     refreshTarget: () => {},
     document: { createElement: makeElement }
   });
@@ -105,6 +108,26 @@ test('the chosen target is the one the form uses', () => {
   assert.equal(context.selected().target, '79');
 });
 
+test('editing a record keeps the target it was saved against', () => {
+  // The record was saved on the second target. Defaulting to the first would
+  // quietly move the saved record onto a different target on open.
+  const { context } = buildContext([row('11', '56'), row('12', '79')], '12');
+
+  context.refreshPicker();
+
+  assert.equal(context.picker().value, '12');
+  assert.equal(context.selected().target_mapping_id, '12');
+  assert.equal(context.selected().target, '79');
+});
+
+test('a saved id that no longer matches falls back to the first target', () => {
+  const { context } = buildContext([row('11', '56'), row('12', '79')], '999');
+
+  context.refreshPicker();
+
+  assert.equal(context.selected().target_mapping_id, '11');
+});
+
 test('targets with the same quantity are told apart by id', () => {
   const { context } = buildContext([row('11', '56'), row('12', '56')]);
 
@@ -122,10 +145,12 @@ test('dropping back to one match hides the picker again', () => {
   subjectSelect.value = 'Farmer Internal Inspection';
   subjectSelect.closest = () => host;
   let current = rows;
+  const targetIdInput = makeElement('input');
   const context = vm.createContext({
     rowsForSelection: () => current,
     normalizeOption: (value) => String(value == null ? '' : value).trim().toLowerCase(),
     subjectSelect,
+    targetIdInput,
     refreshTarget: () => {},
     document: { createElement: makeElement }
   });

@@ -3216,7 +3216,13 @@ function initDeferredLayoutPage() {
           option.textContent = labels[index];
           select.append(option);
         });
-        select.value = ids.includes(previous) ? previous : ids[0];
+        // On an edit the record already names the target it was saved against.
+        // Honour that before falling back to the first, otherwise opening a
+        // record saved on the second target would silently move it to the
+        // first one as soon as the form rendered.
+        const saved = targetIdInput ? String(targetIdInput.value || "") : "";
+        select.value = ids.includes(previous) ? previous
+          : (ids.includes(saved) ? saved : ids[0]);
       }
       if (field) field.hidden = false;
     };

@@ -2076,6 +2076,7 @@
               <th>Name</th>
               <th>Prepared By</th>
               <th>FCOC Name</th>
+              <th>TO Name</th>
               <th>Financial Year</th>
               <th>Bill Month</th>
               <th>Activity Group</th>
@@ -2118,6 +2119,7 @@
                   <td><%= row[:name].presence || "-" %></td>
                   <td><%= row[:prepared_by].presence || "-" %></td>
                   <td><%= row[:fcoc_name] %></td>
+                  <td><%= row[:to_name] %></td>
                   <td><%= row[:financial_year] %></td>
                   <td><%= row[:bill_month] %></td>
                   <td><%= row[:activity_groups] %></td>
@@ -2141,7 +2143,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="17">No Jeevika Jankar bill saved yet.</td>
+                <td colspan="19">No Jeevika Jankar bill saved yet.</td>
               </tr>
             <% end %>
           </tbody>
