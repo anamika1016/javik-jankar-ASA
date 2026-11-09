@@ -29,3 +29,11 @@ Regression checks: first run 86 tests / 710 assertions; second run 54 tests / 35
 Extended owner candidate indexing to dashboard training selection when no farmer roll is assigned. The existing farmer-indexed path remains for nonblank rolls; the existing owner predicate and record-ID deduplication remain. A cache hit now returns before building candidates. New regression checks blank-owner fallback, unrelated-owner exclusion, identical cached result and one source read across repeated calls.
 
 Latest rescan run: 90 Rails tests / 749 assertions passed; four JavaScript navigation/action regression files passed; git diff --check passed. No new failure was found in this selected suite. Previously documented broader baseline failures and unverified production latency remain; this is not a full-application or production certification.
+
+## New screenshot and a571925b log
+
+Scanned 103 completed requests in the latest supplied log. Slowest: training edit 43,496 ms; target mappings 20,764; training list 19,952; bill list 14,982; VRP new 14,346; dashboard 8,961. Bill view at the end is 608 ms. The log alone cannot identify a browser's actual render-completion or refresh cause.
+
+Added Turbo's `no-preview` cache-control meta setting. Ordinary visits now wait for fresh HTML instead of displaying a cached snapshot while a request is still running and then replacing it. This intentionally changes the visual navigation presentation requested by the user, not business calculations or permissions. The pending indicator can still appear while the actual response is pending. Back/Forward restoration remains cacheable. Actual network reload causes (for example changed tracked assets during deployment) are not suppressed.
+
+Installed Turbo 8.0.23 snapshot flags verified in isolated headless Chrome: no speculative preview, snapshot still cacheable. Integration test verifies the page emits the setting. Latest focused run: 50 Rails tests / 447 assertions passed; three JS navigation/action test files passed; diff check passed. No deployment or authenticated live-browser verification was performed. The new long-running requests remain production profiling work; no additional backend speedup is claimed for this setting.
