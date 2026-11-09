@@ -2334,7 +2334,7 @@ class ModulesController < ApplicationController
       end
       training_records = []
       if training_completion
-        training_records = dashboard_training_form_records_for_month(target.month_name)
+        training_records = dashboard_training_candidates_for_target(target)
           .select { |record| training_record_matches_dashboard_target?(record, target, []) }
         training_completion_count = training_achievement_for_records(training_records)
         completed = training_completion_count if training_records.any?
@@ -2729,8 +2729,14 @@ class ModulesController < ApplicationController
     vrp = targets.first.vrp
     @dashboard_training_form_records_by_scope ||= {}
     cache_key = [normalize_dashboard_text(month_name), targets.first.vrp_id.to_s, assigned_farmer_ids.sort.join(",")]
+    return @dashboard_training_form_records_by_scope[cache_key] if @dashboard_training_form_records_by_scope.key?(cache_key)
 
-    @dashboard_training_form_records_by_scope[cache_key] ||= dashboard_training_form_records_for_month(month_name, farmer_ids: assigned_farmer_ids)
+    candidates = if assigned_farmer_ids.blank?
+      dashboard_training_candidates_for_target(targets.first)
+    else
+      dashboard_training_form_records_for_month(month_name, farmer_ids: assigned_farmer_ids)
+    end
+    @dashboard_training_form_records_by_scope[cache_key] ||= candidates
       .select do |record|
         # With no assigned farmer list there is nothing to intersect against, so
         # the month/VRP scope alone decides. Intersecting an empty list here hid
@@ -2769,6 +2775,31 @@ class ModulesController < ApplicationController
     @dashboard_training_form_records_index_by_month ||= {}
     records_by_id = @dashboard_training_form_records_index_by_month[month] ||= records.index_by(&:id)
     record_ids.filter_map { |record_id| records_by_id[record_id] }
+  end
+
+  # Index positions, rather than record IDs, to preserve the source order and
+  # duplicate rows. Blank owner metadata retains the original match-all fallback.
+  # This cache is request-local; final target/assignment checks remain unchanged.
+  def dashboard_training_candidates_for_target(target)
+    records = dashboard_training_form_records_for_month(target.month_name)
+    return records unless target.vrp
+
+    @dashboard_training_owner_indexes ||= {}.compare_by_identity
+    index = @dashboard_training_owner_indexes[records] ||= begin
+      positions = Hash.new { |hash, key| hash[key] = [] }
+      blank = []
+      records.each_with_index do |record, position|
+        values = training_record_owner_values(record)
+        if values.empty?
+          blank << position
+        else
+          values.uniq.each { |value| positions[value] << position }
+        end
+      end
+      { positions: positions, blank: blank }
+    end
+    positions = index[:blank] + training_vrp_owner_values(target.vrp).flat_map { |value| index[:positions].fetch(value, []) }
+    positions.uniq.sort.map { |position| records[position] }
   end
 
   def training_achievement_for_records(records)
@@ -8148,29 +8179,24 @@ class ModulesController < ApplicationController
       .strip
   end
 
+  def training_record_owner_values(record)
+    %w[jeevika_jankar_id vrp_id select_vrp vrp_name jeevika_jankar_name trainer_contact trainer_name]
+      .map { |key| normalize_dashboard_text(record.data[key]) }.reject(&:blank?)
+  end
+
+  def training_vrp_owner_values(vrp)
+    [vrp.id, vrp.name, vrp.user_name, vrp.mobile_no,
+      [vrp.name, vrp.mobile_no.presence].compact_blank.join(" - ")]
+      .map { |value| normalize_dashboard_text(value) }.reject(&:blank?)
+  end
+
   def training_record_vrp_scope_matches?(record, vrp)
     return true unless vrp
 
-    record_values = [
-      record.data["jeevika_jankar_id"],
-      record.data["vrp_id"],
-      record.data["select_vrp"],
-      record.data["vrp_name"],
-      record.data["jeevika_jankar_name"],
-      record.data["trainer_contact"],
-      record.data["trainer_name"]
-    ].map { |value| normalize_dashboard_text(value) }.reject(&:blank?)
+    record_values = training_record_owner_values(record)
     return true if record_values.blank?
 
-    vrp_values = [
-      vrp.id,
-      vrp.name,
-      vrp.user_name,
-      vrp.mobile_no,
-      [vrp.name, vrp.mobile_no.presence].compact_blank.join(" - ")
-    ].map { |value| normalize_dashboard_text(value) }.reject(&:blank?)
-
-    (record_values & vrp_values).any?
+    (record_values & training_vrp_owner_values(vrp)).any?
   end
 
   def module_upload_present?(value)
@@ -12640,7 +12666,7 @@ class ModulesController < ApplicationController
         activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
         is_training = activity_setting.blank? || training_main_activity_type?(activity_setting[:main_activity_type])
         achievement_count = if is_training
-          records = dashboard_training_form_records_for_month(target.month_name)
+          records = dashboard_training_candidates_for_target(target)
             .select { |record| training_record_matches_dashboard_target?(record, target, []) }
           records.any? ? records.sum { |record| training_form_achievement_count(record) } : progress[:completed]
         else
@@ -12664,7 +12690,7 @@ class ModulesController < ApplicationController
       # Keep the full selection set for billing; assigned IDs remain the target
       # farmer list and determine the Total Farmer Count.
       if training_main_activity_type?(main_activity_type)
-        training_records = dashboard_training_form_records_for_month(target.month_name)
+        training_records = dashboard_training_candidates_for_target(target)
           .select do |record|
             training_record_vrp_scope_matches?(record, target.vrp) &&
               training_record_matches_dashboard_target?(record, target, [])

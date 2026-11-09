@@ -27,6 +27,9 @@
       <%= render "jj_quizzes/admin_ui_styles" %>
     <% end %>
     <%= javascript_importmap_tags(controller_name == "sessions" && action_name == "new" ? "login" : "application") %>
+    <% unless controller_name == "sessions" && action_name == "new" %>
+      <%= javascript_import_module_tag "navigation_progress" %>
+    <% end %>
   </head>
 
   <body>

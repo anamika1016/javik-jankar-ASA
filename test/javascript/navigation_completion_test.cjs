@@ -16,7 +16,7 @@ test("completed navigation stops Turbo timers and late bars; new visits and prev
     querySelectorAll: () => [{ remove: () => removed++ }],
     addEventListener: (name, callback) => listeners[name] = callback
   };
-  const Turbo = { session: { adapter: {
+  const Turbo = { navigator: { currentVisit: { state: "started" } }, session: { adapter: {
     hideVisitProgressBar: () => hidden++, hideFormProgressBar: () => hidden++
   } } };
   vm.runInNewContext(source, { document, Turbo, window: { addEventListener: (name, callback) => listeners[name] = callback } });
@@ -32,6 +32,7 @@ test("completed navigation stops Turbo timers and late bars; new visits and prev
   assert.ok(attributes.has("data-navigation-complete"));
   listeners["turbo:visit"]();
   assert.ok(!attributes.has("data-navigation-complete"));
+  Turbo.navigator.currentVisit.state = "completed";
   listeners["turbo:load"]();
   listeners["turbo:submit-start"]();
   assert.ok(!attributes.has("data-navigation-complete"));
@@ -52,6 +53,30 @@ test("completed navigation stops Turbo timers and late bars; new visits and prev
   assert.ok(attributes.has("data-navigation-complete"));
   listeners.pageshow();
   assert.equal(removed, 5);
+});
+
+test("a cancelled preview clears its stale bar after a fetch failure without hiding an active visit", () => {
+  const source = fs.readFileSync("app/javascript/navigation_progress.js", "utf8").replace(/import .*;\n/, "");
+  const listeners = {};
+  const attributes = new Set(["data-turbo-preview"]);
+  let deferred;
+  let removed = 0;
+  const Turbo = { navigator: { currentVisit: { state: "started" } } };
+  const document = { readyState: "loading", documentElement: {
+    hasAttribute: (name) => attributes.has(name), setAttribute: (name) => attributes.add(name),
+    removeAttribute: (name) => attributes.delete(name)
+  }, addEventListener: (name, callback) => listeners[name] = callback,
+  querySelectorAll: () => [{ remove: () => removed++ }] };
+  vm.runInNewContext(source, { document, Turbo, setTimeout: (callback) => deferred = callback,
+    window: { addEventListener() {} } });
+  listeners["turbo:fetch-request-error"]();
+  deferred();
+  assert.equal(removed, 0);
+  Turbo.navigator.currentVisit.state = "canceled";
+  listeners["turbo:fetch-request-error"]();
+  deferred();
+  assert.equal(removed, 1);
+  assert.ok(attributes.has("data-navigation-complete"));
 });
 
 test("password visibility and labels stay in sync and navigation does not duplicate bindings", () => {

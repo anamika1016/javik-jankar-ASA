@@ -6,6 +6,8 @@ class NavigationProgressAssetsTest < ActionDispatch::IntegrationTest
     post login_path, params: { login: user.user_name, password: "secret" }
     get dashboard_path
     assert_response :success
+    assert css_select("script[type='module']").any? { |script| script.text.include?('import "navigation_progress"') },
+           "Progress cleanup must boot independently of the application module graph"
     imports = JSON.parse(css_select("script[type='importmap']").first.text).fetch("imports")
     stylesheet_path = URI(css_select("link[rel=stylesheet]").first["href"]).path
     progress_path = URI(imports.fetch("navigation_progress")).path

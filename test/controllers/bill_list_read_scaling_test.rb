@@ -281,7 +281,13 @@ class BillListReadScalingTest < ActiveSupport::TestCase
         })
       end
     end
-    baseline = calculator.send(:jeevika_bill_rows, bills)
+    legacy = calculator
+    legacy.define_singleton_method(:dashboard_training_candidates_for_target) do |target|
+      dashboard_training_form_records_for_month(target.month_name)
+    end
+    baseline = legacy.send(:jeevika_bill_rows, bills)
+    assert_equal baseline, calculator.send(:jeevika_bill_rows, bills),
+      "Indexed owner candidates must preserve complete live bill rows"
     assert baseline.all? { |row| row[:target].to_f.positive? && row[:target].to_s != "999" }
     [nil, "October", "November"].product([nil, "Active", "Inactive"]).each do |month, state|
       expected = baseline.select { |row|
