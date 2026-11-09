@@ -8,6 +8,20 @@ module ApplicationHelper
   # decision. Keep these read-mostly records out of the request path instead of
   # repeatedly loading the same master records on every page.
   BRANDING_MEMORY_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 4.megabytes)
+  LOCATION_SELECT_MEMORY_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 32.megabytes)
+
+  def cached_location_select_options(options, selected = nil)
+    return options_for_select(options, selected) unless options.is_a?(Array) && options.length >= 100
+
+    # Selection and exact option bytes belong in the key: names, order,
+    # disabled values and HTML-safety changes must take effect immediately.
+    key = ["location-select-html-v1", Digest::SHA256.hexdigest(Marshal.dump([options, selected]))]
+    cache = Rails.env.test? ? Rails.cache : LOCATION_SELECT_MEMORY_CACHE
+    html = DashboardCacheFill.synchronize(key) do
+      cache.fetch(key, expires_in: 1.hour) { String.new(options_for_select(options, selected)) }
+    end
+    html.html_safe
+  end
 
   # Section headings used by the Training Form (show.html.erb). The edit-request
   # page reuses them so a reviewer sees the changes laid out exactly like the

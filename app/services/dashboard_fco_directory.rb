@@ -1,7 +1,7 @@
 # Request-local office aliases for dashboard farmer and target reports.
 class DashboardFcoDirectory
   class Store < ActiveSupport::CurrentAttributes
-    attribute :offices
+    attribute :offices, :office_lookup
   end
 
   def self.bare_name(value)
@@ -48,10 +48,21 @@ class DashboardFcoDirectory
   def self.offices_for(value)
     key = AgreementVrpScope.office_key(value)
     return [] if key.blank?
-    offices.select do |office|
-      office[:id] == value.to_s.strip ||
-        [office[:name], *office[:aliases]].any? { |name| AgreementVrpScope.office_key(name) == key }
+    source = offices
+    lookup = Store.office_lookup
+    unless lookup && lookup[:source].equal?(source)
+      ids = Hash.new { |hash, name| hash[name] = [] }
+      names = Hash.new { |hash, name| hash[name] = [] }
+      source.each_with_index do |office, position|
+        ids[office[:id]] << position
+        [office[:name], *office[:aliases]].map { |name| AgreementVrpScope.office_key(name) }.uniq.each do |name|
+          names[name] << position
+        end
+      end
+      lookup = Store.office_lookup = { source: source, ids: ids, names: names }
     end
+    positions = lookup[:ids].fetch(value.to_s.strip, []) + lookup[:names].fetch(key, [])
+    positions.uniq.sort.map { |position| source[position] }
   end
 
   def self.office_for(value)

@@ -28,7 +28,7 @@
         <label>
           <span><%= label %></span>
           <% if options.any? %>
-            <%= f.select field, options_for_select(options, user.public_send(field)), { include_blank: "Select #{label}" }, data: { location_level: field.to_s.dasherize } %>
+            <%= f.select field, cached_location_select_options(options, user.public_send(field)), { include_blank: "Select #{label}" }, data: { location_level: field.to_s.dasherize } %>
           <% else %>
             <%= f.text_field field, placeholder: "Enter #{label}" %>
           <% end %>

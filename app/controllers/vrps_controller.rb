@@ -2397,8 +2397,16 @@ class VrpsController < ApplicationController
   end
 
   def first_non_code_data(record, *keys)
-    values = keys.filter_map { |key| record.data[key].to_s.strip.presence }
-    values.find { |value| !code_like_location_value?(value) } || values.first
+    data = record.data
+    first_value = nil
+    keys.each do |key|
+      value = data[key].to_s.strip
+      next if value.blank?
+
+      first_value ||= value
+      return value unless code_like_location_value?(value)
+    end
+    first_value
   end
 
   def code_like_location_value?(value)
@@ -2406,7 +2414,12 @@ class VrpsController < ApplicationController
   end
 
   def first_present_data(record, *keys)
-    keys.filter_map { |key| record.data[key].presence }.first
+    data = record.data
+    keys.each do |key|
+      value = data[key]
+      return value if value.present?
+    end
+    nil
   end
 
   def active_module_record?(record)

@@ -9589,6 +9589,9 @@ class ModulesController < ApplicationController
       # participant arrays. Hydrate only the final visible page below.
       records_scope = ModuleRecordReadQuery.training_list_candidates(records_scope)
     end
+    if location_master_list_cacheable?(records_scope) && server_paginated_master_list? && params[:q].to_s.strip.blank?
+      return cached_location_master_page_records(record_source_slug)
+    end
     records = if cached_bill_summary
       cached_jeevika_bill_summary_records
     elsif location_master_list_cacheable?(records_scope)
@@ -9737,6 +9740,20 @@ class ModulesController < ApplicationController
       end
     end
     attribute_rows.map { |attributes| ModuleRecord.instantiate(attributes) }
+  end
+
+  def cached_location_master_page_records(module_slug)
+    # Warm unfiltered pages need only 15 records, not a new model and decoded
+    # JSON Hash for every master row. Retain the original Ruby sort (including
+    # legacy aliases and equal-key order) in the revision-keyed attribute cache.
+    key = ["jj-location-sorted-page-v1", module_slug, @module&.dig(:fields), location_catalogue_revision]
+    attribute_rows = DashboardCacheFill.synchronize(key) do
+      location_catalogue_cache.fetch(key, expires_in: 1.hour) do
+        cached_location_master_records(module_slug).sort_by { |record| module_record_sort_value(record) }
+          .map { |record| record.attributes.merge("data" => record.data.to_json) }
+      end
+    end
+    paginated_master_records(attribute_rows).map { |attributes| ModuleRecord.instantiate(attributes) }
   end
 
   # jsonb_each refuses anything that is not a JSON object - it raises
@@ -9928,7 +9945,7 @@ class ModulesController < ApplicationController
     end
 
     # 6. Visible VRPs in cluster match record (CC login fallback)
-    return true if module_cluster_visible_vrps.any? { |visible_vrp| target_record_matches_vrp?(record, visible_vrp) }
+    return true if target_record_matching_vrp(record, module_cluster_visible_vrps)
 
     false
   end
@@ -10044,7 +10061,25 @@ class ModulesController < ApplicationController
     vrp_id ||= record.data["created_by_id"] if record.data["created_by_record_type"] == "Vrp"
     return cached_vrp_lookup(vrp_id) if vrp_id.present?
 
-    cached_vrps_by_id.values.find { |vrp| target_record_matches_vrp?(record, vrp) }
+    target_record_matching_vrp(record, cached_vrps_by_id)
+  end
+
+  def target_record_matching_vrp(record, population)
+    # Legacy name/contact-only records used to scan every JJ repeatedly during
+    # visibility checks. Index the same normalized labels once per population;
+    # source position preserves the first-match rule for ambiguous legacy names.
+    @target_visibility_label_indexes ||= {}.compare_by_identity
+    index = @target_visibility_label_indexes[population] ||= begin
+      entries = {}
+      rows = population.is_a?(Hash) ? population.each_value : population.each
+      rows.with_index do |vrp, position|
+        training_vrp_owner_values(vrp).each { |value| entries[value] ||= [position, vrp] }
+      end
+      entries
+    end
+    values = %w[jeevika_jankar_id vrp_id jeevika_jankar_name vrp_name select_vrp trainer_contact trainer_name contact_number jeevika_jankar_contact]
+      .map { |key| normalize_dashboard_text(record.data[key]) }.reject(&:blank?)
+    values.filter_map { |value| index[value] }.min_by(&:first)&.last
   end
 
   def target_record_matches_vrp?(record, vrp)
@@ -13274,7 +13309,11 @@ class ModulesController < ApplicationController
   def first_present_data(record, *keys)
     data = record.respond_to?(:data) ? record.data : record
     data ||= {}
-    keys.filter_map { |key| data[key].presence }.first
+    keys.each do |key|
+      value = data[key]
+      return value if value.present?
+    end
+    nil
   end
 
   def record_source_slug
@@ -16575,8 +16614,16 @@ class ModulesController < ApplicationController
   end
 
   def first_non_code_data(record, *keys)
-    values = keys.filter_map { |key| record.data[key].to_s.strip.presence }
-    values.find { |value| !code_like_location_value?(value) } || values.first
+    data = record.data
+    first_value = nil
+    keys.each do |key|
+      value = data[key].to_s.strip
+      next if value.blank?
+
+      first_value ||= value
+      return value unless code_like_location_value?(value)
+    end
+    first_value
   end
 
   def code_like_location_value?(value)
@@ -16918,11 +16965,13 @@ class ModulesController < ApplicationController
     # Keep JSON types, record order, key order and Ruby presence/uniq semantics.
     # Do not instantiate records (including their unrelated uploads/large arrays)
     # merely to read a handful of dropdown values.
-    scope.where("data::jsonb ?| ARRAY[#{quoted_keys.join(', ')}]::text[]")
-      .order(created_at: :desc)
-      .pluck(Arel.sql("json_build_array(#{quoted_keys.map { |key| "data::json -> #{key}" }.join(', ')})"))
-      .flat_map { |values| values.filter_map(&:presence) }
-      .uniq
+    ModuleFieldOptionsCache.fetch(scope, field_keys) do
+      scope.where("data::jsonb ?| ARRAY[#{quoted_keys.join(', ')}]::text[]")
+        .order(created_at: :desc)
+        .pluck(Arel.sql("json_build_array(#{quoted_keys.map { |key| "data::json -> #{key}" }.join(', ')})"))
+        .flat_map { |values| values.filter_map(&:presence) }
+        .uniq
+    end
   end
 
   def approver_options
