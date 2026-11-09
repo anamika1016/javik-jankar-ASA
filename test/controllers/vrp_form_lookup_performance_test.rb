@@ -163,6 +163,71 @@ class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
     assert_match(/WHERE.*cluster_incharge/m, queries.last)
   end
 
+  test "staff edit and delete lookups load only the requested authorized JJ" do
+    label = "Manage#{SecureRandom.hex(4)} Coordinator"
+    own = create_test_vrp("Owned")
+    mapped = create_test_vrp("Mapped", cluster_incharge: "#{label} (CC)")
+    other = create_test_vrp("Denied", cluster_incharge: "Other Coordinator")
+    10.times { create_test_vrp("Mapped sibling", cluster_incharge: "#{label} (CC)", agreement_signature_data: "x" * 100_000) }
+    controller = VrpsController.new
+    controller.define_singleton_method(:current_app_user) { { "record_type" => "User" } }
+    controller.define_singleton_method(:admin_user?) { false }
+    controller.define_singleton_method(:own_vrps) { Vrp.where(id: own.id) }
+    controller.define_singleton_method(:current_cluster_incharge_labels) { [label] }
+    instantiated = 0
+    callback = ->(*args) { instantiated += args.last[:record_count] }
+    ActiveSupport::Notifications.subscribed(callback, "instantiation.active_record") do
+      assert_equal own.attributes, controller.send(:find_manageable_vrp, own.id).attributes
+      assert_equal mapped.attributes, controller.send(:find_manageable_vrp, mapped.id).attributes
+      assert_nil controller.send(:find_manageable_vrp, other.id)
+      assert_nil controller.send(:find_manageable_vrp, -1)
+    end
+    assert_equal 2, instantiated
+  end
+
+  test "targeted staff lookups match full-list authorization across legacy cluster labels" do
+    rows = [nil, "", "Scope Person", "Scope Person (CC)", "  SCOPE Person  ",
+      "Scop Person", "Scope Other", "Unrelated Coordinator"].map.with_index do |label, index|
+      create_test_vrp("Scope parity #{index}", cluster_incharge: label)
+    end
+    controller = VrpsController.new
+    controller.define_singleton_method(:current_app_user) { { "record_type" => "User" } }
+    controller.define_singleton_method(:admin_user?) { false }
+    [[], ["Scope Person"], ["Unrelated Coordinator", "Scope Person"]].each do |labels|
+      controller.define_singleton_method(:current_cluster_incharge_labels) { labels }
+      [[], [rows.first.id, rows.last.id]].each do |owned_ids|
+        controller.define_singleton_method(:own_vrps) { Vrp.where(id: owned_ids) }
+        original_visible = (controller.send(:own_vrps).to_a + controller.send(:cluster_mapped_vrps).to_a)
+        (rows.map(&:id) + [-1, 0]).each do |id|
+          expected = original_visible.find { |row| row.id == id }
+          actual = controller.send(:find_manageable_vrp, id)
+          if expected
+            assert_equal expected.attributes, actual&.attributes
+          else
+            assert_nil actual
+          end
+        end
+      end
+    end
+  end
+
+  test "single JJ cluster lookup restricts both label and record queries to its ID" do
+    requested = create_test_vrp("Requested cluster row", cluster_incharge: "Scope Person (CC)")
+    10.times { |index| create_test_vrp("Unrelated cluster #{index}", cluster_incharge: "Other Person #{index}") }
+    controller = VrpsController.new
+    controller.define_singleton_method(:current_cluster_incharge_labels) { ["Scope Person"] }
+    queries = []
+    callback = ->(*args) do
+      sql = args.last[:sql]
+      queries << sql if sql.start_with?("SELECT") && sql.include?(%Q{FROM "vrps"})
+    end
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      assert_equal [requested.attributes], controller.send(:cluster_mapped_vrps, record_id: requested.id).map(&:attributes)
+    end
+    assert_equal 2, queries.size
+    queries.each { |sql| assert_match(/WHERE.*"vrps"\."id" =/m, sql) }
+  end
+
   test "legacy cluster labels read only the newest exact username record" do
     username = "legacy_cluster_#{SecureRandom.hex(4)}"
     ModuleRecord.create!(module_slug: "new-user", created_at: 2.days.ago,

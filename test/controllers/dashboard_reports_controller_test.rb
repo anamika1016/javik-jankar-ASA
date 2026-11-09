@@ -21,6 +21,18 @@ class DashboardReportsControllerTest < ActionDispatch::IntegrationTest
     })
   end
 
+  test "legacy farmer FCO aliases retain their original first label in the dashboard picker" do
+    ["Legacy Label Parity", "FCO-C Legacy Label Parity", "FCO-Legacy Label Parity", "Legacy Label Parity"].each do |name|
+      ModuleRecord.create!(module_slug: "add-farmer-form", data: { "fco_name" => name })
+    end
+    login(@admin)
+    get dashboard_path
+    assert_response :success
+    assert_select "#dash_fcoc option", text: "Legacy Label Parity", count: 1
+    assert_select "#dash_fcoc option", text: "FCO-C Legacy Label Parity", count: 0
+    assert_select "#dash_fcoc option", text: "FCO-Legacy Label Parity", count: 0
+  end
+
   test "sub indicator options remain discoverable without current-month targets" do
     login(@staff)
     get dashboard_path

@@ -609,7 +609,9 @@ class VrpsController < ApplicationController
     # materializing the entire table just to find one record on edit/show paths.
     return Vrp.find_by(id: id.to_i) if current_app_user.blank? || admin_user?
 
-    (own_vrps.to_a + cluster_mapped_vrps.to_a).find { |vrp| vrp.id == id.to_i }
+    # Preserve own-or-mapped authorization without loading every authorized
+    # JJ (and their signature images) just to edit/delete one requested row.
+    own_vrps.find_by(id: id.to_i) || cluster_mapped_vrps(record_id: id.to_i).first
   end
 
   def manageable_vrps
@@ -618,15 +620,21 @@ class VrpsController < ApplicationController
     (own_vrps.to_a + cluster_mapped_vrps.to_a).uniq
   end
 
-  def cluster_mapped_vrps
+  def cluster_mapped_vrps(record_id: nil)
     labels = current_cluster_incharge_labels
     return Vrp.none if labels.blank?
 
-    matching_labels = Vrp.where.not(cluster_incharge: [nil, ""])
+    scope = Vrp.where.not(cluster_incharge: [nil, ""])
+    # A single-row action only needs that row's cluster label. Keep the same
+    # fuzzy matcher while avoiding a DISTINCT scan across every JJ's label.
+    scope = scope.where(id: record_id) unless record_id.nil?
+    matching_labels = scope
       .distinct
       .pluck(:cluster_incharge)
       .select { |cluster_label| labels.any? { |label| cluster_label_matches?(label, cluster_label) } }
-    matching_labels.any? ? Vrp.where(cluster_incharge: matching_labels).order(:id).to_a : []
+    return [] if matching_labels.empty?
+
+    scope.where(cluster_incharge: matching_labels).order(:id).to_a
   end
 
   def current_cluster_incharge_labels

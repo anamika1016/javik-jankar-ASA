@@ -1446,7 +1446,12 @@ class ModulesController < ApplicationController
     prepare_approval_channel_form(@record) if record_source_slug == "approval-master"
     prepare_vrp_bill_data if @slug == "vrp-bill-add"
     prepare_jeevika_jankar_bill_data if @slug == "jeevika-jankar-bill-process"
-    @training_edit_revision = training_edit_revision_for(@record) if @slug == "training-form"
+    if @slug == "training-form"
+      # The edit form renders one training, not the training list. Use the
+      # existing indexed latest-revision lookup only for that selected record.
+      @training_edit_revision_record_ids = [@record.id.to_s]
+      @training_edit_revision = training_edit_revision_for(@record)
+    end
     render :show
   end
 
@@ -9453,13 +9458,16 @@ class ModulesController < ApplicationController
   def training_edit_revision_for(record, skip_auto_assign: false)
     return unless record&.module_slug == "training-form"
 
-    revision_scope = ModuleRecordReadQuery.latest_training_revision_summaries(
-      record_ids: @training_edit_revision_record_ids
-    )
-    @training_edit_revisions_by_record ||= revision_scope
-      .order(id: :desc).to_a.each_with_object({}) do |revision, index|
+    # Building the targeted SQL quotes every candidate ID. Do it once with
+    # the cached result, rather than rebuilding that SQL for every sort key
+    # and action button after the result has already been loaded.
+    @training_edit_revisions_by_record ||= begin
+      ModuleRecordReadQuery.latest_training_revision_summaries(
+        record_ids: @training_edit_revision_record_ids
+      ).order(id: :desc).to_a.each_with_object({}) do |revision, index|
         index[revision.data["record_id"].to_s] ||= revision
       end
+    end
     revision = @training_edit_revisions_by_record[record.id.to_s]
     @training_edit_auto_assigned_ids ||= Set.new
     if !skip_auto_assign && revision && revision.data["status"] == "Pending" && revision.data["approval_role"] != "agronomist" &&
