@@ -11561,6 +11561,16 @@ class ModulesController < ApplicationController
     all_history = jeevika_bill_approval_history(record)
     sent_history = all_history.find { |h| h.data["action"].to_s == "Sent for Approval" }
     first_history = all_history.first
+    prepared_at = first_history&.data&.[]("action_at").presence ||
+      sent_history&.data&.[]("action_at").presence || record.created_at
+    # These two labels precede every identity fallback below. Resolve them
+    # first so a populated CC/creator name does not load unused user records.
+    cc_name = jeevika_bill_cc_name(record)
+    primary_name = [cc_name, record.data["created_by_name"]]
+      .map { |value| value.to_s.strip }
+      .find { |value| value.present? && !value.match?(/\A(?:-|null|nil)\z/i) }
+    return { name: primary_name, at: bill_display_datetime(prepared_at) } if primary_name
+
     vrp_name = jeevika_jankar_display_name(record.data["select_vrp_name"].presence || jeevika_jankar_vrp_label(record.data["select_vrp"])).presence
     vrp_record_name = jeevika_bill_vrp(record)&.name.presence
     creator = bill_creator_user(record.data) unless record.data["created_by_record_type"] == "ModuleRecord"
@@ -11569,15 +11579,12 @@ class ModulesController < ApplicationController
     # incharge owns the bill and sends it for approval, so the invoice carries
     # their name. It reads live from the Jeevika Jankar, so remapping takes
     # effect at once. Whoever keyed the bill in stays as the fallback.
-    prepared_name = [jeevika_bill_cc_name(record),
+    prepared_name = [cc_name,
       record.data["created_by_name"], creator&.full_name,
       creator_record&.data&.[]("name"), creator_record&.data&.[]("full_name"),
       vrp_record_name, vrp_name, sent_history&.data&.[]("action_by"),
       record.data["created_by_username"], creator&.user_name, creator_record&.data&.[]("user_name")
     ].map { |value| value.to_s.strip }.reject { |value| value.blank? || value.match?(/\A(?:-|null|nil)\z/i) }.first || "-"
-    prepared_at = first_history&.data&.[]("action_at").presence ||
-      sent_history&.data&.[]("action_at").presence ||
-      record.created_at
     {
       name: prepared_name,
       at: bill_display_datetime(prepared_at)
@@ -15530,13 +15537,18 @@ class ModulesController < ApplicationController
 
     activity_settings = jeevika_jankar_main_activity_settings
     sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
+    other_with_farmer = record_source_slug == "other-target-with-farmer"
+    scope = TargetFormReadQuery.filter(training_target_scope) do |target|
+      setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
+      setting.present? && !training_main_activity_type?(setting[:main_activity_type]) &&
+        (other_with_farmer ? other_with_farmer_activity_type?(setting[:main_activity_type]) : !other_with_farmer_activity_type?(setting[:main_activity_type]))
+    end
 
     targets = preload_target_vrps!(
-      training_target_scope
+      scope
         .order(:ics_name, :ics_id, :village_name, :village_id, :id)
         .to_a
     )
-    other_with_farmer = record_source_slug == "other-target-with-farmer"
     # Other with Farmer uses the existing selected-target request for its live
     # village list. Building every village's rows before rendering the form
     # created hundreds of queries and large temporary objects, even though the

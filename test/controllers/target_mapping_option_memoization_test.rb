@@ -1,6 +1,27 @@
 require "test_helper"
 
 class TargetMappingOptionMemoizationTest < ActiveSupport::TestCase
+  test "projected dropdowns preserve first-present values types order and uniqueness without model allocation" do
+    payloads = [{ "first" => false, "second" => "Fallback" },
+      { "first" => 0 }, { "first" => ["Array"] }, { "first" => { "name" => "Object" } },
+      { "first" => " ", "second" => "Fallback" }, { "first" => "Hidden", "status" => "active" }]
+    payloads.each_with_index do |data, index|
+      ModuleRecord.create!(module_slug: "dropdown-parity", data: data, created_at: Time.zone.parse("2026-11-01") + index.seconds)
+    end
+    expected = ModuleRecord.where(module_slug: "dropdown-parity")
+      .where("COALESCE(data::jsonb ->> 'status', '') IN ('', 'Active')").order(created_at: :desc)
+      .filter_map { |record| %w[first second].filter_map { |key| record.data[key].presence }.first }.uniq
+    allocations = 0
+    actual = nil
+    ActiveSupport::Notifications.subscribed(->(*args) { allocations += args.last[:record_count] }, "instantiation.active_record") do
+      actual = TargetMappingsController.new.send(:module_options, "dropdown-parity", "first", "second")
+    end
+    assert_equal expected, actual
+    assert_equal 0, allocations
+    assert_empty TargetMappingsController.new.send(:module_options, "dropdown-parity")
+    assert_empty TargetMappingsController.new.send(:module_options, "dropdown-parity", :first)
+  end
+
   test "module options retain the legacy active-status rule while reading only needed JSON keys" do
     ModuleRecord.create!(module_slug: "add-activity-group", data: {
       "main_activity_name" => "Visible", "status" => "Active", "unused_upload" => "x" * 10_000

@@ -1763,17 +1763,17 @@ end
     # filters status in Ruby. Keep the exact legacy rule (blank or capital-A
     # Active only), ordering and first-present-field precedence while asking
     # PostgreSQL for only the JSON keys this method can observe.
-    keys = (field_keys.map(&:to_s) + ["status"]).uniq
-    projection = keys.flat_map do |key|
-      [ActiveRecord::Base.connection.quote(key), "data::jsonb -> #{ActiveRecord::Base.connection.quote(key)}"]
+    return [] if field_keys.empty?
+    projection = field_keys.map do |key|
+      # Serialized record data has string keys; preserve missing symbol keys.
+      key.is_a?(String) ? "data::jsonb -> #{ActiveRecord::Base.connection.quote(key)}" : "NULL"
     end.join(", ")
 
     ModuleRecord.where(module_slug: module_slug)
       .where("COALESCE(data::jsonb ->> 'status', '') IN ('', 'Active')")
       .order(created_at: :desc)
-      .select(:id)
-      .select("jsonb_build_object(#{projection})::text AS data")
-      .filter_map { |record| field_keys.filter_map { |field| record.data[field].presence }.first }
+      .pluck(Arel.sql("jsonb_build_array(#{projection})"))
+      .filter_map { |values| values.filter_map(&:presence).first }
       .uniq
   end
 

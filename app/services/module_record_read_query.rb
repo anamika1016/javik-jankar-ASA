@@ -27,6 +27,26 @@ class ModuleRecordReadQuery
   end
 
   def self.latest_training_revision_summaries(record_ids: nil)
+    if record_ids.present?
+      # One indexed top-row lookup per requested training ID avoids sorting
+      # every matching historical revision before selecting the latest IDs.
+      ids = Array(record_ids).compact.uniq
+      return TrainingEditApproval.summary_scope(ModuleRecord.none) if ids.empty?
+
+      connection = ModuleRecord.connection
+      values = ids.map { |id| "(#{connection.quote(id.to_s)}::text)" }.join(", ")
+      slug = connection.quote(TrainingEditApproval::SLUG)
+      latest_ids_sql = <<~SQL.squish
+        SELECT latest.id FROM (VALUES #{values}) AS requested(record_id)
+        CROSS JOIN LATERAL (
+          SELECT revisions.id FROM module_records AS revisions
+          WHERE revisions.module_slug = #{slug}
+            AND revisions.data::jsonb ->> 'record_id' = requested.record_id
+          ORDER BY revisions.id DESC LIMIT 1
+        ) AS latest
+      SQL
+      return TrainingEditApproval.summary_scope(ModuleRecord.where("module_records.id IN (#{latest_ids_sql})"))
+    end
     scope = ModuleRecord.where(module_slug: TrainingEditApproval::SLUG)
     scope = scope.where("data::jsonb ->> 'record_id' IN (?)", record_ids) if record_ids.present?
     # The existing (record_id, id DESC) partial index supports latest-wins.
