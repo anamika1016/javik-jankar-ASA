@@ -93,6 +93,24 @@ class ModuleReadPerformanceTest < ActiveSupport::TestCase
     assert_equal [], mapping[:farmers]
     assert controller.send(:training_form_initial_render?)
 
+    controller.request = ActionDispatch::TestRequest.create
+    controller.request.set_header("HTTP_ACCEPT", "text/html")
+    controller.instance_variable_set(:@record, ModuleRecord.new(module_slug: "training-form", data: {
+      "target_mapping_id" => "77", "selected_farmer_ids" => ["saved-farmer"]
+    }))
+    controller.define_singleton_method(:action_name) { "edit" }
+    controller.define_singleton_method(:completed_training_farmer_ids_for) { |*| ["farmer-1"] }
+    controller.define_singleton_method(:fetch_training_external_farmer_names) { |*| raise "HTML edit must not fetch every village's remote names" }
+    edit_mapping = controller.send(:build_training_target_mappings).sole
+    assert_equal ["farmer-1", "farmer-2", "saved-farmer"], edit_mapping[:farmer_ids]
+    assert_equal ["farmer-1"], edit_mapping[:completed_farmer_ids]
+    assert_empty edit_mapping[:farmers]
+    assert controller.send(:training_edit_deferred_farmer_render?)
+    controller.request.format = :json
+    assert_not controller.send(:training_edit_deferred_farmer_render?), "JSON/API reads retain their existing full payload"
+
+    controller.instance_variable_set(:@record, nil)
+
     controller.define_singleton_method(:action_name) { "dashboard" }
     controller.define_singleton_method(:training_farmers_for_ids) do |ids|
       ids.map { |id| { id: id, farmer_name: "Loaded #{id}" } }

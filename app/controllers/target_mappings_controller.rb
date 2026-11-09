@@ -323,26 +323,33 @@ class TargetMappingsController < ApplicationController
     return [] if village_ids.blank?
 
     village_ids.uniq.each_slice(6).flat_map do |batch|
-      batch.map do |village_id|
-        Thread.new do
+      keys = batch.index_with { |id| ["asa-village-farmer-list", id] }
+      cached = Rails.cache.read_multi(*keys.values)
+      threads = batch.to_h do |village_id|
+        [village_id, Thread.new do
           Rails.application.executor.wrap do
-            rows = Rails.cache.fetch(["asa-village-farmer-list", village_id], expires_in: 1.minute, skip_nil: true) do
+            cached.fetch(keys.fetch(village_id)) do
               fetch_external_farmers(data_type: "detail", type: "village", id_key: "village_id", id: village_id)
             end
-            # Decorate after the cache read so the cache keeps raw API rows.
-            next nil if rows.nil?
-
-            fallback = village_names_by_id[village_id].presence
-            next rows if fallback.blank?
-
-            rows.map do |farmer|
-              blank_village_name?(farmer[:village_name]) ? farmer.merge(village_name: fallback) : farmer
-            end
           end
-        end
-      end.then do |threads|
-        ActiveSupport::Dependencies.interlock.permit_concurrent_loads do
-          threads.flat_map { |thread| thread.value || raise("Farmer list unavailable; please retry") }
+        end]
+      end
+      resolved = ActiveSupport::Dependencies.interlock.permit_concurrent_loads do
+        threads.transform_values(&:value)
+      end
+      fresh = resolved.filter_map do |id, rows|
+        [keys.fetch(id), rows] if !cached.key?(keys.fetch(id)) && !rows.nil?
+      end.to_h
+      Rails.cache.write_multi(fresh, expires_in: 1.minute) if fresh.any?
+      resolved.flat_map do |village_id, rows|
+        raise "Farmer list unavailable; please retry" if rows.nil?
+
+        # Cache raw API rows; the selected village label is request-specific.
+        fallback = village_names_by_id[village_id].presence
+        next rows if fallback.blank?
+
+        rows.map do |farmer|
+          blank_village_name?(farmer[:village_name]) ? farmer.merge(village_name: fallback) : farmer
         end
       end
     end

@@ -53,4 +53,39 @@ class TargetMappingVillageFallbackTest < ActiveSupport::TestCase
 
     assert_equal "-", rows.first[:village_name]
   end
+
+  test "village cache operations are batched and raw empty results are reusable" do
+    original_cache = Rails.cache
+    store = ActiveSupport::Cache::MemoryStore.new
+    reads = 0
+    writes = 0
+    store.define_singleton_method(:read_multi) { |*keys, **options| reads += 1; super(*keys, **options) }
+    store.define_singleton_method(:write_multi) { |values, **options| writes += 1; super(values, **options) }
+    Rails.cache = store
+    @controller.define_singleton_method(:fetch_external_farmers) do |**kwargs|
+      kwargs[:id] == "7" ? [] : [{ id: kwargs[:id], farmer_name: "Farmer #{kwargs[:id]}", village_name: "-" }]
+    end
+    villages = (1..7).map { |id| "#{id}||Village #{id}" }
+    first = @controller.send(:external_village_farmers_for, villages)
+    assert_equal 6, first.size
+    assert_equal 2, reads
+    assert_equal 2, writes
+    assert_equal "-", store.read(["asa-village-farmer-list", "1"]).first[:village_name]
+    @controller.define_singleton_method(:fetch_external_farmers) { |**| raise "Warm cache must not fetch" }
+    assert_equal first, @controller.send(:external_village_farmers_for, villages)
+    assert_equal 4, reads
+    assert_equal 2, writes
+  ensure
+    Rails.cache = original_cache
+  end
+
+  test "unavailable village results still raise and are not cached" do
+    original_cache = Rails.cache
+    Rails.cache = ActiveSupport::Cache::MemoryStore.new
+    stub_api_rows(nil)
+    assert_raises(RuntimeError) { @controller.send(:external_village_farmers_for, ["1||Village"]) }
+    refute Rails.cache.exist?(["asa-village-farmer-list", "1"])
+  ensure
+    Rails.cache = original_cache
+  end
 end

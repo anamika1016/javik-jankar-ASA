@@ -15448,8 +15448,10 @@ class ModulesController < ApplicationController
     # New forms load farmers from the existing target-farmers endpoint when a
     # target is selected. Looking up every mapped farmer while building the
     # initial form payload duplicates that request and can make large forms slow.
-    # Edit forms retain the full lookup so saved selections keep their details.
-    farmers_lookup = if training_form_initial_render?
+    # HTML edit forms use that same endpoint (with record_id) and separately
+    # render saved selections. Do not resolve every unrelated target's remote
+    # farmer names before the edit page can be sent to the browser.
+    farmers_lookup = if training_form_initial_render? || training_edit_deferred_farmer_render?
       {}
     else
       training_farmers_for_ids(all_farmer_ids).index_by { |farmer| farmer[:id].to_s }
@@ -16292,6 +16294,11 @@ class ModulesController < ApplicationController
     @record.blank? && record_source_slug == "training-form" && action_name == "show"
   end
 
+  def training_edit_deferred_farmer_render?
+    @record&.module_slug == "training-form" && record_source_slug == "training-form" &&
+      action_name == "edit" && request&.format&.html?
+  end
+
   def registered_vrp_cluster_names
     return [] unless model_ready?(:Vrp)
     return [] unless Vrp.column_names.include?("cluster_incharge")
@@ -16659,6 +16666,11 @@ class ModulesController < ApplicationController
   end
 
   def office_category_mappings
+    @office_category_mappings_read ||= build_office_category_mappings
+    @office_category_mappings_read.deep_dup
+  end
+
+  def build_office_category_mappings
     return [] unless model_ready?(:ModuleRecord)
 
     active_module_records_scope_for_all_modules
@@ -16689,6 +16701,11 @@ class ModulesController < ApplicationController
   end
 
   def parent_office_mappings
+    @parent_office_mappings_read ||= build_parent_office_mappings
+    @parent_office_mappings_read.deep_dup
+  end
+
+  def build_parent_office_mappings
     return [] unless model_ready?(:ModuleRecord)
 
     active_module_records_scope("parent-office-add")
