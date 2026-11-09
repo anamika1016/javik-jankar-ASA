@@ -1,6 +1,61 @@
 require "test_helper"
+require "tmpdir"
 
 class TrainingEditApprovalTest < ActiveSupport::TestCase
+  test "a second worker reuses exact version-matched revision IDs without reading snapshots" do
+    previous_cache = Rails.cache
+    directory = Dir.mktmpdir("jj-shared-revision-")
+    Rails.cache = ActiveSupport::Cache::FileStore.new(directory)
+    row = ModuleRecord.create!(module_slug: TrainingEditApproval::SLUG,
+      data: { "record_id" => "shared-cache-training", "status" => "Pending", "before" => { "photo" => "x" * 100_000 } })
+    expected = TrainingEditApproval.unapproved_record_ids
+    TrainingEditApproval::REVISION_READ_CACHE.clear
+    queries = []
+    subscriber = ->(*args) { queries << args.last[:sql] if args.last[:sql].start_with?("SELECT") }
+    actual = nil
+    travel 11.minutes do
+      ActiveSupport::Notifications.subscribed(subscriber, "sql.active_record") do
+        actual = TrainingEditApproval.unapproved_record_ids
+      end
+    end
+    assert_equal expected, actual
+    assert_includes actual, "shared-cache-training"
+    refute queries.any? { |sql| sql.include?("DISTINCT ON") }, "Another worker must reuse the scalar IDs"
+    row.update_columns(data: row.data.merge("status" => "Approved"))
+    TrainingEditApproval::REVISION_READ_CACHE.clear
+    refute_includes TrainingEditApproval.unapproved_record_ids, "shared-cache-training"
+    ModuleRecord.transaction(requires_new: true) do
+      row.update_columns(data: row.data.merge("status" => "Pending"))
+      TrainingEditApproval::REVISION_READ_CACHE.clear
+      assert_includes TrainingEditApproval.unapproved_record_ids, "shared-cache-training"
+      raise ActiveRecord::Rollback
+    end
+    TrainingEditApproval::REVISION_READ_CACHE.clear
+    refute_includes TrainingEditApproval.unapproved_record_ids, "shared-cache-training"
+    assert_equal 1, Dir.glob(File.join(directory, "**", "*")).count { |path| File.file?(path) }
+  ensure
+    Rails.cache = previous_cache
+    FileUtils.remove_entry(directory) if directory && File.directory?(directory)
+    TrainingEditApproval::REVISION_READ_CACHE.clear
+  end
+
+  test "shared revision cache outages preserve the original database-backed decision" do
+    previous_cache = Rails.cache
+    row = ModuleRecord.create!(module_slug: TrainingEditApproval::SLUG,
+      data: { "record_id" => "cache-outage-training", "status" => "Pending" })
+    Rails.cache = Class.new do
+      def read(*) = raise(IOError, "Unavailable")
+      def write(*) = raise(IOError, "Unavailable")
+    end.new
+    TrainingEditApproval::REVISION_READ_CACHE.clear
+    assert_includes TrainingEditApproval.unapproved_record_ids, "cache-outage-training"
+    row.update_columns(data: row.data.merge("status" => "Approved"))
+    refute_includes TrainingEditApproval.unapproved_record_ids, "cache-outage-training"
+  ensure
+    Rails.cache = previous_cache
+    TrainingEditApproval::REVISION_READ_CACHE.clear
+  end
+
   test "revision cache respects savepoint rollback and does not leak uncommitted approval results" do
     row = ModuleRecord.create!(module_slug: TrainingEditApproval::SLUG,
       data: { "record_id" => "rollback-training", "status" => "Pending" })

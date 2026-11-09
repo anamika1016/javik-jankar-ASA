@@ -13514,3 +13514,9 @@ body {
   background: #fdeccd;
   color: #8a5a10;
 }
+
+/* A completed page must not show a late/orphaned Turbo indicator. The flag is
+   removed for each new visit or submission, keeping real loading visible. */
+html[data-navigation-complete] .turbo-progress-bar {
+  display: none !important;
+}

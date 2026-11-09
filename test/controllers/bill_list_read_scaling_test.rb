@@ -238,6 +238,62 @@ class BillListReadScalingTest < ActiveSupport::TestCase
     assert edited_bill.instance_variable_get(:@jeevika_jankar_achievement_keys_loaded)
   end
 
+  test "early bill month and state selection preserves complete calculated rows and original order" do
+    bills = [nil, "October", " october ", "OCTOBER", "November", "-", false, 5].each_with_index.map do |month, index|
+      ModuleRecord.create!(module_slug: "jeevika-jankar-bill-process", data: {
+        "bill_month" => month, "record_state" => [nil, "Active", "Inactive", "inactive"][index % 4],
+        "status" => "Submitted (Not sent for approval)", "select_vrp_name" => "Saved JJ #{index}",
+        "total_target" => "17", "total_achievement" => "4", "grand_total" => "100"
+      })
+    end
+    original = calculator.send(:jeevika_bill_rows, bills)
+    [nil, "October", "November", "-", "5"].product([nil, "Active", "Inactive"]).each do |month, state|
+      expected = original.select do |row|
+        (month.blank? || row[:bill_month].to_s.casecmp(month).zero?) &&
+          (state.blank? || row[:record_state].to_s.casecmp(state).zero?)
+      end
+      controller = calculator
+      candidates = controller.send(:jeevika_bill_list_candidates, bills, month: month, record_state: state)
+      assert_equal expected, controller.send(:jeevika_bill_rows, candidates)
+    end
+  end
+
+  test "early filters preserve live target totals across owners months and record states" do
+    owners = [build_bill_lookup_vrp("Parity First", "parity_first"), build_bill_lookup_vrp("Parity Second", "parity_second")]
+    farmer = Afl.create!(farmer_name: "Parity Farmer", fco_id: "F")
+    ModuleRecord.create!(module_slug: "add-activity-group", data: {
+      "main_activity_name" => "Farmers' Training", "main_activity_type" => "Training", "status" => "Active"
+    })
+    bills = owners.each_with_index.flat_map do |owner, index|
+      %w[October November].map do |month|
+        target = TargetMapping.create!(vrp: owner, fco_id: "F", ics_id: "I", village_id: "V",
+          month_name: month, main_activity_name: "Farmers' Training", activity_name: "Topic",
+          target_quantity: index + 1, afl_ids: [farmer.id.to_s])
+        ModuleRecord.create!(module_slug: "training-form", data: {
+          "month" => month, "target_mapping_id" => target.id.to_s, "jeevika_jankar_id" => owner.id.to_s,
+          "main_activity" => "Farmers' Training", "sub_activity" => "Topic", "selected_farmer_ids" => [farmer.id.to_s],
+          "training_date" => "2026-10-10"
+        })
+        ModuleRecord.create!(module_slug: "jeevika-jankar-bill-process", data: {
+          "select_vrp" => owner.id.to_s, "select_vrp_name" => owner.name, "bill_month" => month,
+          "record_state" => index.zero? ? "Active" : "Inactive", "status" => "Submitted (Not sent for approval)",
+          "total_target" => "999", "total_achievement" => "888", "grand_total" => "100"
+        })
+      end
+    end
+    baseline = calculator.send(:jeevika_bill_rows, bills)
+    assert baseline.all? { |row| row[:target].to_f.positive? && row[:target].to_s != "999" }
+    [nil, "October", "November"].product([nil, "Active", "Inactive"]).each do |month, state|
+      expected = baseline.select { |row|
+        (month.blank? || row[:bill_month].to_s.casecmp(month).zero?) &&
+          (state.blank? || row[:record_state].to_s.casecmp(state).zero?)
+      }
+      controller = calculator
+      candidates = controller.send(:jeevika_bill_list_candidates, bills, month: month, record_state: state)
+      assert_equal expected, controller.send(:jeevika_bill_rows, candidates)
+    end
+  end
+
   private
 
   def calculator

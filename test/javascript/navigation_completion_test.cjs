@@ -3,26 +3,55 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
 
-test("completed navigation clears progress on render and load but preserves in flight previews", () => {
-  const source = fs.readFileSync("app/javascript/layout.js", "utf8");
-  const start = source.indexOf("const clearCompletedNavigationProgress =");
-  const end = source.indexOf('\nif (document.readyState', start);
+test("completed navigation stops Turbo timers and late bars; new visits and previews stay pending", () => {
+  const source = fs.readFileSync("app/javascript/navigation_progress.js", "utf8").replace(/import .*;\n/, "");
   const listeners = {};
-  let preview = false;
+  const attributes = new Set();
   let removed = 0;
+  let hidden = 0;
   const document = {
-    documentElement: { hasAttribute: () => preview },
+    readyState: "loading",
+    documentElement: { hasAttribute: (name) => attributes.has(name),
+      setAttribute: (name) => attributes.add(name), removeAttribute: (name) => attributes.delete(name) },
     querySelectorAll: () => [{ remove: () => removed++ }],
     addEventListener: (name, callback) => listeners[name] = callback
   };
-  vm.runInNewContext(source.slice(start, end), { document });
-  preview = true;
+  const Turbo = { session: { adapter: {
+    hideVisitProgressBar: () => hidden++, hideFormProgressBar: () => hidden++
+  } } };
+  vm.runInNewContext(source, { document, Turbo, window: { addEventListener: (name, callback) => listeners[name] = callback } });
+  listeners["turbo:visit"]();
+  attributes.add("data-turbo-preview");
   listeners["turbo:render"]();
   assert.equal(removed, 0);
-  preview = false;
+  assert.equal(hidden, 0);
+  attributes.delete("data-turbo-preview");
   listeners["turbo:render"]();
+  assert.equal(hidden, 2);
+  assert.equal(removed, 1);
+  assert.ok(attributes.has("data-navigation-complete"));
+  listeners["turbo:visit"]();
+  assert.ok(!attributes.has("data-navigation-complete"));
   listeners["turbo:load"]();
-  assert.equal(removed, 2);
+  listeners["turbo:submit-start"]();
+  assert.ok(!attributes.has("data-navigation-complete"));
+  Turbo.navigator = { currentVisit: { state: "started" } };
+  listeners["turbo:submit-end"]();
+  assert.ok(!attributes.has("data-navigation-complete"));
+  listeners.DOMContentLoaded();
+  assert.ok(!attributes.has("data-navigation-complete"), "A late initial-ready event must not hide a newer pending visit");
+  listeners["turbo:load"]();
+  assert.ok(!attributes.has("data-navigation-complete"), "An older load completion must not hide the current visit");
+  listeners.pageshow({ persisted: false });
+  assert.ok(!attributes.has("data-navigation-complete"));
+  listeners.pageshow({ persisted: true });
+  assert.ok(attributes.has("data-navigation-complete"), "Restored browser pages must clear stale indicator state");
+  listeners["turbo:visit"]();
+  Turbo.navigator.currentVisit.state = "completed";
+  listeners["turbo:submit-end"]();
+  assert.ok(attributes.has("data-navigation-complete"));
+  listeners.pageshow();
+  assert.equal(removed, 5);
 });
 
 test("password visibility and labels stay in sync and navigation does not duplicate bindings", () => {

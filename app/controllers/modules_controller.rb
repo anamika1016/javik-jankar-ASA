@@ -46,7 +46,7 @@ class ModulesController < ApplicationController
                 :training_activity_setup_mappings, :training_target_month_options, :user_hierarchy_cc_to_head_map,
                 :training_activity_mappings, :approval_user_mappings, :approval_user_options,
                 :parent_office_mappings, :user_hierarchy_list_rows, :jeevika_jankar_cluster_rows,
-                :jeevika_bill_status_label, :jeevika_bill_status_class, :jeevika_bill_rows,
+                :jeevika_bill_status_label, :jeevika_bill_status_class, :jeevika_bill_rows, :jeevika_bill_list_candidates,
                 :jeevika_bill_detail_rows, :jeevika_bill_display_items, :jeevika_bill_current_approval_step,
                 :jeevika_bill_approval_history, :jeevika_bill_current_approval_history, :jeevika_bill_step_history, :jeevika_bill_final_approval_recorded?, :jeevika_bill_current_approver?,
                 :jeevika_bill_approval_steps, :jeevika_bill_summary,
@@ -10772,6 +10772,16 @@ class ModulesController < ApplicationController
         ["#{row[:score_earned]}/#{row[:score_maximum]}", "#{row[:score_percentage]}%", row[:grade][:label]]
     end
     [headers, rows]
+  end
+
+  # Apply only the existing month/state predicates before expensive totals.
+  # The status filter still runs against the calculated workflow label.
+  def jeevika_bill_list_candidates(records, month:, record_state:)
+    Array(records).select do |record|
+      data = record.data
+      (month.blank? || (data["bill_month"].presence || "-").to_s.casecmp(month).zero?) &&
+        (record_state.blank? || (data["record_state"].presence || "Active").to_s.casecmp(record_state).zero?)
+    end
   end
 
   def jeevika_bill_rows(records)

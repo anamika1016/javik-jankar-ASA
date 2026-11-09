@@ -2,6 +2,7 @@
 
 pin "application", preload: false
 pin "layout", preload: false
+pin "navigation_progress", preload: false
 pin "dashboard_reports", preload: false
 pin "login", preload: false
 pin "password_toggles"

@@ -2385,7 +2385,18 @@ class DashboardReportsController < ModulesController
   def dashboard_target_mappings
     @dashboard_target_mappings ||= begin
       targets = dashboard_visible_target_scope.order(updated_at: :desc).to_a
-      ActiveRecord::Associations::Preloader.new(records: targets, associations: :vrp, scope: dashboard_vrp_read_scope).call
+      # dashboard loads its visible JJs first. Reuse those complete, signature-
+      # free rows instead of querying and instantiating the same JJs again.
+      columns = Vrp.column_names - ["agreement_signature_data"]
+      loaded = Array(@dashboard_vrps).select do |vrp|
+        !vrp.has_attribute?(:agreement_signature_data) && (columns - vrp.attribute_names).empty?
+      end.index_by(&:id)
+      unresolved = targets.reject do |target|
+        owner = loaded[target.vrp_id]
+        target.association(:vrp).target = owner if owner
+        owner
+      end
+      ActiveRecord::Associations::Preloader.new(records: unresolved, associations: :vrp, scope: dashboard_vrp_read_scope).call
       targets
     end
   end

@@ -12,6 +12,7 @@ class TrainingEditApproval
   IMAGE_KEYS = (%w[training_register_upload training_photo_upload_with_geo_tag] + PHOTO_VIEW_FIELDS.keys).freeze
   class InvalidTransition < StandardError; end
   REVISION_READ_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 8.megabytes)
+  REVISION_SHARED_CACHE = ActiveSupport::Cache::FileStore.new(Rails.root.join("tmp/cache/training-revisions"))
 
   # Only the latest revision controls billing; untouched records remain eligible.
   def self.unapproved_record_ids
@@ -22,11 +23,19 @@ class TrainingEditApproval
     scope = ModuleRecord.where(module_slug: SLUG)
     version_sql = "MD5(COALESCE(STRING_AGG(id::text || ':' || xmin::text || ':' || ctid::text, ',' ORDER BY id), ''))"
     version = scope.pick(Arel.sql(version_sql))
-    prefix = ["training-unapproved-v1", ModuleRecord.connection_pool.db_config.database]
+    prefix = ["training-unapproved-v2", ModuleRecord.connection_pool.db_config.database]
     key = [*prefix, version]
     DashboardCacheFill.synchronize(key) do
       cached = REVISION_READ_CACHE.read(key)
       next cached unless cached.nil?
+
+      # Puma workers have separate local stores. Reuse a version-matched result
+      # from another worker instead of parsing the same large snapshots again.
+      shared = shared_revision_cache(:read, key)
+      if shared.is_a?(Array) && shared.all? { |id| id.is_a?(String) }
+        REVISION_READ_CACHE.write(key, shared, expires_in: 10.minutes)
+        next shared
+      end
 
       # The version and IDs below share one SQL snapshot. A concurrent write
       # between the probe and this read must never cache new IDs under an old
@@ -37,9 +46,31 @@ class TrainingEditApproval
         record_id = record_id.to_s
         record_id if record_id.present? && status != "Approved"
       end
-      REVISION_READ_CACHE.write([*prefix, actual_version], ids, expires_in: 10.minutes)
+      actual_key = [*prefix, actual_version]
+      REVISION_READ_CACHE.write(actual_key, ids, expires_in: 10.minutes)
+      # Version checks, not this retention period, control freshness. Retain
+      # the shared result across local-cache expiry and worker restarts.
+      shared_revision_cache(:write, actual_key, ids, expires_in: 1.day)
       ids
     end.dup
+  end
+
+  def self.shared_revision_cache(operation, key, ids = nil, **options)
+    # Same-host Puma workers share this small file without requiring a second
+    # database. Keep one slot per database, not an accumulating file per version.
+    store = Rails.env.test? ? Rails.cache : REVISION_SHARED_CACHE
+    slot = key.first(2)
+    if operation == :read
+      entry = store.read(slot)
+      entry[:ids] if entry.is_a?(Hash) && entry[:version] == key.last
+    else
+      store.write(slot, { version: key.last, ids: ids }, **options)
+    end
+  rescue StandardError => error
+    # Shared caching is optional. Preserve the existing database read if its
+    # cache backend is unavailable; never make an approval decision from a TTL.
+    Rails.logger.warn("Training revision cache #{operation} unavailable: #{error.class}")
+    nil
   end
 
   def self.read_unapproved_revision_rows(version_query)

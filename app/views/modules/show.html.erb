@@ -2001,8 +2001,7 @@
 
   <% elsif @slug == "jeevika-jankar-bill-list" && @record.blank? %>
     <% table_id = "jeevika_jankar_bill_table" %>
-    <% bill_rows = jeevika_bill_rows(@records) %>
-    <% bill_months = bill_rows.map { |row| row[:bill_month] }.compact_blank.reject { |month| month == "-" }.uniq %>
+    <% bill_months = Array(@records).map { |record| record.data["bill_month"].presence || "-" }.compact_blank.reject { |month| month == "-" }.uniq %>
     <% default_bill_month = Date.current.prev_month.strftime("%B") %>
     <% bill_months << default_bill_month unless bill_months.include?(default_bill_month) %>
     <% bill_months.sort_by! { |month| Date::MONTHNAMES.index { |name| name.to_s.casecmp(month.to_s).zero? } || 99 } %>
@@ -2010,6 +2009,9 @@
     <% selected_record_state = params[:record_state].presence_in(["Active", "Inactive"]) %>
     <% dashboard_status_link = params[:bill_status].present? || params[:record_state].present? %>
     <% selected_bill_month = params[:bill_month].presence || (dashboard_status_link ? nil : default_bill_month) %>
+    <% bill_filters_active = @jeevika_bill_user_filters || params[:bill_month].present? || params[:bill_status].present? || params[:record_state].present? %>
+    <% candidate_bills = bill_filters_active ? jeevika_bill_list_candidates(@records, month: selected_bill_month, record_state: selected_record_state) : @records %>
+    <% bill_rows = jeevika_bill_rows(candidate_bills) %>
     <% if @jeevika_bill_user_filters || params[:bill_month].present? || params[:bill_status].present? || params[:record_state].present? %>
       <% bill_rows = bill_rows.select { |row| selected_bill_month.blank? || row[:bill_month].to_s.casecmp(selected_bill_month).zero? } %>
       <%# The two options are exact opposites. Anything not finally approved -

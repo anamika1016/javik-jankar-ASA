@@ -7960,18 +7960,6 @@ const queueBootLayoutPage = () => {
 document.addEventListener("turbo:load", queueBootLayoutPage);
 document.addEventListener("DOMContentLoaded", queueBootLayoutPage);
 
-// Turbo's progress bar represents navigation, not background page setup.  On
-// large dashboards the response has already been rendered when Turbo emits
-// `turbo:render`, but the bar can remain visible until the remaining lifecycle
-// work settles.  Remove only that completed-navigation indicator here; this
-// does not cancel requests, alter form submission, or change any data shown.
-const clearCompletedNavigationProgress = () => {
-  if (document.documentElement.hasAttribute("data-turbo-preview")) return;
-  document.querySelectorAll(".turbo-progress-bar").forEach((bar) => bar.remove());
-};
-document.addEventListener("turbo:render", clearCompletedNavigationProgress);
-document.addEventListener("turbo:load", clearCompletedNavigationProgress);
-
 if (document.readyState !== "loading") {
   queueBootLayoutPage();
 }
