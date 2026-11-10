@@ -15,6 +15,8 @@ class FarmerAppLogin < ApplicationRecord
   # column is written on every login, so no row has a null here.
   scope :recent_first, -> { order(last_logged_in_at: :desc, id: :desc) }
 
+  has_many :login_events, class_name: "FarmerAppLoginEvent", dependent: :destroy
+
   # Aadhaar is never stored, so the digest is what links repeat logins by the
   # same card. The register's own farmer id is preferred when it answers with
   # one; the digest only has to carry logins where it does not.
@@ -44,15 +46,20 @@ class FarmerAppLogin < ApplicationRecord
   end
 
   # Called once a farmer has passed OTP. `farmer` is the register payload.
-  def self.record_login!(farmer:, identifier_type:, aadhaar_no: nil, ip: nil, device: nil, app_version: nil)
+  def self.record_login!(farmer:, identifier_type:, aadhaar_no: nil, ip: nil, device: nil,
+                         app_version: nil, latitude: nil, longitude: nil, place: nil)
     farmer = farmer.to_h.with_indifferent_access
     external_id = farmer[:id].presence&.to_s
     digest = aadhaar_digest_for(aadhaar_no.presence || farmer[:aadhaar_no])
     aadhaar_digits = aadhaar_no.presence.to_s.gsub(/\D/, "")
     aadhaar_digits = farmer[:aadhaar_no].to_s.gsub(/\D/, "") if aadhaar_digits.blank?
 
+    # The register's own id identifies the farmer. The Aadhaar digest is only
+    # a fallback for when the register answers without one -- using it as well
+    # would let a different farmer id that happens to carry the same Aadhaar
+    # take over an existing farmer's row.
     record = find_by(farmer_external_id: external_id) if external_id.present?
-    record ||= find_by(aadhaar_digest: digest) if digest.present?
+    record ||= find_by(aadhaar_digest: digest) if external_id.blank? && digest.present?
     record ||= new
 
     now = Time.current
@@ -79,9 +86,24 @@ class FarmerAppLogin < ApplicationRecord
       last_logged_in_at: now,
       last_login_ip: ip.presence || record.last_login_ip,
       last_device: device.to_s.first(200).presence || record.last_device,
-      last_app_version: app_version.to_s.first(40).presence || record.last_app_version
+      last_app_version: app_version.to_s.first(40).presence || record.last_app_version,
+      last_login_latitude: latitude || record.last_login_latitude,
+      last_login_longitude: longitude || record.last_login_longitude,
+      last_login_place: place.to_s.first(200).presence || record.last_login_place
     )
     record.save!
+    # The summary row above is overwritten on every login, so the sign-in is
+    # also kept as its own row -- that is what the date filter reads.
+    record.login_events.create!(
+      logged_in_at: now,
+      identifier_type: record.last_identifier_type,
+      ip: ip.presence,
+      device: device.to_s.first(200).presence,
+      app_version: app_version.to_s.first(40).presence,
+      latitude: latitude,
+      longitude: longitude,
+      place: place.to_s.first(200).presence
+    )
     record
   end
 
@@ -154,6 +176,38 @@ class FarmerAppLogin < ApplicationRecord
   end
   private_class_method :mobile_candidates
 
+  # When the list is filtered to one date, the query attaches that day's own
+  # figures as extra columns. Everything the list and the export print goes
+  # through these, so one set of templates serves both modes.
+  def display_login_count
+    day_value(:day_login_count)&.to_i || login_count
+  end
+
+  def display_first_login
+    as_time(day_value(:day_first_login)) || first_logged_in_at
+  end
+
+  def display_last_login
+    as_time(day_value(:day_last_login)) || last_logged_in_at
+  end
+
+  def display_identifier_type
+    day_value(:day_identifier_type).presence || last_identifier_type
+  end
+
+  def display_ip = day_value(:day_ip).presence || last_login_ip
+  def display_device = day_value(:day_device).presence || last_device
+  def display_app_version = day_value(:day_app_version).presence || last_app_version
+  def display_place = day_value(:day_place).presence || last_login_place
+  def display_latitude = day_value(:day_latitude) || last_login_latitude
+  def display_longitude = day_value(:day_longitude) || last_login_longitude
+
+  # True when this row came from the date-filtered query, so the view can say
+  # "logins on this date" rather than "logins in total".
+  def day_scoped?
+    has_attribute?(:day_login_count)
+  end
+
   def masked_mobile
     digits = mobile_no.to_s.gsub(/\D/, "")
     return "-" if digits.blank?
@@ -163,5 +217,19 @@ class FarmerAppLogin < ApplicationRecord
 
   def masked_aadhaar
     aadhaar_last4.present? ? "XXXX-XXXX-#{aadhaar_last4}" : "-"
+  end
+
+  private
+
+  # Only present on rows loaded by the date-filtered query.
+  def day_value(name)
+    has_attribute?(name) ? self[name] : nil
+  end
+
+  # A column built in SQL can come back as a string depending on the adapter.
+  def as_time(value)
+    return if value.blank?
+
+    value.respond_to?(:in_time_zone) ? value.in_time_zone : Time.zone.parse(value.to_s)
   end
 end

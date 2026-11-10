@@ -46,4 +46,25 @@ class BillIndexReuseTest < ActiveSupport::TestCase
     assert_empty controller.send(:jeevika_bill_list_candidates, records, month: "November", record_state: nil, status: "pending")
   end
 
+  test "real terminal approval history enters final bucket and edit boundary restores pending bucket" do
+    bill = ModuleRecord.create!(module_slug: "jeevika-jankar-bill-process", data: { "status" => "Pending at Reviewer", "bill_month" => "October" })
+    step = ModuleRecord.new(id: 777, data: { "approval_level" => "Final Approval", "approver_approved_by" => "Reviewer" })
+    ModuleRecord.create!(module_slug: "jeevika-jankar-bill-approval-history", data: {
+      "bill_id" => bill.id.to_s, "action" => "Approved", "approval_level" => "Final Approval", "approver" => "Reviewer" })
+    calculator = lambda do
+      ModulesController.new.tap do |controller|
+        controller.define_singleton_method(:jeevika_bill_approval_steps) { |_| [step] }
+      end
+    end
+    controller = calculator.call
+    assert_equal "Final Approved", controller.send(:jeevika_bill_status_label, bill)
+    assert_equal [bill], controller.send(:jeevika_bill_list_candidates, [bill], month: "October", record_state: nil, status: "final-approved")
+    assert_empty controller.send(:jeevika_bill_list_candidates, [bill], month: "October", record_state: nil, status: "pending")
+    ModuleRecord.create!(module_slug: "jeevika-jankar-bill-approval-history", data: { "bill_id" => bill.id.to_s, "action" => "Bill Edited" })
+    bill.update!(data: bill.data.merge("status" => "Submitted (Not sent for approval)"))
+    controller = calculator.call
+    assert_equal [bill], controller.send(:jeevika_bill_list_candidates, [bill], month: "October", record_state: nil, status: "pending")
+    assert_empty controller.send(:jeevika_bill_list_candidates, [bill], month: "October", record_state: nil, status: "final-approved")
+  end
+
 end

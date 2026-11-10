@@ -9,12 +9,26 @@ mobile number for that farmer, login is not possible and the API says so.
 
 All requests and responses are JSON. Send `Content-Type: application/json`.
 
-Optional headers, recorded against the login for the web list:
+Optional headers, recorded against the login and shown on the web list:
 
 | Header | Example |
 |---|---|
 | `X-Device-Name` | `Redmi Note 12` |
 | `X-App-Version` | `1.0.3` |
+| `X-Latitude` | `23.2250491` |
+| `X-Longitude` | `74.8512613` |
+| `X-Location` | `Bhawanipatna, Odisha` |
+
+Send the location headers on **verify** when the farmer has granted location
+permission. They are optional; a value that is not a number is ignored.
+
+### Rules the app must build around
+
+- An OTP is valid for **2 minutes**.
+- **Resend** is allowed once every **60 seconds**.
+- More than **3 wrong OTPs** locks that mobile number for **1 hour**. The
+  count is per mobile number, so requesting a new OTP does not reset it.
+  A successful login clears it.
 
 ---
 
@@ -41,7 +55,8 @@ Success — `200`:
   "message": "OTP sent to the registered mobile number.",
   "otp_token": "eyJfcmFpbHMiOnsiZGF0YSI6...",
   "mobile_masked": "******1513",
-  "expires_in_seconds": 600
+  "expires_in_seconds": 120,
+  "resend_available_in_seconds": 60
 }
 ```
 
@@ -53,16 +68,41 @@ Failures:
 | Status | Body `message` | Meaning |
 |---|---|---|
 | `422` | `Mobile number or Aadhaar number is required.` | Neither field sent |
+| `422` | `Enter a valid 10-digit mobile number starting with 6, 7, 8 or 9.` | Mobile failed validation; the register was not called |
 | `404` | `Farmer Not Found` | No such farmer in the register |
-| `422` | `This farmer has no registered mobile number. Please contact your FCO.` | Register has no mobile for them |
+| `422` | `This farmer has no valid registered mobile number. Please contact your FCO.` | Register has no usable mobile for them |
 | `429` | `An OTP was just sent. Please wait a minute before trying again.` | Resend throttle, 60 s per mobile |
+| `423` | `Too many wrong OTP attempts. This mobile number is locked for N more minutes.` | Locked after more than 3 wrong OTPs |
 | `422` | `OTP could not be sent. …` | SMS gateway refused |
 
 Disable the **Resend OTP** button for 60 seconds, otherwise it returns `429`.
 
 ---
 
-## 2. Verify OTP
+## 2. Resend OTP
+
+```
+POST /api/v1/farmer/login/otp/resend
+```
+
+```json
+{ "otp_token": "<from step 1>" }
+```
+
+Same response as step 1, with a **new** `otp_token`. The previous code stops
+working immediately, so always verify against the newest token.
+
+The farmer does not have to retype their Aadhaar. If the app has lost the
+token, `{ "mobile_no": ... }` or `{ "aadhaar_no": ... }` works too.
+
+Errors are the same as step 1 — in particular `429` before 60 seconds have
+passed, and `423` when the number is locked.
+
+Keep the **Resend OTP** button disabled for `resend_available_in_seconds`.
+
+---
+
+## 3. Verify OTP
 
 ```
 POST /api/v1/farmer/login/otp/verify
@@ -111,16 +151,17 @@ Failures — all `401` unless noted:
 | `message` | Meaning |
 |---|---|
 | `Invalid or expired OTP.` | Wrong OTP, or the token is not ours |
-| `OTP has expired. Please request a new one.` | Older than 10 minutes |
+| `OTP has expired. Please request a new one.` | Older than 2 minutes, or superseded by a resend |
 | `This OTP has already been used. Please request a new one.` | Already exchanged for a token |
-| `Too many wrong attempts. Please request a new OTP.` | 5 wrong tries on one OTP |
+| `Invalid OTP. N attempts left.` | Wrong code; shows how many tries remain before the lock |
+| `Too many wrong OTP attempts. This mobile number is locked for N more minutes.` (`423`) | More than 3 wrong codes |
 | `OTP and otp_token are required.` (`422`) | A field is missing |
 
 On any of these, send the farmer back to step 1 for a fresh OTP.
 
 ---
 
-## 3. Farmer profile
+## 4. Farmer profile
 
 ```
 GET /api/v1/farmer/me
@@ -135,7 +176,7 @@ record (land details, crop production, ICS, ID cards, document URLs). Read
 
 ---
 
-## 4. Logout
+## 5. Logout
 
 ```
 DELETE /api/v1/farmer/logout
@@ -157,11 +198,15 @@ rejected here. Do not share one token store between the two apps.
 the device. The server stores only the last four digits plus a one-way hash —
 it never keeps the full number.
 
-**Timing.** Step 1 waits on the SMS gateway, so allow up to ~15 s. Step 2 is
+**Timing.** Step 1 waits on the SMS gateway, so allow up to ~15 s. Verify is
 served from cache and returns in milliseconds; a 10 s client timeout is ample.
 
+**Countdown.** Show a 2-minute countdown on the OTP screen and a separate
+60-second countdown on the Resend button.
+
 **Retry.** Safe to retry step 1 after the 60 s throttle. Never auto-retry
-step 2 — a repeat of the same OTP returns "already been used".
+verify — a repeat of the same OTP returns "already been used", and a wrong
+one costs an attempt against the 3-strike lock.
 
 ---
 
@@ -172,8 +217,13 @@ curl -X POST https://jj.asaindia.org/api/v1/farmer/login/otp/send \
   -H 'Content-Type: application/json' \
   -d '{"mobile_no":"7898071513"}'
 
+curl -X POST https://jj.asaindia.org/api/v1/farmer/login/otp/resend \
+  -H 'Content-Type: application/json' \
+  -d '{"otp_token":"<token>"}'
+
 curl -X POST https://jj.asaindia.org/api/v1/farmer/login/otp/verify \
   -H 'Content-Type: application/json' \
+  -H 'X-Latitude: 23.2250491' -H 'X-Longitude: 74.8512613' \
   -d '{"otp_token":"<token>","otp":"483921"}'
 
 curl https://jj.asaindia.org/api/v1/farmer/me \
@@ -184,6 +234,18 @@ curl https://jj.asaindia.org/api/v1/farmer/me \
 
 ## Web side
 
+The page opens on **today** and has a calendar to pick any other date, plus
+Today / Yesterday / All Dates shortcuts. Every sign-in is kept, so a farmer
+shows up under each date they logged in, with that date's own count, time,
+method and device. Export Excel follows whatever date and search is applied.
+
 Every successful login appears at **Sidebar → Farmer 360 → Farmer App Logins**
-(`/farmer-app-logins`) with name, masked mobile, village, ICS, Tracenet, how
-the farmer logged in, login count, and first/last login time.
+(`/farmer-app-logins`) with name, masked mobile and Aadhaar, whether they
+signed in by mobile or Aadhaar, village and district, ICS and Tracenet,
+login count, first and last login time, the outcome of the last OTP, and the
+device, IP and coordinates the login came from.
+
+The OTP code itself is never stored and never shown — only whether it was
+verified, is still awaiting entry, or expired, and how many wrong tries it
+took. Storing it would let anyone with access to that page sign in as the
+farmer.

@@ -2,6 +2,7 @@ Rails.application.routes.draw do
   resources :training_edit_approvals, only: %i[index show update]
   get "farmer360", to: "farmer360#index", as: :farmer360
   get "farmer-app-logins", to: "farmer_app_logins#index", as: :farmer_app_logins
+  get "farmer-app-logins/export", to: "farmer_app_logins#export", as: :export_farmer_app_logins
   # Uploaded training evidence is stored under public/uploads/module_records.
   # Keep an authenticated Rails fallback so links also work when the web server
   # is not configured to serve the uploads directory directly.
@@ -24,6 +25,7 @@ Rails.application.routes.draw do
       # number held in the ASA register. Separate from the staff/JJ session
       # routes above; farmer tokens are not valid on those endpoints.
       post "farmer/login/otp/send", to: "farmer_sessions#send_otp"
+      post "farmer/login/otp/resend", to: "farmer_sessions#resend_otp"
       post "farmer/login/otp/verify", to: "farmer_sessions#verify_otp"
       get "farmer/me", to: "farmer_sessions#profile"
       delete "farmer/logout", to: "farmer_sessions#logout"

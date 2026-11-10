@@ -43,6 +43,32 @@ module ApplicationHelper
     label.to_s.sub(/\s*-\s*\d+\s*\z/, "").strip.presence || label.to_s
   end
 
+  # The register answers with booleans, nulls, nested rows and image URLs in
+  # the same payload. Render each as something a person can read.
+  def farmer360_value(value)
+    case value
+    when true then "Yes"
+    when false then "No"
+    when nil then "-"
+    when Array, Hash then value.to_json
+    else
+      text = value.to_s.strip
+      return "-" if text.blank? || text.match?(/\A(?:null|nil|undefined)\z/i)
+      return link_to("Open", text, target: "_blank", rel: "noopener") if text.match?(%r{\Ahttps?://})
+
+      text
+    end
+  end
+
+  # Date on one line and the clock time under it, so a column of logins can
+  # be scanned for "when" without the rows growing wide.
+  def farmer_login_time(value)
+    return "-" if value.blank?
+
+    time = value.in_time_zone
+    safe_join([time.strftime("%d %b %Y"), tag.small(time.strftime("%I:%M %p"), class: "farmer-sub")])
+  end
+
   def farmer_identity_meta(village, father, tracenet)
     [["Village", village], ["Father", father], ["Tracenet", tracenet]].map do |label, raw|
       value = raw.to_s.strip
@@ -260,14 +286,6 @@ module ApplicationHelper
       ]
     },
     {
-      title: "Farmer 360",
-      icon: "▤",
-      links: [
-        ["Farmer 360", :route, :farmer360_path],
-        ["Farmer App Logins", :route, :farmer_app_logins_path]
-      ]
-    },
-    {
       title: "User Mapping",
       icon: "▧",
       links: [
@@ -359,6 +377,14 @@ module ApplicationHelper
         ["Exam Setup", :route, :jj_quizzes_path]
       ]
     },
+    {
+      title: "Farmer 360",
+      icon: "▤",
+      links: [
+        ["Farmer 360 Details", :route, :farmer360_path],
+        ["Farmer App Logins", :route, :farmer_app_logins_path]
+      ]
+    },
   ].freeze
 
   def sidebar_sections
@@ -434,7 +460,10 @@ module ApplicationHelper
       "Jeevika Jankar Approval Queue" => "vrp-approval-queue",
       "Jeevika Jankar Approval Form" => "vrp-approval-form",
       "Jeevika Jankar Approval List" => "vrp-approval-list",
-      "Jeevika Jankar Targets" => "vrp-targets"
+      "Jeevika Jankar Targets" => "vrp-targets",
+      # The link was renamed from "Farmer 360"; keep its original permission
+      # key so access already granted under that name still applies.
+      "Farmer 360 Details" => "farmer-360"
     }.fetch(label.to_s, label.parameterize)
   end
 
@@ -548,6 +577,10 @@ module ApplicationHelper
     end
     if ["VRP List", "Jeevika Jankar List"].include?(name.to_s.strip)
       keys.concat(["vrp-list", "jeevika-jankar-list"])
+    end
+    # Either spelling of the renamed Farmer 360 link grants the other.
+    if ["Farmer 360", "Farmer 360 Details"].include?(name.to_s.strip)
+      keys.concat(["farmer-360", "farmer-360-details"])
     end
     if ["VRP Approval Form", "Jeevika Jankar Approval Form"].include?(name.to_s.strip)
       keys.concat(["vrp-approval-form", "jeevika-jankar-approval-form", "approval-master"])

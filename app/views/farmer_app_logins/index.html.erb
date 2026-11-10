@@ -1,96 +1,212 @@
 <% content_for :title, "Farmer App Logins" %>
+<% current_date_param = @all_dates ? "all" : @date.to_s %>
+<% filter_params = { q: @search, method: @method_filter, date: current_date_param } %>
 
-<main class="vrp-list-page">
-  <section class="vrp-list-shell">
-    <div class="vrp-list-header">
-      <div>
-        <p class="vrp-eyebrow">FARMER 360</p>
-        <h1>Farmer App Logins</h1>
-        <p>Jo farmer Android app se mobile ya Aadhaar se login karta hai, wo yahan list ho jata hai.</p>
+<section class="module-page farmer-login-page">
+  <div class="module-hero">
+    <div>
+      <p class="vrp-eyebrow">Farmer 360</p>
+      <h1>Farmer App Logins</h1>
+      <p>
+        <% if @all_dates %>
+          Every farmer who has signed in from the Android app, with how they signed in and from where.
+        <% else %>
+          Farmers who signed in on <%= @date.strftime("%d %B %Y") %>.
+        <% end %>
+      </p>
+    </div>
+    <div class="dashboard-actions">
+      <%= link_to "Export Excel", export_farmer_app_logins_path(**filter_params), class: "list-btn export" %>
+      <%= link_to "Farmer 360 Details", farmer360_path, class: "list-btn active" %>
+    </div>
+  </div>
+
+  <%# Date picker first: the page opens on today and the calendar changes it. %>
+  <section class="module-card farmer-date-bar">
+    <%= form_with url: farmer_app_logins_path, method: :get, local: true, data: { turbo: false },
+                  html: { class: "farmer-date-form" } do %>
+      <%= hidden_field_tag :q, @search if @search.present? %>
+      <%= hidden_field_tag :method, @method_filter if @method_filter %>
+      <label class="farmer-date-field">
+        <span>Login Date</span>
+        <input type="date" name="date" value="<%= @date %>" max="<%= Date.current %>"
+               onchange="this.form.requestSubmit()">
+      </label>
+      <div class="farmer-date-quick">
+        <%= link_to "Today", farmer_app_logins_path(q: @search, method: @method_filter, date: Date.current),
+              class: "list-btn #{'active' if @date == Date.current}" %>
+        <%= link_to "Yesterday", farmer_app_logins_path(q: @search, method: @method_filter, date: Date.yesterday),
+              class: "list-btn #{'active' if @date == Date.yesterday}" %>
+        <%= link_to "All Dates", farmer_app_logins_path(q: @search, method: @method_filter, date: "all"),
+              class: "list-btn #{'active' if @all_dates}" %>
       </div>
-      <div class="vrp-list-actions">
-        <span class="list-btn"><strong><%= @total_count %></strong>&nbsp;Total Farmers</span>
-        <span class="list-btn"><strong><%= @logged_in_today %></strong>&nbsp;Logged in Today</span>
-        <%= link_to "Farmer 360 Search", farmer360_path, class: "list-btn active" %>
+    <% end %>
+  </section>
+
+  <div class="farmer-stat-row">
+    <%= link_to farmer_app_logins_path(q: @search, date: current_date_param),
+          class: "farmer-stat #{'is-selected' unless @method_filter}" do %>
+      <span class="farmer-stat-value"><%= @summary[:farmers] %></span>
+      <span class="farmer-stat-label"><%= @summary[:farmers_label] %></span>
+    <% end %>
+    <div class="farmer-stat">
+      <span class="farmer-stat-value"><%= @summary[:logins] %></span>
+      <span class="farmer-stat-label"><%= @summary[:logins_label] %></span>
+    </div>
+    <%= link_to farmer_app_logins_path(q: @search, date: current_date_param, method: "mobile"),
+          class: "farmer-stat #{'is-selected' if @method_filter == 'mobile'}" do %>
+      <span class="farmer-stat-value"><%= @summary[:mobile] %></span>
+      <span class="farmer-stat-label">Via Mobile Number</span>
+    <% end %>
+    <%= link_to farmer_app_logins_path(q: @search, date: current_date_param, method: "aadhaar"),
+          class: "farmer-stat #{'is-selected' if @method_filter == 'aadhaar'}" do %>
+      <span class="farmer-stat-value"><%= @summary[:aadhaar] %></span>
+      <span class="farmer-stat-label">Via Aadhaar</span>
+    <% end %>
+  </div>
+
+  <section class="module-card">
+    <%# Search sits in the card header beside the title rather than in a band
+        of its own, so the list starts near the top of the screen. %>
+    <div class="module-card-header farmer-list-header">
+      <h2>Login Records</h2>
+      <div class="farmer-list-header-right">
+        <span class="record-count"><%= @total_count %> records</span>
+        <%= form_with url: farmer_app_logins_path, method: :get, local: true, data: { turbo: false },
+                      html: { class: "farmer-inline-search" } do %>
+          <%= hidden_field_tag :method, @method_filter if @method_filter %>
+          <%= hidden_field_tag :date, current_date_param %>
+          <input type="search" name="q" value="<%= @search %>" aria-label="Search farmer logins"
+                 placeholder="Name, mobile, village, ICS…">
+          <button type="submit" class="list-btn active">Search</button>
+          <% if @search.present? || @method_filter %>
+            <%= link_to "Clear", farmer_app_logins_path(date: current_date_param), class: "list-btn" %>
+          <% end %>
+        <% end %>
       </div>
     </div>
 
-    <section class="module-card">
-      <%= form_with url: farmer_app_logins_path, method: :get, local: true, data: { turbo: false },
-                    html: { class: "module-entry-form" } do %>
-        <div class="module-form-grid user-registration-grid">
-          <label>
-            <span>Search</span>
-            <input type="text" name="q" value="<%= @search %>"
-                   placeholder="Name, mobile, village, district, ICS or Tracenet">
-          </label>
-        </div>
-        <div class="module-form-actions">
-          <%= link_to "Clear", farmer_app_logins_path, class: "list-btn" %>
-          <button type="submit" class="list-btn active">Search</button>
-        </div>
-      <% end %>
-    </section>
-
-    <section class="module-card">
-      <% if @records.blank? %>
-        <p>Abhi tak kisi farmer ne Android app se login nahi kiya.</p>
-      <% else %>
-        <div style="overflow-x:auto;">
-          <table class="module-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Farmer Name</th>
-                <th>Father / Husband</th>
-                <th>Mobile</th>
-                <th>Aadhaar</th>
-                <th>Village</th>
-                <th>District</th>
-                <th>ICS</th>
-                <th>Tracenet</th>
-                <th>Logged in with</th>
-                <th>Logins</th>
-                <th>First Login</th>
-                <th>Last Login</th>
-              </tr>
-            </thead>
-            <tbody>
-              <% @records.each_with_index do |record, index| %>
-                <tr>
-                  <td><%= (@page - 1) * FarmerAppLoginsController::PER_PAGE + index + 1 %></td>
-                  <td><%= record.full_name.presence || "-" %></td>
-                  <td><%= record.father_husband_name.presence || "-" %></td>
-                  <%# Full mobile and Aadhaar stay masked: this screen is a login
-                      trail, and the register is the place to read identity. %>
-                  <td><%= record.masked_mobile %></td>
-                  <td><%= record.masked_aadhaar %></td>
-                  <td><%= record.village_name.presence || "-" %></td>
-                  <td><%= record.district_name.presence || "-" %></td>
-                  <td><%= record.ics_name.presence || "-" %></td>
-                  <td><%= record.tracenet_id.presence || "-" %></td>
-                  <td><%= record.last_identifier_type.to_s.capitalize.presence || "-" %></td>
-                  <td><%= record.login_count %></td>
-                  <td><%= record.first_logged_in_at&.strftime("%d-%m-%Y %H:%M") || "-" %></td>
-                  <td><%= record.last_logged_in_at&.strftime("%d-%m-%Y %H:%M") || "-" %></td>
-                </tr>
-              <% end %>
-            </tbody>
-          </table>
-        </div>
-
-        <% if @total_pages > 1 %>
-          <div class="module-form-actions" style="margin-top:14px;">
-            <% if @page > 1 %>
-              <%= link_to "Previous", farmer_app_logins_path(q: @search, page: @page - 1), class: "list-btn" %>
-            <% end %>
-            <span class="list-btn">Page <%= @page %> of <%= @total_pages %></span>
-            <% if @page < @total_pages %>
-              <%= link_to "Next", farmer_app_logins_path(q: @search, page: @page + 1), class: "list-btn" %>
-            <% end %>
-          </div>
+    <% if @records.blank? %>
+      <p class="farmer-empty">
+        <% if @search.present? || @method_filter %>
+          No farmer matches this search<%= " on #{@date.strftime('%d %B %Y')}" unless @all_dates %>.
+        <% elsif @all_dates %>
+          No farmer has signed in from the Android app yet.
+        <% else %>
+          No farmer signed in on <%= @date.strftime("%d %B %Y") %>.
         <% end %>
+      </p>
+    <% else %>
+      <div class="table-shell">
+        <table class="module-table compact-table farmer-login-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Farmer</th>
+              <th>Contact</th>
+              <th>Logged in With</th>
+              <th>Location</th>
+              <th>ICS / Tracenet</th>
+              <th><%= @all_dates ? "Logins" : "Logins Today" %></th>
+              <th><%= @all_dates ? "First Login" : "First Login (this date)" %></th>
+              <th><%= @all_dates ? "Last Login" : "Last Login (this date)" %></th>
+              <th>Last OTP</th>
+              <th>Device &amp; Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @records.each_with_index do |record, index| %>
+              <% otp = @otp_status[record.mobile_no] %>
+              <% lock = @locks[record.mobile_no] %>
+              <tr>
+                <td><%= (@page - 1) * FarmerAppLoginsController::PER_PAGE + index + 1 %></td>
+                <td>
+                  <strong><%= record.full_name.presence || "-" %></strong>
+                  <% if record.father_husband_name.present? %>
+                    <small class="farmer-sub">S/o, W/o <%= record.father_husband_name %></small>
+                  <% end %>
+                  <% if lock&.locked? %>
+                    <span class="status-pill inactive">Locked <%= lock.minutes_remaining %>m</span>
+                  <% end %>
+                </td>
+                <%# Mobile and Aadhaar stay masked: this is a login trail, and
+                    the register is the place to read full identity. %>
+                <td>
+                  <%= record.masked_mobile %>
+                  <small class="farmer-sub"><%= record.masked_aadhaar %></small>
+                </td>
+                <td>
+                  <span class="farmer-method <%= record.display_identifier_type %>">
+                    <%= record.display_identifier_type == "aadhaar" ? "Aadhaar" : "Mobile" %>
+                  </span>
+                </td>
+                <td>
+                  <%= record.village_name.presence || "-" %>
+                  <% if record.district_name.present? %>
+                    <small class="farmer-sub"><%= record.district_name %></small>
+                  <% end %>
+                </td>
+                <td>
+                  <%= record.ics_name.presence || "-" %>
+                  <% if record.tracenet_id.present? %>
+                    <small class="farmer-sub"><%= record.tracenet_id %></small>
+                  <% end %>
+                </td>
+                <td>
+                  <%= record.display_login_count %>
+                  <% if record.day_scoped? && record.login_count != record.display_login_count %>
+                    <small class="farmer-sub"><%= record.login_count %> in total</small>
+                  <% end %>
+                </td>
+                <td><%= farmer_login_time(record.display_first_login) %></td>
+                <td><%= farmer_login_time(record.display_last_login) %></td>
+                <td>
+                  <% if otp %>
+                    <span class="status-pill <%= otp.status == :used ? 'active' : (otp.status == :waiting ? 'scheduled' : 'inactive') %>">
+                      <%= otp.status_label %>
+                    </span>
+                    <small class="farmer-sub">Sent <%= farmer_login_time(otp.created_at) %></small>
+                    <% if otp.attempts.to_i.positive? %>
+                      <small class="farmer-sub"><%= otp.attempts %> wrong attempt<%= "s" if otp.attempts != 1 %></small>
+                    <% end %>
+                  <% else %>
+                    -
+                  <% end %>
+                </td>
+                <td>
+                  <%= record.display_device.presence || "-" %>
+                  <% if record.display_app_version.present? %>
+                    <small class="farmer-sub">App v<%= record.display_app_version %></small>
+                  <% end %>
+                  <small class="farmer-sub">IP <%= record.display_ip.presence || "-" %></small>
+                  <% if record.display_place.present? %>
+                    <small class="farmer-sub"><%= record.display_place %></small>
+                  <% end %>
+                  <% if record.display_latitude.present? && record.display_longitude.present? %>
+                    <small class="farmer-sub">
+                      <%= link_to "#{record.display_latitude}, #{record.display_longitude}",
+                            "https://maps.google.com/?q=#{record.display_latitude},#{record.display_longitude}",
+                            target: "_blank", rel: "noopener" %>
+                    </small>
+                  <% end %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+
+      <% if @total_pages > 1 %>
+        <div class="farmer-pager">
+          <% if @page > 1 %>
+            <%= link_to "← Previous", farmer_app_logins_path(**filter_params, page: @page - 1), class: "list-btn" %>
+          <% end %>
+          <span class="farmer-pager-label">Page <%= @page %> of <%= @total_pages %></span>
+          <% if @page < @total_pages %>
+            <%= link_to "Next →", farmer_app_logins_path(**filter_params, page: @page + 1), class: "list-btn" %>
+          <% end %>
+        </div>
       <% end %>
-    </section>
+    <% end %>
   </section>
-</main>
+</section>

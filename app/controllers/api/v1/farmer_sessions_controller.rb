@@ -9,59 +9,14 @@ module Api
     class FarmerSessionsController < ActionController::API
       def send_otp
         merge_json_body_params!
+        start_login(resend: false)
+      end
 
-        mobile_no = param_value(:mobile_no, :mobile, :phone)
-        aadhaar_no = param_value(:aadhaar_no, :aadhaar, :aadhar_no)
-        if mobile_no.blank? && aadhaar_no.blank?
-          return render_error("Mobile number or Aadhaar number is required.")
-        end
-
-        if mobile_no.present? && !FarmerAppLogin.valid_mobile?(mobile_no)
-          return render_error(FarmerAppLogin::INVALID_MOBILE_MESSAGE)
-        end
-
-        identifier_type = mobile_no.present? ? "mobile" : "aadhaar"
-        lookup = if mobile_no.present?
-          FarmerRegisterLookup.by_mobile(mobile_no)
-        else
-          FarmerRegisterLookup.by_aadhaar(aadhaar_no)
-        end
-        return render_error(lookup.error, status: :not_found) unless lookup.found?
-
-        farmer = lookup.farmer
-        # Held to the same rule as typed input: the register has rows with
-        # blank or placeholder numbers, and an OTP sent to one of those is
-        # either undeliverable or lands on a stranger's phone.
-        unless FarmerAppLogin.valid_mobile?(farmer["mobile_no"])
-          return render_error("This farmer has no valid registered mobile number. Please contact your FCO.")
-        end
-
-        registered_mobile = FarmerAppLogin.normalize_mobile(farmer["mobile_no"])
-
-        if FarmerLoginOtp.resend_blocked?(registered_mobile)
-          return render_error("An OTP was just sent. Please wait a minute before trying again.",
-            status: :too_many_requests)
-        end
-
-        issued = FarmerLoginOtp.issue(
-          farmer: farmer,
-          mobile: registered_mobile,
-          identifier_type: identifier_type,
-          aadhaar_no: aadhaar_no
-        )
-
-        sms = OtpSmsSender.new(registered_mobile, issued[:otp], purpose: :login).deliver
-        return render_error(sms_error_message(sms)) unless sms.success?
-
-        FarmerLoginOtp.note_sent(registered_mobile)
-
-        render json: {
-          success: true,
-          message: "OTP sent to the registered mobile number.",
-          otp_token: issued[:otp_token],
-          mobile_masked: FarmerLoginOtp.mask_mobile(registered_mobile),
-          expires_in_seconds: FarmerLoginOtp::TTL.to_i
-        }, status: :ok
+      # Same path as send, but keyed off the token the app already holds so a
+      # farmer does not have to retype an Aadhaar to get a second code.
+      def resend_otp
+        merge_json_body_params!
+        start_login(resend: true)
       end
 
       def verify_otp
@@ -71,17 +26,20 @@ module Api
         otp_token = param_value(:otp_token)
         return render_error("OTP and otp_token are required.") if otp.blank? || otp_token.blank?
 
-        data = FarmerLoginOtp.verify(otp_token: otp_token, otp: otp)
-        unless data.is_a?(Hash)
-          return render_error(verify_failure_message(data), status: :unauthorized)
+        mobile = FarmerLoginOtp.mobile_for(otp_token)
+        if (lock = FarmerLoginLock.active_lock(mobile))
+          return render_error(lock_message(lock), status: :locked)
         end
+
+        otp_request = FarmerLoginOtp.verify(otp_token: otp_token, otp: otp)
+        return handle_failed_verify(otp_request, mobile) unless otp_request.is_a?(FarmerLoginOtpRequest)
 
         # Normally the register's answer from the send step is still held, so
         # verifying costs no outbound call at all. It is only re-read if that
         # has expired -- the OTP itself is what was verified, not this payload.
-        farmer = FarmerLoginOtp.issued_farmer(data)
+        farmer = FarmerLoginOtp.issued_farmer(otp_request)
         if farmer.blank?
-          lookup = FarmerRegisterLookup.by_mobile(data["mobile"])
+          lookup = FarmerRegisterLookup.by_mobile(otp_request.mobile_no)
           unless lookup.found?
             return render_error("Farmer record could not be read. Please try again.", status: :not_found)
           end
@@ -89,13 +47,19 @@ module Api
           farmer = lookup.farmer
         end
 
+        # Holding the phone is proof enough; past wrong guesses are forgiven.
+        FarmerLoginLock.clear!(otp_request.mobile_no)
+
         login = FarmerAppLogin.record_login!(
           farmer: farmer,
-          identifier_type: data["identifier_type"],
+          identifier_type: otp_request.identifier_type,
           aadhaar_no: param_value(:aadhaar_no),
           ip: request.remote_ip,
           device: request.headers["X-Device-Name"].presence || request.user_agent,
-          app_version: request.headers["X-App-Version"]
+          app_version: request.headers["X-App-Version"],
+          latitude: location_header(:latitude),
+          longitude: location_header(:longitude),
+          place: request.headers["X-Location"].presence
         )
 
         render json: {
@@ -126,6 +90,92 @@ module Api
       end
 
       private
+
+      # Shared by send and resend: find the farmer, check the number is usable
+      # and not locked out, then text a fresh code.
+      def start_login(resend:)
+        mobile_no = param_value(:mobile_no, :mobile, :phone)
+        aadhaar_no = param_value(:aadhaar_no, :aadhaar, :aadhar_no)
+        mobile_no ||= FarmerLoginOtp.mobile_for(param_value(:otp_token)) if resend
+
+        if mobile_no.blank? && aadhaar_no.blank?
+          return render_error("Mobile number or Aadhaar number is required.")
+        end
+        if mobile_no.present? && !FarmerAppLogin.valid_mobile?(mobile_no)
+          return render_error(FarmerAppLogin::INVALID_MOBILE_MESSAGE)
+        end
+
+        identifier_type = mobile_no.present? ? "mobile" : "aadhaar"
+        lookup = mobile_no.present? ? FarmerRegisterLookup.by_mobile(mobile_no) : FarmerRegisterLookup.by_aadhaar(aadhaar_no)
+        return render_error(lookup.error, status: :not_found) unless lookup.found?
+
+        farmer = lookup.farmer
+        # Held to the same rule as typed input: the register has rows with
+        # blank or placeholder numbers, and an OTP sent to one of those is
+        # either undeliverable or lands on a stranger's phone.
+        unless FarmerAppLogin.valid_mobile?(farmer["mobile_no"])
+          return render_error("This farmer has no valid registered mobile number. Please contact your FCO.")
+        end
+
+        registered_mobile = FarmerAppLogin.normalize_mobile(farmer["mobile_no"])
+        if (lock = FarmerLoginLock.active_lock(registered_mobile))
+          return render_error(lock_message(lock), status: :locked)
+        end
+        if FarmerLoginOtp.resend_blocked?(registered_mobile)
+          return render_error("An OTP was just sent. Please wait a minute before trying again.",
+            status: :too_many_requests)
+        end
+
+        issued = FarmerLoginOtp.issue(
+          farmer: farmer,
+          mobile: registered_mobile,
+          identifier_type: identifier_type,
+          aadhaar_no: aadhaar_no
+        )
+
+        sms = OtpSmsSender.new(registered_mobile, issued[:otp], purpose: :login).deliver
+        return render_error(sms_error_message(sms)) unless sms.success?
+
+        render json: {
+          success: true,
+          message: resend ? "A new OTP has been sent to the registered mobile number."
+                          : "OTP sent to the registered mobile number.",
+          otp_token: issued[:otp_token],
+          mobile_masked: FarmerLoginOtp.mask_mobile(registered_mobile),
+          expires_in_seconds: FarmerLoginOtp::TTL.to_i,
+          resend_available_in_seconds: FarmerLoginOtp::RESEND_INTERVAL.to_i
+        }, status: :ok
+      end
+
+      # A wrong OTP is charged to the mobile, not to the one code, so fresh
+      # OTPs cannot be used to buy three more guesses each time.
+      def handle_failed_verify(reason, mobile)
+        if reason == :wrong_otp && mobile.present?
+          lock = FarmerLoginLock.register_failure!(mobile)
+          return render_error(lock_message(lock), status: :locked) if lock&.locked?
+
+          left = lock&.attempts_left.to_i
+          suffix = left.positive? ? " #{left} attempt#{'s' if left != 1} left." : ""
+          return render_error("Invalid OTP.#{suffix}", status: :unauthorized)
+        end
+
+        render_error(verify_failure_message(reason), status: :unauthorized)
+      end
+
+      def lock_message(lock)
+        "Too many wrong OTP attempts. This mobile number is locked for " \
+          "#{lock.minutes_remaining} more minute#{'s' if lock.minutes_remaining != 1}."
+      end
+
+      def location_header(kind)
+        raw = request.headers[kind == :latitude ? "X-Latitude" : "X-Longitude"].to_s.strip
+        return if raw.blank?
+
+        value = Float(raw, exception: false)
+        return if value.nil?
+
+        kind == :latitude ? value.clamp(-90, 90) : value.clamp(-180, 180)
+      end
 
       def farmer_payload(farmer, login)
         {

@@ -13520,3 +13520,307 @@ body {
 html[data-navigation-complete] .turbo-progress-bar {
   display: none !important;
 }
+
+/* ---- Farmer 360 / Farmer App Logins ------------------------------------ */
+
+.farmer-stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+.farmer-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  border: 1px solid #d8e0e4;
+  border-left: 4px solid var(--vrp-primary);
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+  text-decoration: none;
+}
+
+a.farmer-stat:hover {
+  border-color: var(--vrp-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.farmer-stat.is-selected {
+  background: #f1f8f5;
+  border-left-color: var(--vrp-primary-dark);
+}
+
+.farmer-stat-value {
+  font-size: 1.5rem;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.farmer-stat-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--vrp-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.farmer-search-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 16px;
+}
+
+.farmer-date-bar {
+  padding: 0;
+}
+
+.farmer-date-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 14px;
+  padding: 14px 16px;
+}
+
+.farmer-date-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.farmer-date-field > span {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--vrp-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.farmer-date-field input {
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid #c8d1d6;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.farmer-date-field input:focus {
+  outline: 2px solid var(--vrp-primary);
+  outline-offset: -1px;
+}
+
+.farmer-date-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.farmer-date-quick .list-btn {
+  min-height: 36px;
+  padding: 7px 14px;
+  font-size: 0.85rem;
+  background: #eef2f4;
+  color: #2c3a40;
+}
+
+.farmer-date-quick .list-btn.active {
+  background: var(--vrp-primary);
+  color: #fff;
+}
+
+/* Search beside the card title: compact, right aligned, one line. */
+.farmer-list-header {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.farmer-list-header-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.farmer-inline-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.farmer-inline-search input {
+  width: 240px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid #c8d1d6;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.farmer-inline-search input:focus {
+  outline: 2px solid var(--vrp-primary);
+  outline-offset: -1px;
+}
+
+.farmer-inline-search .list-btn {
+  min-height: 34px;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+}
+
+.farmer-search-field {
+  display: flex;
+  flex: 1 1 260px;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.farmer-search-field > span {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--vrp-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.farmer-search-field input {
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid #c8d1d6;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.farmer-search-field input:focus {
+  outline: 2px solid var(--vrp-primary);
+  outline-offset: -1px;
+}
+
+.farmer-search-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.farmer-search-hint {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+/* The two identifier fields should not stretch across the whole row. */
+.farmer-search-form-split .farmer-search-field {
+  flex: 0 1 280px;
+}
+
+.farmer-empty {
+  margin: 0;
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--vrp-muted);
+  font-weight: 700;
+}
+
+/* Secondary lines inside a table cell: father's name, IP, app version. */
+.farmer-sub {
+  display: block;
+  color: var(--vrp-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.farmer-method {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  font-weight: 800;
+  background: #eef4ff;
+  color: #27477d;
+}
+
+.farmer-method.aadhaar {
+  background: #fdf1e3;
+  color: #8a4b08;
+}
+
+.farmer-login-table td {
+  vertical-align: top;
+}
+
+.farmer-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.farmer-pager-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--vrp-muted);
+}
+
+.farmer-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 1px;
+  background: #e3e9ec;
+  border-top: 1px solid #e3e9ec;
+}
+
+.farmer-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 11px 14px;
+  background: #fff;
+}
+
+.farmer-detail-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--vrp-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.farmer-detail-value {
+  font-size: 0.9rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .farmer-search-form,
+  .farmer-search-form-split .farmer-search-field {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .farmer-search-actions .list-btn {
+    flex: 1;
+  }
+
+  .farmer-list-header-right {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .farmer-inline-search {
+    flex: 1;
+  }
+
+  .farmer-inline-search input {
+    width: auto;
+    flex: 1;
+  }
+}

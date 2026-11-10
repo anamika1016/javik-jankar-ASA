@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_10_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_10_180000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -103,6 +103,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_120000) do
     t.string "o_type", limit: 50
   end
 
+  create_table "farmer_app_login_events", force: :cascade do |t|
+    t.string "app_version"
+    t.datetime "created_at", null: false
+    t.string "device"
+    t.bigint "farmer_app_login_id", null: false
+    t.string "identifier_type"
+    t.string "ip"
+    t.decimal "latitude", precision: 10, scale: 7
+    t.datetime "logged_in_at", null: false
+    t.decimal "longitude", precision: 10, scale: 7
+    t.string "place"
+    t.datetime "updated_at", null: false
+    t.index ["farmer_app_login_id", "logged_in_at"], name: "index_farmer_login_events_on_login_and_time"
+    t.index ["logged_in_at"], name: "index_farmer_app_login_events_on_logged_in_at", order: :desc
+  end
+
   create_table "farmer_app_logins", force: :cascade do |t|
     t.string "aadhaar_digest"
     t.string "aadhaar_last4", limit: 4
@@ -120,6 +136,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_120000) do
     t.string "last_identifier_type"
     t.datetime "last_logged_in_at"
     t.string "last_login_ip"
+    t.decimal "last_login_latitude", precision: 10, scale: 7
+    t.decimal "last_login_longitude", precision: 10, scale: 7
+    t.string "last_login_place"
     t.integer "login_count", default: 0, null: false
     t.string "mobile_no"
     t.string "state_name"
@@ -128,8 +147,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_120000) do
     t.string "village_name"
     t.index ["aadhaar_digest"], name: "index_farmer_app_logins_on_aadhaar_digest"
     t.index ["farmer_external_id"], name: "index_farmer_app_logins_on_farmer_external_id", unique: true
-    t.index ["last_logged_in_at", "id"], name: "index_farmer_app_logins_on_recent_login", order: :desc
+    t.index ["last_logged_in_at"], name: "index_farmer_app_logins_on_last_logged_in_at", order: :desc
     t.index ["mobile_no"], name: "index_farmer_app_logins_on_mobile_no"
+  end
+
+  create_table "farmer_login_locks", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "failed_attempts", default: 0, null: false
+    t.datetime "last_failed_at"
+    t.datetime "locked_until"
+    t.string "mobile_no", null: false
+    t.datetime "updated_at", null: false
+    t.index ["locked_until"], name: "index_farmer_login_locks_on_locked_until"
+    t.index ["mobile_no"], name: "index_farmer_login_locks_on_mobile_no", unique: true
+  end
+
+  create_table "farmer_login_otps", force: :cascade do |t|
+    t.string "aadhaar_digest"
+    t.integer "attempts", default: 0, null: false
+    t.datetime "consumed_at"
+    t.datetime "created_at", null: false
+    t.datetime "expires_at", null: false
+    t.string "identifier_type"
+    t.string "jti", null: false
+    t.string "mobile_no", null: false
+    t.string "otp_digest", null: false
+    t.datetime "updated_at", null: false
+    t.index ["expires_at"], name: "index_farmer_login_otps_on_expires_at"
+    t.index ["jti"], name: "index_farmer_login_otps_on_jti", unique: true
+    t.index ["mobile_no", "created_at"], name: "index_farmer_login_otps_on_mobile_no_and_created_at"
   end
 
   create_table "jj_quiz_answers", force: :cascade do |t|
@@ -427,6 +473,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_120000) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "farmer_app_login_events", "farmer_app_logins"
   add_foreign_key "jj_quiz_answers", "jj_quiz_attempts"
   add_foreign_key "jj_quiz_answers", "jj_quiz_questions"
   add_foreign_key "jj_quiz_attempts", "jj_quizzes"

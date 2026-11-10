@@ -276,7 +276,8 @@ class BillListReadScalingTest < ActiveSupport::TestCase
         })
         ModuleRecord.create!(module_slug: "jeevika-jankar-bill-process", data: {
           "select_vrp" => owner.id.to_s, "select_vrp_name" => owner.name, "bill_month" => month,
-          "record_state" => index.zero? ? "Active" : "Inactive", "status" => "Submitted (Not sent for approval)",
+          "record_state" => index.zero? ? "Active" : "Inactive",
+          "status" => (index.zero? && month == "October" ? "Final Approved" : "Submitted (Not sent for approval)"),
           "total_target" => "999", "total_achievement" => "888", "grand_total" => "100"
         })
       end
@@ -289,13 +290,15 @@ class BillListReadScalingTest < ActiveSupport::TestCase
     assert_equal baseline, calculator.send(:jeevika_bill_rows, bills),
       "Indexed owner candidates must preserve complete live bill rows"
     assert baseline.all? { |row| row[:target].to_f.positive? && row[:target].to_s != "999" }
-    [nil, "October", "November"].product([nil, "Active", "Inactive"]).each do |month, state|
+    [nil, "October", "November"].product([nil, "Active", "Inactive"], [nil, "pending", "final-approved"]).each do |month, state, status|
       expected = baseline.select { |row|
+        finally_approved = row[:status].to_s.downcase.include?("final approved")
+        status_matches = status.nil? || (status == "final-approved" ? finally_approved : !finally_approved)
         (month.blank? || row[:bill_month].to_s.casecmp(month).zero?) &&
-          (state.blank? || row[:record_state].to_s.casecmp(state).zero?)
+          (state.blank? || row[:record_state].to_s.casecmp(state).zero?) && status_matches
       }
       controller = calculator
-      candidates = controller.send(:jeevika_bill_list_candidates, bills, month: month, record_state: state)
+      candidates = controller.send(:jeevika_bill_list_candidates, bills, month: month, record_state: state, status: status)
       assert_equal expected, controller.send(:jeevika_bill_rows, candidates)
     end
   end

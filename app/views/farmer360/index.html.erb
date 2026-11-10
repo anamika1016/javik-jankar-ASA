@@ -1,79 +1,94 @@
 <% content_for :title, "Farmer 360" %>
 
-<main class="vrp-list-page">
-  <section class="vrp-list-shell">
-    <div class="vrp-list-header">
-      <div>
-        <p class="vrp-eyebrow">FARMER 360</p>
-        <h1>Farmer 360</h1>
-        <p>Mobile number ya Aadhaar number se farmer ki poori detail dekhne ke liye.</p>
-      </div>
+<section class="module-page farmer-login-page">
+  <div class="module-hero">
+    <div>
+      <p class="vrp-eyebrow">Farmer 360</p>
+      <h1>Farmer 360</h1>
+      <p>Look up a farmer in the ASA register by mobile number or Aadhaar number.</p>
     </div>
+    <div class="dashboard-actions">
+      <%= link_to "Farmer App Logins", farmer_app_logins_path, class: "list-btn active" %>
+    </div>
+  </div>
 
-    <section class="module-card">
-      <%= form_with url: farmer360_path, method: :get, local: true, data: { turbo: false }, html: { class: "module-entry-form" } do %>
-        <div class="module-form-grid user-registration-grid">
-          <label>
-            <span>Mobile Number</span>
-            <%# Browser-side check only; the controller re-checks the same rule. %>
-            <input type="text" name="mobile_no" value="<%= @mobile_no %>" placeholder="Enter Mobile Number"
-                   inputmode="numeric" maxlength="10" pattern="[6-9][0-9]{9}"
-                   title="10-digit mobile number starting with 6, 7, 8 or 9">
-          </label>
-          <label>
-            <span>Aadhaar Number</span>
-            <input type="text" name="aadhaar_no" value="<%= @aadhaar_no %>" placeholder="Enter Aadhaar Number" inputmode="numeric">
-          </label>
-        </div>
-        <p class="field-hint">Dono me se koi ek bhar dein. Mobile number diya ho to wahi use hoga.</p>
-        <div class="module-form-actions">
+  <section class="module-card">
+    <%= form_with url: farmer360_path, method: :get, local: true, data: { turbo: false },
+                  html: { class: "farmer-search-form farmer-search-form-split" } do %>
+      <label class="farmer-search-field">
+        <span>Mobile Number</span>
+        <%# Browser-side check only; the controller re-checks the same rule. %>
+        <input type="search" name="mobile_no" value="<%= @mobile_no %>" placeholder="10-digit mobile number"
+               inputmode="numeric" maxlength="10" pattern="[6-9][0-9]{9}"
+               title="10-digit mobile number starting with 6, 7, 8 or 9">
+      </label>
+      <label class="farmer-search-field">
+        <span>Aadhaar Number</span>
+        <input type="search" name="aadhaar_no" value="<%= @aadhaar_no %>" placeholder="12-digit Aadhaar number"
+               inputmode="numeric" maxlength="12">
+      </label>
+      <div class="farmer-search-actions">
+        <button type="submit" class="list-btn active">Search</button>
+        <% if @mobile_no.present? || @aadhaar_no.present? %>
           <%= link_to "Clear", farmer360_path, class: "list-btn" %>
-          <button type="submit" class="list-btn active">Search Farmer</button>
-        </div>
-      <% end %>
-    </section>
-
-    <% if @error.present? %>
-      <section class="module-card">
-        <p><%= @error %></p>
-      </section>
-    <% elsif @result.present? %>
-      <section class="module-card">
-        <div class="target-mapping-toolbar"><strong>Farmer Detail</strong></div>
-        <%# The register keeps adding fields, so every key it returns is shown
-            rather than a fixed list that would quietly drop new ones. %>
-        <table class="module-table">
-          <tbody>
-            <% @result.each do |key, value| %>
-              <% next if value.is_a?(Array) || value.is_a?(Hash) %>
-              <tr>
-                <th style="text-align:left; width:30%;"><%= key.to_s.tr("_", " ").split.map(&:capitalize).join(" ") %></th>
-                <td><%= value.to_s.strip.presence || "-" %></td>
-              </tr>
-            <% end %>
-          </tbody>
-        </table>
-
-        <% @result.each do |key, value| %>
-          <% rows = value.is_a?(Array) ? value.select { |row| row.is_a?(Hash) } : [] %>
-          <% next if rows.blank? %>
-          <div class="target-mapping-toolbar" style="margin-top:18px;">
-            <strong><%= key.to_s.tr("_", " ").split.map(&:capitalize).join(" ") %> (<%= rows.size %>)</strong>
-          </div>
-          <div style="overflow-x:auto;">
-            <table class="module-table">
-              <thead>
-                <tr><% rows.first.keys.each do |column| %><th><%= column.to_s.tr("_", " ").split.map(&:capitalize).join(" ") %></th><% end %></tr>
-              </thead>
-              <tbody>
-                <% rows.each do |row| %>
-                  <tr><% rows.first.keys.each do |column| %><td><%= row[column].is_a?(Hash) || row[column].is_a?(Array) ? row[column].to_json : row[column].to_s.strip.presence || "-" %></td><% end %></tr>
-                <% end %>
-              </tbody>
-            </table>
-          </div>
         <% end %>
-      </section>
+      </div>
+      <p class="field-hint farmer-search-hint">Fill either one. If both are filled, the mobile number is used.</p>
     <% end %>
   </section>
-</main>
+
+  <% if @error.present? %>
+    <section class="module-card">
+      <p class="farmer-empty"><%= @error %></p>
+    </section>
+  <% elsif @result.present? %>
+    <% scalars = @result.reject { |_key, value| value.is_a?(Array) || value.is_a?(Hash) } %>
+    <section class="module-card">
+      <div class="module-card-header">
+        <h2><%= @result["full_name"].presence || "Farmer Detail" %></h2>
+        <span class="record-count"><%= scalars.size %> fields</span>
+      </div>
+      <%# The register keeps adding fields, so every key it returns is shown
+          rather than a fixed list that would quietly drop new ones. %>
+      <div class="farmer-detail-grid">
+        <% scalars.each do |key, value| %>
+          <div class="farmer-detail-item">
+            <span class="farmer-detail-label"><%= key.to_s.tr("_", " ").split.map(&:capitalize).join(" ") %></span>
+            <span class="farmer-detail-value"><%= farmer360_value(value) %></span>
+          </div>
+        <% end %>
+      </div>
+    </section>
+
+    <% @result.each do |key, value| %>
+      <% rows = value.is_a?(Array) ? value.select { |row| row.is_a?(Hash) } : [] %>
+      <% next if rows.blank? %>
+      <section class="module-card">
+        <div class="module-card-header">
+          <h2><%= key.to_s.tr("_", " ").split.map(&:capitalize).join(" ") %></h2>
+          <span class="record-count"><%= rows.size %> records</span>
+        </div>
+        <div class="table-shell">
+          <table class="module-table compact-table">
+            <thead>
+              <tr>
+                <% rows.first.keys.each do |column| %>
+                  <th><%= column.to_s.tr("_", " ").split.map(&:capitalize).join(" ") %></th>
+                <% end %>
+              </tr>
+            </thead>
+            <tbody>
+              <% rows.each do |row| %>
+                <tr>
+                  <% rows.first.keys.each do |column| %>
+                    <td><%= farmer360_value(row[column]) %></td>
+                  <% end %>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    <% end %>
+  <% end %>
+</section>
