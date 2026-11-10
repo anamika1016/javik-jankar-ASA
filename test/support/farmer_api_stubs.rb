@@ -93,3 +93,35 @@ module FarmerApiStubs
     FarmerApiStubs.active = false
   end
 end
+
+# The ASA location masters are plain id->name lookups. The override is
+# installed for the whole test run so no test ever reaches the live master
+# API: that would be slow, flaky, and traffic on the customer's server.
+# Tests that care about names declare them with stub_names.
+module AsaLocationNamesStub
+  def self.names
+    @names ||= Hash.new { |hash, key| hash[key] = {} }
+  end
+
+  def self.replace(values)
+    @names = Hash.new { |hash, key| hash[key] = {} }
+    values.each { |kind, pairs| @names[kind] = pairs.transform_keys(&:to_s) }
+    @names
+  end
+
+  def lookup(kind, _path, _params, wanted_id)
+    AsaLocationNamesStub.names[kind][wanted_id.to_s].presence
+  end
+end
+
+AsaLocationNames.singleton_class.prepend(AsaLocationNamesStub)
+
+class AsaLocationNames
+  def self.stub_names(names = {})
+    previous = AsaLocationNamesStub.names
+    AsaLocationNamesStub.replace(names)
+    yield
+  ensure
+    AsaLocationNamesStub.instance_variable_set(:@names, previous)
+  end
+end

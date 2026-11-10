@@ -64,6 +64,9 @@ class FarmerAppLogin < ApplicationRecord
 
     now = Time.current
     afl = afl_enrichment(farmer)
+    # The register sends only numeric ids for the place, so they are resolved
+    # against its own masters; AFL is the fallback when it sends nothing.
+    places = AsaLocationNames.for_land_row(primary_land_row(farmer))
     record.assign_attributes(
       farmer_external_id: external_id.presence || record.farmer_external_id,
       full_name: farmer[:full_name].presence || farmer[:farmer_name].presence || record.full_name,
@@ -72,10 +75,11 @@ class FarmerAppLogin < ApplicationRecord
       aadhaar_digest: digest.presence || record.aadhaar_digest,
       last_identifier_type: identifier_type.to_s.presence_in(IDENTIFIER_TYPES) || record.last_identifier_type,
       father_husband_name: farmer[:father_husband_name].presence || record.father_husband_name,
-      village_name: register_place(farmer, :village) || afl[:village_name] || record.village_name,
-      block_name: register_place(farmer, :block) || record.block_name,
-      district_name: register_place(farmer, :district) || record.district_name,
-      state_name: register_place(farmer, :state) || record.state_name,
+      village_name: register_place(farmer, :village) || places[:village_name] ||
+        afl[:village_name] || record.village_name,
+      block_name: register_place(farmer, :block) || places[:block_name] || record.block_name,
+      district_name: register_place(farmer, :district) || places[:district_name] || record.district_name,
+      state_name: register_place(farmer, :state) || places[:state_name] || record.state_name,
       fco_name: farmer[:fco_name].presence || farmer[:fco_team_name].presence ||
         afl[:fco_name] || record.fco_name,
       ics_name: farmer[:ics_team_name].presence || farmer[:ics_name].presence ||
@@ -118,6 +122,15 @@ class FarmerAppLogin < ApplicationRecord
       Array(farmer[:land_details]).filter_map { |row| row.is_a?(Hash) ? row["#{kind}_name"].presence : nil }.first
   end
   private_class_method :register_place
+
+  # A farmer can hold several plots. They sit in one village in practice, so
+  # the first row that actually carries a village is the one to read.
+  def self.primary_land_row(farmer)
+    rows = Array(farmer[:land_details]).select { |row| row.is_a?(Hash) }
+    rows.find { |row| row["village_id"].present? } || rows.first ||
+      farmer.slice(:state_id, :district_id, :block_id, :village_id)
+  end
+  private_class_method :primary_land_row
 
   # Village, FCO and ICS names the register only identifies by id. AFL already
   # holds the name for the same village_id, so the list can show a place

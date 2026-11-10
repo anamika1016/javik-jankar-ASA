@@ -19,7 +19,8 @@ class FarmerAppLoginFlowTest < ActionDispatch::IntegrationTest
     "age" => 28,
     "tracenet_id" => "MP2001415600",
     "ics_team_name" => "Ma Machna Crop Producer Company Ltd",
-    "land_details" => [{ "id" => 2, "state_id" => 1, "district_id" => 36, "village_id" => 10143 }]
+    "land_details" => [{ "id" => 2, "state_id" => 1, "district_id" => 36,
+                         "block_id" => 90, "village_id" => 10143 }]
   }.freeze
 
   test "a farmer logging in by mobile appears in the web list" do

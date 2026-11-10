@@ -15,7 +15,8 @@ class FarmerPagesRenderTest < ActionDispatch::IntegrationTest
     "is_lead_farmer" => false,
     "document_pdf" => nil,
     "aadhaar_card_image" => ["https://asa.ploughmanagro.com/doc.jpg"],
-    "land_details" => [{ "id" => 2, "village_id" => 10143, "area" => 235.0 }]
+    "land_details" => [{ "id" => 2, "state_id" => 1, "district_id" => 36,
+                         "block_id" => 90, "village_id" => 10143, "area" => 235.0 }]
   }.freeze
 
   setup do
@@ -57,14 +58,28 @@ class FarmerPagesRenderTest < ActionDispatch::IntegrationTest
     assert_select "th", text: "Last OTP", count: 0
   end
 
-  test "an HTTP library is labelled as the client, never shown as the device" do
+  test "an HTTP library is never shown as the device" do
     FarmerAppLogin.record_login!(farmer: REGISTER_FARMER, identifier_type: "mobile",
       device: "okhttp/4.9.2", ip: "49.36.10.22")
 
     get farmer_app_logins_path
     assert_response :success
     assert_select ".muted-note", text: /Not reported by app/
-    assert_select ".farmer-sub", text: %r{Client: okhttp/4\.9\.2}
+    # The HTTP library is noise on screen; it belongs only in the export.
+    refute_includes response.body, "okhttp/4.9.2"
+  end
+
+  test "the export still records the HTTP client for debugging" do
+    FarmerAppLogin.record_login!(farmer: REGISTER_FARMER, identifier_type: "mobile",
+      device: "okhttp/4.9.2")
+    controller = FarmerAppLoginsController.new
+    controller.instance_variable_set(:@otp_status, {})
+    controller.instance_variable_set(:@locks, {})
+
+    row = controller.send(:export_row, FarmerAppLogin.first, 0)
+    headers = FarmerAppLoginsController::EXPORT_HEADERS
+    assert_nil row[headers.index("Device")], "an HTTP library is not a device"
+    assert_equal "okhttp/4.9.2", row[headers.index("HTTP Client")]
   end
 
   test "the two login counts are separate columns, not one number with a hint" do

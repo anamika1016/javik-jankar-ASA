@@ -174,9 +174,6 @@
                   <% if record.display_app_version.present? %>
                     <small class="farmer-sub">App v<%= record.display_app_version %></small>
                   <% end %>
-                  <% if record.client_agent %>
-                    <small class="farmer-sub">Client: <%= record.client_agent %></small>
-                  <% end %>
                 </td>
                 <td>
                   <small class="farmer-sub">IP: <%= record.display_ip.presence || "-" %></small>

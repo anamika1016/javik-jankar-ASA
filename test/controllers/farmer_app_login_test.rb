@@ -14,7 +14,8 @@ class FarmerAppLoginTest < ActiveSupport::TestCase
     "aadhaar_no" => "111122223333",
     "tracenet_id" => "MP2001415600",
     "ics_team_name" => "Ma Machna Crop Producer Company Ltd",
-    "land_details" => [{ "id" => 2, "state_id" => 1, "district_id" => 36, "village_id" => 10143 }]
+    "land_details" => [{ "id" => 2, "state_id" => 1, "district_id" => 36,
+                         "block_id" => 90, "village_id" => 10143 }]
   }.freeze
 
   test "aadhaar is reduced to a digest and the last four digits, never stored whole" do
@@ -86,6 +87,32 @@ class FarmerAppLoginTest < ActiveSupport::TestCase
     assert_equal ["mobile", "aadhaar"], login.login_events.order(:logged_in_at).pluck(:identifier_type)
     assert_equal 1, FarmerAppLoginEvent.on_date(3.days.ago.to_date).count
     assert_equal 1, FarmerAppLoginEvent.on_date(Date.current).count
+  end
+
+  test "the register's numeric place ids are resolved into names" do
+    # The register answers with ids only -- 10143 means nothing on a screen.
+    AsaLocationNames.stub_names(
+      state: { "1" => "Madhya Pradesh" },
+      district: { "36" => "Khargone" },
+      block: { "90" => "Bhagwanpura" },
+      village: { "10143" => "KACHARI" }
+    ) do
+      login = FarmerAppLogin.record_login!(farmer: REGISTER_FARMER, identifier_type: "mobile")
+
+      assert_equal "KACHARI", login.village_name
+      assert_equal "Bhagwanpura", login.block_name
+      assert_equal "Khargone", login.district_name
+      assert_equal "Madhya Pradesh", login.state_name
+    end
+  end
+
+  test "a place the register cannot name leaves the column empty rather than showing an id" do
+    AsaLocationNames.stub_names({}) do
+      login = FarmerAppLogin.record_login!(farmer: REGISTER_FARMER, identifier_type: "mobile")
+
+      assert_nil login.village_name
+      assert_nil login.district_name
+    end
   end
 
   test "a different register id is a different farmer even on a repeated Aadhaar" do
