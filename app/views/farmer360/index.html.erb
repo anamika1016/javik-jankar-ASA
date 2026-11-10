@@ -1,0 +1,76 @@
+<% content_for :title, "Farmer 360" %>
+
+<main class="vrp-list-page">
+  <section class="vrp-list-shell">
+    <div class="vrp-list-header">
+      <div>
+        <p class="vrp-eyebrow">FARMER 360</p>
+        <h1>Farmer 360</h1>
+        <p>Mobile number ya Aadhaar number se farmer ki poori detail dekhne ke liye.</p>
+      </div>
+    </div>
+
+    <section class="module-card">
+      <%= form_with url: farmer360_path, method: :get, local: true, data: { turbo: false }, html: { class: "module-entry-form" } do %>
+        <div class="module-form-grid user-registration-grid">
+          <label>
+            <span>Mobile Number</span>
+            <input type="text" name="mobile_no" value="<%= @mobile_no %>" placeholder="Enter Mobile Number" inputmode="numeric">
+          </label>
+          <label>
+            <span>Aadhaar Number</span>
+            <input type="text" name="aadhaar_no" value="<%= @aadhaar_no %>" placeholder="Enter Aadhaar Number" inputmode="numeric">
+          </label>
+        </div>
+        <p class="field-hint">Dono me se koi ek bhar dein. Mobile number diya ho to wahi use hoga.</p>
+        <div class="module-form-actions">
+          <%= link_to "Clear", farmer360_path, class: "list-btn" %>
+          <button type="submit" class="list-btn active">Search Farmer</button>
+        </div>
+      <% end %>
+    </section>
+
+    <% if @error.present? %>
+      <section class="module-card">
+        <p><%= @error %></p>
+      </section>
+    <% elsif @result.present? %>
+      <section class="module-card">
+        <div class="target-mapping-toolbar"><strong>Farmer Detail</strong></div>
+        <%# The register keeps adding fields, so every key it returns is shown
+            rather than a fixed list that would quietly drop new ones. %>
+        <table class="module-table">
+          <tbody>
+            <% @result.each do |key, value| %>
+              <% next if value.is_a?(Array) || value.is_a?(Hash) %>
+              <tr>
+                <th style="text-align:left; width:30%;"><%= key.to_s.tr("_", " ").split.map(&:capitalize).join(" ") %></th>
+                <td><%= value.to_s.strip.presence || "-" %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+
+        <% @result.each do |key, value| %>
+          <% rows = value.is_a?(Array) ? value.select { |row| row.is_a?(Hash) } : [] %>
+          <% next if rows.blank? %>
+          <div class="target-mapping-toolbar" style="margin-top:18px;">
+            <strong><%= key.to_s.tr("_", " ").split.map(&:capitalize).join(" ") %> (<%= rows.size %>)</strong>
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="module-table">
+              <thead>
+                <tr><% rows.first.keys.each do |column| %><th><%= column.to_s.tr("_", " ").split.map(&:capitalize).join(" ") %></th><% end %></tr>
+              </thead>
+              <tbody>
+                <% rows.each do |row| %>
+                  <tr><% rows.first.keys.each do |column| %><td><%= row[column].is_a?(Hash) || row[column].is_a?(Array) ? row[column].to_json : row[column].to_s.strip.presence || "-" %></td><% end %></tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+        <% end %>
+      </section>
+    <% end %>
+  </section>
+</main>

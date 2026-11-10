@@ -1,0 +1,96 @@
+<% content_for :title, "Farmer App Logins" %>
+
+<main class="vrp-list-page">
+  <section class="vrp-list-shell">
+    <div class="vrp-list-header">
+      <div>
+        <p class="vrp-eyebrow">FARMER 360</p>
+        <h1>Farmer App Logins</h1>
+        <p>Jo farmer Android app se mobile ya Aadhaar se login karta hai, wo yahan list ho jata hai.</p>
+      </div>
+      <div class="vrp-list-actions">
+        <span class="list-btn"><strong><%= @total_count %></strong>&nbsp;Total Farmers</span>
+        <span class="list-btn"><strong><%= @logged_in_today %></strong>&nbsp;Logged in Today</span>
+        <%= link_to "Farmer 360 Search", farmer360_path, class: "list-btn active" %>
+      </div>
+    </div>
+
+    <section class="module-card">
+      <%= form_with url: farmer_app_logins_path, method: :get, local: true, data: { turbo: false },
+                    html: { class: "module-entry-form" } do %>
+        <div class="module-form-grid user-registration-grid">
+          <label>
+            <span>Search</span>
+            <input type="text" name="q" value="<%= @search %>"
+                   placeholder="Name, mobile, village, district, ICS or Tracenet">
+          </label>
+        </div>
+        <div class="module-form-actions">
+          <%= link_to "Clear", farmer_app_logins_path, class: "list-btn" %>
+          <button type="submit" class="list-btn active">Search</button>
+        </div>
+      <% end %>
+    </section>
+
+    <section class="module-card">
+      <% if @records.blank? %>
+        <p>Abhi tak kisi farmer ne Android app se login nahi kiya.</p>
+      <% else %>
+        <div style="overflow-x:auto;">
+          <table class="module-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Farmer Name</th>
+                <th>Father / Husband</th>
+                <th>Mobile</th>
+                <th>Aadhaar</th>
+                <th>Village</th>
+                <th>District</th>
+                <th>ICS</th>
+                <th>Tracenet</th>
+                <th>Logged in with</th>
+                <th>Logins</th>
+                <th>First Login</th>
+                <th>Last Login</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% @records.each_with_index do |record, index| %>
+                <tr>
+                  <td><%= (@page - 1) * FarmerAppLoginsController::PER_PAGE + index + 1 %></td>
+                  <td><%= record.full_name.presence || "-" %></td>
+                  <td><%= record.father_husband_name.presence || "-" %></td>
+                  <%# Full mobile and Aadhaar stay masked: this screen is a login
+                      trail, and the register is the place to read identity. %>
+                  <td><%= record.masked_mobile %></td>
+                  <td><%= record.masked_aadhaar %></td>
+                  <td><%= record.village_name.presence || "-" %></td>
+                  <td><%= record.district_name.presence || "-" %></td>
+                  <td><%= record.ics_name.presence || "-" %></td>
+                  <td><%= record.tracenet_id.presence || "-" %></td>
+                  <td><%= record.last_identifier_type.to_s.capitalize.presence || "-" %></td>
+                  <td><%= record.login_count %></td>
+                  <td><%= record.first_logged_in_at&.strftime("%d-%m-%Y %H:%M") || "-" %></td>
+                  <td><%= record.last_logged_in_at&.strftime("%d-%m-%Y %H:%M") || "-" %></td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+
+        <% if @total_pages > 1 %>
+          <div class="module-form-actions" style="margin-top:14px;">
+            <% if @page > 1 %>
+              <%= link_to "Previous", farmer_app_logins_path(q: @search, page: @page - 1), class: "list-btn" %>
+            <% end %>
+            <span class="list-btn">Page <%= @page %> of <%= @total_pages %></span>
+            <% if @page < @total_pages %>
+              <%= link_to "Next", farmer_app_logins_path(q: @search, page: @page + 1), class: "list-btn" %>
+            <% end %>
+          </div>
+        <% end %>
+      <% end %>
+    </section>
+  </section>
+</main>

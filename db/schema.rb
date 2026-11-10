@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_27_163000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_10_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -101,6 +101,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_27_163000) do
     t.integer "o_id"
     t.string "o_name", limit: 200
     t.string "o_type", limit: 50
+  end
+
+  create_table "farmer_app_logins", force: :cascade do |t|
+    t.string "aadhaar_digest"
+    t.string "aadhaar_last4", limit: 4
+    t.string "block_name"
+    t.datetime "created_at", null: false
+    t.string "district_name"
+    t.string "farmer_external_id"
+    t.string "father_husband_name"
+    t.string "fco_name"
+    t.datetime "first_logged_in_at"
+    t.string "full_name"
+    t.string "ics_name"
+    t.string "last_app_version"
+    t.string "last_device"
+    t.string "last_identifier_type"
+    t.datetime "last_logged_in_at"
+    t.string "last_login_ip"
+    t.integer "login_count", default: 0, null: false
+    t.string "mobile_no"
+    t.string "state_name"
+    t.string "tracenet_id"
+    t.datetime "updated_at", null: false
+    t.string "village_name"
+    t.index ["aadhaar_digest"], name: "index_farmer_app_logins_on_aadhaar_digest"
+    t.index ["farmer_external_id"], name: "index_farmer_app_logins_on_farmer_external_id", unique: true
+    t.index ["last_logged_in_at", "id"], name: "index_farmer_app_logins_on_recent_login", order: :desc
+    t.index ["mobile_no"], name: "index_farmer_app_logins_on_mobile_no"
   end
 
   create_table "jj_quiz_answers", force: :cascade do |t|

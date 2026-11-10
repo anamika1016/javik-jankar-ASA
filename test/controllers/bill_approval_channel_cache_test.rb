@@ -136,4 +136,16 @@ class BillApprovalChannelCacheTest < ActiveSupport::TestCase
     assert_equal 2, cache.size,
       "three bills over two identity sets should have scanned the channels twice"
   end
+  test "matched channel lookup preserves catalogue tie order when its first matching step appears later" do
+    first = channel_step("FCO-A", "first-channel")
+    second = channel_step("FCO-B", "second-channel")
+    later = channel_step("FCO-A", "first-channel")
+    later.update!(data: later.data.merge("approval_level" => "Second Approval"))
+    controller = controller_with(@bill_a.id => [ranapur_identity])
+    controller.define_singleton_method(:jeevika_bill_approval_master_steps) { [first, second, later] }
+    controller.define_singleton_method(:jeevika_bill_approval_step_matches_identities?) { |step, _| step.id != first.id }
+    controller.define_singleton_method(:approval_channel_priority) { |_| [1] }
+    assert_equal [first.id, later.id], controller.jeevika_bill_approval_steps(@bill_a).map(&:id)
+  end
+
 end

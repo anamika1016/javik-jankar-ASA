@@ -1,4 +1,5 @@
 class VrpsController < ApplicationController
+  include RequestLabelMatchCache
   helper_method :blank_display, :module_record_label, :module_record_labels, :vrp_detail_hierarchy_label,
                 :vrp_detail_location_label, :vrp_type_labels,
                 :approval_step_closed?, :closing_approval_history, :mapped_office_name?,
@@ -947,6 +948,10 @@ class VrpsController < ApplicationController
   end
 
   def cluster_label_matches?(expected, actual)
+    cached_person_label_match(expected, actual) { uncached_cluster_label_matches?(expected, actual) }
+  end
+
+  def uncached_cluster_label_matches?(expected, actual)
     expected_values = cluster_label_match_values(expected)
     actual_values = cluster_label_match_values(actual)
     return false if expected_values.blank? || actual_values.blank?
@@ -963,7 +968,7 @@ class VrpsController < ApplicationController
   end
 
   def normalize_person_label(value)
-    value.to_s.downcase.gsub(/[^a-z0-9]+/, " ").squish
+    cached_normalized_person_label(value) { value.to_s.downcase.gsub(/[^a-z0-9]+/, " ").squish }
   end
 
   def similar_person_label?(left, right)
@@ -2295,9 +2300,10 @@ class VrpsController < ApplicationController
     gp_ids = Array(vrp.gram_panchayat_ids).compact_blank
     return [] if gp_ids.blank?
 
+    records = saved_location_records_by_id(gp_ids)
     gp_ids.map do |id|
       if id.to_s.match?(/\A\d+\z/)
-        rec = ModuleRecord.find_by(id: id)
+        rec = records[id.to_i]
         rec ? (rec.data["gram_panchayat_name"].presence || rec.data["gram_panchayat"].presence || rec.data["gp_name"].presence || id.to_s) : id.to_s
       else
         id.to_s
@@ -2311,14 +2317,25 @@ class VrpsController < ApplicationController
     village_ids = Array(vrp.village_ids).compact_blank
     return [] if village_ids.blank?
 
+    records = saved_location_records_by_id(village_ids)
     village_ids.map do |id|
       if id.to_s.match?(/\A\d+\z/)
-        rec = ModuleRecord.find_by(id: id)
+        rec = records[id.to_i]
         rec ? (rec.data["village_name"].presence || rec.data["village"].presence || rec.data["name"].presence || id.to_s) : id.to_s
       else
         id.to_s
       end
     end.compact_blank.uniq
+  end
+
+  def saved_location_records_by_id(ids)
+    numeric_ids = ids.select { |id| id.to_s.match?(/\A\d+\z/) }
+    return {} if numeric_ids.empty?
+
+    # Keep caller order, duplicate removal and the original missing-ID fallback
+    # in the name readers. Do not cache records across invocations: a later
+    # call in the same request can still observe a saved master edit.
+    ModuleRecord.where(id: numeric_ids).index_by(&:id)
   end
 
   def vrp_saved_location_names(vrp)
@@ -2425,18 +2442,24 @@ class VrpsController < ApplicationController
   end
 
   def active_module_record?(record)
-    return false if truthy_module_flag?(record.data["deleted"]) ||
-      truthy_module_flag?(record.data["is_deleted"]) ||
-      truthy_module_flag?(record.data["discarded"])
+    data = record.data
+    return false if truthy_module_flag?(data["deleted"]) ||
+      truthy_module_flag?(data["is_deleted"]) ||
+      truthy_module_flag?(data["discarded"])
 
-    status = record.data["status"].to_s.strip
+    status = data["status"].to_s.strip
     return true if status.blank?
 
     status.casecmp("Active").zero?
   end
 
   def truthy_module_flag?(value)
-    ["1", "true", "yes", "deleted"].include?(value.to_s.strip.downcase)
+    return false if value.nil? || value == false
+
+    case value.to_s.strip.downcase
+    when "1", "true", "yes", "deleted" then true
+    else false
+    end
   end
 
   def blank_display(value)

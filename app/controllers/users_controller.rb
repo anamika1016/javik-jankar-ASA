@@ -1,4 +1,8 @@
 class UsersController < ApplicationController
+  LOCATION_ROW_KEYS = %w[state_name state_id state_code district_name district_id district_code
+    block_name cd_block_name block_id block_code cd_block_code
+    gram_panchayat_name gram_panchayat_id gram_panchayat_code gp_code gram_code
+    gp_name gram_name village_name village_id village_code].to_h { |key| [key.freeze, key.to_sym] }.freeze
   # The user-management form opens several master tables at once.  Rails.cache
   # is database-backed in production, which meant even a warm cache added a
   # database request while the server was already saturated.  The source
@@ -13,7 +17,7 @@ class UsersController < ApplicationController
   ].freeze
 
   before_action :set_user, only: [:edit, :update, :destroy, :toggle_status, :set_status]
-  before_action :load_form_options, only: [:new, :edit, :create, :update]
+  before_action :load_form_options, only: [:new, :edit]
 
   def index
     @users = User.order(created_at: :desc)
@@ -28,6 +32,7 @@ class UsersController < ApplicationController
 
     if @user.password != params.dig(:user, :confirmed_password).to_s
       flash.now[:alert] = "Password and Confirmed Password must match."
+      load_form_options
       render :new, status: :unprocessable_entity
       return
     end
@@ -36,6 +41,7 @@ class UsersController < ApplicationController
       redirect_to users_path, notice: "User saved successfully."
     else
       flash.now[:alert] = @user.errors.full_messages.to_sentence
+      load_form_options
       render :new, status: :unprocessable_entity
     end
   end
@@ -45,6 +51,7 @@ class UsersController < ApplicationController
   def update
     if user_params[:password].to_s != params.dig(:user, :confirmed_password).to_s
       flash.now[:alert] = "Password and Confirmed Password must match."
+      load_form_options
       render :edit, status: :unprocessable_entity
       return
     end
@@ -54,6 +61,7 @@ class UsersController < ApplicationController
       redirect_to users_path, status: :see_other, notice: "User updated successfully."
     else
       flash.now[:alert] = @user.errors.full_messages.to_sentence
+      load_form_options
       render :edit, status: :unprocessable_entity
     end
   end
@@ -347,18 +355,24 @@ class UsersController < ApplicationController
   end
 
   def active_module_record?(record)
-    return false if truthy_module_flag?(record.data["deleted"]) ||
-      truthy_module_flag?(record.data["is_deleted"]) ||
-      truthy_module_flag?(record.data["discarded"])
+    data = record.data
+    return false if truthy_module_flag?(data["deleted"]) ||
+      truthy_module_flag?(data["is_deleted"]) ||
+      truthy_module_flag?(data["discarded"])
 
-    status = record.data["status"].to_s.strip
+    status = data["status"].to_s.strip
     return true if status.blank?
 
     status.casecmp("Active").zero?
   end
 
   def truthy_module_flag?(value)
-    ["1", "true", "yes", "deleted"].include?(value.to_s.strip.downcase)
+    return false if value.nil? || value == false
+
+    case value.to_s.strip.downcase
+    when "1", "true", "yes", "deleted" then true
+    else false
+    end
   end
 
   def gram_panchayat_name_from_record(record)
@@ -474,12 +488,11 @@ class UsersController < ApplicationController
 
   def location_row(record, values)
     row = { id: record.id.to_s }
+    data = record.data
     # Keep imported names and codes available when a parent select stores either.
-    %w[state_name state_id state_code district_name district_id district_code
-       block_name cd_block_name block_id block_code cd_block_code
-       gram_panchayat_name gram_panchayat_id gram_panchayat_code gp_code gram_code
-       gp_name gram_name village_name village_id village_code].each do |key|
-      row[key.to_sym] = record.data[key].to_s.strip if record.data[key].present?
+    LOCATION_ROW_KEYS.each do |key, symbol|
+      value = data[key]
+      row[symbol] = value.to_s.strip if value.present?
     end
     values.each { |key, value| row[key] = value.to_s.strip if value.present? }
     row

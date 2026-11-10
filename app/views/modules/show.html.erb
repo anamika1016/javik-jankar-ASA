@@ -2010,7 +2010,7 @@
     <% dashboard_status_link = params[:bill_status].present? || params[:record_state].present? %>
     <% selected_bill_month = params[:bill_month].presence || (dashboard_status_link ? nil : default_bill_month) %>
     <% bill_filters_active = @jeevika_bill_user_filters || params[:bill_month].present? || params[:bill_status].present? || params[:record_state].present? %>
-    <% candidate_bills = bill_filters_active ? jeevika_bill_list_candidates(@records, month: selected_bill_month, record_state: selected_record_state) : @records %>
+    <% candidate_bills = bill_filters_active ? jeevika_bill_list_candidates(@records, month: selected_bill_month, record_state: selected_record_state, status: selected_bill_status) : @records %>
     <% bill_rows = jeevika_bill_rows(candidate_bills) %>
     <% if @jeevika_bill_user_filters || params[:bill_month].present? || params[:bill_status].present? || params[:record_state].present? %>
       <% bill_rows = bill_rows.select { |row| selected_bill_month.blank? || row[:bill_month].to_s.casecmp(selected_bill_month).zero? } %>

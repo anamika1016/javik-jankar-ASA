@@ -6,6 +6,7 @@ require "net/http"
 require "uri"
 
 class ModulesController < ApplicationController
+  include RequestLabelMatchCache
   LocationRecord = Struct.new(:id, :data)
   LOCATION_ALIAS_KEYS = %w[state_name state_id state_code district_name district_id district_code
        block_name cd_block_name block_id block_code cd_block_code
@@ -2334,7 +2335,8 @@ class ModulesController < ApplicationController
           bills,
           activity_settings: activity_settings,
           sub_activity_settings: sub_activity_settings,
-          other_target_achievement_index: other_target_achievement_index
+          other_target_achievement_index: other_target_achievement_index,
+          other_target_achievement_index_complete: true
         )
       end
       training_records = []
@@ -3307,14 +3309,20 @@ class ModulesController < ApplicationController
     end.sort_by { |row| [row[:village].to_s, row[:name].to_s] }
   end
 
-  def vrp_target_completed_quantity(target, bills, activity_settings: nil, sub_activity_settings: nil, other_target_achievement_index: nil)
+  def vrp_target_completed_quantity(target, bills, activity_settings: nil, sub_activity_settings: nil, other_target_achievement_index: nil, other_target_achievement_index_complete: false)
     activity_settings ||= jeevika_jankar_main_activity_settings
     sub_activity_settings ||= jeevika_jankar_sub_activity_settings(activity_settings)
     activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
 
     if activity_setting.present? && !training_main_activity_type?(activity_setting[:main_activity_type])
-      other_target_achievement = other_target_achievement_index&.dig(target.id.to_s) ||
-        approved_other_target_achievement_index[target.id.to_s]
+      other_target_achievement = other_target_achievement_index&.dig(target.id.to_s)
+      # The progress reader already loaded the complete index for this exact
+      # candidate set. A missing entry is a real miss, not a reason to sort all
+      # candidate IDs again for each target. Partial caller indexes retain the
+      # original fallback.
+      if !other_target_achievement && !other_target_achievement_index_complete
+        other_target_achievement = approved_other_target_achievement_index[target.id.to_s]
+      end
       return capped_target_achievement(target, other_target_achievement[:achievement]) if other_target_achievement.present?
     elsif activity_setting.blank? || training_main_activity_type?(activity_setting[:main_activity_type])
       # Older/renamed activity-master rows may not resolve to a setting. Matching
@@ -8436,7 +8444,7 @@ class ModulesController < ApplicationController
   end
 
   def normalize_dashboard_user_label(label)
-    label.to_s.downcase.gsub(/[^a-z0-9]+/, " ").squish
+    cached_normalized_person_label(label) { label.to_s.downcase.gsub(/[^a-z0-9]+/, " ").squish }
   end
 
   # Saved labels often carry the role in brackets ("Akash Mandal (FCO-C Turekela)").
@@ -10861,13 +10869,18 @@ class ModulesController < ApplicationController
     [headers, rows]
   end
 
-  # Apply only the existing month/state predicates before expensive totals.
-  # The status filter still runs against the calculated workflow label.
-  def jeevika_bill_list_candidates(records, month:, record_state:)
+  # Apply the same rendered filters before expensive live totals. Status must
+  # use the calculated workflow label, including terminal approval history.
+  def jeevika_bill_list_candidates(records, month:, record_state:, status: nil)
+    filter_status = %w[pending final-approved].include?(status)
     Array(records).select do |record|
       data = record.data
-      (month.blank? || (data["bill_month"].presence || "-").to_s.casecmp(month).zero?) &&
+      next false unless (month.blank? || (data["bill_month"].presence || "-").to_s.casecmp(month).zero?) &&
         (record_state.blank? || (data["record_state"].presence || "Active").to_s.casecmp(record_state).zero?)
+      next true unless filter_status
+
+      finally_approved = jeevika_bill_status_label(record).to_s.downcase.include?("final approved")
+      status == "final-approved" ? finally_approved : !finally_approved
     end
   end
 
@@ -11742,10 +11755,13 @@ class ModulesController < ApplicationController
 
     @jeevika_bill_ordered_channels ||= steps.group_by { |step| approval_channel_key(step) }
       .transform_values { |records| ordered_approval_channel_steps(records) }
-    # Keep catalogue order: max_by retains the first channel when priorities tie.
-    matching_channel_keys = matching_channel_keys.to_set
-    matching_channels = @jeevika_bill_ordered_channels
-      .select { |key, _records| matching_channel_keys.include?(key) }.values.reject(&:blank?)
+    # Visit only matched channels rather than scanning the whole catalogue for
+    # each bill. Keep original catalogue order, including when a later step was
+    # the first matching step: max_by retains the first channel on a tie.
+    @jeevika_bill_channel_order ||= @jeevika_bill_ordered_channels.keys.each_with_index.to_h
+    matching_channels = matching_channel_keys
+      .sort_by { |key| @jeevika_bill_channel_order.fetch(key) }
+      .map { |key| @jeevika_bill_ordered_channels.fetch(key) }.reject(&:blank?)
 
     @jeevika_bill_approval_steps_cache[cache_key] = matching_channels.max_by { |records| approval_channel_priority(records) } || []
   end
@@ -12299,6 +12315,10 @@ class ModulesController < ApplicationController
   end
 
   def cluster_label_matches?(expected, actual)
+    cached_person_label_match(expected, actual) { uncached_cluster_label_matches?(expected, actual) }
+  end
+
+  def uncached_cluster_label_matches?(expected, actual)
     expected_values = cluster_label_match_values(expected)
     actual_values = cluster_label_match_values(actual)
     return false if expected_values.blank? || actual_values.blank?
@@ -12738,7 +12758,7 @@ class ModulesController < ApplicationController
             .select { |record| training_record_matches_dashboard_target?(record, target, []) }
           records.any? ? records.sum { |record| training_form_achievement_count(record) } : progress[:completed]
         else
-          approved_other_target_achievement_index.dig(target.id.to_s, :achievement).to_f
+          other_target_achievement_index.dig(target.id.to_s, :achievement).to_f
         end
         next {
           target_mapping_id: progress[:target_mapping_id],
@@ -16619,9 +16639,11 @@ class ModulesController < ApplicationController
 
   def location_row(record, values)
     row = { id: record.id.to_s }
+    data = record.data
     # Keep imported names and codes available when a parent select stores either.
     LOCATION_ALIAS_KEYS.each do |key, attribute|
-      row[attribute] = record.data[key].to_s.strip if record.data[key].present?
+      value = data[key]
+      row[attribute] = value.to_s.strip if value.present?
     end
     values.each { |key, value| row[key] = value.to_s.strip if value.present? }
     row
@@ -17027,18 +17049,24 @@ class ModulesController < ApplicationController
   end
 
   def active_module_record?(record)
-    return false if truthy_module_flag?(record.data["deleted"]) ||
-      truthy_module_flag?(record.data["is_deleted"]) ||
-      truthy_module_flag?(record.data["discarded"])
+    data = record.data
+    return false if truthy_module_flag?(data["deleted"]) ||
+      truthy_module_flag?(data["is_deleted"]) ||
+      truthy_module_flag?(data["discarded"])
 
-    status = record.data["status"].to_s.strip
+    status = data["status"].to_s.strip
     return true if status.blank?
 
     status.casecmp("Active").zero?
   end
 
   def truthy_module_flag?(value)
-    ["1", "true", "yes", "deleted"].include?(value.to_s.strip.downcase)
+    return false if value.nil? || value == false
+
+    case value.to_s.strip.downcase
+    when "1", "true", "yes", "deleted" then true
+    else false
+    end
   end
 
   def sync_vrp_master_record(record)

@@ -260,6 +260,14 @@ module ApplicationHelper
       ]
     },
     {
+      title: "Farmer 360",
+      icon: "▤",
+      links: [
+        ["Farmer 360", :route, :farmer360_path],
+        ["Farmer App Logins", :route, :farmer_app_logins_path]
+      ]
+    },
+    {
       title: "User Mapping",
       icon: "▧",
       links: [
@@ -718,8 +726,15 @@ module ApplicationHelper
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
     @active_stakeholder_records ||= {}
+    return @active_stakeholder_records[module_slug] if @active_stakeholder_records.key?(module_slug)
+
+    # A changed logo must appear on the next page, including imports that keep
+    # updated_at unchanged. The small master revision keeps the existing local
+    # cache without holding a previous favicon for its two-minute TTL.
+    revision = ModuleRecord.where(module_slug: module_slug)
+      .pick(Arel.sql("MD5(COALESCE(STRING_AGG(id::text || ':' || xmin::text || ':' || ctid::text, ',' ORDER BY id), ''))"))
     @active_stakeholder_records[module_slug] ||= branding_cache.fetch(
-      ["active-stakeholder-records", module_slug], expires_in: 2.minutes
+      ["active-stakeholder-records-v2", ModuleRecord.connection_pool.db_config.database, module_slug, revision], expires_in: 2.minutes
     ) do
       ModuleRecord
         .where(module_slug: module_slug)
