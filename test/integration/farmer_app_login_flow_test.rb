@@ -224,7 +224,7 @@ class FarmerAppLoginFlowTest < ActionDispatch::IntegrationTest
     assert_equal 1, FarmerAppLogin.count
   end
 
-  test "the login records where it came from" do
+  test "the login records where it came from, sent as headers" do
     stub_farmer_apis(farmer: REGISTER_FARMER) do |sent_otps|
       post "/api/v1/farmer/login/otp/send", params: { mobile_no: "7898071513" }.to_json, headers: json_headers
       post "/api/v1/farmer/login/otp/verify",
@@ -240,7 +240,63 @@ class FarmerAppLoginFlowTest < ActionDispatch::IntegrationTest
     assert_in_delta 23.2250491, login.last_login_latitude.to_f, 0.0000001
     assert_in_delta 74.8512613, login.last_login_longitude.to_f, 0.0000001
     assert_equal "Bhawanipatna, Odisha", login.last_login_place
+    assert_equal "Redmi Note 12", login.last_device
     assert login.last_login_ip.present?
+  end
+
+  # Putting these in the body is the obvious thing for the app to do, and a
+  # header-only reader silently dropped every one of them.
+  test "the login records where it came from, sent in the request body" do
+    stub_farmer_apis(farmer: REGISTER_FARMER) do |sent_otps|
+      post "/api/v1/farmer/login/otp/send", params: { mobile_no: "7898071513" }.to_json, headers: json_headers
+      post "/api/v1/farmer/login/otp/verify",
+        params: {
+          otp_token: json_body["otp_token"], otp: sent_otps.last,
+          latitude: "23.2250491", longitude: "74.8512613",
+          location: "Bhawanipatna, Odisha", device_name: "Redmi Note 12", app_version: "1.0.4"
+        }.to_json,
+        headers: json_headers
+      assert_response :ok
+    end
+
+    login = FarmerAppLogin.first
+    assert_in_delta 23.2250491, login.last_login_latitude.to_f, 0.0000001
+    assert_in_delta 74.8512613, login.last_login_longitude.to_f, 0.0000001
+    assert_equal "Bhawanipatna, Odisha", login.last_login_place
+    assert_equal "Redmi Note 12", login.last_device
+    assert_equal "1.0.4", login.last_app_version
+    # The event row carries the same place, so a date view shows it too.
+    assert_equal "Bhawanipatna, Odisha", login.login_events.last.place
+  end
+
+  test "lat and lng are accepted as short names too" do
+    stub_farmer_apis(farmer: REGISTER_FARMER) do |sent_otps|
+      post "/api/v1/farmer/login/otp/send", params: { mobile_no: "7898071513" }.to_json, headers: json_headers
+      post "/api/v1/farmer/login/otp/verify",
+        params: { otp_token: json_body["otp_token"], otp: sent_otps.last,
+                  lat: "23.1", lng: "74.2" }.to_json,
+        headers: json_headers
+      assert_response :ok
+    end
+
+    login = FarmerAppLogin.first
+    assert_in_delta 23.1, login.last_login_latitude.to_f, 0.0001
+    assert_in_delta 74.2, login.last_login_longitude.to_f, 0.0001
+  end
+
+  test "a device with no GPS fix reports 0,0 and that is not stored as a place" do
+    stub_farmer_apis(farmer: REGISTER_FARMER) do |sent_otps|
+      post "/api/v1/farmer/login/otp/send", params: { mobile_no: "7898071513" }.to_json, headers: json_headers
+      post "/api/v1/farmer/login/otp/verify",
+        params: { otp_token: json_body["otp_token"], otp: sent_otps.last,
+                  latitude: "0", longitude: "0.0" }.to_json,
+        headers: json_headers
+      assert_response :ok
+    end
+
+    login = FarmerAppLogin.first
+    assert_nil login.last_login_latitude
+    assert_nil login.last_login_longitude
   end
 
   test "a nonsense coordinate from the app is dropped, not stored" do

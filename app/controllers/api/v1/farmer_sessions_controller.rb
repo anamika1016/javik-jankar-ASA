@@ -55,11 +55,12 @@ module Api
           identifier_type: otp_request.identifier_type,
           aadhaar_no: param_value(:aadhaar_no),
           ip: request.remote_ip,
-          device: request.headers["X-Device-Name"].presence || request.user_agent,
-          app_version: request.headers["X-App-Version"],
-          latitude: location_header(:latitude),
-          longitude: location_header(:longitude),
-          place: request.headers["X-Location"].presence
+          device: param_value(:device_name, :device) ||
+            request.headers["X-Device-Name"].presence || request.user_agent,
+          app_version: param_value(:app_version) || request.headers["X-App-Version"],
+          latitude: location_coordinate(:latitude),
+          longitude: location_coordinate(:longitude),
+          place: location_place
         )
 
         render json: {
@@ -167,14 +168,29 @@ module Api
           "#{lock.minutes_remaining} more minute#{'s' if lock.minutes_remaining != 1}."
       end
 
-      def location_header(kind)
-        raw = request.headers[kind == :latitude ? "X-Latitude" : "X-Longitude"].to_s.strip
-        return if raw.blank?
+      # Coordinates are read from the JSON body as well as from headers.
+      # Putting them in the body is the natural thing for the app to do, and
+      # when it did, a header-only reader recorded nothing and the web list
+      # showed every login with no location at all.
+      def location_coordinate(kind)
+        raw =
+          if kind == :latitude
+            param_value(:latitude, :lat) || request.headers["X-Latitude"]
+          else
+            param_value(:longitude, :lng, :long) || request.headers["X-Longitude"]
+          end
 
-        value = Float(raw, exception: false)
+        value = Float(raw.to_s.strip, exception: false)
         return if value.nil?
+        # 0,0 is in the Atlantic: it is what a device reports when it has no
+        # fix, not a place a farmer logged in from.
+        return if value.zero?
 
         kind == :latitude ? value.clamp(-90, 90) : value.clamp(-180, 180)
+      end
+
+      def location_place
+        param_value(:location, :place, :address) || request.headers["X-Location"].presence
       end
 
       def farmer_payload(farmer, login)

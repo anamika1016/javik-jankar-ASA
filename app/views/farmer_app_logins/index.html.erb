@@ -105,18 +105,20 @@
               <th>Farmer</th>
               <th>Contact</th>
               <th>Logged in With</th>
-              <th>Location</th>
+              <th>Village / District</th>
               <th>ICS / Tracenet</th>
-              <th><%= @all_dates ? "Logins" : "Logins Today" %></th>
+              <% unless @all_dates %>
+                <th>Logins on This Date</th>
+              <% end %>
+              <th>Total Logins</th>
               <th><%= @all_dates ? "First Login" : "First Login (this date)" %></th>
               <th><%= @all_dates ? "Last Login" : "Last Login (this date)" %></th>
-              <th>Last OTP</th>
-              <th>Device &amp; Source</th>
+              <th>Device</th>
+              <th>Network &amp; Location</th>
             </tr>
           </thead>
           <tbody>
             <% @records.each_with_index do |record, index| %>
-              <% otp = @otp_status[record.mobile_no] %>
               <% lock = @locks[record.mobile_no] %>
               <tr>
                 <td><%= (@page - 1) * FarmerAppLoginsController::PER_PAGE + index + 1 %></td>
@@ -152,42 +154,46 @@
                     <small class="farmer-sub"><%= record.tracenet_id %></small>
                   <% end %>
                 </td>
-                <td>
-                  <%= record.display_login_count %>
-                  <% if record.day_scoped? && record.login_count != record.display_login_count %>
-                    <small class="farmer-sub"><%= record.login_count %> in total</small>
-                  <% end %>
-                </td>
+                <% unless @all_dates %>
+                  <%# How many times this farmer signed in on the selected
+                      date -- the next column is their all-time count. %>
+                  <td><strong><%= record.display_login_count %></strong></td>
+                <% end %>
+                <td><%= record.login_count %></td>
                 <td><%= farmer_login_time(record.display_first_login) %></td>
                 <td><%= farmer_login_time(record.display_last_login) %></td>
                 <td>
-                  <% if otp %>
-                    <span class="status-pill <%= otp.status == :used ? 'active' : (otp.status == :waiting ? 'scheduled' : 'inactive') %>">
-                      <%= otp.status_label %>
-                    </span>
-                    <small class="farmer-sub">Sent <%= farmer_login_time(otp.created_at) %></small>
-                    <% if otp.attempts.to_i.positive? %>
-                      <small class="farmer-sub"><%= otp.attempts %> wrong attempt<%= "s" if otp.attempts != 1 %></small>
-                    <% end %>
+                  <%# Only a handset name belongs here. "okhttp/4.9.2" is the
+                      HTTP library the app is built on, so it is labelled as
+                      the client below instead of posing as a device. %>
+                  <% if record.reported_device %>
+                    <%= record.reported_device %>
                   <% else %>
-                    -
+                    <span class="muted-note">Not reported by app</span>
                   <% end %>
-                </td>
-                <td>
-                  <%= record.display_device.presence || "-" %>
                   <% if record.display_app_version.present? %>
                     <small class="farmer-sub">App v<%= record.display_app_version %></small>
                   <% end %>
-                  <small class="farmer-sub">IP <%= record.display_ip.presence || "-" %></small>
+                  <% if record.client_agent %>
+                    <small class="farmer-sub">Client: <%= record.client_agent %></small>
+                  <% end %>
+                </td>
+                <td>
+                  <small class="farmer-sub">IP: <%= record.display_ip.presence || "-" %></small>
                   <% if record.display_place.present? %>
-                    <small class="farmer-sub"><%= record.display_place %></small>
+                    <small class="farmer-sub">Place: <%= record.display_place %></small>
                   <% end %>
                   <% if record.display_latitude.present? && record.display_longitude.present? %>
                     <small class="farmer-sub">
+                      GPS:
                       <%= link_to "#{record.display_latitude}, #{record.display_longitude}",
                             "https://maps.google.com/?q=#{record.display_latitude},#{record.display_longitude}",
                             target: "_blank", rel: "noopener" %>
                     </small>
+                  <% else %>
+                    <%# Says whose side the gap is on: the server records
+                        whatever the app sends, and this app sent nothing. %>
+                    <small class="farmer-sub muted-note">GPS not shared by app</small>
                   <% end %>
                 </td>
               </tr>

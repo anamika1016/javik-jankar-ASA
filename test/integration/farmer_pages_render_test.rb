@@ -49,8 +49,62 @@ class FarmerPagesRenderTest < ActionDispatch::IntegrationTest
     assert_includes response.body, "Bhawanipatna, Odisha"
     assert_includes response.body, "Redmi Note 12"
     assert_select "a[href*='maps.google.com']"
-    # OTP outcome, not the OTP itself.
-    assert_select ".status-pill", text: /Awaiting entry/
+    # The handset is not reported here, so the column says so rather than
+    # presenting the HTTP library as a device.
+    assert_select ".muted-note", text: /Not reported by app/, count: 0
+    assert_select "td", text: /Redmi Note 12/
+    # The OTP column was removed from the list.
+    assert_select "th", text: "Last OTP", count: 0
+  end
+
+  test "an HTTP library is labelled as the client, never shown as the device" do
+    FarmerAppLogin.record_login!(farmer: REGISTER_FARMER, identifier_type: "mobile",
+      device: "okhttp/4.9.2", ip: "49.36.10.22")
+
+    get farmer_app_logins_path
+    assert_response :success
+    assert_select ".muted-note", text: /Not reported by app/
+    assert_select ".farmer-sub", text: %r{Client: okhttp/4\.9\.2}
+  end
+
+  test "the two login counts are separate columns, not one number with a hint" do
+    2.times { FarmerAppLogin.record_login!(farmer: REGISTER_FARMER, identifier_type: "mobile") }
+    travel_to(2.days.ago) do
+      FarmerAppLogin.record_login!(farmer: REGISTER_FARMER, identifier_type: "mobile")
+    end
+
+    get farmer_app_logins_path
+    assert_response :success
+    assert_select "th", text: "Logins on This Date"
+    assert_select "th", text: "Total Logins"
+    # Two today, three all time.
+    assert_select "tbody tr td", text: "2"
+    assert_select "tbody tr td", text: "3"
+
+    # Across all dates only the all-time column makes sense.
+    get farmer_app_logins_path(date: "all")
+    assert_response :success
+    assert_select "th", text: "Logins on This Date", count: 0
+    assert_select "th", text: "Total Logins"
+  end
+
+  test "every export column has a header" do
+    FarmerAppLogin.record_login!(farmer: REGISTER_FARMER, identifier_type: "mobile")
+    controller = FarmerAppLoginsController.new
+    controller.instance_variable_set(:@otp_status, {})
+    controller.instance_variable_set(:@locks, {})
+
+    row = controller.send(:export_row, FarmerAppLogin.first, 0)
+    assert_equal FarmerAppLoginsController::EXPORT_HEADERS.size, row.size
+  end
+
+  test "a login with no GPS says the app did not share it" do
+    FarmerAppLogin.record_login!(farmer: REGISTER_FARMER, identifier_type: "mobile", ip: "49.36.10.22")
+
+    get farmer_app_logins_path
+    assert_response :success
+    assert_select ".muted-note", text: /GPS not shared by app/
+    assert_select "a[href*='maps.google.com']", count: 0
   end
 
   test "the list never prints an OTP code" do
@@ -208,7 +262,7 @@ class FarmerPagesRenderTest < ActionDispatch::IntegrationTest
     assert_select "td", text: /Ramesh/
   end
 
-  test "the day count reflects that date, and the all-time count is shown beside it" do
+  test "the date tile counts that date's logins, not the farmer's lifetime total" do
     3.times { FarmerAppLogin.record_login!(farmer: REGISTER_FARMER, identifier_type: "mobile") }
     travel_to(2.days.ago) do
       FarmerAppLogin.record_login!(farmer: REGISTER_FARMER, identifier_type: "mobile")
@@ -216,9 +270,9 @@ class FarmerPagesRenderTest < ActionDispatch::IntegrationTest
 
     get farmer_app_logins_path
     assert_response :success
-    # Three today out of four in total.
-    assert_select ".farmer-stat-value", text: "3"
-    assert_select ".farmer-sub", text: /4 in total/
+    # One farmer, three of their four logins fall on today.
+    assert_select ".farmer-stat", text: /1\s*Farmers on this date/
+    assert_select ".farmer-stat", text: /3\s*Total Logins/
   end
 
   test "an unreadable date falls back to today rather than showing everything" do

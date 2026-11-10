@@ -7,10 +7,10 @@ class FarmerAppLoginsController < ApplicationController
   PER_PAGE = 50
   EXPORT_HEADERS = [
     "#", "Farmer Name", "Father / Husband", "Mobile", "Aadhaar", "Logged in With",
-    "Village", "District", "State", "FCO", "ICS", "Tracenet", "Logins",
-    "First Login", "Last Login", "Last OTP Status", "Last OTP Sent",
-    "Wrong OTP Attempts", "Account Locked", "Device", "App Version", "IP", "Location",
-    "Latitude", "Longitude"
+    "Village", "District", "State", "FCO", "ICS", "Tracenet",
+    "Logins on Date", "Total Logins", "First Login", "Last Login",
+    "Last OTP Status", "Last OTP Sent", "Wrong OTP Attempts", "Account Locked",
+    "Device", "App Version", "HTTP Client", "IP", "Location", "Latitude", "Longitude"
   ].freeze
 
   def index
@@ -29,7 +29,7 @@ class FarmerAppLoginsController < ApplicationController
   def export
     load_filters
     records = filtered_scope.limit(20_000).to_a
-    load_related(records)
+    load_related(records, with_otp: true)
 
     send_xlsx(
       headers: EXPORT_HEADERS,
@@ -103,10 +103,11 @@ class FarmerAppLoginsController < ApplicationController
     date_scope.unscope(:select, :order, :group).count("DISTINCT farmer_app_logins.id")
   end
 
-  # Two batch lookups for the whole set, never one per row.
-  def load_related(records)
+  # Batch lookups for the whole set, never one per row. The list no longer
+  # shows OTP status, so that query is only run for the export.
+  def load_related(records, with_otp: false)
     mobiles = records.map(&:mobile_no).compact_blank.uniq
-    @otp_status = latest_otp_by_mobile(mobiles)
+    @otp_status = with_otp ? latest_otp_by_mobile(mobiles) : {}
     @locks = mobiles.any? ? FarmerLoginLock.where(mobile_no: mobiles).index_by(&:mobile_no) : {}
   end
 
@@ -187,15 +188,19 @@ class FarmerAppLoginsController < ApplicationController
       record.fco_name,
       record.ics_name,
       record.tracenet_id,
+      # On a date these differ; across all dates they are the same number.
       record.display_login_count,
+      record.login_count,
       export_time(record.display_first_login),
       export_time(record.display_last_login),
       otp&.status_label,
       export_time(otp&.created_at),
       otp&.attempts,
       lock&.locked? ? "Locked for #{lock.minutes_remaining} min" : "No",
-      record.display_device,
+      # Only a handset name here; the HTTP library gets its own column.
+      record.reported_device,
       record.display_app_version,
+      record.client_agent,
       record.display_ip,
       record.display_place,
       record.display_latitude,

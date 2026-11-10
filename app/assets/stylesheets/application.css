@@ -13735,6 +13735,11 @@ a.farmer-stat:hover {
   line-height: 1.5;
 }
 
+.farmer-sub.muted-note {
+  color: #b08500;
+  font-style: italic;
+}
+
 .farmer-method {
   display: inline-flex;
   align-items: center;

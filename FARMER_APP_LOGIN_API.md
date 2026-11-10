@@ -19,8 +19,27 @@ Optional headers, recorded against the login and shown on the web list:
 | `X-Longitude` | `74.8512613` |
 | `X-Location` | `Bhawanipatna, Odisha` |
 
-Send the location headers on **verify** when the farmer has granted location
-permission. They are optional; a value that is not a number is ignored.
+Send these on **verify** when the farmer has granted location permission.
+
+**The same values are accepted in the JSON body of the verify request**, which
+is usually easier from Android — use whichever suits:
+
+```json
+{
+  "otp_token": "...",
+  "otp": "483921",
+  "latitude": 23.2250491,
+  "longitude": 74.8512613,
+  "location": "Bhawanipatna, Odisha",
+  "device_name": "Redmi Note 12",
+  "app_version": "1.0.3"
+}
+```
+
+`lat` / `lng` are accepted as short names. All of it is optional; a value that
+is not a number is ignored, and `0,0` is treated as "no fix" rather than as a
+place. **If nothing is sent, the web list shows "GPS not shared by app"** —
+so if locations are missing there, the app is not sending them.
 
 ### Rules the app must build around
 

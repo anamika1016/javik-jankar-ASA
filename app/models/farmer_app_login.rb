@@ -208,6 +208,24 @@ class FarmerAppLogin < ApplicationRecord
     has_attribute?(:day_login_count)
   end
 
+  # okhttp, Dalvik, curl and friends are the HTTP library the app is built
+  # on, not the handset. When the app sends no device name the server falls
+  # back to the user agent, and showing that under "Device" reads like a bug.
+  HTTP_CLIENT_AGENT = /\A(?:okhttp|dalvik|mozilla|curl|wget|python-requests|java\/|
+                          apache-httpclient|ktor|retrofit|postman|insomnia|axios)/ix
+
+  # The handset the app reported, or nil when it reported none.
+  def reported_device
+    value = display_device.to_s.strip
+    value.presence unless value.blank? || value.match?(HTTP_CLIENT_AGENT)
+  end
+
+  # The HTTP client string, shown separately and labelled for what it is.
+  def client_agent
+    value = display_device.to_s.strip
+    value.presence if value.match?(HTTP_CLIENT_AGENT)
+  end
+
   def masked_mobile
     digits = mobile_no.to_s.gsub(/\D/, "")
     return "-" if digits.blank?
