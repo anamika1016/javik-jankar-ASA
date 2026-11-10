@@ -6,6 +6,11 @@ class Farmer360Controller < ApplicationController
     @aadhaar_no = params[:aadhaar_no].to_s.strip
     return if @mobile_no.blank? && @aadhaar_no.blank?
 
+    if @mobile_no.present? && !FarmerAppLogin.valid_mobile?(@mobile_no)
+      @error = FarmerAppLogin::INVALID_MOBILE_MESSAGE
+      return
+    end
+
     lookup = if @mobile_no.present?
       FarmerRegisterLookup.by_mobile(@mobile_no)
     else

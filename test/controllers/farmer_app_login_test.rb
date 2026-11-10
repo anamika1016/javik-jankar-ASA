@@ -28,6 +28,32 @@ class FarmerAppLoginTest < ActiveSupport::TestCase
     assert_equal "7898071513", FarmerAppLogin.normalize_mobile("917898071513")
   end
 
+  test "only ten-digit Indian mobile numbers are accepted" do
+    %w[6123456789 7898071513 8000000000 9999999999].each do |number|
+      assert FarmerAppLogin.valid_mobile?(number), "#{number} should be valid"
+    end
+
+    # Accepted spellings of a valid number: country code and trunk zero only.
+    ["+91 78980-71513", "07898071513", "917898071513", "0091 7898071513"].each do |number|
+      assert FarmerAppLogin.valid_mobile?(number), "#{number} should be valid"
+    end
+
+    [
+      "5898071513",     # starts with 5
+      "1234567890",     # starts with 1
+      "0898071513",     # ten digits starting with 0
+      "789807151",      # nine digits
+      "78980715130",    # eleven digits, no trunk zero
+      "99997898071513", # junk in front of a real number
+      "789807151a",     # letters stripped, leaves nine digits
+      "0000000000",
+      "",
+      nil
+    ].each do |number|
+      assert_not FarmerAppLogin.valid_mobile?(number), "#{number.inspect} should be rejected"
+    end
+  end
+
   test "repeat logins update one row and count up instead of inserting again" do
     first = FarmerAppLogin.record_login!(farmer: REGISTER_FARMER, identifier_type: "aadhaar",
       aadhaar_no: "111122223333", ip: "10.0.0.1")

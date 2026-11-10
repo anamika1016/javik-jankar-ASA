@@ -16,6 +16,10 @@ module Api
           return render_error("Mobile number or Aadhaar number is required.")
         end
 
+        if mobile_no.present? && !FarmerAppLogin.valid_mobile?(mobile_no)
+          return render_error(FarmerAppLogin::INVALID_MOBILE_MESSAGE)
+        end
+
         identifier_type = mobile_no.present? ? "mobile" : "aadhaar"
         lookup = if mobile_no.present?
           FarmerRegisterLookup.by_mobile(mobile_no)
@@ -25,10 +29,14 @@ module Api
         return render_error(lookup.error, status: :not_found) unless lookup.found?
 
         farmer = lookup.farmer
-        registered_mobile = farmer["mobile_no"].to_s.gsub(/\D/, "")
-        if registered_mobile.length < 10
-          return render_error("This farmer has no registered mobile number. Please contact your FCO.")
+        # Held to the same rule as typed input: the register has rows with
+        # blank or placeholder numbers, and an OTP sent to one of those is
+        # either undeliverable or lands on a stranger's phone.
+        unless FarmerAppLogin.valid_mobile?(farmer["mobile_no"])
+          return render_error("This farmer has no valid registered mobile number. Please contact your FCO.")
         end
+
+        registered_mobile = FarmerAppLogin.normalize_mobile(farmer["mobile_no"])
 
         if FarmerLoginOtp.resend_blocked?(registered_mobile)
           return render_error("An OTP was just sent. Please wait a minute before trying again.",

@@ -15,7 +15,10 @@
         <div class="module-form-grid user-registration-grid">
           <label>
             <span>Mobile Number</span>
-            <input type="text" name="mobile_no" value="<%= @mobile_no %>" placeholder="Enter Mobile Number" inputmode="numeric">
+            <%# Browser-side check only; the controller re-checks the same rule. %>
+            <input type="text" name="mobile_no" value="<%= @mobile_no %>" placeholder="Enter Mobile Number"
+                   inputmode="numeric" maxlength="10" pattern="[6-9][0-9]{9}"
+                   title="10-digit mobile number starting with 6, 7, 8 or 9">
           </label>
           <label>
             <span>Aadhaar Number</span>

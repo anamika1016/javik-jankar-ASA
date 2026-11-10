@@ -4,6 +4,11 @@ require "digest"
 # register; this record is the login trail the web list reads.
 class FarmerAppLogin < ApplicationRecord
   IDENTIFIER_TYPES = %w[mobile aadhaar].freeze
+  # Indian mobile numbers are ten digits beginning 6, 7, 8 or 9. Checking this
+  # before a lookup keeps obvious typos from reaching the register, and keeps
+  # an OTP from being aimed at a number that cannot exist.
+  INDIAN_MOBILE_FORMAT = /\A[6-9]\d{9}\z/
+  INVALID_MOBILE_MESSAGE = "Enter a valid 10-digit mobile number starting with 6, 7, 8 or 9.".freeze
 
   # Matches index_farmer_app_logins_on_last_logged_in_at exactly. Asking for
   # NULLS LAST instead would make Postgres sort the whole table, and the
@@ -23,6 +28,19 @@ class FarmerAppLogin < ApplicationRecord
   def self.normalize_mobile(mobile)
     digits = mobile.to_s.gsub(/\D/, "")
     digits.length >= 10 ? digits[-10, 10] : digits
+  end
+
+  # "+91 78980-71513" and "07898071513" are accepted -- it is the ten-digit
+  # number inside them that has to be valid. Only the country code and a
+  # trunk zero may precede it; anything else in front means the whole thing
+  # was mistyped, so taking the last ten digits of it would be a guess.
+  def self.valid_mobile?(mobile)
+    digits = mobile.to_s.gsub(/\D/, "")
+    digits = digits.delete_prefix("00") if digits.length == 14 && digits.start_with?("00")
+    digits = digits.delete_prefix("91") if digits.length == 12 && digits.start_with?("91")
+    digits = digits.delete_prefix("0") if digits.length == 11 && digits.start_with?("0")
+
+    digits.match?(INDIAN_MOBILE_FORMAT)
   end
 
   # Called once a farmer has passed OTP. `farmer` is the register payload.
