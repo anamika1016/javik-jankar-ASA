@@ -1,6 +1,35 @@
 # Read projections belong here so lists can avoid loading large JSON payloads
 # before the controller has applied the current user's visibility rules.
 class ModuleRecordReadQuery
+  def self.admin_training_list_rows(scope, limit: 100)
+    slug = ModuleRecord.connection.quote(TrainingEditApproval::SLUG)
+    # Match the Ruby list key exactly: latest revision by ID, Pending first,
+    # created_at floored to whole seconds (nil means epoch), then ID descending.
+    # Training photo/participant JSON is never selected while ranking rows.
+    pending = <<~SQL.squish
+      CASE WHEN (
+        SELECT revisions.data::jsonb ->> 'status' FROM module_records revisions
+        WHERE revisions.module_slug = #{slug}
+          AND revisions.data::jsonb ->> 'record_id' = module_records.id::text
+        ORDER BY revisions.id DESC LIMIT 1
+      ) = 'Pending' THEN 0 ELSE 1 END
+    SQL
+    summary = <<~SQL.squish
+      (SELECT json_build_object(
+        'id', revisions.id, 'module_slug', revisions.module_slug,
+        'created_at', revisions.created_at, 'updated_at', revisions.updated_at,
+        'data', (revisions.data::jsonb - ARRAY['before', 'proposed', 'evidence', 'history'])::text
+      ) FROM module_records revisions
+       WHERE revisions.module_slug = #{slug}
+         AND revisions.data::jsonb ->> 'record_id' = module_records.id::text
+       ORDER BY revisions.id DESC LIMIT 1)
+    SQL
+    # Read the selected summaries in the ranking statement's snapshot, so a
+    # concurrent decision cannot change badges after pending ordering is set.
+    scope.reorder(Arel.sql("#{pending}, COALESCE(FLOOR(EXTRACT(EPOCH FROM module_records.created_at)), 0) DESC, module_records.id DESC"))
+      .limit(limit).pluck(:id, Arel.sql(summary))
+  end
+
   def self.training_list_candidates(scope)
     omitted_keys = TrainingEditApproval::IMAGE_KEYS + %w[farmer_ids selected_farmer_ids farmers farmer_details]
     quoted_keys = omitted_keys.map { |key| ModuleRecord.connection.quote(key) }.join(",")

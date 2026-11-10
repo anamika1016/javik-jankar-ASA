@@ -105,10 +105,12 @@ class UsersController < ApplicationController
 
     version = user_form_catalogue_revision
     cache_key = ["users/form-options-v4", ModuleRecord.connection_pool.db_config.database, version]
-    CatalogueReadCache.fetch(user_form_options_cache, cache_key,
-      version: version, current_version: -> { user_form_catalogue_revision }) do
-      build_user_form_options_payload
-    end.deep_dup
+    ReadStageTrace.measure("user.form_options") do
+      CatalogueReadCache.fetch(user_form_options_cache, cache_key,
+        version: version, current_version: -> { user_form_catalogue_revision }) do
+        build_user_form_options_payload
+      end.deep_dup
+    end
   end
 
   def user_form_catalogue_revision

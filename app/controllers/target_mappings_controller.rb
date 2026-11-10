@@ -134,7 +134,7 @@ class TargetMappingsController < ApplicationController
   end
 
   def jj_mapped_farmers
-    @api_vrp_users = fetch_external_vrp_users
+    @api_vrp_users = ReadStageTrace.measure("external.jj_catalogue") { fetch_external_vrp_users }
     @month_options = [
       ["January (01)", "1"],
       ["February (02)", "2"],

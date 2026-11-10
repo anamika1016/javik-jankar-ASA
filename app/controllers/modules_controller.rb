@@ -1425,13 +1425,13 @@ class ModulesController < ApplicationController
     redirect_to users_path and return if @slug == "all-user"
     redirect_to new_user_path and return if @slug == "new-user"
 
-    @records = module_records_required_for_show? ? module_records : []
+    @records = module_records_required_for_show? ? ReadStageTrace.measure("module_records") { module_records } : []
     @jeevika_bill_user_filters = !admin_dashboard_user? if @slug == "jeevika-jankar-bill-list"
     prepare_office_list_data if @slug == "office-list"
     prepare_lg_directory_data if @slug == "lg-directory-list"
     prepare_vrp_bill_data if @slug == "vrp-bill-add"
     prepare_jeevika_jankar_bill_data if @slug == "jeevika-jankar-bill-process"
-    prepare_jeevika_jankar_bill_list if @slug == "jeevika-jankar-bill-list"
+    ReadStageTrace.measure("bill.list_prepare") { prepare_jeevika_jankar_bill_list } if @slug == "jeevika-jankar-bill-list"
     prepare_jeevika_jankar_observation_list if @slug == "jeevika-jankar-observation-list"
   end
 
@@ -9584,6 +9584,20 @@ class ModulesController < ApplicationController
     # in SQL discarded rows before we knew who owned them, so a user whose records
     # fell outside the newest N overall saw only the few that happened to land in it.
     limit_training_list = @slug == "training-form-list" && request.format.html? && params[:all].blank?
+    # A prior helper read may already have captured this request's approval
+    # snapshot. Preserve it through the original path instead of overwriting it.
+    if limit_training_list && admin_dashboard_user? && !defined?(@training_edit_revisions_by_record)
+      selected_rows = ModuleRecordReadQuery.admin_training_list_rows(records_scope)
+      ids = selected_rows.map(&:first)
+      @training_edit_revisions_by_record = selected_rows.each_with_object({}) do |(id, attributes), revisions|
+        revisions[id.to_s] = ModuleRecord.instantiate(attributes).tap(&:readonly!) if attributes
+      end
+      @training_edit_revision_record_ids = ids.map(&:to_s)
+      by_id = ModuleRecord.where(id: ids).index_by(&:id)
+      visible_records = ids.filter_map { |id| by_id[id] }
+      preload_training_record_trainer_identities!(visible_records)
+      return visible_records
+    end
     if limit_training_list
       # Visibility and pending-first ordering do not need upload payloads or
       # participant arrays. Hydrate only the final visible page below.
@@ -9592,12 +9606,14 @@ class ModulesController < ApplicationController
     if location_master_list_cacheable?(records_scope) && server_paginated_master_list? && params[:q].to_s.strip.blank?
       return cached_location_master_page_records(record_source_slug)
     end
-    records = if cached_bill_summary
-      cached_jeevika_bill_summary_records
-    elsif location_master_list_cacheable?(records_scope)
-      cached_location_master_records(record_source_slug)
-    else
-      records_scope.to_a
+    records = ReadStageTrace.measure("module_records.load") do
+      if cached_bill_summary
+        cached_jeevika_bill_summary_records
+      elsif location_master_list_cacheable?(records_scope)
+        cached_location_master_records(record_source_slug)
+      else
+        records_scope.to_a
+      end
     end
     if record_source_slug == "jeevika-jankar-bill-process"
       payment_summary = ["jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail"].include?(@slug) &&
@@ -9617,8 +9633,10 @@ class ModulesController < ApplicationController
       @jeevika_bill_visible_record_ids = records.map { |record| record.id.to_s }
     end
     if target_record_source?
-      preload_target_visibility_vrps!(records)
-      records = records.select { |record| target_record_visible?(record) }
+      records = ReadStageTrace.measure("module_records.visibility") do
+        preload_target_visibility_vrps!(records)
+        records.select { |record| target_record_visible?(record) }
+      end
     end
     preload_other_target_contact_numbers!(records) if other_target_record_source?
     if @slug == "training-form-list"
@@ -10157,7 +10175,7 @@ class ModulesController < ApplicationController
   end
 
   def prepare_office_list_data
-    api_items = office_list_api_items
+    api_items = ReadStageTrace.measure("external.office_list") { office_list_api_items }
 
     @office_list_rows = api_items.map do |item|
       zones = Array(item["territory_zones"])
@@ -10293,7 +10311,7 @@ class ModulesController < ApplicationController
     # outer Array for request-local filtering without duplicating every row.
     rows = DashboardCacheFill.synchronize(key) do
       LG_DIRECTORY_MEMORY_CACHE.fetch(key, expires_in: 1.hour) do
-        build_lg_directory_rows.map(&:freeze).freeze
+        ReadStageTrace.measure("location.directory_build") { build_lg_directory_rows }.map(&:freeze).freeze
       end
     end
     rows.dup

@@ -2123,9 +2123,11 @@ class VrpsController < ApplicationController
     return "[]".html_safe unless model_ready?(:ModuleRecord)
 
     key = ["vrp/location-browser-attribute-v2", vrp_location_catalogue_revision]
-    escaped = CatalogueReadCache.fetch(vrp_location_catalogue_cache, key,
-      version: vrp_location_catalogue_revision, current_version: -> { read_vrp_location_catalogue_revision }) do
-      String.new(ERB::Util.html_escape(ERB::Util.json_escape(location_hierarchy_mappings.to_json)))
+    escaped = ReadStageTrace.measure("vrp.location_attribute") do
+      CatalogueReadCache.fetch(vrp_location_catalogue_cache, key,
+        version: vrp_location_catalogue_revision, current_version: -> { read_vrp_location_catalogue_revision }) do
+        String.new(ERB::Util.html_escape(ERB::Util.json_escape(location_hierarchy_mappings.to_json)))
+      end
     end
     escaped.html_safe
   end
