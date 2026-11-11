@@ -101,11 +101,129 @@ class TrainingEditApproval
       .compact_blank.map { |value| username(value) }.uniq
   end
 
-  def self.automatic_routing(data, actor, staff_catalogue: nil)
+  # Who owns the Jeevika Jankar this training belongs to. The portal shows
+  # this as "Transfer By", falling back to "Registered By" when the Jeevika
+  # Jankar has never been transferred, and that owner is who an edit goes to.
+  #
+  # This replaces routing by "the one Agronomist on the FCO office", which
+  # broke as soon as an office had two Agronomists covering different TOs --
+  # a normal arrangement, and no reason to block an edit.
+  def self.training_vrp(data)
+    vrp_id = data.values_at("jeevika_jankar_id", "vrp_id", "select_vrp").find(&:present?)
+    return if vrp_id.blank?
+
+    Vrp.find_by(id: vrp_id)
+  end
+
+  # "Transfer By" lives on the jeevika-jankar-transfer records, keyed by the
+  # Jeevika Jankar id trailing each saved label.
+  def self.transfer_owner_username(vrp)
+    return if vrp.blank?
+
+    ModuleRecord.where(module_slug: "jeevika-jankar-transfer")
+      .order(updated_at: :desc, id: :desc)
+      .find_each do |record|
+        data = record.data
+        next if %w[deleted is_deleted discarded].any? { |key| %w[1 true yes deleted].include?(data[key].to_s.downcase) }
+        next unless data["status"].blank? || data["status"].to_s.casecmp("Active").zero?
+        next unless Array(data["jeevika_jankar_names"]).any? { |label| label.to_s[/-\s*(\d+)\s*\z/, 1] == vrp.id.to_s }
+
+        return data["user_name"].to_s.sub(/\s*\([^)]*\)\s*\z/, "").strip.presence
+      end
+    nil
+  end
+
+  def self.catalogue_entry(catalogue, record_type:, id:)
+    catalogue.find do |entry|
+      entry["record_type"].to_s == record_type.to_s && entry["id"].to_s == id.to_s
+    end
+  end
+
+  def self.catalogue_entry_by_username(catalogue, name)
+    wanted = username(name)
+    return if wanted.blank?
+
+    catalogue.find do |entry|
+      [entry["user_name"], entry["username"], TrainingStaffScope.name(entry)]
+        .compact_blank.any? { |value| username(value) == wanted }
+    end
+  end
+
+  # The owner of the Jeevika Jankar, as an approver entry, or nil.
+  def self.owner_approver(data, staff_catalogue: nil)
+    vrp = training_vrp(data)
+    return if vrp.blank?
+
+    catalogue = staff_catalogue || TrainingStaffScope.staff_catalogue
+    transferred = transfer_owner_username(vrp)
+    if transferred.present?
+      entry = catalogue_entry_by_username(catalogue, transferred)
+      return entry if entry
+    end
+
+    return if vrp.created_by_id.blank? || vrp.created_by_type.blank?
+
+    catalogue_entry(catalogue, record_type: vrp.created_by_type, id: vrp.created_by_id)
+  end
+
+  # The office, every Agronomist on it, and the ones who could actually
+  # approve this edit (its own author cannot approve it).
+  def self.approver_candidates(data, actor, staff_catalogue: nil)
     office = TrainingStaffScope.office_for(data, actor)
-    candidates = TrainingStaffScope.staff(office, :agronomist, catalogue: staff_catalogue)
-      .reject { |candidate| candidate["user_name"].blank? || identity(candidate) == identity(actor) }
+    assigned = TrainingStaffScope.staff(office, :agronomist, catalogue: staff_catalogue)
+      .reject { |candidate| candidate["user_name"].blank? }
       .uniq { |candidate| username(candidate["user_name"]) }
+
+    [office, assigned, assigned.reject { |candidate| identity(candidate) == identity(actor) }]
+  end
+
+  # Routing needs exactly one eligible Agronomist, and it can fail for three
+  # different reasons. Saying only "assign one" sent people off to add a
+  # second Agronomist when the real problem was that there were already two.
+  def self.routing_error(data, actor, staff_catalogue: nil)
+    # Nothing to explain when routing works. Asking the question this way
+    # also keeps the message and the actual decision from drifting apart.
+    return if automatic_routing(data, actor, staff_catalogue: staff_catalogue).present?
+
+    owner = owner_approver(data, staff_catalogue: staff_catalogue)
+    if owner && identity(owner) == identity(actor)
+      return "This training's Jeevika Jankar is registered to you, and an edit cannot be approved " \
+             "by its own author. Ask another user to submit this change."
+    end
+
+    office, assigned, eligible = approver_candidates(data, actor, staff_catalogue: staff_catalogue)
+    if training_vrp(data).present?
+      return "This training's Jeevika Jankar has no \"Registered By\" or \"Transfer By\" user on record, " \
+             "so there is nobody to send the edit to. Set one on the Jeevika Jankar List."
+    end
+
+    place = office.presence ? "FCO office \"#{office}\"" : "this training's FCO office"
+    if assigned.empty?
+      "No active Agronomist account is assigned to #{place}. " \
+        "Assign one in User List before submitting the edit."
+    elsif eligible.empty?
+      "You are the only Agronomist assigned to #{place}, and an edit cannot be approved by its own author. " \
+        "Another active Agronomist must be assigned to that office."
+    else
+      names = eligible.map { |candidate| TrainingStaffScope.name(candidate) }.compact_blank.sort.join(", ")
+      "#{eligible.size} active Agronomist accounts are assigned to #{place} (#{names}). " \
+        "Exactly one is needed so the approval has a single owner -- deactivate or move the others."
+    end
+  end
+
+  def self.automatic_routing(data, actor, staff_catalogue: nil)
+    # The Jeevika Jankar's own owner comes first: it is a single, named person
+    # whoever else works that office. Only when the training cannot be traced
+    # back to a Jeevika Jankar does this fall back to the office Agronomist.
+    owner = owner_approver(data, staff_catalogue: staff_catalogue)
+    if owner && identity(owner) != identity(actor)
+      return { "approvers" => [TrainingStaffScope.name(owner)],
+               "approver_identities" => [identity(owner)],
+               "approval_office" => TrainingStaffScope.office_for(data, actor),
+               "approval_role" => "jeevika_jankar_owner" }
+    end
+
+    office, _assigned, candidates = approver_candidates(data, actor, staff_catalogue: staff_catalogue)
     return {} unless candidates.one?
 
     approver = candidates.first
@@ -113,8 +231,33 @@ class TrainingEditApproval
       "approver_identities" => [identity(approver)], "approval_office" => office, "approval_role" => "agronomist" }
   end
 
+  # Can we prove the Agronomist this request was routed to is no longer on
+  # that office? Only a proven answer reroutes; "cannot tell" leaves the
+  # request alone. Older requests were routed by name with no identity or
+  # office stored, and treating those as stale unassigned healthy requests.
+  #
+  # Checked against the stored approval_office rather than rederiving it, so
+  # a list page costs no extra query per row.
+  def self.approver_stale?(revision, staff_catalogue: nil)
+    identities = Array(revision.data["approver_identities"]).compact_blank
+    office = revision.data["approval_office"]
+    return false if identities.empty? || office.blank?
+
+    current = TrainingStaffScope.staff(office, :agronomist, catalogue: staff_catalogue)
+      .map { |candidate| identity(candidate) }
+    identities.any? { |stored| current.exclude?(stored) }
+  end
+
   def self.assign_automatic_approver!(revision, staff_catalogue: nil)
-    return revision unless revision.data["status"] == "Pending" && revision.data["approval_role"] != "agronomist"
+    return revision unless revision.data["status"] == "Pending"
+    # Requests already routed to a valid Agronomist stay put. One whose
+    # Agronomist has since been deactivated or moved off the office is
+    # rerouted -- otherwise replacing an Agronomist stranded every request
+    # that was already waiting with the old one.
+    if revision.data["approval_role"] == "agronomist" &&
+       !approver_stale?(revision, staff_catalogue: staff_catalogue)
+      return revision
+    end
 
     revision.with_lock do
       data = revision.data.deep_dup
@@ -124,6 +267,15 @@ class TrainingEditApproval
       # Legacy unassigned requests are rechecked so a later Agronomist assignment
       # is still picked up. Skip the identical write/reload on every page render.
       next revision if updated_data == data
+
+      # Who a request is waiting on is worth a trail; it changes who may act.
+      if data["approvers"].present? && data["approvers"] != updated_data["approvers"]
+        updated_data["history"] = Array(data["history"]) + [{
+          "action" => "reassigned", "at" => Time.current.iso8601,
+          "from" => Array(data["approvers"]).join(", "),
+          "to" => Array(updated_data["approvers"]).join(", ").presence || "unassigned"
+        }]
+      end
 
       revision.update!(data: updated_data)
     end
@@ -137,7 +289,7 @@ class TrainingEditApproval
         raise InvalidTransition, "Another user's edit is pending approval for this training form."
       end
       routing = automatic_routing(record.data, actor)
-      raise InvalidTransition, "A single active Agronomist account must be assigned to this training's FCO office before submitting the edit." if routing.empty?
+      raise InvalidTransition, routing_error(record.data, actor) if routing.empty?
       IMAGE_KEYS.each { |key| proposed[key] = (Array(record.data[key]) + Array(proposed[key])).compact_blank.uniq }
       # Preserve creator/ownership fields; CC edits cannot reassign records.
       record.data.each { |key, value| proposed[key] = value if key.start_with?("created_by") || %w[vrp_id select_vrp jeevika_jankar_id].include?(key) }
@@ -317,7 +469,7 @@ class TrainingEditApproval
       if decision == "route"
         raise InvalidTransition, "Only admin can route an unassigned pending request." unless actor["user_type"].to_s.casecmp("admin").zero? && data["status"] == "Pending" && Array(data["approvers"]).empty?
         routing = automatic_routing(data["before"] || {}, data["requester"] || {})
-        raise InvalidTransition, "Assign a single active Agronomist account to the training's FCO office first." if routing.empty?
+        raise InvalidTransition, routing_error(data["before"] || {}, data["requester"] || {}) if routing.empty?
         data.merge!(routing)
       else
         raise InvalidTransition, "This request is not awaiting your approval." unless can_decide?(revision, actor)
