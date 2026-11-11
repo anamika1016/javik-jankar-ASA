@@ -291,6 +291,57 @@ server logs.
 
 ---
 
+## Testing the feed in Postman
+
+The feed needs a token, and the token only comes from a real OTP. Three steps,
+in one Postman tab each:
+
+**Step 1 — ask for the OTP**
+
+```
+POST https://jj.asaindia.org/api/v1/farmer/login/otp/send
+Body → raw → JSON:
+{ "mobile_no": "7898071513" }
+```
+
+Copy `otp_token` from the response. The 6-digit OTP arrives by SMS on the
+farmer's registered mobile.
+
+**Step 2 — exchange it for a session token**
+
+```
+POST https://jj.asaindia.org/api/v1/farmer/login/otp/verify
+Body → raw → JSON:
+{ "otp_token": "<from step 1>", "otp": "<the 6 digits from the SMS>" }
+```
+
+Copy `token` from the response.
+
+**Step 3 — call the feed with that token**
+
+```
+GET https://jj.asaindia.org/api/v1/farmer/news
+```
+
+In Postman open the **Authorization** tab → Type **Bearer Token** → paste the
+token. Or add it on the **Headers** tab by hand:
+
+| Key | Value |
+|---|---|
+| `Authorization` | `Bearer <token>` |
+
+Calling step 3 without doing this returns `401 missing_token` — that is the
+server saying the header never arrived, not that the endpoint is broken.
+
+For a one-off check the token can also go in the URL, which avoids the
+Authorization tab entirely:
+
+```
+GET https://jj.asaindia.org/api/v1/farmer/news?token=<token>
+```
+
+---
+
 ## 7. Logout
 
 ```

@@ -191,6 +191,58 @@ class FarmerFeedTest < ActionDispatch::IntegrationTest
 
   # The app shipped without an Authorization header and got a bare 401, which
   # told the developer nothing. Each refusal now names its own cause.
+  # The whole chain the app has to walk, exactly as the Android client does
+  # it: OTP, verify, then the two feeds with the token from verify.
+  test "OTP login to news and videos works end to end with the verify token" do
+    FarmerNewsItem.create!(title: "MP seed subsidy", body: "Apply by 30 November.", state_id: "1")
+    FarmerNewsItem.create!(title: "Nationwide advisory", state_id: nil)
+    FarmerNewsItem.create!(title: "Odisha only", state_id: "8")
+    FarmerVideo.create!(title: "Soil health", state_id: "1", video_url: "https://youtu.be/abc123")
+    FarmerVideo.create!(title: "Odisha clip", state_id: "8", video_url: "https://youtu.be/zzz")
+
+    token = nil
+    # The register answers with state_id 1; the master turns that into a name.
+    AsaLocationNames.stub_names(state: { "1" => "Madhya Pradesh" }) do
+      stub_farmer_apis(farmer: MP_FARMER) do |sent_otps|
+        post "/api/v1/farmer/login/otp/send",
+          params: { mobile_no: "7898071513" }.to_json,
+          headers: { "Content-Type" => "application/json" }
+        assert_response :ok
+
+        post "/api/v1/farmer/login/otp/verify",
+          params: { otp_token: json_body["otp_token"], otp: sent_otps.last }.to_json,
+          headers: { "Content-Type" => "application/json" }
+        assert_response :ok
+        token = json_body["token"]
+        assert token.present?, "verify must hand back a token"
+      end
+    end
+
+    auth = { "Authorization" => "Bearer #{token}" }
+
+    get "/api/v1/farmer/news", headers: auth
+    assert_response :success
+    assert json_body["success"]
+    assert_equal "Madhya Pradesh", json_body["state"]
+    assert_equal ["Nationwide advisory", "MP seed subsidy"].sort,
+      json_body["news"].map { |n| n["title"] }.sort
+
+    get "/api/v1/farmer/videos", headers: auth
+    assert_response :success
+    assert_equal ["Soil health"], json_body["videos"].map { |v| v["title"] }
+    assert_equal "https://youtu.be/abc123", json_body["videos"].first["video_url"]
+  end
+
+  test "a farmer whose register record has no state still gets the All States feed" do
+    FarmerNewsItem.create!(title: "Everyone", state_id: nil)
+    FarmerNewsItem.create!(title: "MP only", state_id: "1")
+    stateless = MP_FARMER.merge("id" => 77, "aadhaar_no" => "777788889999", "land_details" => [])
+
+    titles = app_feed(stateless, "/api/v1/farmer/news").map { |n| n["title"] }
+    assert_equal ["Everyone"], titles
+    assert_nil FarmerAppLogin.find_by(farmer_external_id: "77").state_id
+  end
+
   test "a request with no Authorization header says exactly that" do
     FarmerNewsItem.create!(title: "Everyone", state_id: nil)
 
