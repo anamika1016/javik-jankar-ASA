@@ -15,27 +15,47 @@
     <div class="module-card-header"><h2>Publish News</h2></div>
     <%= form_with model: @record, url: farmer_news_index_path, scope: :farmer_news_item,
                   method: :post, local: true, data: { turbo: false },
-                  html: { class: "farmer-feed-form", multipart: true } do |form| %>
+                  html: { class: "farmer-form", multipart: true } do |form| %>
       <%= render "shared/farmer_feed_errors", record: @record %>
-      <label class="farmer-search-field farmer-feed-wide">
-        <span>Headline *</span>
-        <%= form.text_field :title, required: true, placeholder: "Short, clear headline" %>
-      </label>
-      <label class="farmer-search-field farmer-feed-wide">
-        <span>News Detail</span>
-        <%= form.text_area :body, rows: 4, placeholder: "Full news text shown in the app" %>
-      </label>
-      <%= render "shared/farmer_feed_common", form: form, state_options: broadcast_state_options,
-            record: @record %>
-      <label class="farmer-search-field">
-        <span>Read More Link</span>
-        <%= form.url_field :link_url, placeholder: "https://…" %>
-      </label>
-      <label class="farmer-search-field">
-        <span>Image</span>
-        <%= form.file_field :image, accept: "image/*" %>
-      </label>
-      <div class="farmer-search-actions farmer-feed-wide">
+
+      <div class="farmer-form-section">
+        <p class="farmer-form-section-title">What the farmer reads</p>
+        <div class="farmer-form-grid">
+          <label class="farmer-field span-12">
+            <span>Headline *</span>
+            <%= form.text_field :title, required: true, placeholder: "Short, clear headline" %>
+          </label>
+          <label class="farmer-field span-12">
+            <span>News Detail</span>
+            <%= form.text_area :body, rows: 4, placeholder: "Full news text shown in the app" %>
+          </label>
+        </div>
+      </div>
+
+      <div class="farmer-form-section">
+        <p class="farmer-form-section-title">Who sees it, and when</p>
+        <div class="farmer-form-grid">
+          <%= render "shared/farmer_feed_common", form: form, state_options: broadcast_state_options,
+                record: @record %>
+        </div>
+      </div>
+
+      <div class="farmer-form-section">
+        <p class="farmer-form-section-title">Attachments</p>
+        <div class="farmer-form-grid">
+          <label class="farmer-field span-6">
+            <span>Read More Link</span>
+            <%= form.text_field :link_url, inputmode: "url", placeholder: "example.com/news" %>
+            <small class="farmer-field-hint">https:// is added if you leave it out.</small>
+          </label>
+          <label class="farmer-field span-6">
+            <span>Image</span>
+            <%= form.file_field :image, accept: "image/*" %>
+          </label>
+        </div>
+      </div>
+
+      <div class="farmer-form-actions">
         <button type="submit" class="list-btn active">Publish News</button>
       </div>
     <% end %>

@@ -1,14 +1,22 @@
-<%# State filter shared by the news and video screens. %>
-<section class="module-card farmer-date-bar">
-  <div class="farmer-date-form">
-    <span class="farmer-feed-filter-label">Show</span>
-    <div class="farmer-date-quick">
-      <%= link_to "All Records", path, class: "list-btn #{'active' if state_filter.blank?}" %>
-      <%= link_to "All States Only", path + "?state=all",
-            class: "list-btn #{'active' if state_filter == 'all'}" %>
-      <% broadcast_state_options.each do |name, id| %>
-        <%= link_to name, path + "?state=#{id}", class: "list-btn #{'active' if state_filter == id}" %>
-      <% end %>
+<%# Eight states as eight buttons was a wall of links. A select holds the
+    long list; the two cases people actually click stay as buttons. %>
+<section class="module-card farmer-filter-bar">
+  <%= form_with url: path, method: :get, local: true, data: { turbo: false },
+                html: { class: "farmer-filter-form" } do %>
+    <div class="farmer-filter-chips">
+      <%= link_to "All Records", path, class: "farmer-chip #{'is-on' if state_filter.blank?}" %>
+      <%= link_to "All States Only", "#{path}?state=all",
+            class: "farmer-chip #{'is-on' if state_filter == 'all'}" %>
     </div>
-  </div>
+    <label class="farmer-field farmer-filter-select">
+      <span>Filter by state</span>
+      <select name="state" onchange="this.form.requestSubmit()">
+        <option value="">Every record</option>
+        <option value="all" <%= "selected" if state_filter == "all" %>>All States only</option>
+        <% broadcast_state_options.each do |name, id| %>
+          <option value="<%= id %>" <%= "selected" if state_filter == id %>><%= name %></option>
+        <% end %>
+      </select>
+    </label>
+  <% end %>
 </section>

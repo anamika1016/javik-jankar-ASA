@@ -80,7 +80,7 @@ class FarmerFeedTest < ActionDispatch::IntegrationTest
     get farmer_videos_path
     assert_response :success
     assert_select "td", text: /Soil health/
-    assert_select "a", text: "Play"
+    assert_select "button.farmer-video-play[data-video-kind=youtube]"
   end
 
   test "an uploaded video file is stored and served from this host" do
@@ -241,6 +241,75 @@ class FarmerFeedTest < ActionDispatch::IntegrationTest
     titles = app_feed(stateless, "/api/v1/farmer/news").map { |n| n["title"] }
     assert_equal ["Everyone"], titles
     assert_nil FarmerAppLogin.find_by(farmer_external_id: "77").state_id
+  end
+
+  # A url_field in the browser silently refuses to submit a link typed without
+  # a scheme, which is how pasted links were being lost.
+  test "a link pasted without https is saved, not dropped" do
+    post farmer_news_index_path, params: {
+      farmer_news_item: { title: "Advisory", state_id: "all", link_url: "example.com/news" }
+    }
+    assert_redirected_to farmer_news_index_path
+    assert_equal "https://example.com/news", FarmerNewsItem.last.link_url
+
+    post farmer_videos_path, params: {
+      farmer_video: { title: "Clip", state_id: "all", video_url: "youtu.be/dQw4w9WgXcQ" }
+    }
+    assert_redirected_to farmer_videos_path
+    assert_equal "https://youtu.be/dQw4w9WgXcQ", FarmerVideo.last.video_url
+  end
+
+  test "a news link reaches the app and the web list" do
+    FarmerNewsItem.create!(title: "Advisory", state_id: nil, link_url: "example.com/news")
+
+    get farmer_news_index_path
+    assert_response :success
+    assert_select "a[href='https://example.com/news']", text: "Open"
+
+    item = app_feed(MP_FARMER, "/api/v1/farmer/news").first
+    assert_equal "https://example.com/news", item["link_url"]
+  end
+
+  test "a YouTube link is turned into something a player can embed" do
+    FarmerVideo.create!(title: "Clip", state_id: nil, video_url: "https://www.youtube.com/watch?v=abc123XYZ")
+
+    video = app_feed(MP_FARMER, "/api/v1/farmer/videos").first
+    assert_equal "youtube", video["source_type"]
+    assert_equal "abc123XYZ", video["youtube_id"]
+    assert_equal "https://www.youtube.com/embed/abc123XYZ", video["embed_url"]
+    assert_not video["uploaded"]
+  end
+
+  test "an uploaded file is embeddable at its own absolute URL" do
+    FarmerVideo.create!(title: "Clip", state_id: nil, video_path: "/uploads/farmer_feed/a.mp4")
+
+    video = app_feed(MP_FARMER, "/api/v1/farmer/videos").first
+    assert_equal "file", video["source_type"]
+    assert_nil video["youtube_id"]
+    assert_match %r{\Ahttps?://.+/uploads/farmer_feed/a\.mp4\z}, video["embed_url"]
+  end
+
+  test "the video list plays in place instead of opening a new tab" do
+    FarmerVideo.create!(title: "Clip", state_id: nil, video_url: "https://youtu.be/abc123XYZ",
+      thumbnail_path: "/uploads/farmer_feed/a.jpg")
+
+    get farmer_videos_path
+    assert_response :success
+    assert_select "button.farmer-video-play[data-video-kind=youtube]"
+    assert_select "button.farmer-video-play[data-video-embed='https://www.youtube.com/embed/abc123XYZ']"
+    assert_select "dialog#farmer-video-dialog"
+    # Nothing should send the admin away from the page to watch.
+    assert_select "a[target=_blank]", text: "Play", count: 0
+  end
+
+  test "the feed says which state it answered for" do
+    FarmerNewsItem.create!(title: "Everyone", state_id: nil)
+    login = FarmerAppLogin.record_login!(farmer: MP_FARMER, identifier_type: "mobile")
+
+    get "/api/v1/farmer/news", headers: { "Authorization" => "Bearer #{FarmerApiToken.encode(login)}" }
+    assert_response :success
+    assert_equal "1", json_body["state_id"]
+    assert_equal 1, json_body["count"]
   end
 
   test "a request with no Authorization header says exactly that" do

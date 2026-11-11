@@ -347,6 +347,46 @@ class FarmerPagesRenderTest < ActionDispatch::IntegrationTest
     assert_select ".farmer-empty", text: FarmerAppLogin::INVALID_MOBILE_MESSAGE
   end
 
+  # All four Farmer 360 screens share one form and filter vocabulary. These
+  # pin it down so a later edit cannot quietly go back to the old layout.
+  test "the four Farmer 360 screens use the same form and filter markup" do
+    FarmerAppLogin.record_login!(farmer: REGISTER_FARMER, identifier_type: "mobile")
+
+    [farmer360_path, farmer_app_logins_path, farmer_news_index_path, farmer_videos_path].each do |path|
+      get path
+      assert_response :success, "#{path} should render"
+      assert_select ".module-hero h1", { count: 1 }, "#{path} needs one page heading"
+      refute_includes response.body, "farmer-search-field",
+        "#{path} still uses the retired flex field class"
+      refute_includes response.body, "farmer-date-quick",
+        "#{path} still uses the retired date button row"
+    end
+  end
+
+  test "the publish forms lay fields out on the shared grid, in named sections" do
+    get farmer_videos_path
+    assert_response :success
+
+    assert_select "form.farmer-form .farmer-form-grid"
+    assert_select ".farmer-form-section-title", text: "What the farmer sees"
+    assert_select ".farmer-form-section-title", text: "Who sees it, and when"
+    assert_select ".farmer-form-section-title", text: "The video — link or file"
+    # Fields carry an explicit width rather than being squeezed by flex-wrap.
+    assert_select ".farmer-field.span-12"
+    assert_select ".farmer-field.span-6"
+    assert_select ".farmer-field.span-4"
+  end
+
+  test "the state filter is a select plus two chips, not a wall of buttons" do
+    get farmer_news_index_path
+    assert_response :success
+
+    assert_select ".farmer-filter-form select[name=state]"
+    assert_select ".farmer-filter-chips .farmer-chip", count: 2
+    # Eight states belong inside the select, not as eight separate links.
+    assert_select ".farmer-filter-chips a", text: "Madhya Pradesh", count: 0
+  end
+
   test "Farmer 360 opens with just the search form" do
     get farmer360_path
     assert_response :success

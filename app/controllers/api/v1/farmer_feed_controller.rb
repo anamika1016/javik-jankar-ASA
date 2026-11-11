@@ -8,20 +8,26 @@ module Api
       def news
         return unless (login = authenticate_farmer!)
 
+        items = feed(FarmerNewsItem, login)
         render json: {
           success: true,
           state: login.state_name,
-          news: feed(FarmerNewsItem, login).map { |item| news_payload(item) }
+          state_id: login.state_id,
+          count: items.size,
+          news: items.map { |item| news_payload(item) }
         }, status: :ok
       end
 
       def videos
         return unless (login = authenticate_farmer!)
 
+        items = feed(FarmerVideo, login)
         render json: {
           success: true,
           state: login.state_name,
-          videos: feed(FarmerVideo, login).map { |video| video_payload(video) }
+          state_id: login.state_id,
+          count: items.size,
+          videos: items.map { |video| video_payload(video) }
         }, status: :ok
       end
 
@@ -72,7 +78,9 @@ module Api
           link_url: item.link_url,
           image_url: absolute_url(item.image_path),
           state: item.state_label,
+          state_id: item.state_id,
           for_all_states: item.all_states?,
+          published_by: item.created_by,
           published_at: item.published_at
         }
       end
@@ -83,11 +91,18 @@ module Api
           title: video.title,
           description: video.description,
           video_url: absolute_url(video.playback_url),
+          # What a player can open directly: the file, or a YouTube embed.
+          # Without this the app has to parse YouTube URLs itself.
+          embed_url: absolute_url(video.embed_url),
+          source_type: video.source_type,
+          youtube_id: video.youtube_id,
           thumbnail_url: absolute_url(video.thumbnail_path),
           duration: video.duration_label,
           uploaded: video.uploaded?,
           state: video.state_label,
+          state_id: video.state_id,
           for_all_states: video.all_states?,
+          published_by: video.created_by,
           published_at: video.published_at
         }
       end

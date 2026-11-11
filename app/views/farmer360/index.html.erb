@@ -14,26 +14,29 @@
 
   <section class="module-card">
     <%= form_with url: farmer360_path, method: :get, local: true, data: { turbo: false },
-                  html: { class: "farmer-search-form farmer-search-form-split" } do %>
-      <label class="farmer-search-field">
-        <span>Mobile Number</span>
-        <%# Browser-side check only; the controller re-checks the same rule. %>
-        <input type="search" name="mobile_no" value="<%= @mobile_no %>" placeholder="10-digit mobile number"
-               inputmode="numeric" maxlength="10" pattern="[6-9][0-9]{9}"
-               title="10-digit mobile number starting with 6, 7, 8 or 9">
-      </label>
-      <label class="farmer-search-field">
-        <span>Aadhaar Number</span>
-        <input type="search" name="aadhaar_no" value="<%= @aadhaar_no %>" placeholder="12-digit Aadhaar number"
-               inputmode="numeric" maxlength="12">
-      </label>
-      <div class="farmer-search-actions">
-        <button type="submit" class="list-btn active">Search</button>
-        <% if @mobile_no.present? || @aadhaar_no.present? %>
-          <%= link_to "Clear", farmer360_path, class: "list-btn" %>
-        <% end %>
+                  html: { class: "farmer-form" } do %>
+      <div class="farmer-form-grid">
+        <label class="farmer-field span-4">
+          <span>Mobile Number</span>
+          <%# Browser-side check only; the controller re-checks the same rule. %>
+          <input type="search" name="mobile_no" value="<%= @mobile_no %>" placeholder="10-digit mobile number"
+                 inputmode="numeric" maxlength="10" pattern="[6-9][0-9]{9}"
+                 title="10-digit mobile number starting with 6, 7, 8 or 9">
+        </label>
+        <div class="farmer-field-or span-1">or</div>
+        <label class="farmer-field span-4">
+          <span>Aadhaar Number</span>
+          <input type="search" name="aadhaar_no" value="<%= @aadhaar_no %>" placeholder="12-digit Aadhaar number"
+                 inputmode="numeric" maxlength="12">
+        </label>
+        <div class="farmer-field farmer-field-submit span-3">
+          <button type="submit" class="list-btn active">Search</button>
+          <% if @mobile_no.present? || @aadhaar_no.present? %>
+            <%= link_to "Clear", farmer360_path, class: "list-btn" %>
+          <% end %>
+        </div>
       </div>
-      <p class="field-hint farmer-search-hint">Fill either one. If both are filled, the mobile number is used.</p>
+      <p class="farmer-field-hint">Fill either one. If both are filled, the mobile number is used.</p>
     <% end %>
   </section>
 

@@ -15,39 +15,59 @@
     <div class="module-card-header"><h2>Publish Video</h2></div>
     <%= form_with model: @record, url: farmer_videos_path, scope: :farmer_video,
                   method: :post, local: true, data: { turbo: false },
-                  html: { class: "farmer-feed-form", multipart: true } do |form| %>
+                  html: { class: "farmer-form", multipart: true } do |form| %>
       <%= render "shared/farmer_feed_errors", record: @record %>
-      <label class="farmer-search-field farmer-feed-wide">
-        <span>Title *</span>
-        <%= form.text_field :title, required: true, placeholder: "What the video is about" %>
-      </label>
-      <label class="farmer-search-field farmer-feed-wide">
-        <span>Description</span>
-        <%= form.text_area :description, rows: 3, placeholder: "Shown under the title in the app" %>
-      </label>
-      <%= render "shared/farmer_feed_common", form: form, state_options: broadcast_state_options,
-            record: @record %>
-      <label class="farmer-search-field">
-        <span>Video Link</span>
-        <%= form.url_field :video_url, placeholder: "YouTube or any video URL" %>
-      </label>
-      <label class="farmer-search-field">
-        <span>Or Upload Video File</span>
-        <%= form.file_field :video, accept: "video/*" %>
-      </label>
-      <label class="farmer-search-field">
-        <span>Thumbnail Image</span>
-        <%= form.file_field :thumbnail, accept: "image/*" %>
-      </label>
-      <label class="farmer-search-field">
-        <span>Duration</span>
-        <%= form.text_field :duration_label, placeholder: "e.g. 4:30" %>
-      </label>
-      <p class="field-hint farmer-feed-wide">
-        Give a video link or upload a file — one of the two is required.
-        Allowed file types: <%= FarmerBroadcastAdmin::VIDEO_EXTENSIONS.join(", ") %>.
-      </p>
-      <div class="farmer-search-actions farmer-feed-wide">
+
+      <div class="farmer-form-section">
+        <p class="farmer-form-section-title">What the farmer sees</p>
+        <div class="farmer-form-grid">
+          <label class="farmer-field span-12">
+            <span>Title *</span>
+            <%= form.text_field :title, required: true, placeholder: "What the video is about" %>
+          </label>
+          <label class="farmer-field span-12">
+            <span>Description</span>
+            <%= form.text_area :description, rows: 3, placeholder: "Shown under the title in the app" %>
+          </label>
+        </div>
+      </div>
+
+      <div class="farmer-form-section">
+        <p class="farmer-form-section-title">Who sees it, and when</p>
+        <div class="farmer-form-grid">
+          <%= render "shared/farmer_feed_common", form: form, state_options: broadcast_state_options,
+                record: @record %>
+          <label class="farmer-field span-4">
+            <span>Duration</span>
+            <%= form.text_field :duration_label, placeholder: "e.g. 4:30" %>
+          </label>
+        </div>
+      </div>
+
+      <div class="farmer-form-section">
+        <p class="farmer-form-section-title">The video — link or file</p>
+        <div class="farmer-form-grid">
+          <label class="farmer-field span-6">
+            <span>Video Link</span>
+            <%= form.text_field :video_url, inputmode: "url", placeholder: "youtu.be/…" %>
+            <small class="farmer-field-hint">https:// is added if you leave it out.</small>
+          </label>
+          <label class="farmer-field span-6">
+            <span>Or Upload Video File</span>
+            <%= form.file_field :video, accept: "video/*" %>
+            <small class="farmer-field-hint">
+              <%= FarmerBroadcastAdmin::VIDEO_EXTENSIONS.join(", ") %>
+            </small>
+          </label>
+          <label class="farmer-field span-6">
+            <span>Thumbnail Image</span>
+            <%= form.file_field :thumbnail, accept: "image/*" %>
+            <small class="farmer-field-hint">Shown as the tile before the video plays.</small>
+          </label>
+        </div>
+      </div>
+
+      <div class="farmer-form-actions">
         <button type="submit" class="list-btn active">Publish Video</button>
       </div>
     <% end %>
@@ -82,13 +102,23 @@
                 <td><%= truncate(video.description.to_s, length: 110) %></td>
                 <td><%= render "shared/farmer_feed_state", item: video %></td>
                 <td>
-                  <%= link_to "Play", video.playback_url, target: "_blank", rel: "noopener" %>
-                  <small class="farmer-sub"><%= video.uploaded? ? "Uploaded file" : "External link" %></small>
-                  <% if video.thumbnail_path.present? %>
-                    <small class="farmer-sub">
-                      <%= link_to "Thumbnail", video.thumbnail_path, target: "_blank", rel: "noopener" %>
-                    </small>
-                  <% end %>
+                  <%# Plays in a dialog on this page -- no new tab, and the
+                      file is only fetched once Play is actually pressed. %>
+                  <button type="button" class="farmer-video-play"
+                          data-video-embed="<%= video.embed_url %>"
+                          data-video-kind="<%= video.source_type %>"
+                          data-video-title="<%= video.title %>">
+                    <% if video.thumbnail_path.present? %>
+                      <img src="<%= video.thumbnail_path %>" alt="" loading="lazy">
+                    <% else %>
+                      <span class="farmer-video-blank"></span>
+                    <% end %>
+                    <span class="farmer-video-icon" aria-hidden="true">▶</span>
+                    <span class="visually-hidden">Play <%= video.title %></span>
+                  </button>
+                  <small class="farmer-sub">
+                    <%= { "file" => "Uploaded file", "youtube" => "YouTube", "link" => "External link" }[video.source_type] %>
+                  </small>
                 </td>
                 <td><%= video.duration_label.presence || "-" %></td>
                 <td><%= farmer_login_time(video.published_at) %></td>
@@ -105,4 +135,58 @@
             path: farmer_videos_path, state_filter: @state_filter %>
     <% end %>
   </section>
+
+  <dialog id="farmer-video-dialog" class="farmer-video-dialog">
+    <div class="farmer-video-dialog-head">
+      <strong id="farmer-video-dialog-title"></strong>
+      <button type="button" class="list-btn" data-close-video>Close</button>
+    </div>
+    <div id="farmer-video-dialog-body" class="farmer-video-dialog-body"></div>
+  </dialog>
+
+  <script>
+    (function () {
+      var dialog = document.getElementById("farmer-video-dialog");
+      if (!dialog) return;
+      var body = document.getElementById("farmer-video-dialog-body");
+      var heading = document.getElementById("farmer-video-dialog-title");
+
+      function close() {
+        // Emptying the body stops playback; leaving it would keep an
+        // uploaded file streaming behind a closed dialog.
+        body.innerHTML = "";
+        if (dialog.open) dialog.close();
+      }
+
+      document.querySelectorAll(".farmer-video-play").forEach(function (button) {
+        button.addEventListener("click", function () {
+          var src = button.dataset.videoEmbed;
+          if (!src) return;
+          heading.textContent = button.dataset.videoTitle || "Video";
+
+          if (button.dataset.videoKind === "file") {
+            var video = document.createElement("video");
+            video.src = src;
+            video.controls = true;
+            video.autoplay = true;
+            video.playsInline = true;
+            body.replaceChildren(video);
+          } else {
+            var frame = document.createElement("iframe");
+            frame.src = src;
+            frame.allow = "accelerometer; autoplay; encrypted-media; picture-in-picture";
+            frame.allowFullscreen = true;
+            frame.referrerPolicy = "strict-origin-when-cross-origin";
+            body.replaceChildren(frame);
+          }
+          dialog.showModal();
+        });
+      });
+
+      dialog.addEventListener("close", close);
+      dialog.addEventListener("click", function (event) {
+        if (event.target === dialog || event.target.hasAttribute("data-close-video")) close();
+      });
+    })();
+  </script>
 </section>

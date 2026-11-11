@@ -225,7 +225,9 @@ from the state on the farmer's register record, so the app sends no filter.
 }
 ```
 
-`body`, `link_url` and `image_url` may be null. Up to 100 items are returned.
+`body`, `link_url` and `image_url` may be null. `link_url` always carries a
+scheme — a link typed in the web form without `https://` is completed before
+it is saved. Up to 100 items are returned, and `count` says how many.
 
 ---
 
@@ -242,26 +244,41 @@ Same state rule as news.
 {
   "success": true,
   "state": "Madhya Pradesh",
+  "state_id": "1",
+  "count": 1,
   "videos": [
     {
       "id": 4,
       "title": "Soil health",
       "description": "How to read a soil card.",
-      "video_url": "https://youtu.be/abc123",
+      "video_url": "https://youtu.be/abc123XYZ",
+      "embed_url": "https://www.youtube.com/embed/abc123XYZ",
+      "source_type": "youtube",
+      "youtube_id": "abc123XYZ",
       "thumbnail_url": "https://jj.asaindia.org/uploads/farmer_feed/1762…-thumb.jpg",
       "duration": "4:30",
       "uploaded": false,
       "state": "All States",
+      "state_id": null,
       "for_all_states": true,
+      "published_by": "Admin",
       "published_at": "2026-11-11T10:15:00.000+05:30"
     }
   ]
 }
 ```
 
-`uploaded: true` means the file is hosted here and `video_url` points at it;
-`false` means it is an external link (YouTube and the like). Either way
-`video_url` is a full URL the player can open directly.
+**Use `embed_url` to play, not `video_url`.** The app does not have to
+recognise YouTube links itself:
+
+| `source_type` | `embed_url` | How to play it |
+|---|---|---|
+| `file` | `https://jj.asaindia.org/uploads/farmer_feed/…mp4` | Native player / ExoPlayer |
+| `youtube` | `https://www.youtube.com/embed/<id>` | WebView, or the id with a YouTube player |
+| `link` | the link as given | WebView |
+
+`video_url` is still the original link, and `thumbnail_url` is null when no
+thumbnail was uploaded.
 
 ### If a feed returns 401
 

@@ -13566,74 +13566,6 @@ a.farmer-stat:hover {
   letter-spacing: 0.03em;
 }
 
-.farmer-search-form {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 12px;
-  padding: 16px;
-}
-
-.farmer-date-bar {
-  padding: 0;
-}
-
-.farmer-date-form {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 14px;
-  padding: 14px 16px;
-}
-
-.farmer-date-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.farmer-date-field > span {
-  font-size: 0.72rem;
-  font-weight: 800;
-  color: var(--vrp-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.farmer-date-field input {
-  min-height: 36px;
-  padding: 6px 10px;
-  border: 1px solid #c8d1d6;
-  border-radius: 4px;
-  font: inherit;
-  font-size: 0.88rem;
-  font-weight: 700;
-}
-
-.farmer-date-field input:focus {
-  outline: 2px solid var(--vrp-primary);
-  outline-offset: -1px;
-}
-
-.farmer-date-quick {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.farmer-date-quick .list-btn {
-  min-height: 36px;
-  padding: 7px 14px;
-  font-size: 0.85rem;
-  background: #eef2f4;
-  color: #2c3a40;
-}
-
-.farmer-date-quick .list-btn.active {
-  background: var(--vrp-primary);
-  color: #fff;
-}
-
 /* Search beside the card title: compact, right aligned, one line. */
 .farmer-list-header {
   flex-wrap: wrap;
@@ -13673,49 +13605,6 @@ a.farmer-stat:hover {
   min-height: 34px;
   padding: 6px 14px;
   font-size: 0.85rem;
-}
-
-.farmer-search-field {
-  display: flex;
-  flex: 1 1 260px;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.farmer-search-field > span {
-  font-size: 0.78rem;
-  font-weight: 800;
-  color: var(--vrp-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.farmer-search-field input {
-  min-height: 38px;
-  padding: 8px 12px;
-  border: 1px solid #c8d1d6;
-  border-radius: 4px;
-  font: inherit;
-}
-
-.farmer-search-field input:focus {
-  outline: 2px solid var(--vrp-primary);
-  outline-offset: -1px;
-}
-
-.farmer-search-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.farmer-search-hint {
-  flex-basis: 100%;
-  margin: 0;
-}
-
-/* The two identifier fields should not stretch across the whole row. */
-.farmer-search-form-split .farmer-search-field {
-  flex: 0 1 280px;
 }
 
 .farmer-empty {
@@ -13804,74 +13693,7 @@ a.farmer-stat:hover {
   overflow-wrap: anywhere;
 }
 
-@media (max-width: 720px) {
-  .farmer-search-form,
-  .farmer-search-form-split .farmer-search-field {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .farmer-search-actions .list-btn {
-    flex: 1;
-  }
-
-  .farmer-list-header-right {
-    margin-left: 0;
-    width: 100%;
-  }
-
-  .farmer-inline-search {
-    flex: 1;
-  }
-
-  .farmer-inline-search input {
-    width: auto;
-    flex: 1;
-  }
-}
-
 /* ---- Farmer feed (news + videos) --------------------------------------- */
-
-.farmer-feed-form {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 14px;
-  padding: 16px;
-}
-
-.farmer-feed-form .farmer-search-field {
-  flex: 1 1 240px;
-}
-
-.farmer-feed-form .farmer-feed-wide {
-  flex-basis: 100%;
-}
-
-.farmer-feed-form textarea,
-.farmer-feed-form select {
-  min-height: 38px;
-  padding: 8px 12px;
-  border: 1px solid #c8d1d6;
-  border-radius: 4px;
-  font: inherit;
-}
-
-.farmer-feed-form input[type="file"] {
-  padding: 7px 10px;
-  border: 1px dashed #c8d1d6;
-  border-radius: 4px;
-  background: #fafcfc;
-  font-size: 0.82rem;
-}
-
-.farmer-feed-filter-label {
-  font-size: 0.72rem;
-  font-weight: 800;
-  color: var(--vrp-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
 
 .farmer-feed-errors {
   padding: 12px 14px;
@@ -13896,4 +13718,321 @@ a.farmer-stat:hover {
   min-height: 30px;
   padding: 5px 10px;
   font-size: 0.78rem;
+}
+
+/* ---- Farmer video player ----------------------------------------------- */
+
+.farmer-video-play {
+  position: relative;
+  display: block;
+  width: 132px;
+  height: 74px;
+  padding: 0;
+  border: 1px solid #c8d1d6;
+  border-radius: 6px;
+  background: #11191d;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.farmer-video-play:hover {
+  border-color: var(--vrp-primary);
+}
+
+.farmer-video-play img,
+.farmer-video-blank {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.farmer-video-blank {
+  background: linear-gradient(135deg, #223038, #11191d);
+}
+
+.farmer-video-icon {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 1.5rem;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+}
+
+.farmer-video-play:hover .farmer-video-icon {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.farmer-video-dialog {
+  width: min(880px, 94vw);
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.farmer-video-dialog::backdrop {
+  background: rgba(10, 16, 19, 0.72);
+}
+
+.farmer-video-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #f4f7f8;
+  border-bottom: 1px solid #e1e8ea;
+}
+
+.farmer-video-dialog-body {
+  aspect-ratio: 16 / 9;
+  background: #000;
+}
+
+.farmer-video-dialog-body video,
+.farmer-video-dialog-body iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* ---- Farmer 360 shared form + filter system ---------------------------- */
+/* One vocabulary across Farmer 360 Details, App Logins, News and Videos:
+   a 12-column grid for forms, chips for the one-click filters, and a select
+   for the long lists. Before this each page laid fields out with flex-wrap,
+   so a row of five fields ended up squeezed to unreadable widths. */
+
+.farmer-form {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+}
+
+.farmer-form-section {
+  display: grid;
+  gap: 10px;
+}
+
+.farmer-form-section + .farmer-form-section {
+  padding-top: 16px;
+  border-top: 1px solid #e8eef0;
+}
+
+.farmer-form-section-title {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--vrp-primary-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.farmer-form-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 14px 16px;
+  align-items: start;
+}
+
+.farmer-form-grid .span-12 { grid-column: span 12; }
+.farmer-form-grid .span-6  { grid-column: span 6; }
+.farmer-form-grid .span-4  { grid-column: span 4; }
+.farmer-form-grid .span-3  { grid-column: span 3; }
+.farmer-form-grid .span-1  { grid-column: span 1; }
+
+.farmer-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.farmer-field > span {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--vrp-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.farmer-field input,
+.farmer-field select,
+.farmer-field textarea {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid #c8d1d6;
+  border-radius: 6px;
+  background: #fff;
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.farmer-field textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.farmer-field input[type="file"] {
+  padding: 8px 10px;
+  border-style: dashed;
+  background: #fafcfc;
+  font-size: 0.82rem;
+}
+
+.farmer-field input:focus,
+.farmer-field select:focus,
+.farmer-field textarea:focus {
+  outline: 2px solid var(--vrp-primary);
+  outline-offset: -1px;
+}
+
+.farmer-field-hint {
+  margin: 0;
+  color: var(--vrp-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+/* The word between the two identifier boxes on Farmer 360. */
+.farmer-field-or {
+  align-self: center;
+  padding-top: 18px;
+  color: var(--vrp-muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.farmer-field-submit {
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 8px;
+  padding-top: 20px;
+}
+
+.farmer-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid #e8eef0;
+}
+
+.farmer-filter-bar {
+  padding: 0;
+}
+
+.farmer-filter-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 14px;
+  padding: 14px 16px;
+}
+
+.farmer-filter-select {
+  flex: 0 1 240px;
+}
+
+.farmer-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 1px;
+}
+
+.farmer-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 8px 16px;
+  border: 1px solid #d3dbdf;
+  border-radius: 999px;
+  background: #fff;
+  color: #30424a;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.farmer-chip:hover {
+  border-color: var(--vrp-primary);
+  color: var(--vrp-primary-dark);
+}
+
+.farmer-chip.is-on {
+  border-color: var(--vrp-primary);
+  background: var(--vrp-primary);
+  color: #fff;
+}
+
+/* Long, dense tables read better with a fixed header and banded rows. */
+.farmer-login-page .table-shell {
+  max-height: 68vh;
+  overflow: auto;
+}
+
+.farmer-login-page .module-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f4f7f8;
+}
+
+.farmer-login-page .module-table tbody tr:nth-child(even) {
+  background: #fbfcfd;
+}
+
+.farmer-login-page .module-table tbody tr:hover {
+  background: #f1f7f4;
+}
+
+@media (max-width: 900px) {
+  .farmer-form-grid .span-6,
+  .farmer-form-grid .span-4,
+  .farmer-form-grid .span-3 {
+    grid-column: span 12;
+  }
+
+  .farmer-form-grid .span-1 {
+    display: none;
+  }
+
+  .farmer-field-submit {
+    padding-top: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .farmer-list-header-right {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .farmer-inline-search {
+    flex: 1;
+  }
+
+  .farmer-inline-search input {
+    width: auto;
+    flex: 1;
+  }
 }

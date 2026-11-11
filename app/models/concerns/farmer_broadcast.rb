@@ -27,6 +27,17 @@ module FarmerBroadcast
     before_validation { self.status = "Active" if status.blank? }
   end
 
+  # "youtu.be/abc" typed without a scheme is a URL a person means. A browser
+  # url_field silently refuses to submit it, so the field is a plain text box
+  # and the scheme is added here instead of the link being lost.
+  def self.normalise_url(value)
+    text = value.to_s.strip
+    return if text.blank?
+    return text if text.match?(%r{\Ahttps?://}i)
+
+    "https://#{text.delete_prefix('//')}"
+  end
+
   def all_states?
     state_id.blank?
   end
