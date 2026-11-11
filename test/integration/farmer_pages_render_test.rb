@@ -208,7 +208,8 @@ class FarmerPagesRenderTest < ActionDispatch::IntegrationTest
     assert_equal "JJ Exam", titles[-2]
 
     farmer_section = ApplicationHelper::SIDEBAR_SECTIONS.last
-    assert_equal ["Farmer 360 Details", "Farmer App Logins"], farmer_section[:links].map(&:first)
+    assert_equal ["Farmer 360 Details", "Farmer App Logins", "Farmer News", "Farmer Videos"],
+      farmer_section[:links].map(&:first)
   end
 
   test "renaming the Farmer 360 link did not change the permission it needs" do

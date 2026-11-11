@@ -3,6 +3,14 @@ Rails.application.routes.draw do
   get "farmer360", to: "farmer360#index", as: :farmer360
   get "farmer-app-logins", to: "farmer_app_logins#index", as: :farmer_app_logins
   get "farmer-app-logins/export", to: "farmer_app_logins#export", as: :export_farmer_app_logins
+
+  # Farmer feed: published from the web, read by the Android app.
+  resources :farmer_news, path: "farmer-news", only: [:index, :create, :destroy] do
+    patch :toggle_status, on: :member
+  end
+  resources :farmer_videos, path: "farmer-videos", only: [:index, :create, :destroy] do
+    patch :toggle_status, on: :member
+  end
   # Uploaded training evidence is stored under public/uploads/module_records.
   # Keep an authenticated Rails fallback so links also work when the web server
   # is not configured to serve the uploads directory directly.
@@ -28,6 +36,8 @@ Rails.application.routes.draw do
       post "farmer/login/otp/resend", to: "farmer_sessions#resend_otp"
       post "farmer/login/otp/verify", to: "farmer_sessions#verify_otp"
       get "farmer/me", to: "farmer_sessions#profile"
+      get "farmer/news", to: "farmer_feed#news"
+      get "farmer/videos", to: "farmer_feed#videos"
       delete "farmer/logout", to: "farmer_sessions#logout"
       post "forgot-password/send-otp", to: "password_resets#send_otp"
       post "forgot-password/reset", to: "password_resets#reset"

@@ -1,0 +1,11 @@
+<% if total_pages > 1 %>
+  <div class="farmer-pager">
+    <% if page > 1 %>
+      <%= link_to "← Previous", "#{path}?state=#{state_filter}&page=#{page - 1}", class: "list-btn" %>
+    <% end %>
+    <span class="farmer-pager-label">Page <%= page %> of <%= total_pages %></span>
+    <% if page < total_pages %>
+      <%= link_to "Next →", "#{path}?state=#{state_filter}&page=#{page + 1}", class: "list-btn" %>
+    <% end %>
+  </div>
+<% end %>

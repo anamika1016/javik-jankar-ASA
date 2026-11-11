@@ -195,7 +195,80 @@ record (land details, crop production, ICS, ID cards, document URLs). Read
 
 ---
 
-## 5. Logout
+## 5. Farmer News
+
+```
+GET /api/v1/farmer/news
+Authorization: Bearer <token>
+```
+
+Returns news published for **the farmer's own state plus All States**, newest
+first. Nothing from another state is ever included — the server decides this
+from the state on the farmer's register record, so the app sends no filter.
+
+```json
+{
+  "success": true,
+  "state": "Madhya Pradesh",
+  "news": [
+    {
+      "id": 12,
+      "title": "MP seed subsidy",
+      "body": "Apply by 30 November.",
+      "link_url": "https://…",
+      "image_url": "https://jj.asaindia.org/uploads/farmer_feed/1762…-notice.jpg",
+      "state": "Madhya Pradesh",
+      "for_all_states": false,
+      "published_at": "2026-11-11T10:15:00.000+05:30"
+    }
+  ]
+}
+```
+
+`body`, `link_url` and `image_url` may be null. Up to 100 items are returned.
+
+---
+
+## 6. Farmer Videos
+
+```
+GET /api/v1/farmer/videos
+Authorization: Bearer <token>
+```
+
+Same state rule as news.
+
+```json
+{
+  "success": true,
+  "state": "Madhya Pradesh",
+  "videos": [
+    {
+      "id": 4,
+      "title": "Soil health",
+      "description": "How to read a soil card.",
+      "video_url": "https://youtu.be/abc123",
+      "thumbnail_url": "https://jj.asaindia.org/uploads/farmer_feed/1762…-thumb.jpg",
+      "duration": "4:30",
+      "uploaded": false,
+      "state": "All States",
+      "for_all_states": true,
+      "published_at": "2026-11-11T10:15:00.000+05:30"
+    }
+  ]
+}
+```
+
+`uploaded: true` means the file is hosted here and `video_url` points at it;
+`false` means it is an external link (YouTube and the like). Either way
+`video_url` is a full URL the player can open directly.
+
+Both feeds answer `401` with the usual message when the token is missing or
+expired — send the farmer back to login.
+
+---
+
+## 7. Logout
 
 ```
 DELETE /api/v1/farmer/logout

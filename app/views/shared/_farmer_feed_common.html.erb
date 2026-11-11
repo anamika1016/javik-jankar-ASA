@@ -1,0 +1,12 @@
+<%# State and publish date, identical on both feed forms. %>
+<label class="farmer-search-field">
+  <span>State *</span>
+  <%= form.select :state_id,
+        options_for_select([["All States", "all"]] + state_options, record.state_id.presence || "all"),
+        {}, { required: true } %>
+</label>
+<label class="farmer-search-field">
+  <span>Publish Date &amp; Time</span>
+  <%= form.datetime_local_field :published_at,
+        value: (record.published_at || Time.current).strftime("%Y-%m-%dT%H:%M") %>
+</label>

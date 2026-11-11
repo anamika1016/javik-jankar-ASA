@@ -1,0 +1,108 @@
+<% content_for :title, "Farmer Videos" %>
+
+<section class="module-page farmer-login-page">
+  <div class="module-hero">
+    <div>
+      <p class="vrp-eyebrow">Farmer 360</p>
+      <h1>Farmer Videos</h1>
+      <p>Videos published here appear in the Android app. Pick a state, or All States to reach everyone.</p>
+    </div>
+  </div>
+
+  <%= render "shared/farmer_feed_filter", state_filter: @state_filter, path: farmer_videos_path %>
+
+  <section class="module-card">
+    <div class="module-card-header"><h2>Publish Video</h2></div>
+    <%= form_with model: @record, url: farmer_videos_path, scope: :farmer_video,
+                  method: :post, local: true, data: { turbo: false },
+                  html: { class: "farmer-feed-form", multipart: true } do |form| %>
+      <%= render "shared/farmer_feed_errors", record: @record %>
+      <label class="farmer-search-field farmer-feed-wide">
+        <span>Title *</span>
+        <%= form.text_field :title, required: true, placeholder: "What the video is about" %>
+      </label>
+      <label class="farmer-search-field farmer-feed-wide">
+        <span>Description</span>
+        <%= form.text_area :description, rows: 3, placeholder: "Shown under the title in the app" %>
+      </label>
+      <%= render "shared/farmer_feed_common", form: form, state_options: broadcast_state_options,
+            record: @record %>
+      <label class="farmer-search-field">
+        <span>Video Link</span>
+        <%= form.url_field :video_url, placeholder: "YouTube or any video URL" %>
+      </label>
+      <label class="farmer-search-field">
+        <span>Or Upload Video File</span>
+        <%= form.file_field :video, accept: "video/*" %>
+      </label>
+      <label class="farmer-search-field">
+        <span>Thumbnail Image</span>
+        <%= form.file_field :thumbnail, accept: "image/*" %>
+      </label>
+      <label class="farmer-search-field">
+        <span>Duration</span>
+        <%= form.text_field :duration_label, placeholder: "e.g. 4:30" %>
+      </label>
+      <p class="field-hint farmer-feed-wide">
+        Give a video link or upload a file — one of the two is required.
+        Allowed file types: <%= FarmerBroadcastAdmin::VIDEO_EXTENSIONS.join(", ") %>.
+      </p>
+      <div class="farmer-search-actions farmer-feed-wide">
+        <button type="submit" class="list-btn active">Publish Video</button>
+      </div>
+    <% end %>
+  </section>
+
+  <section class="module-card">
+    <div class="module-card-header">
+      <h2>Published Videos</h2>
+      <span class="record-count"><%= @total_count %> records</span>
+    </div>
+
+    <% if @records.blank? %>
+      <p class="farmer-empty">No video published yet.</p>
+    <% else %>
+      <div class="table-shell">
+        <table class="module-table compact-table">
+          <thead>
+            <tr>
+              <th>#</th><th>Title</th><th>Description</th><th>State</th>
+              <th>Source</th><th>Duration</th><th>Published</th><th>Status</th><th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @records.each_with_index do |video, index| %>
+              <tr>
+                <td><%= (@page - 1) * FarmerVideosController::PER_PAGE + index + 1 %></td>
+                <td><strong><%= video.title %></strong>
+                  <% if video.created_by.present? %>
+                    <small class="farmer-sub">By <%= video.created_by %></small>
+                  <% end %>
+                </td>
+                <td><%= truncate(video.description.to_s, length: 110) %></td>
+                <td><%= render "shared/farmer_feed_state", item: video %></td>
+                <td>
+                  <%= link_to "Play", video.playback_url, target: "_blank", rel: "noopener" %>
+                  <small class="farmer-sub"><%= video.uploaded? ? "Uploaded file" : "External link" %></small>
+                  <% if video.thumbnail_path.present? %>
+                    <small class="farmer-sub">
+                      <%= link_to "Thumbnail", video.thumbnail_path, target: "_blank", rel: "noopener" %>
+                    </small>
+                  <% end %>
+                </td>
+                <td><%= video.duration_label.presence || "-" %></td>
+                <td><%= farmer_login_time(video.published_at) %></td>
+                <td><span class="status-pill <%= video.active? ? "active" : "inactive" %>"><%= video.status %></span></td>
+                <td><%= render "shared/farmer_feed_actions", item: video,
+                          toggle_path: toggle_status_farmer_video_path(video),
+                          delete_path: farmer_video_path(video) %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <%= render "shared/farmer_feed_pager", page: @page, total_pages: @total_pages,
+            path: farmer_videos_path, state_filter: @state_filter %>
+    <% end %>
+  </section>
+</section>

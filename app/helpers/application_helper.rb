@@ -382,7 +382,9 @@ module ApplicationHelper
       icon: "▤",
       links: [
         ["Farmer 360 Details", :route, :farmer360_path],
-        ["Farmer App Logins", :route, :farmer_app_logins_path]
+        ["Farmer App Logins", :route, :farmer_app_logins_path],
+        ["Farmer News", :route, :farmer_news_index_path],
+        ["Farmer Videos", :route, :farmer_videos_path]
       ]
     },
   ].freeze

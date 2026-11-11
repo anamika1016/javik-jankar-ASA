@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_10_180000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_11_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -141,6 +141,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_180000) do
     t.string "last_login_place"
     t.integer "login_count", default: 0, null: false
     t.string "mobile_no"
+    t.string "state_id"
     t.string "state_name"
     t.string "tracenet_id"
     t.datetime "updated_at", null: false
@@ -149,6 +150,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_180000) do
     t.index ["farmer_external_id"], name: "index_farmer_app_logins_on_farmer_external_id", unique: true
     t.index ["last_logged_in_at"], name: "index_farmer_app_logins_on_last_logged_in_at", order: :desc
     t.index ["mobile_no"], name: "index_farmer_app_logins_on_mobile_no"
+    t.index ["state_id"], name: "index_farmer_app_logins_on_state_id"
   end
 
   create_table "farmer_login_locks", force: :cascade do |t|
@@ -176,6 +178,38 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_180000) do
     t.index ["expires_at"], name: "index_farmer_login_otps_on_expires_at"
     t.index ["jti"], name: "index_farmer_login_otps_on_jti", unique: true
     t.index ["mobile_no", "created_at"], name: "index_farmer_login_otps_on_mobile_no_and_created_at"
+  end
+
+  create_table "farmer_news", force: :cascade do |t|
+    t.text "body"
+    t.datetime "created_at", null: false
+    t.string "created_by"
+    t.string "image_path"
+    t.string "link_url"
+    t.datetime "published_at", null: false
+    t.string "state_id"
+    t.string "state_name"
+    t.string "status", default: "Active", null: false
+    t.string "title", null: false
+    t.datetime "updated_at", null: false
+    t.index ["status", "state_id", "published_at"], name: "index_farmer_news_on_feed", order: { published_at: :desc }
+  end
+
+  create_table "farmer_videos", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "created_by"
+    t.text "description"
+    t.string "duration_label"
+    t.datetime "published_at", null: false
+    t.string "state_id"
+    t.string "state_name"
+    t.string "status", default: "Active", null: false
+    t.string "thumbnail_path"
+    t.string "title", null: false
+    t.datetime "updated_at", null: false
+    t.string "video_path"
+    t.string "video_url"
+    t.index ["status", "state_id", "published_at"], name: "index_farmer_videos_on_feed", order: { published_at: :desc }
   end
 
   create_table "jj_quiz_answers", force: :cascade do |t|

@@ -1,0 +1,96 @@
+<% content_for :title, "Farmer News" %>
+
+<section class="module-page farmer-login-page">
+  <div class="module-hero">
+    <div>
+      <p class="vrp-eyebrow">Farmer 360</p>
+      <h1>Farmer News</h1>
+      <p>News published here appears in the Android app. Pick a state, or All States to reach everyone.</p>
+    </div>
+  </div>
+
+  <%= render "shared/farmer_feed_filter", state_filter: @state_filter, path: farmer_news_index_path %>
+
+  <section class="module-card">
+    <div class="module-card-header"><h2>Publish News</h2></div>
+    <%= form_with model: @record, url: farmer_news_index_path, scope: :farmer_news_item,
+                  method: :post, local: true, data: { turbo: false },
+                  html: { class: "farmer-feed-form", multipart: true } do |form| %>
+      <%= render "shared/farmer_feed_errors", record: @record %>
+      <label class="farmer-search-field farmer-feed-wide">
+        <span>Headline *</span>
+        <%= form.text_field :title, required: true, placeholder: "Short, clear headline" %>
+      </label>
+      <label class="farmer-search-field farmer-feed-wide">
+        <span>News Detail</span>
+        <%= form.text_area :body, rows: 4, placeholder: "Full news text shown in the app" %>
+      </label>
+      <%= render "shared/farmer_feed_common", form: form, state_options: broadcast_state_options,
+            record: @record %>
+      <label class="farmer-search-field">
+        <span>Read More Link</span>
+        <%= form.url_field :link_url, placeholder: "https://…" %>
+      </label>
+      <label class="farmer-search-field">
+        <span>Image</span>
+        <%= form.file_field :image, accept: "image/*" %>
+      </label>
+      <div class="farmer-search-actions farmer-feed-wide">
+        <button type="submit" class="list-btn active">Publish News</button>
+      </div>
+    <% end %>
+  </section>
+
+  <section class="module-card">
+    <div class="module-card-header">
+      <h2>Published News</h2>
+      <span class="record-count"><%= @total_count %> records</span>
+    </div>
+
+    <% if @records.blank? %>
+      <p class="farmer-empty">No news published yet.</p>
+    <% else %>
+      <div class="table-shell">
+        <table class="module-table compact-table">
+          <thead>
+            <tr>
+              <th>#</th><th>Headline</th><th>Detail</th><th>State</th>
+              <th>Image</th><th>Link</th><th>Published</th><th>Status</th><th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @records.each_with_index do |item, index| %>
+              <tr>
+                <td><%= (@page - 1) * FarmerNewsController::PER_PAGE + index + 1 %></td>
+                <td><strong><%= item.title %></strong>
+                  <% if item.created_by.present? %>
+                    <small class="farmer-sub">By <%= item.created_by %></small>
+                  <% end %>
+                </td>
+                <td><%= truncate(item.body.to_s, length: 120) %></td>
+                <td><%= render "shared/farmer_feed_state", item: item %></td>
+                <td>
+                  <% if item.image_path.present? %>
+                    <%= link_to "View", item.image_path, target: "_blank", rel: "noopener" %>
+                  <% else %>-<% end %>
+                </td>
+                <td>
+                  <% if item.link_url.present? %>
+                    <%= link_to "Open", item.link_url, target: "_blank", rel: "noopener" %>
+                  <% else %>-<% end %>
+                </td>
+                <td><%= farmer_login_time(item.published_at) %></td>
+                <td><span class="status-pill <%= item.active? ? "active" : "inactive" %>"><%= item.status %></span></td>
+                <td><%= render "shared/farmer_feed_actions", item: item,
+                          toggle_path: toggle_status_farmer_news_path(item),
+                          delete_path: farmer_news_path(item) %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <%= render "shared/farmer_feed_pager", page: @page, total_pages: @total_pages,
+            path: farmer_news_index_path, state_filter: @state_filter %>
+    <% end %>
+  </section>
+</section>

@@ -1,0 +1,7 @@
+<div class="farmer-feed-actions">
+  <%= button_to item.active? ? "Deactivate" : "Activate", toggle_path, method: :patch,
+        form: { data: { turbo: false } }, class: "list-btn #{item.active? ? 'deactive' : 'active'}" %>
+  <%= button_to "Delete", delete_path, method: :delete,
+        form: { data: { turbo: false } }, class: "list-btn delete",
+        data: { confirm: "Delete \"#{item.title}\"? This cannot be undone." } %>
+</div>

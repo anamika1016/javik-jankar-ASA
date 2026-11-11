@@ -80,6 +80,9 @@ class FarmerAppLogin < ApplicationRecord
       block_name: register_place(farmer, :block) || places[:block_name] || record.block_name,
       district_name: register_place(farmer, :district) || places[:district_name] || record.district_name,
       state_name: register_place(farmer, :state) || places[:state_name] || record.state_name,
+      # Which state's news and videos this farmer sees. Kept as the id so the
+      # feed match cannot be thrown off by how a name is spelt.
+      state_id: primary_land_row(farmer)[:state_id].presence&.to_s || record.state_id,
       fco_name: farmer[:fco_name].presence || farmer[:fco_team_name].presence ||
         afl[:fco_name] || record.fco_name,
       ics_name: farmer[:ics_team_name].presence || farmer[:ics_name].presence ||

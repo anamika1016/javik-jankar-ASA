@@ -23,6 +23,11 @@ class AsaLocationNames
       lookup(:state, "state_all", {}, state_id)
     end
 
+    # [[name, id], ...] for the state dropdowns, sorted by name.
+    def state_options
+      index(:state, "state_all", {}).map { |id, name| [name, id] }.sort_by { |name, _| name.to_s }
+    end
+
     # Districts and villages are only listable under their parent, so the
     # parent id has to be known. The register sends both on the land row.
     def district(district_id, state_id:)
@@ -58,8 +63,6 @@ class AsaLocationNames
         village_name: village(row[:village_id], block_id: block_id)
       }.compact
     end
-
-    private
 
     def lookup(kind, path, params, wanted_id)
       wanted = wanted_id.to_s.strip
