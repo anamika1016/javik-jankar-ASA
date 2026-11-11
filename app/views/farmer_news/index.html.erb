@@ -75,7 +75,7 @@
           <thead>
             <tr>
               <th>#</th><th>Headline</th><th>Detail</th><th>State</th>
-              <th>Image</th><th>Link</th><th>Published</th><th>Status</th><th>Action</th>
+              <th>Image</th><th>Link</th><th>Published</th><th>Notification</th><th>Status</th><th>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -100,6 +100,7 @@
                   <% else %>-<% end %>
                 </td>
                 <td><%= farmer_login_time(item.published_at) %></td>
+                <td><%= render "shared/farmer_feed_push", item: item %></td>
                 <td><span class="status-pill <%= item.active? ? "active" : "inactive" %>"><%= item.status %></span></td>
                 <td><%= render "shared/farmer_feed_actions", item: item,
                           toggle_path: toggle_status_farmer_news_path(item),

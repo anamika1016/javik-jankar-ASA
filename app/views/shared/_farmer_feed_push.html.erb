@@ -1,0 +1,14 @@
+<%# Whether the notification actually went out. Without this "farmers did not
+    get the notification" cannot be answered from the screen. %>
+<% push = item.last_push_message %>
+<% if push.blank? %>
+  <span class="farmer-sub muted-note">Not notified</span>
+<% else %>
+  <span class="status-pill <%= push.delivered? ? "active" : (push.status == "Pending" ? "scheduled" : "inactive") %>">
+    <%= push.status %>
+  </span>
+  <small class="farmer-sub"><%= push.summary %></small>
+  <% if push.error.present? && !push.delivered? %>
+    <small class="farmer-sub muted-note"><%= push.error %></small>
+  <% end %>
+<% end %>

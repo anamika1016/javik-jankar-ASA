@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_11_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_11_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -153,6 +153,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_11_100000) do
     t.index ["state_id"], name: "index_farmer_app_logins_on_state_id"
   end
 
+  create_table "farmer_devices", force: :cascade do |t|
+    t.string "app_version"
+    t.datetime "created_at", null: false
+    t.bigint "farmer_app_login_id", null: false
+    t.datetime "last_seen_at", null: false
+    t.string "platform"
+    t.string "token", null: false
+    t.datetime "updated_at", null: false
+    t.index ["farmer_app_login_id", "last_seen_at"], name: "index_farmer_devices_on_login_and_seen"
+    t.index ["token"], name: "index_farmer_devices_on_token", unique: true
+  end
+
   create_table "farmer_login_locks", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.integer "failed_attempts", default: 0, null: false
@@ -193,6 +205,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_11_100000) do
     t.string "title", null: false
     t.datetime "updated_at", null: false
     t.index ["status", "state_id", "published_at"], name: "index_farmer_news_on_feed", order: { published_at: :desc }
+  end
+
+  create_table "farmer_push_messages", force: :cascade do |t|
+    t.text "body"
+    t.datetime "created_at", null: false
+    t.integer "device_count", default: 0, null: false
+    t.text "error"
+    t.integer "failed_count", default: 0, null: false
+    t.bigint "notifiable_id", null: false
+    t.string "notifiable_type", null: false
+    t.datetime "sent_at"
+    t.integer "sent_count", default: 0, null: false
+    t.string "state_id"
+    t.string "status", default: "Pending", null: false
+    t.string "title"
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_farmer_push_messages_on_created_at", order: :desc
+    t.index ["notifiable_type", "notifiable_id"], name: "index_farmer_push_messages_on_notifiable"
   end
 
   create_table "farmer_videos", force: :cascade do |t|
@@ -508,6 +538,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_11_100000) do
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "farmer_app_login_events", "farmer_app_logins"
+  add_foreign_key "farmer_devices", "farmer_app_logins"
   add_foreign_key "jj_quiz_answers", "jj_quiz_attempts"
   add_foreign_key "jj_quiz_answers", "jj_quiz_questions"
   add_foreign_key "jj_quiz_attempts", "jj_quizzes"

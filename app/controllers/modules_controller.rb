@@ -8,6 +8,7 @@ require "uri"
 class ModulesController < ApplicationController
   include RequestLabelMatchCache
   LocationRecord = Struct.new(:id, :data)
+  GRAM_PANCHAYAT_NAME_KEYS = %w[gram_panchayat_name gram_panchayat gram_panchayat_id gp_name gram_name name gp_code gram_code].freeze
   LOCATION_ALIAS_KEYS = %w[state_name state_id state_code district_name district_id district_code
        block_name cd_block_name block_id block_code cd_block_code
        gram_panchayat_name gram_panchayat_id gram_panchayat_code gp_code gram_code
@@ -1427,6 +1428,7 @@ class ModulesController < ApplicationController
     redirect_to new_user_path and return if @slug == "new-user"
 
     @records = module_records_required_for_show? ? ReadStageTrace.measure("module_records") { module_records } : []
+    return render(partial: "modules/saved_records") if master_saved_records_frame_request?
     @jeevika_bill_user_filters = !admin_dashboard_user? if @slug == "jeevika-jankar-bill-list"
     prepare_office_list_data if @slug == "office-list"
     prepare_lg_directory_data if @slug == "lg-directory-list"
@@ -1444,6 +1446,7 @@ class ModulesController < ApplicationController
       return
     end
     @records = module_records_required_for_show? ? module_records : []
+    return render(partial: "modules/saved_records") if master_saved_records_frame_request?
     prepare_approval_channel_form(@record) if record_source_slug == "approval-master"
     prepare_vrp_bill_data if @slug == "vrp-bill-add"
     prepare_jeevika_jankar_bill_data if @slug == "jeevika-jankar-bill-process"
@@ -9640,7 +9643,7 @@ class ModulesController < ApplicationController
       end
       @jeevika_bill_visible_record_ids = records.map { |record| record.id.to_s }
     end
-    if target_record_source?
+    if target_record_source? && !admin_dashboard_user?
       records = ReadStageTrace.measure("module_records.visibility") do
         preload_target_visibility_vrps!(records)
         records.select { |record| target_record_visible?(record) }
@@ -9675,7 +9678,11 @@ class ModulesController < ApplicationController
   # the requested page on the server.
   def server_paginated_master_list?
     %w[state-master district-master block-master gram-panchayat-master village-master].include?(@slug) &&
-      @record.blank? && request&.format&.html?
+      request&.format&.html?
+  end
+
+  def master_saved_records_frame_request?
+    server_paginated_master_list? && request.headers["Turbo-Frame"] == "module_saved_records_page"
   end
 
   def paginated_master_records(records)
@@ -9750,7 +9757,7 @@ class ModulesController < ApplicationController
   # for each request so view code cannot mutate the cached copy.
   def location_master_list_cacheable?(scope)
     scope && LOCATION_MODULE_SLUGS.include?(record_source_slug) &&
-      @record.blank? && request&.format&.html?
+      (@record.blank? || server_paginated_master_list?) && request&.format&.html?
   end
 
   def cached_location_master_records(module_slug)
@@ -9813,6 +9820,9 @@ class ModulesController < ApplicationController
   end
 
   def module_records_required_for_show?
+    # These lists render their own API/projected rows, never @records. Loading
+    # and sorting full ModuleRecords first duplicates the cold catalogue work.
+    return false if @record.blank? && %w[lg-directory-list office-list].include?(@slug)
     return false if @slug == "jeevika-jankar-observation-list" && @record.blank?
     return false if @slug == "jeevika-jankar-bill-list" && params[:view_id].present?
     # The training entry/edit form does not render a saved-record table. The
@@ -10428,9 +10438,11 @@ class ModulesController < ApplicationController
   end
 
   def lg_directory_matching_records(records)
+    return [] if records.empty?
+
     row_keys = records.map do |record|
       lg_directory_row_key(lg_directory_row_from_record(record, lg_directory_aliases_for_slug(record.module_slug)))
-    end.uniq
+    end.to_set
 
     ModuleRecord
       .where(module_slug: lg_directory_allowed_slugs)
@@ -16650,7 +16662,7 @@ class ModulesController < ApplicationController
   end
 
   def gram_panchayat_name_from_record(record)
-    first_non_code_data(record, "gram_panchayat_name", "gram_panchayat", "gram_panchayat_id", "gp_name", "gram_name", "name", "gp_code", "gram_code")
+    first_non_code_data(record, *GRAM_PANCHAYAT_NAME_KEYS)
   end
 
   def first_non_code_data(record, *keys)
@@ -16981,10 +16993,15 @@ class ModulesController < ApplicationController
     return @values_from_module_cache[cache_key] if @values_from_module_cache.key?(cache_key)
 
     if module_slug == "gram-panchayat-master" && field_key == "gram_panchayat_name"
-      return @values_from_module_cache[cache_key] = active_module_records_scope(module_slug)
-        .order(created_at: :desc)
-        .filter_map { |record| gram_panchayat_name_from_record(record) }
-        .uniq
+      scope = active_module_records_scope(module_slug)
+      return @values_from_module_cache[cache_key] = ModuleFieldOptionsCache.fetch(scope, ["gram-label-v1", *GRAM_PANCHAYAT_NAME_KEYS]) do
+        keys = GRAM_PANCHAYAT_NAME_KEYS.map { |key| ModuleRecord.connection.quote(key) }
+        scope.order(created_at: :desc)
+          .pluck(Arel.sql("json_build_array(#{keys.map { |key| "data::json -> #{key}" }.join(', ')})"))
+          .filter_map do |values|
+            gram_panchayat_name_from_record(LocationRecord.new(nil, GRAM_PANCHAYAT_NAME_KEYS.zip(values).to_h))
+          end.uniq
+      end
     end
 
     field_keys = [field_key]

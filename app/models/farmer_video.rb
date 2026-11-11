@@ -1,6 +1,7 @@
 # A video shown in the Android farmer app, either uploaded here or linked.
 class FarmerVideo < ApplicationRecord
   include FarmerBroadcast
+  include FarmerBroadcastPush
 
   before_validation { self.video_url = FarmerBroadcast.normalise_url(video_url) }
 
@@ -41,6 +42,9 @@ class FarmerVideo < ApplicationRecord
   end
 
   private
+
+  def push_title = title
+  def push_body = description.to_s.strip.presence || "A new video has been shared with you."
 
   def video_source_present
     return if video_url.present? || video_path.present?

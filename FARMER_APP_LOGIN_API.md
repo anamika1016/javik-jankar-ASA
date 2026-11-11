@@ -308,6 +308,94 @@ server logs.
 
 ---
 
+## 7. Push notifications
+
+When an admin publishes news or a video for a state, every farmer of that
+state who has registered their phone gets a notification. "All States" posts
+go to everyone.
+
+### 7a. Register the device
+
+Call this **once after every successful login**, and again whenever Firebase
+hands the app a new token.
+
+```
+POST /api/v1/farmer/devices
+Authorization: Bearer <token>
+
+{
+  "fcm_token": "<FCM registration token>",
+  "platform": "android",
+  "app_version": "1.0.4"
+}
+```
+
+```json
+{
+  "success": true,
+  "message": "This device will now receive notifications for Madhya Pradesh.",
+  "device_id": 12,
+  "state": "Madhya Pradesh",
+  "state_id": "1"
+}
+```
+
+| Status | `error` | Meaning |
+|---|---|---|
+| `422` | `missing_fcm_token` | No token in the body |
+| `401` | `missing_token` / `invalid_token` | Same as the feed endpoints |
+
+A token belongs to one farmer. If a second farmer logs in on the same
+handset, re-registering moves the token across — so the first farmer stops
+receiving the second farmer's state's notifications.
+
+### 7b. Unregister on sign-out
+
+```
+DELETE /api/v1/farmer/devices
+Authorization: Bearer <token>
+
+{ "fcm_token": "<FCM registration token>" }
+```
+
+Call this in the sign-out flow. Skipping it leaves a shared phone receiving
+notifications for a farmer who has logged out.
+
+### 7c. What arrives
+
+```json
+{
+  "notification": { "title": "MP seed subsidy", "body": "Apply by 30 November." },
+  "data": {
+    "type": "news",
+    "id": "12",
+    "state_id": "1",
+    "deep_link": "farmer://news/12"
+  }
+}
+```
+
+`type` is `news` or `video`. **Every value in `data` is a string** — that is
+an FCM rule, so parse `id` rather than expecting a number. Use `deep_link`,
+or `type` + `id`, to open the item instead of only the list. Android priority
+is `high` with the default sound.
+
+### Server setup (one-time, for whoever runs the server)
+
+The server needs a Firebase service account:
+
+```
+FCM_SERVICE_ACCOUNT_JSON='<contents of the service-account .json>'
+FCM_PROJECT_ID='<firebase project id>'
+```
+
+Until these are set, publishing still works and the web list shows
+**"Firebase is not configured on this server, so nothing was sent."** against
+the post. The Farmer News and Farmer Videos lists have a **Notification**
+column showing Sent / Skipped / Failed and how many phones were reached.
+
+---
+
 ## Testing the feed in Postman
 
 The feed needs a token, and the token only comes from a real OTP. Three steps,
@@ -359,7 +447,7 @@ GET https://jj.asaindia.org/api/v1/farmer/news?token=<token>
 
 ---
 
-## 7. Logout
+## 8. Logout
 
 ```
 DELETE /api/v1/farmer/logout

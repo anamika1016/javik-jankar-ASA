@@ -38,6 +38,9 @@ Rails.application.routes.draw do
       get "farmer/me", to: "farmer_sessions#profile"
       get "farmer/news", to: "farmer_feed#news"
       get "farmer/videos", to: "farmer_feed#videos"
+      # Push registration for the farmer app.
+      post "farmer/devices", to: "farmer_devices#create"
+      delete "farmer/devices", to: "farmer_devices#destroy"
       delete "farmer/logout", to: "farmer_sessions#logout"
       post "forgot-password/send-otp", to: "password_resets#send_otp"
       post "forgot-password/reset", to: "password_resets#reset"

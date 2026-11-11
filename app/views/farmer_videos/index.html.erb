@@ -87,7 +87,7 @@
           <thead>
             <tr>
               <th>#</th><th>Title</th><th>Description</th><th>State</th>
-              <th>Source</th><th>Duration</th><th>Published</th><th>Status</th><th>Action</th>
+              <th>Source</th><th>Duration</th><th>Published</th><th>Notification</th><th>Status</th><th>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -122,6 +122,7 @@
                 </td>
                 <td><%= video.duration_label.presence || "-" %></td>
                 <td><%= farmer_login_time(video.published_at) %></td>
+                <td><%= render "shared/farmer_feed_push", item: video %></td>
                 <td><span class="status-pill <%= video.active? ? "active" : "inactive" %>"><%= video.status %></span></td>
                 <td><%= render "shared/farmer_feed_actions", item: video,
                           toggle_path: toggle_status_farmer_video_path(video),
