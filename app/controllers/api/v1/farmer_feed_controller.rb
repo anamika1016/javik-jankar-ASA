@@ -33,11 +33,34 @@ module Api
       end
 
       def authenticate_farmer!
-        login = FarmerApiToken.find_login(bearer_token)
+        token = bearer_token
+        # A bare "Unauthorized" sends the app developer hunting. Say which of
+        # the three things actually went wrong: nothing sent, the wrong family
+        # of token, or a farmer token that has expired.
+        if token.blank?
+          return render_unauthorized(
+            "missing_token",
+            "Authorization header is missing. Send 'Authorization: Bearer <token>' using " \
+            "the token returned by /api/v1/farmer/login/otp/verify."
+          )
+        end
+
+        login = FarmerApiToken.find_login(token)
         return login if login
 
-        render json: { success: false, message: "Unauthorized. Please login again." },
-          status: :unauthorized
+        if ApiAuthToken.decode(token)
+          return render_unauthorized(
+            "wrong_token_type",
+            "This is a staff or Jeevika Jankar token. The farmer feed needs the token from " \
+            "/api/v1/farmer/login/otp/verify."
+          )
+        end
+
+        render_unauthorized("invalid_token", "Session expired. Please login again.")
+      end
+
+      def render_unauthorized(error, message)
+        render json: { success: false, error: error, message: message }, status: :unauthorized
         nil
       end
 

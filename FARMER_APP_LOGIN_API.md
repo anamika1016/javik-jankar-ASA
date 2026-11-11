@@ -263,8 +263,31 @@ Same state rule as news.
 `false` means it is an external link (YouTube and the like). Either way
 `video_url` is a full URL the player can open directly.
 
-Both feeds answer `401` with the usual message when the token is missing or
-expired — send the farmer back to login.
+### If a feed returns 401
+
+The body names the cause in an `error` field, so there is no guessing:
+
+| `error` | What it means | Fix |
+|---|---|---|
+| `missing_token` | No `Authorization` header (and no `?token=`) reached the server | Attach `Authorization: Bearer <token>` to the request |
+| `wrong_token_type` | A staff / Jeevika Jankar token was sent | Use the token from `/api/v1/farmer/login/otp/verify` |
+| `invalid_token` | The farmer token has expired or was tampered with | Send the farmer back to login |
+
+```json
+{
+  "success": false,
+  "error": "missing_token",
+  "message": "Authorization header is missing. Send 'Authorization: Bearer <token>' using the token returned by /api/v1/farmer/login/otp/verify."
+}
+```
+
+**The most common mistake is the interceptor not being attached to these two
+calls.** Check the request in the network inspector: if Request Headers shows
+only `Accept`, the token never left the device.
+
+A `?token=<token>` query parameter is accepted as a fallback for clients that
+cannot set headers, but the header is preferred — a token in a URL ends up in
+server logs.
 
 ---
 

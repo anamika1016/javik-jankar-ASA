@@ -189,15 +189,47 @@ class FarmerFeedTest < ActionDispatch::IntegrationTest
     assert_equal %w[Newest Middle Older], app_feed(MP_FARMER, "/api/v1/farmer/news").map { |n| n["title"] }
   end
 
-  test "the feed refuses a request with no farmer token" do
+  # The app shipped without an Authorization header and got a bare 401, which
+  # told the developer nothing. Each refusal now names its own cause.
+  test "a request with no Authorization header says exactly that" do
     FarmerNewsItem.create!(title: "Everyone", state_id: nil)
 
     get "/api/v1/farmer/news"
     assert_response :unauthorized
+    assert_equal "missing_token", json_body["error"]
+    assert_match(/Authorization header is missing/, json_body["message"])
+    assert_match(%r{/api/v1/farmer/login/otp/verify}, json_body["message"])
+  end
 
-    # A staff token is not a farmer token.
-    get "/api/v1/farmer/news", headers: { "Authorization" => "Bearer #{ApiAuthToken.encode(@admin)}" }
+  test "a staff token on the farmer feed is named as the wrong token type" do
+    get "/api/v1/farmer/videos",
+      headers: { "Authorization" => "Bearer #{ApiAuthToken.encode(@admin)}" }
+
     assert_response :unauthorized
+    assert_equal "wrong_token_type", json_body["error"]
+    assert_match(/staff or Jeevika Jankar token/, json_body["message"])
+  end
+
+  test "a farmer token that has expired asks for a fresh login" do
+    login = FarmerAppLogin.record_login!(farmer: MP_FARMER, identifier_type: "mobile")
+    token = FarmerApiToken.encode(login, expires_in: 1.minute)
+
+    travel_to(2.minutes.from_now) do
+      get "/api/v1/farmer/news", headers: { "Authorization" => "Bearer #{token}" }
+    end
+
+    assert_response :unauthorized
+    assert_equal "invalid_token", json_body["error"]
+    assert_match(/Please login again/, json_body["message"])
+  end
+
+  test "the token also works as a query parameter for clients that cannot set headers" do
+    FarmerNewsItem.create!(title: "Everyone", state_id: nil)
+    login = FarmerAppLogin.record_login!(farmer: MP_FARMER, identifier_type: "mobile")
+
+    get "/api/v1/farmer/news", params: { token: FarmerApiToken.encode(login) }
+    assert_response :success
+    assert_equal ["Everyone"], json_body["news"].map { |n| n["title"] }
   end
 
   test "the whole feed is read in one query, however many items there are" do
@@ -218,6 +250,10 @@ class FarmerFeedTest < ActionDispatch::IntegrationTest
   end
 
   private
+
+  def json_body
+    JSON.parse(response.body)
+  end
 
   # Signs a farmer in the way the app does, then reads the feed.
   def app_feed(farmer, path)
