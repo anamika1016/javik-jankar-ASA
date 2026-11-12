@@ -242,6 +242,8 @@ Rails.application.routes.draw do
   resources :modules, param: :slug, only: [:show], controller: :modules do
     post :records, action: :create, on: :member
     post :payment_details, action: :create_payment_detail, on: :member
+    post :payment_details_upload, action: :upload_payment_details, on: :member
+    get :payment_details_format, action: :payment_details_format, on: :member
     post :import, action: :import, on: :member
     get :export, action: :export, on: :member
     patch :bulk_update, action: :bulk_update, on: :member

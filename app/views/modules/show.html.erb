@@ -7,7 +7,7 @@
       <div>
         <p class="vrp-eyebrow"><%= @module[:group] %></p>
         <h1><%= @slug == "new-user" ? "Registration" : @module[:title] %></h1>
-        <p><%= @module[:purpose] %></p>
+        <% if @module[:purpose].present? %><p><%= @module[:purpose] %></p><% end %>
         <% if @slug == "training-form-list" %>
           <%= link_to "Training Edit Approvals", training_edit_approvals_path, class: "list-btn" %>
         <% end %>
@@ -1587,12 +1587,138 @@
       <div class="table-pagination" data-pagination-for="<%= table_id %>"></div>
     </section>
   <% elsif @slug == "jeevika-jankar-payment-list-detail" && @record.blank? %>
-    <% payment_bill_date_options = jeevika_payment_bill_date_options(@records) %>
     <% selectable_payment_rows = jeevika_payment_selectable_rows(@records) %>
+    <% updated_payment_rows = jeevika_completed_payment_rows %>
+    <% payment_tab = params[:payment_tab].to_s == "updated" ? "updated" : "not_updated" %>
+    <% not_updated_month_options = jeevika_payment_month_options(selectable_payment_rows) %>
+    <% updated_month_options = jeevika_payment_month_options(updated_payment_rows) %>
+    <% requested_payment_month = params[:payment_month].to_s %>
     <section class="module-card list-only-card">
       <div class="module-card-header list-title-header">
         <h2>Jeevika Jankar Payment List Detail</h2>
       </div>
+
+      <nav class="payment-status-tabs" aria-label="Payment status">
+        <%= link_to module_path("jeevika-jankar-payment-list-detail", payment_tab: "not_updated", payment_month: requested_payment_month.presence),
+              class: "payment-status-tab #{'active' if payment_tab == 'not_updated'}", aria: { current: (payment_tab == "not_updated" ? "page" : nil) } do %>
+          Not Updated <span class="payment-status-count"><%= selectable_payment_rows.size %></span>
+        <% end %>
+        <%= link_to module_path("jeevika-jankar-payment-list-detail", payment_tab: "updated", payment_month: requested_payment_month.presence),
+              class: "payment-status-tab #{'active' if payment_tab == 'updated'}", aria: { current: (payment_tab == "updated" ? "page" : nil) } do %>
+          Updated <span class="payment-status-count"><%= updated_payment_rows.size %></span>
+        <% end %>
+      </nav>
+
+    <% if payment_tab == "updated" %>
+      <% table_id = "jeevika_jankar_updated_payment_table" %>
+      <% selected_updated_month = updated_month_options.include?(requested_payment_month) ? requested_payment_month : updated_month_options.first %>
+      <% month_updated_rows = selected_updated_month.present? ? updated_payment_rows.select { |row| jeevika_payment_month_key(row[:bill_month], row[:financial_year]) == selected_updated_month } : updated_payment_rows %>
+      <section class="jeevika-payment-detail-card">
+        <div class="module-card-header list-title-header">
+          <h3>Updated Payment</h3>
+        </div>
+
+        <%= form_with url: module_path("jeevika-jankar-payment-list-detail"), method: :get, html: { class: "module-entry-form compact-filter-form" } do %>
+          <input type="hidden" name="payment_tab" value="updated">
+          <label>
+            <span>Bill Month</span>
+            <select name="payment_month" onchange="this.form.requestSubmit()">
+              <% if updated_month_options.blank? %>
+                <option value="">No updated payment yet</option>
+              <% else %>
+                <% updated_month_options.each do |month_key| %>
+                  <option value="<%= month_key %>" <%= "selected" if month_key == selected_updated_month %>><%= jeevika_payment_month_label(month_key) %></option>
+                <% end %>
+              <% end %>
+            </select>
+          </label>
+        <% end %>
+
+        <div class="vrp-list-toolbar compact">
+          <button type="button" class="list-btn export" data-export-table="<%= table_id %>">Export Excel</button>
+        </div>
+
+        <div class="list-controls">
+          <div class="list-search">
+            <span>⌕</span>
+            <input type="search" placeholder="Search updated payment records" data-table-search="<%= table_id %>">
+          </div>
+        </div>
+
+        <div class="table-shell">
+          <table class="module-table user-list-table" id="<%= table_id %>" data-paginated-table data-page-size="15">
+            <thead>
+              <tr>
+                <th>Jeevika Jankar ID</th>
+                <th>Name</th>
+                <th>Mobile</th>
+                <th>Financial Year</th>
+                <th>Bill Month</th>
+                <th>Approval Date</th>
+                <th>Amount</th>
+                <th>Transaction ID</th>
+                <th>Transaction Type</th>
+                <th>Transaction Date</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% if month_updated_rows.any? %>
+                <% month_updated_rows.each do |row| %>
+                  <tr>
+                    <td><%= row[:jeevika_jankar_id] %></td>
+                    <td><%= row[:name] %></td>
+                    <td><%= row[:mobile_no] %></td>
+                    <td><%= row[:financial_year] %></td>
+                    <td><%= row[:bill_month] %></td>
+                    <td><%= bill_display_date(row[:approval_date]) %></td>
+                    <td><%= row[:amount] %></td>
+                    <td><%= row[:transaction_id] %></td>
+                    <td><%= row[:transaction_type] %></td>
+                    <td><%= bill_display_date(row[:transaction_date]) %></td>
+                    <td><span class="payment-status-badge updated">Updated</span></td>
+                  </tr>
+                <% end %>
+              <% else %>
+                <tr>
+                  <td colspan="11">Is month ki koi updated payment nahi mili.</td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-pagination" data-pagination-for="<%= table_id %>"></div>
+      </section>
+    <% else %>
+      <% selected_payment_month = not_updated_month_options.include?(requested_payment_month) ? requested_payment_month : "" %>
+      <section class="jeevika-payment-detail-card">
+        <div class="module-card-header list-title-header">
+          <h3>Excel se Bulk Upload</h3>
+        </div>
+        <div class="payment-upload-grid">
+          <%= form_with url: payment_details_format_module_path("jeevika-jankar-payment-list-detail"), method: :get, data: { turbo: false }, html: { class: "module-entry-form payment-upload-form" } do %>
+            <label>
+              <span>Bill Month</span>
+              <select name="payment_month">
+                <option value="">All Months</option>
+                <% not_updated_month_options.each do |month_key| %>
+                  <option value="<%= month_key %>" <%= "selected" if month_key == selected_payment_month %>><%= jeevika_payment_month_label(month_key) %></option>
+                <% end %>
+              </select>
+            </label>
+            <button type="submit" class="list-btn export" <%= "disabled" if selectable_payment_rows.blank? %>>Format Download</button>
+          <% end %>
+
+          <%= form_with url: payment_details_upload_module_path("jeevika-jankar-payment-list-detail"), method: :post, html: { class: "module-entry-form payment-upload-form", multipart: true } do %>
+            <input type="hidden" name="payment_month" value="<%= selected_payment_month %>">
+            <label>
+              <span>Excel File (.xlsx / .csv) <em>*</em></span>
+              <input name="payment_excel_file" type="file" accept=".xlsx,.csv" required>
+            </label>
+            <button type="submit" class="list-btn upload">Upload</button>
+          <% end %>
+        </div>
+      </section>
 
       <section class="jeevika-payment-detail-card" data-jeevika-payment-detail data-payment-rate="<%= ModulesController::JEEVIKA_JANKAR_BILL_FIXED_TOTAL.to_i %>">
         <div class="module-card-header list-title-header">
@@ -1602,14 +1728,14 @@
         <%= form_with url: payment_details_module_path("jeevika-jankar-payment-list-detail"), method: :post, html: { class: "module-entry-form", multipart: true } do %>
           <div class="module-form-grid user-registration-grid">
             <label>
-              <span>Approval Date <em>*</em></span>
-              <select name="module_record[approval_date]" data-payment-date-select required>
-                <% if payment_bill_date_options.blank? %>
-                  <option value="">No unpaid final approved date</option>
+              <span>Bill Month <em>*</em></span>
+              <select name="module_record[payment_month]" data-payment-date-select required>
+                <% if not_updated_month_options.blank? %>
+                  <option value="">No unpaid final approved bill</option>
                 <% else %>
-                  <option value="">Date Select Karein</option>
-                  <% payment_bill_date_options.each do |date| %>
-                    <option value="<%= date %>"><%= bill_display_date(date) %></option>
+                  <option value="">Month Select Karein</option>
+                  <% not_updated_month_options.each do |month_key| %>
+                    <option value="<%= month_key %>" <%= "selected" if month_key == selected_payment_month %>><%= jeevika_payment_month_label(month_key) %></option>
                   <% end %>
                 <% end %>
               </select>
@@ -1644,7 +1770,7 @@
                 <tbody data-payment-user-rows>
                   <% if selectable_payment_rows.any? %>
                     <% selectable_payment_rows.each do |row| %>
-                      <tr data-payment-user-row data-payment-bill-date="<%= row[:approval_date] %>" data-payment-amount="<%= row[:amount] %>">
+                      <tr data-payment-user-row data-payment-month="<%= jeevika_payment_month_key(row[:bill_month], row[:financial_year]) %>" data-payment-bill-date="<%= row[:approval_date] %>" data-payment-amount="<%= row[:amount] %>">
                         <td><input type="checkbox" name="module_record[selected_bill_ids][]" value="<%= row[:id] %>" data-payment-user-checkbox disabled></td>
                         <td><%= row[:vrp_id] %></td>
                         <td><%= row[:name] %></td>
@@ -1706,6 +1832,7 @@
           </div>
         <% end %>
       </section>
+    <% end %>
     </section>
 
   <% elsif @slug == "jeevika-jankar-completed-payment-list" && @record.blank? %>

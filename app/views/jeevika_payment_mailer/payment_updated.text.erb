@@ -1,0 +1,22 @@
+<% if @test_mode %>TEST MAIL - asli recipient: <%= @details[:jj_email].presence || "email saved nahi hai" %>
+
+<% end %>Namaste <%= @details[:name] %>,
+
+Aapki payment update ho gayi hai.
+<%= @details[:bill_month] %> <%= @details[:financial_year] %> ke bill ki Rs. <%= @details[:amount] %> payment <%= @details[:transaction_date_label] %> ko <%= @details[:transaction_type] %> dwara bhej di gayi hai.
+
+Jeevika Jankar ID : <%= @details[:jj_id].presence || "-" %>
+Name              : <%= @details[:name].presence || "-" %>
+Mobile            : <%= @details[:mobile_no].presence || "-" %>
+Financial Year    : <%= @details[:financial_year].presence || "-" %>
+Bill Month        : <%= @details[:bill_month].presence || "-" %>
+Bill ID           : <%= @details[:bill_id].presence || "-" %>
+Approval Date     : <%= @details[:approval_date_label].presence || "-" %>
+Amount            : Rs. <%= @details[:amount] %>
+Transaction ID    : <%= @details[:transaction_id].presence || "-" %>
+Transaction Type  : <%= @details[:transaction_type].presence || "-" %>
+Transaction Date  : <%= @details[:transaction_date_label].presence || "-" %>
+Payment Updated On: <%= @details[:updated_at_label].presence || "-" %>
+Updated By        : <%= @details[:updated_by].presence || "-" %>
+
+Ye mail ASA Jeevika Jankar system se automatic bheja gaya hai.

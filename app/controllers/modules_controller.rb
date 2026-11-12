@@ -62,6 +62,7 @@ class ModulesController < ApplicationController
                 :jeevika_payment_detail_rows, :jeevika_completed_payment_rows,
                 :jeevika_completed_payment_month_options, :jeevika_completed_payment_date_options,
                 :jeevika_payment_transaction_types,
+                :jeevika_payment_month_key, :jeevika_payment_month_label, :jeevika_payment_month_options,
                 :jeevika_bill_vrp, :jeevika_bill_cc_name, :bill_display_date, :bill_display_datetime,
                 :approval_sequence_from_level, :module_record_field_value, :module_upload_public_url,
                 :module_upload_public_urls,
@@ -596,7 +597,7 @@ class ModulesController < ApplicationController
     "jeevika-jankar-payment-list-detail" => {
       title: "Jeevika Jankar Payment List Detail",
       group: "Jeevika Jankar Bill",
-      purpose: "Approval date wise Jeevika Jankar payment detail submit karne ke liye.",
+      purpose: "",
       fields: ["Approval Date", "Jeevika Jankar", "Payment Amount", "Transaction ID", "Transaction Type", "Transaction Date", "Transaction File", "Excel File"]
     },
     "jeevika-jankar-completed-payment-list" => {
@@ -1527,9 +1528,12 @@ class ModulesController < ApplicationController
 
     data_errors = jeevika_payment_detail_error_messages(raw_data, selected_bill_ids, selected_records)
     if data_errors.any?
-      redirect_to module_path("jeevika-jankar-payment-list-detail"), alert: data_errors.to_sentence
+      redirect_to module_path("jeevika-jankar-payment-list-detail", payment_month: raw_data["payment_month"].presence), alert: data_errors.to_sentence
       return
     end
+
+    selected_month = raw_data["payment_month"].presence
+    apply_jeevika_payment_month_data!(raw_data, selected_records)
 
     ModuleRecord.create!(
       module_slug: JEEVIKA_JANKAR_PAYMENT_DETAIL_SLUG,
@@ -1537,10 +1541,126 @@ class ModulesController < ApplicationController
     )
 
     sms_summary = send_jeevika_payment_advice_sms(raw_data, selected_records)
+    mail_summary = send_jeevika_payment_emails(raw_data, selected_records)
     notice = "Jeevika Jankar payment detail saved successfully."
     notice = "#{notice} #{sms_summary}" if sms_summary.present?
+    notice = "#{notice} #{mail_summary}" if mail_summary.present?
 
-    redirect_to module_path("jeevika-jankar-payment-list-detail"), notice: notice
+    redirect_to module_path("jeevika-jankar-payment-list-detail", payment_month: selected_month), notice: notice
+  end
+
+  # Excel bulk upload for "Jeevika Jankar Payment List Detail". Each sheet row
+  # is one bill; rows sharing a Transaction ID/Type/Date become one payment
+  # detail record, exactly like selecting those bills on the screen and saving.
+  # All-or-nothing: if any row is wrong, nothing is saved.
+  def upload_payment_details
+    load_module!
+    return if performed?
+
+    redirect_path = module_path("jeevika-jankar-payment-list-detail", payment_month: params[:payment_month].presence)
+    unless @slug == "jeevika-jankar-payment-list-detail" && jeevika_jankar_payment_module_access?(@slug)
+      redirect_to redirect_path, alert: "You are not allowed to submit payment details."
+      return
+    end
+
+    file = params[:payment_excel_file]
+    unless file.respond_to?(:original_filename)
+      redirect_to redirect_path, alert: "Upload karne ke liye Excel file select karein."
+      return
+    end
+
+    upload = JeevikaPaymentBulkUpload.new(file, transaction_types: JEEVIKA_PAYMENT_TRANSACTION_TYPES)
+    rows = upload.rows
+    errors = upload.errors.dup
+    errors << "Excel me koi row payment details ke saath nahi mili." if errors.empty? && rows.empty?
+
+    bills = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process", id: rows.map(&:bill_id).select { |id| id.match?(/\A\d+\z/) })
+      .index_by { |record| record.id.to_s }
+    preload_jeevika_payment_bill_histories!(bills.values)
+    paid_ids = jeevika_paid_bill_ids
+    seen = {}
+    rows.each do |row|
+      bill = bills[row.bill_id]
+      if seen[row.bill_id]
+        errors << "Row #{row.row_number}: Bill ID #{row.bill_id} Excel me ek se zyada baar hai (row #{seen[row.bill_id]})."
+      elsif bill.nil?
+        errors << "Row #{row.row_number}: Bill ID #{row.bill_id} nahi mila."
+      elsif paid_ids.include?(row.bill_id)
+        errors << "Row #{row.row_number}: Bill ID #{row.bill_id} ki payment pehle se update hai."
+      elsif !(jeevika_bill_final_approved?(bill) && jeevika_jankar_bill_downloadable?(bill))
+        errors << "Row #{row.row_number}: Bill ID #{row.bill_id} final approved nahi hai."
+      end
+      seen[row.bill_id] ||= row.row_number
+    end
+
+    if errors.any?
+      shown = errors.first(8)
+      shown << "aur #{errors.size - shown.size} errors." if errors.size > shown.size
+      redirect_to redirect_path, alert: "Kuch save nahi hua. #{shown.join(' ')}"
+      return
+    end
+
+    excel_path = store_uploaded_module_file(file)
+    groups = rows.group_by { |row| [row.transaction_id, row.transaction_type, row.transaction_date] }
+    saved = []
+    ModuleRecord.transaction do
+      groups.each do |(transaction_id, transaction_type, transaction_date), group_rows|
+        selected_records = group_rows.map { |row| bills[row.bill_id] }
+        raw_data = {
+          "transaction_id" => transaction_id,
+          "transaction_type" => transaction_type,
+          "transaction_date" => transaction_date,
+          "upload_source" => "excel"
+        }
+        apply_jeevika_payment_month_data!(raw_data, selected_records)
+        data = normalized_jeevika_payment_detail_data(raw_data, selected_records)
+        data["excel_file"] = excel_path if excel_path.present?
+        ModuleRecord.create!(module_slug: JEEVIKA_JANKAR_PAYMENT_DETAIL_SLUG, data: data)
+        saved << [raw_data, selected_records]
+      end
+    end
+
+    sms_summaries = saved.map { |raw_data, selected_records| send_jeevika_payment_advice_sms(raw_data, selected_records) }
+    notice = "Excel se #{rows.size} Jeevika Jankar ki payment update ho gayi (#{groups.size} transaction)."
+    sms_summary = jeevika_payment_sms_total(sms_summaries)
+    notice = "#{notice} #{sms_summary}" if sms_summary.present?
+    mail_summary = jeevika_payment_mail_total(
+      saved.map { |raw_data, selected_records| send_jeevika_payment_emails(raw_data, selected_records) }
+    )
+    notice = "#{notice} #{mail_summary}" if mail_summary.present?
+    redirect_to module_path("jeevika-jankar-payment-list-detail", payment_tab: "updated", payment_month: params[:payment_month].presence), notice: notice
+  end
+
+  # Downloads the bulk upload format: every not-updated (unpaid, final approved)
+  # bill, optionally for one month, with blank transaction columns to fill.
+  def payment_details_format
+    load_module!
+    return if performed?
+
+    unless @slug == "jeevika-jankar-payment-list-detail"
+      redirect_to module_path(@slug), alert: "Format is page ke liye available nahi hai."
+      return
+    end
+
+    rows = jeevika_payment_selectable_rows(module_records)
+    month_key = params[:payment_month].to_s
+    rows = rows.select { |row| jeevika_payment_month_key(row[:bill_month], row[:financial_year]) == month_key } if month_key.present?
+    headers = ["Bill ID", "Jeevika Jankar ID", "Name", "Mobile", "Email", "Financial Year", "Bill Month", "Approval Date", "Amount",
+               "Transaction ID", "Transaction Type (#{JEEVIKA_PAYMENT_TRANSACTION_TYPES.join('/')})", "Transaction Date (DD/MM/YYYY)"]
+    sheet_rows = rows.map do |row|
+      [row[:id], row[:vrp_id], row[:name], row[:mobile_no], row[:email], row[:financial_year], row[:bill_month],
+       row[:approval_date_label], row[:amount], "", "", ""]
+    end
+    suffix = month_key.present? ? month_key.parameterize : "all"
+    workbook = JeevikaPaymentUploadFormat.generate(
+      headers: headers, rows: sheet_rows,
+      transaction_columns: { id: 10, type: 11, date: 12 },
+      transaction_types: JEEVIKA_PAYMENT_TRANSACTION_TYPES
+    )
+    send_data workbook,
+      filename: "jeevika-jankar-payment-upload-#{suffix}.xlsx",
+      type: XlsxExporter::MIME_TYPE,
+      disposition: "attachment"
   end
 
   def update
@@ -11075,6 +11195,7 @@ class ModulesController < ApplicationController
         vrp_id: record.data["select_vrp"].presence || "-",
         name: jeevika_jankar_display_name(record.data["select_vrp_name"].presence || jeevika_jankar_vrp_label(record.data["select_vrp"])).presence || "-",
         mobile_no: vrp&.mobile_no.presence || "-",
+        email: vrp&.email.to_s.strip.presence || "-",
         bill_month: record.data["bill_month"].presence || "-",
         financial_year: record.data["financial_year"].presence || "-",
         amount: format("%.2f", jeevika_jankar_bill_total_payment(record).to_f)
@@ -13830,12 +13951,15 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_payment_detail_error_messages(raw_data, selected_bill_ids, selected_records)
+    month_mode = raw_data["approval_date"].blank? && raw_data.key?("payment_month")
+    period_field = month_mode ? { "payment_month" => "Bill Month" } : { "approval_date" => "Approval Date" }
     errors = missing_required_data_errors(
       raw_data,
-      "approval_date" => "Approval Date",
-      "transaction_id" => "Transaction ID",
-      "transaction_type" => "Transaction Type",
-      "transaction_date" => "Transaction Date"
+      period_field.merge(
+        "transaction_id" => "Transaction ID",
+        "transaction_type" => "Transaction Type",
+        "transaction_date" => "Transaction Date"
+      )
     )
 
     errors << "Kam se kam ek Jeevika Jankar select karein." if selected_bill_ids.blank?
@@ -13854,7 +13978,135 @@ class ModulesController < ApplicationController
       errors << "Selected Jeevika Jankar chosen approval date ke hone chahiye."
     end
 
+    month_key = raw_data["payment_month"].to_s
+    if month_mode && month_key.present? &&
+        selected_records.any? { |record| jeevika_payment_month_key(record.data["bill_month"], record.data["financial_year"]) != month_key }
+      errors << "Selected Jeevika Jankar chosen bill month ke hone chahiye."
+    end
+
     errors
+  end
+
+  # Month-wise payment: the bills of one payment can carry several approval
+  # dates, so the record keeps every date (each payment item still keeps its
+  # own) plus the bill month / financial year it was paid for.
+  def apply_jeevika_payment_month_data!(raw_data, selected_records)
+    month_key = raw_data.delete("payment_month").to_s
+    return raw_data if raw_data["approval_date"].present? && month_key.blank?
+
+    raw_data["approval_date"] = selected_records.map { |record| jeevika_bill_final_approval_date(record) }
+      .compact_blank.uniq.sort.reverse.join(", ")
+    months = selected_records.map { |record| record.data["bill_month"].to_s.strip }.compact_blank.uniq
+    years = selected_records.map { |record| record.data["financial_year"].to_s.strip }.compact_blank.uniq
+    raw_data["bill_month"] = months.join(", ") if months.any?
+    raw_data["financial_year"] = years.join(", ") if years.any?
+    raw_data
+  end
+
+  # One bill month is identified by month name plus financial year, so
+  # "October 2025-2026" and "October 2026-2027" stay separate.
+  def jeevika_payment_month_key(bill_month, financial_year)
+    month = bill_month.to_s.strip
+    month = "" if month == "-"
+    year = financial_year.to_s.strip
+    year = "" if year == "-"
+    return "" if month.blank?
+
+    [month.downcase.capitalize, year].join("|")
+  end
+
+  def jeevika_payment_month_label(month_key)
+    month, year = month_key.to_s.split("|", 2)
+    [month, year.presence].compact.join(" ")
+  end
+
+  # Newest financial year first, then the latest month of that year (April is
+  # the first month of a financial year).
+  def jeevika_payment_month_options(rows)
+    keys = Array(rows).map { |row| jeevika_payment_month_key(row[:bill_month], row[:financial_year]) }.compact_blank.uniq
+    keys.sort_by do |key|
+      month, year = key.split("|", 2)
+      month_number = Date::MONTHNAMES.index(month) || 0
+      fiscal_position = month_number.zero? ? -1 : (month_number - 4) % 12
+      [-year.to_s[/\d{4}/].to_i, -fiscal_position, key]
+    end
+  end
+
+  # One mail per paid bill, with every payment detail. Recipients follow
+  # JeevikaPaymentMailer.recipient_for (test address / real JJ / nobody).
+  # Goes through krai (JeevikaPaymentMailRelay) once JJ_PAYMENT_MAIL_RELAY_URL
+  # is set, otherwise through SMTP.
+  # A mail failure never blocks the payment, which is already saved.
+  def send_jeevika_payment_emails(raw_data, selected_records)
+    return "" unless JeevikaPaymentMailer.enabled?
+
+    sent = 0
+    failed = 0
+    skipped = 0
+    selected_records.each do |record|
+      details = jeevika_payment_mail_details(record, raw_data)
+      recipient = JeevikaPaymentMailer.recipient_for(details[:jj_email])
+      if recipient.blank?
+        skipped += 1
+        next
+      end
+
+      if JeevikaPaymentMailRelay.enabled?
+        JeevikaPaymentMailRelay.deliver!(recipient, details, test_mode: JeevikaPaymentMailer.test_recipient.present?)
+      else
+        JeevikaPaymentMailer.payment_updated(recipient, details).deliver_now
+      end
+      sent += 1
+    rescue StandardError => e
+      failed += 1
+      Rails.logger.warn("[Payment Mail] Failed for bill ##{record.id}: #{e.class} - #{e.message}")
+    end
+
+    parts = []
+    parts << "Mail sent: #{sent}." if sent.positive?
+    parts << "Mail failed: #{failed}." if failed.positive?
+    parts << "Mail skipped (no email): #{skipped}." if skipped.positive?
+    parts.join(" ")
+  end
+
+  def jeevika_payment_mail_details(record, raw_data)
+    vrp = jeevika_bill_vrp(record)
+    name = jeevika_jankar_display_name(
+      record.data["select_vrp_name"].presence || jeevika_jankar_vrp_label(record.data["select_vrp"]) || vrp&.name
+    ).presence || vrp&.name.to_s
+    user = current_app_user || {}
+    {
+      bill_id: record.id.to_s,
+      jj_id: record.data["select_vrp"].to_s,
+      jj_email: vrp&.email.to_s.strip,
+      name: name,
+      mobile_no: vrp&.mobile_no.to_s,
+      financial_year: record.data["financial_year"].to_s,
+      bill_month: record.data["bill_month"].to_s,
+      approval_date_label: bill_display_date(jeevika_bill_final_approval_date(record)),
+      amount: format("%.2f", jeevika_jankar_bill_total_payment(record).to_f),
+      transaction_id: raw_data["transaction_id"].to_s.strip,
+      transaction_type: raw_data["transaction_type"].to_s.strip.upcase,
+      transaction_date_label: bill_display_date(raw_data["transaction_date"]),
+      updated_at_label: Time.current.in_time_zone(Time.zone).strftime("%d/%m/%Y %I:%M %p"),
+      updated_by: user["name"].presence || user["username"].to_s
+    }
+  end
+
+  def jeevika_payment_mail_total(summaries)
+    totals = Hash.new(0)
+    Array(summaries).each do |summary|
+      summary.to_s.scan(/Mail (sent|failed|skipped \(no email\)): (\d+)\./) { |kind, count| totals[kind] += count.to_i }
+    end
+    totals.filter_map { |kind, count| "Mail #{kind}: #{count}." if count.positive? }.join(" ")
+  end
+
+  def jeevika_payment_sms_total(summaries)
+    totals = Hash.new(0)
+    Array(summaries).each do |summary|
+      summary.to_s.scan(/SMS (sent|failed|skipped): (\d+)\./) { |kind, count| totals[kind] += count.to_i }
+    end
+    totals.filter_map { |kind, count| "SMS #{kind}: #{count}." if count.positive? }.join(" ")
   end
 
   def normalized_jeevika_payment_detail_data(raw_data, selected_records)
