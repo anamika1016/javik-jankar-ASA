@@ -16,13 +16,19 @@ require "uri"
 # JeevikaPaymentMailer.recipient_for (PAYMENT_MAIL_TEST_TO / PAYMENT_MAIL_ENABLED).
 #
 # A 2xx answer is a success unless its JSON says otherwise
-# ("success": false, or "status": "error"/"failed").
+# ("success": false, or "status": "error"/"failed"), or krai's page says it
+# sent nothing ("no email was sent").
+#
+# krai's test_mode=1 means "show a preview, send nothing", so it is always 0:
+# a mail to the PAYMENT_MAIL_TEST_TO address is a real mail, marked [TEST]
+# in its subject and carrying the JJ's own address in actual_email.
 class JeevikaPaymentMailRelay
   class DeliveryError < StandardError; end
 
   DEFAULT_PAGE = "jj_payment_notify.aspx".freeze
   TIMEOUT_SECONDS = 15
   MAX_REDIRECTS = 3
+  NOT_SENT = /no e-?mail was sent/i
 
   # Every parameter krai receives, in this order.
   FIELDS = %w[
@@ -67,7 +73,7 @@ class JeevikaPaymentMailRelay
       "transaction_date" => details[:transaction_date_label],
       "updated_on" => details[:updated_at_label],
       "updated_by" => details[:updated_by],
-      "test_mode" => test_mode ? "1" : "0",
+      "test_mode" => "0",
       "actual_email" => test_mode ? details[:jj_email] : ""
     }.transform_values(&:to_s)
   end
@@ -122,6 +128,7 @@ class JeevikaPaymentMailRelay
 
   def self.success?(response)
     return false unless response.is_a?(Net::HTTPSuccess)
+    return false if response.body.to_s.match?(NOT_SENT)
 
     body = parsed_body(response)
     return true unless body.is_a?(Hash)
@@ -133,6 +140,7 @@ class JeevikaPaymentMailRelay
   def self.failure_message(response)
     body = parsed_body(response)
     detail = body["message"] || body["error"] if body.is_a?(Hash)
+    detail ||= "krai sent no email (#{response.body.to_s[NOT_SENT]})" if response.body.to_s.match?(NOT_SENT)
     detail ||= response.body.to_s.gsub(/<[^>]+>/, " ").squish.first(160)
     "Mail service returned #{response.code}: #{detail.presence || response.message}"
   end

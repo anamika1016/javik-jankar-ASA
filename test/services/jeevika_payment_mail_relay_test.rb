@@ -42,11 +42,12 @@ class JeevikaPaymentMailRelayTest < ActiveSupport::TestCase
     assert_equal "", query["actual_email"]
   end
 
-  test "test mode marks the subject and carries the real address" do
+  test "test mode marks the subject and carries the real address, but still sends" do
     ENV["JJ_PAYMENT_MAIL_RELAY_URL"] = "https://krai.asaindia.org/"
     query = JeevikaPaymentMailRelay.params_for("tester@asabhopal.org", DETAILS, test_mode: true)
     assert_match "[TEST]", query["subject"]
-    assert_equal "1", query["test_mode"]
+    # krai's test_mode=1 is a preview that sends nothing.
+    assert_equal "0", query["test_mode"]
     assert_equal "jj@example.com", query["actual_email"]
   end
 
@@ -67,6 +68,17 @@ class JeevikaPaymentMailRelayTest < ActiveSupport::TestCase
     response.instance_variable_set(:@read, true)
     response.body = "Mail sent"
     stub_get(response) { assert JeevikaPaymentMailRelay.deliver!("jj@example.com", DETAILS) }
+  end
+
+  test "a krai preview page that sent nothing is a failed mail" do
+    ENV["JJ_PAYMENT_MAIL_RELAY_URL"] = "https://krai.asaindia.org/"
+    response = Net::HTTPOK.new("1.1", "200", "OK")
+    response.instance_variable_set(:@read, true)
+    response.body = "<div class='info'>Test mode is ON. Notification preview generated; no email was sent.</div>"
+    stub_get(response) do
+      error = assert_raises(JeevikaPaymentMailRelay::DeliveryError) { JeevikaPaymentMailRelay.deliver!("jj@example.com", DETAILS) }
+      assert_match "no email was sent", error.message
+    end
   end
 
   private
