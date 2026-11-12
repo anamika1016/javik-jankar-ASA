@@ -21,7 +21,9 @@ require "uri"
 #
 # krai's test_mode=1 means "show a preview, send nothing", so it is always 0:
 # a mail to the PAYMENT_MAIL_TEST_TO address is a real mail, marked [TEST]
-# in its subject and carrying the JJ's own address in actual_email.
+# in its subject. actual_email is always blank, because krai's page does not
+# deliver to to_email when it is filled; a test mail names the Jeevika
+# Jankar's own address in its message instead.
 class JeevikaPaymentMailRelay
   class DeliveryError < StandardError; end
 
@@ -54,12 +56,14 @@ class JeevikaPaymentMailRelay
   def self.params_for(recipient, details, test_mode: false)
     subject = JeevikaPaymentMailer::SUBJECT
     subject = "[TEST] #{subject} (#{details[:name]})" if test_mode
+    message = "#{details[:bill_month]} #{details[:financial_year]} ke bill ki Rs. #{details[:amount]} payment " \
+              "#{details[:transaction_date_label]} ko #{details[:transaction_type]} dwara bhej di gayi hai."
+    message = "TEST MAIL - asli Jeevika Jankar email: #{details[:jj_email].presence || 'saved nahi hai'}. #{message}" if test_mode
     {
       "to_email" => recipient,
       "to_name" => details[:name],
       "subject" => subject,
-      "message" => "#{details[:bill_month]} #{details[:financial_year]} ke bill ki Rs. #{details[:amount]} payment " \
-                   "#{details[:transaction_date_label]} ko #{details[:transaction_type]} dwara bhej di gayi hai.",
+      "message" => message,
       "jj_id" => details[:jj_id],
       "name" => details[:name],
       "mobile_no" => details[:mobile_no],
@@ -74,7 +78,7 @@ class JeevikaPaymentMailRelay
       "updated_on" => details[:updated_at_label],
       "updated_by" => details[:updated_by],
       "test_mode" => "0",
-      "actual_email" => test_mode ? details[:jj_email] : ""
+      "actual_email" => ""
     }.transform_values(&:to_s)
   end
 

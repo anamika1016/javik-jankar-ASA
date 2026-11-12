@@ -6,8 +6,8 @@
   * {{...}} ki jagah usi naam ka query parameter rakhein (HTML-encode karke),
     jaise {{name}} -> Request.QueryString["name"].
   * Mail ka subject = {{subject}} parameter.
-  * TEST banner (data-if="test") sirf tab dikhayein jab {{actual_email}} khali na ho;
-    warna poora <tr data-if="test"> hata dein.
+  * TEST banner (data-if="test") sirf tab dikhayein jab {{subject}} "[TEST]" se shuru ho;
+    warna poora <tr data-if="test"> hata dein. actual_email hamesha khali aata hai.
   * Saari styling inline hai aur layout table se bana hai, taaki Gmail,
     Outlook aur Rediffmail mein ek jaisa dikhe. <style> block na jodein.
 -->
@@ -26,7 +26,7 @@
             <!-- TEST banner: sirf test mail par -->
             <tr data-if="test">
               <td style="background:#fff4d6;color:#7a5a00;font-size:13px;padding:10px 24px;border-bottom:1px solid #f0dfa8;">
-                <strong>TEST MAIL</strong> &middot; Asli Jeevika Jankar email: {{actual_email}}
+                {{message}}
               </td>
             </tr>
 

@@ -48,7 +48,9 @@ class JeevikaPaymentMailRelayTest < ActiveSupport::TestCase
     assert_match "[TEST]", query["subject"]
     # krai's test_mode=1 is a preview that sends nothing.
     assert_equal "0", query["test_mode"]
-    assert_equal "jj@example.com", query["actual_email"]
+    # krai does not deliver when actual_email is filled; the message names it.
+    assert_equal "", query["actual_email"]
+    assert_includes query["message"], "TEST MAIL - asli Jeevika Jankar email: jj@example.com"
   end
 
   test "a JSON failure from krai is a failed mail" do
