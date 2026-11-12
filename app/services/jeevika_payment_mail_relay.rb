@@ -52,7 +52,7 @@ class JeevikaPaymentMailRelay
 
   # details: hash built by ModulesController#jeevika_payment_mail_details
   def self.params_for(recipient, details, test_mode: false)
-    subject = "Payment Update: #{details[:bill_month]} #{details[:financial_year]} - Rs. #{details[:amount]}"
+    subject = JeevikaPaymentMailer::SUBJECT
     subject = "[TEST] #{subject} (#{details[:name]})" if test_mode
     {
       "to_email" => recipient,

@@ -36,7 +36,7 @@ class JeevikaPaymentMailRelayTest < ActiveSupport::TestCase
 
     assert_equal JeevikaPaymentMailRelay::FIELDS, query.keys
     assert_equal "jj@example.com", query["to_email"]
-    assert_equal "Payment Update: October 2026-2027 - Rs. 2500.00", query["subject"]
+    assert_equal "Jeevika Jankar Payment Notification", query["subject"]
     assert_equal "UTR778899", query["transaction_id"]
     assert_equal "0", query["test_mode"]
     assert_equal "", query["actual_email"]

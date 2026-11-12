@@ -91,7 +91,7 @@ class JeevikaPaymentMailTest < ActionDispatch::IntegrationTest
     ENV["PAYMENT_MAIL_ENABLED"] = "true"
     pay!
     assert_equal [@vrp.email], ActionMailer::Base.deliveries.last.to
-    assert_no_match "[TEST]", ActionMailer::Base.deliveries.last.subject
+    assert_equal "Jeevika Jankar Payment Notification", ActionMailer::Base.deliveries.last.subject
   end
 
   test "excel upload mails each updated bill too" do

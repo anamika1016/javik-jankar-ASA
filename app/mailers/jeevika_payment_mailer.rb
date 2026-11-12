@@ -8,6 +8,9 @@
 class JeevikaPaymentMailer < ApplicationMailer
   layout false
 
+  # Same subject on every payment mail, by SMTP or through krai.
+  SUBJECT = "Jeevika Jankar Payment Notification".freeze
+
   def self.test_recipient
     ENV["PAYMENT_MAIL_TEST_TO"].to_s.strip.presence
   end
@@ -31,7 +34,7 @@ class JeevikaPaymentMailer < ApplicationMailer
   def payment_updated(recipient, details)
     @details = details
     @test_mode = self.class.test_recipient.present?
-    subject = "Payment Update: #{details[:bill_month]} #{details[:financial_year]} - Rs. #{details[:amount]}"
+    subject = JeevikaPaymentMailer::SUBJECT
     subject = "[TEST] #{subject} (#{details[:name]})" if @test_mode
 
     mail(to: recipient, from: self.class.from_address, subject: subject)
