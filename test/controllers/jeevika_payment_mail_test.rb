@@ -78,9 +78,10 @@ class JeevikaPaymentMailTest < ActionDispatch::IntegrationTest
     assert_equal 1, ActionMailer::Base.deliveries.size
     mail = ActionMailer::Base.deliveries.last
     assert_equal [TEST_TO], mail.to
-    assert_match "[TEST]", mail.subject
+    assert_equal "Mail JJ - Jeevika Jankar Payment Notification", mail.subject
+    assert_no_match(/TEST/, mail.text_part.body.to_s)
     body = mail.text_part.body.to_s
-    ["Mail JJ", "UTR778899", "NEFT", "05/11/2026", "29/10/2026", "2500.00", "October", "2026-2027", @vrp.email].each do |text|
+    ["Mail JJ", "UTR778899", "NEFT", "05/11/2026", "29/10/2026", "2500.00", "October", "2026-2027"].each do |text|
       assert_includes body, text
     end
     assert_includes mail.html_part.body.to_s, "UTR778899"
@@ -91,7 +92,7 @@ class JeevikaPaymentMailTest < ActionDispatch::IntegrationTest
     ENV["PAYMENT_MAIL_ENABLED"] = "true"
     pay!
     assert_equal [@vrp.email], ActionMailer::Base.deliveries.last.to
-    assert_equal "Jeevika Jankar Payment Notification", ActionMailer::Base.deliveries.last.subject
+    assert_equal "Mail JJ - Jeevika Jankar Payment Notification", ActionMailer::Base.deliveries.last.subject
   end
 
   test "excel upload mails each updated bill too" do
@@ -125,13 +126,12 @@ class JeevikaPaymentMailTest < ActionDispatch::IntegrationTest
     ENV["PAYMENT_MAIL_TEST_TO"] = TEST_TO
     ENV["JJ_PAYMENT_MAIL_RELAY_URL"] = "https://krai.asaindia.org/"
     sent = []
-    relay = ->(recipient, details, test_mode:) { sent << [recipient, details, test_mode] }
+    relay = ->(recipient, details) { sent << [recipient, details] }
     replacing(JeevikaPaymentMailRelay, :deliver!, relay) { pay! }
 
     assert_empty ActionMailer::Base.deliveries
-    recipient, details, test_mode = sent.sole
+    recipient, details = sent.sole
     assert_equal TEST_TO, recipient
-    assert test_mode
     assert_equal "UTR778899", details[:transaction_id]
     assert_equal @vrp.email, details[:jj_email]
     assert_match "Mail sent: 1.", flash[:notice]

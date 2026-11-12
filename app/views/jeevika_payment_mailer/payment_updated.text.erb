@@ -1,9 +1,6 @@
-<% if @test_mode %>TEST MAIL - asli recipient: <%= @details[:jj_email].presence || "email saved nahi hai" %>
+Namaste <%= @details[:name] %>,
 
-<% end %>Namaste <%= @details[:name] %>,
-
-Aapki payment update ho gayi hai.
-<%= @details[:bill_month] %> <%= @details[:financial_year] %> ke bill ki Rs. <%= @details[:amount] %> payment <%= @details[:transaction_date_label] %> ko <%= @details[:transaction_type] %> dwara bhej di gayi hai.
+<%= JeevikaPaymentMailer.message_for(@details) %>
 
 Jeevika Jankar ID : <%= @details[:jj_id].presence || "-" %>
 Name              : <%= @details[:name].presence || "-" %>

@@ -6,8 +6,8 @@
   * {{...}} ki jagah usi naam ka query parameter rakhein (HTML-encode karke),
     jaise {{name}} -> Request.QueryString["name"].
   * Mail ka subject = {{subject}} parameter.
-  * TEST banner (data-if="test") sirf tab dikhayein jab {{subject}} "[TEST]" se shuru ho;
-    warna poora <tr data-if="test"> hata dein. actual_email hamesha khali aata hai.
+  * Mail ka text = {{message}} (app hi bhejta hai); test_mode aur actual_email ko
+    ignore karein, mail hamesha {{to_email}} par bhejein.
   * Saari styling inline hai aur layout table se bana hai, taaki Gmail,
     Outlook aur Rediffmail mein ek jaisa dikhe. <style> block na jodein.
 -->
@@ -22,13 +22,6 @@
       <tr>
         <td align="center" style="padding:28px 12px;">
           <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #d8e4dc;">
-
-            <!-- TEST banner: sirf test mail par -->
-            <tr data-if="test">
-              <td style="background:#fff4d6;color:#7a5a00;font-size:13px;padding:10px 24px;border-bottom:1px solid #f0dfa8;">
-                {{message}}
-              </td>
-            </tr>
 
             <!-- Header -->
             <tr>
@@ -52,8 +45,7 @@
             <tr>
               <td style="padding:26px 28px 8px;font-size:15px;line-height:1.6;">
                 Namaste <strong>{{name}}</strong>,<br>
-                Aapke <strong>{{bill_month}} {{financial_year}}</strong> ke bill ki payment
-                <strong>{{transaction_date}}</strong> ko <strong>{{transaction_type}}</strong> dwara bhej di gayi hai.
+                {{message}}
               </td>
             </tr>
 

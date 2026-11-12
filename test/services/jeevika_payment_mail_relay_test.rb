@@ -36,21 +36,23 @@ class JeevikaPaymentMailRelayTest < ActiveSupport::TestCase
 
     assert_equal JeevikaPaymentMailRelay::FIELDS, query.keys
     assert_equal "jj@example.com", query["to_email"]
-    assert_equal "Jeevika Jankar Payment Notification", query["subject"]
+    assert_equal "Ram Kumar - Jeevika Jankar Payment Notification", query["subject"]
+    assert_equal "Aapke October 2026-2027 ke bill ki Rs. 2500.00 ki payment 05/11/2026 ko NEFT dwara aapke bank khate mein " \
+                 "bhej di gayi hai. Transaction ID / UTR: UTR778899.", query["message"]
     assert_equal "UTR778899", query["transaction_id"]
     assert_equal "0", query["test_mode"]
     assert_equal "", query["actual_email"]
   end
 
-  test "test mode marks the subject and carries the real address, but still sends" do
+  test "a mail to the test address is the same mail, with no TEST text" do
     ENV["JJ_PAYMENT_MAIL_RELAY_URL"] = "https://krai.asaindia.org/"
-    query = JeevikaPaymentMailRelay.params_for("tester@asabhopal.org", DETAILS, test_mode: true)
-    assert_match "[TEST]", query["subject"]
-    # krai's test_mode=1 is a preview that sends nothing.
+    query = JeevikaPaymentMailRelay.params_for("tester@asabhopal.org", DETAILS)
+    assert_equal "tester@asabhopal.org", query["to_email"]
+    assert_no_match(/test/i, query["subject"] + query["message"])
+    # krai's test_mode=1 is a preview that sends nothing, and a filled
+    # actual_email stops delivery.
     assert_equal "0", query["test_mode"]
-    # krai does not deliver when actual_email is filled; the message names it.
     assert_equal "", query["actual_email"]
-    assert_includes query["message"], "TEST MAIL - asli Jeevika Jankar email: jj@example.com"
   end
 
   test "a JSON failure from krai is a failed mail" do

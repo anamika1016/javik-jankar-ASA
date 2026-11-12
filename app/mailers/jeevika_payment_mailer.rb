@@ -8,8 +8,20 @@
 class JeevikaPaymentMailer < ApplicationMailer
   layout false
 
-  # Same subject on every payment mail, by SMTP or through krai.
+  # Same subject on every payment mail, by SMTP or through krai, with the
+  # Jeevika Jankar's name in front.
   SUBJECT = "Jeevika Jankar Payment Notification".freeze
+
+  def self.subject_for(details)
+    [details[:name].presence, SUBJECT].compact.join(" - ")
+  end
+
+  # The mail text, the same in every mail (a test mail looks like a real one).
+  def self.message_for(details)
+    "Aapke #{details[:bill_month]} #{details[:financial_year]} ke bill ki Rs. #{details[:amount]} ki payment " \
+      "#{details[:transaction_date_label]} ko #{details[:transaction_type]} dwara aapke bank khate mein bhej di gayi hai. " \
+      "Transaction ID / UTR: #{details[:transaction_id].presence || '-'}."
+  end
 
   def self.test_recipient
     ENV["PAYMENT_MAIL_TEST_TO"].to_s.strip.presence
@@ -33,10 +45,6 @@ class JeevikaPaymentMailer < ApplicationMailer
   # details: hash built by ModulesController#jeevika_payment_mail_details
   def payment_updated(recipient, details)
     @details = details
-    @test_mode = self.class.test_recipient.present?
-    subject = JeevikaPaymentMailer::SUBJECT
-    subject = "[TEST] #{subject} (#{details[:name]})" if @test_mode
-
-    mail(to: recipient, from: self.class.from_address, subject: subject)
+    mail(to: recipient, from: self.class.from_address, subject: self.class.subject_for(details))
   end
 end

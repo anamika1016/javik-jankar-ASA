@@ -35,7 +35,7 @@ namespace :jeevika_payment_mail do
 
     ENV["PAYMENT_MAIL_TEST_TO"] = to
     if JeevikaPaymentMailRelay.enabled?
-      JeevikaPaymentMailRelay.deliver!(to, details, test_mode: true)
+      JeevikaPaymentMailRelay.deliver!(to, details)
       via = "krai (#{JeevikaPaymentMailRelay.url})"
     else
       JeevikaPaymentMailer.payment_updated(to, details).deliver_now

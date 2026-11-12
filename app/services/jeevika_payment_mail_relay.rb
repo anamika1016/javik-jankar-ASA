@@ -19,11 +19,10 @@ require "uri"
 # ("success": false, or "status": "error"/"failed"), or krai's page says it
 # sent nothing ("no email was sent").
 #
-# krai's test_mode=1 means "show a preview, send nothing", so it is always 0:
-# a mail to the PAYMENT_MAIL_TEST_TO address is a real mail, marked [TEST]
-# in its subject. actual_email is always blank, because krai's page does not
-# deliver to to_email when it is filled; a test mail names the Jeevika
-# Jankar's own address in its message instead.
+# krai's test_mode=1 means "show a preview, send nothing", so it is always 0,
+# and actual_email is always blank because krai's page does not deliver to
+# to_email when it is filled. A mail to the PAYMENT_MAIL_TEST_TO address is
+# the same mail a Jeevika Jankar gets.
 class JeevikaPaymentMailRelay
   class DeliveryError < StandardError; end
 
@@ -53,17 +52,12 @@ class JeevikaPaymentMailRelay
   end
 
   # details: hash built by ModulesController#jeevika_payment_mail_details
-  def self.params_for(recipient, details, test_mode: false)
-    subject = JeevikaPaymentMailer::SUBJECT
-    subject = "[TEST] #{subject} (#{details[:name]})" if test_mode
-    message = "#{details[:bill_month]} #{details[:financial_year]} ke bill ki Rs. #{details[:amount]} payment " \
-              "#{details[:transaction_date_label]} ko #{details[:transaction_type]} dwara bhej di gayi hai."
-    message = "TEST MAIL - asli Jeevika Jankar email: #{details[:jj_email].presence || 'saved nahi hai'}. #{message}" if test_mode
+  def self.params_for(recipient, details)
     {
       "to_email" => recipient,
       "to_name" => details[:name],
-      "subject" => subject,
-      "message" => message,
+      "subject" => JeevikaPaymentMailer.subject_for(details),
+      "message" => JeevikaPaymentMailer.message_for(details),
       "jj_id" => details[:jj_id],
       "name" => details[:name],
       "mobile_no" => details[:mobile_no],
@@ -82,14 +76,14 @@ class JeevikaPaymentMailRelay
     }.transform_values(&:to_s)
   end
 
-  def self.request_uri(recipient, details, test_mode: false)
+  def self.request_uri(recipient, details)
     uri = URI.parse(url)
-    uri.query = URI.encode_www_form(params_for(recipient, details, test_mode: test_mode))
+    uri.query = URI.encode_www_form(params_for(recipient, details))
     uri
   end
 
-  def self.deliver!(recipient, details, test_mode: false)
-    response, final_uri = fetch(request_uri(recipient, details, test_mode: test_mode))
+  def self.deliver!(recipient, details)
+    response, final_uri = fetch(request_uri(recipient, details))
     # The address (without the payment details) helps to see where it went.
     where = "[#{final_uri.scheme}://#{final_uri.host}#{final_uri.path}]"
     raise DeliveryError, "Mail service asked for a login #{where}" if login_page?(final_uri)
