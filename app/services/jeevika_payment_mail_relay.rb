@@ -57,7 +57,8 @@ class JeevikaPaymentMailRelay
       "to_email" => recipient,
       "to_name" => details[:name],
       "subject" => JeevikaPaymentMailer.subject_for(details),
-      "message" => JeevikaPaymentMailer.message_for(details),
+      # No sentence above the details; krai's page shows them as they are.
+      "message" => "",
       "jj_id" => details[:jj_id],
       "name" => details[:name],
       "mobile_no" => details[:mobile_no],

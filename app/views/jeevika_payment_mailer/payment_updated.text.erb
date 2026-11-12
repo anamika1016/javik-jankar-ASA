@@ -1,7 +1,5 @@
 Namaste <%= @details[:name] %>,
 
-<%= JeevikaPaymentMailer.message_for(@details) %>
-
 Jeevika Jankar ID : <%= @details[:jj_id].presence || "-" %>
 Name              : <%= @details[:name].presence || "-" %>
 Mobile            : <%= @details[:mobile_no].presence || "-" %>

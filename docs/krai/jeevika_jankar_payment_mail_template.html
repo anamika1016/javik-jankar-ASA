@@ -6,8 +6,8 @@
   * {{...}} ki jagah usi naam ka query parameter rakhein (HTML-encode karke),
     jaise {{name}} -> Request.QueryString["name"].
   * Mail ka subject = {{subject}} parameter.
-  * Mail ka text = {{message}} (app hi bhejta hai); test_mode aur actual_email ko
-    ignore karein, mail hamesha {{to_email}} par bhejein.
+  * test_mode aur actual_email ko ignore karein (message khali aata hai);
+    mail hamesha to_email par bhejein.
   * Saari styling inline hai aur layout table se bana hai, taaki Gmail,
     Outlook aur Rediffmail mein ek jaisa dikhe. <style> block na jodein.
 -->
@@ -44,8 +44,7 @@
             <!-- Greeting -->
             <tr>
               <td style="padding:26px 28px 8px;font-size:15px;line-height:1.6;">
-                Namaste <strong>{{name}}</strong>,<br>
-                {{message}}
+                Namaste <strong>{{name}}</strong>,
               </td>
             </tr>
 

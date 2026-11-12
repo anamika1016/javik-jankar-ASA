@@ -16,12 +16,6 @@ class JeevikaPaymentMailer < ApplicationMailer
     [details[:name].presence, SUBJECT].compact.join(" - ")
   end
 
-  # The mail text, the same in every mail (a test mail looks like a real one).
-  def self.message_for(details)
-    "Aapke #{details[:bill_month]} #{details[:financial_year]} ke bill ki Rs. #{details[:amount]} ki payment " \
-      "#{details[:transaction_date_label]} ko #{details[:transaction_type]} dwara aapke bank khate mein bhej di gayi hai. " \
-      "Transaction ID / UTR: #{details[:transaction_id].presence || '-'}."
-  end
 
   def self.test_recipient
     ENV["PAYMENT_MAIL_TEST_TO"].to_s.strip.presence

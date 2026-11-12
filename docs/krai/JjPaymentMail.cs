@@ -24,7 +24,7 @@ using System.Web;
 
 public static class JjPaymentMail
 {
-    // Template mein aane wale parameters: amount, approval_date, bill_id, bill_month, financial_year, jj_id, message, mobile_no, name, transaction_date, transaction_id, transaction_type, updated_by, updated_on
+    // Template mein aane wale parameters: amount, approval_date, bill_id, bill_month, financial_year, jj_id, mobile_no, name, transaction_date, transaction_id, transaction_type, updated_by, updated_on
     public static string BuildHtml(NameValueCollection values)
     {
         return Regex.Replace(Template, @"\{\{(\w+)\}\}", match =>
@@ -68,8 +68,7 @@ public static class JjPaymentMail
             <!-- Greeting -->
             <tr>
               <td style=""padding:26px 28px 8px;font-size:15px;line-height:1.6;"">
-                Namaste <strong>{{name}}</strong>,<br>
-                {{message}}
+                Namaste <strong>{{name}}</strong>,
               </td>
             </tr>
 
