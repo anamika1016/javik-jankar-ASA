@@ -60,6 +60,56 @@ stopped, broadcasts stay at **Pending** on the web list.
 
 ## Part 2 — Android integration
 
+### 2.0 Wire Firebase into the project
+
+`google-services.json` comes from the same Firebase project the server
+authenticates against. Both sides must be project **kishan-6817f** — a file
+from any other project means the token is issued by a project the server
+cannot send to, and nothing arrives with no error anywhere.
+
+1. Put `google-services.json` in the **`app/`** module directory (not the
+   project root).
+
+2. Project-level `build.gradle` (or `settings.gradle.kts` plugins block):
+
+   ```groovy
+   plugins {
+       id("com.google.gms.google-services") version "4.4.2" apply false
+   }
+   ```
+
+3. App-level `app/build.gradle`:
+
+   ```groovy
+   plugins {
+       id("com.google.gms.google-services")
+   }
+
+   dependencies {
+       implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+       implementation("com.google.firebase:firebase-messaging")
+   }
+   ```
+
+4. `AndroidManifest.xml` — the service that receives messages, and the
+   runtime permission Android 13+ needs before a notification can be shown:
+
+   ```xml
+   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+   <service
+       android:name=".FarmerMessagingService"
+       android:exported="false">
+       <intent-filter>
+           <action android:name="com.google.firebase.MESSAGING_EVENT" />
+       </intent-filter>
+   </service>
+   ```
+
+5. Ask for `POST_NOTIFICATIONS` at runtime on Android 13+. Without it the
+   message is delivered and silently never displayed — the server will show
+   "Sent", so this is an easy one to lose time on.
+
 ### 2.1 Register the token after every login
 
 Call this **after** `/api/v1/farmer/login/otp/verify` succeeds.

@@ -8,7 +8,9 @@
     <%= push.status %>
   </span>
   <small class="farmer-sub"><%= push.summary %></small>
-  <% if push.error.present? && !push.delivered? %>
+  <%# summary already carries the reason for Skipped and Failed; printing
+      both put the same sentence on screen twice. %>
+  <% if push.error.present? && !push.delivered? && push.error != push.summary %>
     <small class="farmer-sub muted-note"><%= push.error %></small>
   <% end %>
 <% end %>

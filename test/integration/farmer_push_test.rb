@@ -304,6 +304,18 @@ class FarmerPushTest < ActionDispatch::IntegrationTest
     assert_match(/FCM_SERVICE_ACCOUNT_JSON/, output)
   end
 
+  test "a skipped reason is printed once, not twice" do
+    perform_enqueued_jobs do
+      post farmer_news_index_path, params: { farmer_news_item: { title: "Nobody yet", state_id: "1" } }
+    end
+
+    get farmer_news_index_path
+    assert_response :success
+    reason = FarmerNewsItem.last.last_push_message.error
+    assert reason.present?
+    assert_equal 1, response.body.scan(reason).size, "the same sentence must not be shown twice"
+  end
+
   private
 
   # $stdout is swapped first so the ensure always has something to put back;

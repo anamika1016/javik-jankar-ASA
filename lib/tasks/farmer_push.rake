@@ -20,7 +20,9 @@ namespace :farmer_push do
     puts "\nLast 10 broadcasts:"
     FarmerPushMessage.recent_first.limit(10).each do |message|
       puts format("  [%-7s] %-40s %s", message.status, message.title.to_s.first(40), message.summary)
-      puts "            #{message.error}" if message.error.present?
+      # summary already carries the error for Skipped/Failed; printing both
+      # put the same sentence on screen twice.
+      puts "            #{message.error}" if message.error.present? && message.summary != message.error
     end
     puts "  (none yet)" if FarmerPushMessage.none?
   end
