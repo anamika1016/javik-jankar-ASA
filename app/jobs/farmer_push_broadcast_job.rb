@@ -16,10 +16,7 @@ class FarmerPushBroadcastJob < ApplicationJob
 
     tokens = FarmerDevice.tokens_for_state(message.state_id)
     message.update!(device_count: tokens.size)
-    if tokens.empty?
-      return message.update!(status: "Skipped",
-        error: "No farmer in this state has the app registered for notifications yet.")
-    end
+    return message.update!(status: "Skipped", error: nothing_to_send_reason) if tokens.empty?
 
     result = FcmClient.send_notification(
       tokens: tokens, title: message.title, body: message.body,
@@ -38,6 +35,20 @@ class FarmerPushBroadcastJob < ApplicationJob
   end
 
   private
+
+  # "No farmer in this state" reads like a state-matching problem even when
+  # no phone has registered anywhere, which is the usual case before the app
+  # ships. Say which of the two it actually is.
+  def nothing_to_send_reason
+    total = FarmerDevice.count
+    if total.zero?
+      "No farmer has registered the app for notifications yet, in any state. " \
+        "The app must call POST /api/v1/farmer/devices after login."
+    else
+      "No farmer in this state has registered yet. " \
+        "#{total} device#{'s' if total != 1} registered in other states."
+    end
+  end
 
   def push_data(message, item)
     {

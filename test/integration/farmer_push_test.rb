@@ -175,7 +175,22 @@ class FarmerPushTest < ActionDispatch::IntegrationTest
 
     message = FarmerNewsItem.last.last_push_message
     assert_equal "Skipped", message.status
-    assert_match(/registered for notifications yet/, message.error)
+    # No phone anywhere: do not blame the state, and say what to do.
+    assert_match(/in any state/, message.error)
+    assert_match(%r{POST /api/v1/farmer/devices}, message.error)
+  end
+
+  test "with phones registered elsewhere, the state really is the reason" do
+    register("tok-odisha", ODISHA_FARMER)
+
+    perform_enqueued_jobs do
+      post farmer_news_index_path, params: { farmer_news_item: { title: "MP only", state_id: "1" } }
+    end
+
+    message = FarmerNewsItem.last.last_push_message
+    assert_equal "Skipped", message.status
+    assert_match(/No farmer in this state has registered yet/, message.error)
+    assert_match(/1 device registered in other states/, message.error)
   end
 
   test "with Firebase unconfigured the post still publishes and says why" do
