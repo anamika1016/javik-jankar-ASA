@@ -49,7 +49,7 @@ class FarmerRegisterLookup
     cached = Rails.cache.read(cache_key)
     return Result.new(**cached) if cached.is_a?(Hash)
 
-    result = fetch
+    result = with_land_details(fetch)
     # Transport failures are not cached: the next attempt should really retry.
     if result.found?
       Rails.cache.write(cache_key, { farmer: result.farmer }, expires_in: CACHE_TTL)
@@ -62,6 +62,28 @@ class FarmerRegisterLookup
   private
 
   attr_reader :mobile_no, :aadhaar_no
+
+  # Asked by mobile, the register answers without land_details; asked by
+  # Aadhaar it includes them. Land is where the farmer's state comes from,
+  # and the state decides which news and videos reach them -- so a farmer who
+  # signed in with their mobile had no state and only ever received the
+  # All States feed.
+  #
+  # The mobile answer does carry the Aadhaar, so ask again with that. The
+  # second answer is cached under its own key, so this costs one extra call
+  # per farmer per cache window, not per request.
+  def with_land_details(result)
+    return result unless mobile_no.present? && result.found?
+    return result if Array(result.farmer["land_details"]).any?
+
+    aadhaar = result.farmer["aadhaar_no"].presence || result.farmer["aadhaar_card_no"].presence
+    return result if aadhaar.blank?
+
+    detailed = self.class.by_aadhaar(aadhaar)
+    return result unless detailed.found? && Array(detailed.farmer["land_details"]).any?
+
+    Result.new(farmer: result.farmer.merge(detailed.farmer))
+  end
 
   def fetch
     response = get(uri)
