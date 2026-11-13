@@ -11,16 +11,28 @@ require "base64"
 # project's service account. The JWT is assembled with OpenSSL rather than
 # pulling in googleauth for one signature.
 #
-# Credentials come from FCM_SERVICE_ACCOUNT_JSON (the whole service-account
-# JSON) or Rails credentials under :fcm. With neither, sending reports
-# "not configured" instead of raising -- publishing a news item must not fail
-# because push is not set up yet.
+# Credentials are looked for in four places, in order:
+#   1. FCM_SERVICE_ACCOUNT_FILE -- an explicit path.
+#   2. DEFAULT_KEY_PATHS -- just dropping the downloaded .json at one of
+#      these is enough. Editing a systemd unit to set an environment
+#      variable is the step most likely to go wrong, so it is not required.
+#   3. FCM_SERVICE_ACCOUNT_JSON -- the whole JSON in an environment variable.
+#   4. Rails credentials under :fcm.
+# The project id is read from the JSON itself, so FCM_PROJECT_ID is optional.
+# With none of them, sending reports "not configured" instead of raising --
+# publishing a news item must not fail because push is not set up yet.
 class FcmClient
   TOKEN_URL = "https://oauth2.googleapis.com/token".freeze
   SCOPE = "https://www.googleapis.com/auth/firebase.messaging".freeze
   # FCM v1 sends to one token per call; this caps a broadcast so one slow
   # batch cannot hold a worker forever.
   MAX_TOKENS = 2_000
+  # Conventional homes for the service-account file. config/ is inside the
+  # app and survives a git-pull deploy because the file is never committed.
+  DEFAULT_KEY_PATHS = [
+    "/etc/asa/fcm-service-account.json",
+    "config/fcm-service-account.json"
+  ].freeze
   OPEN_TIMEOUT = 3
   READ_TIMEOUT = 10
 
@@ -32,6 +44,11 @@ class FcmClient
   class << self
     def configured?
       credentials.present?
+    end
+
+    # Where the status task tells an operator to put the file.
+    def expected_key_paths
+      key_paths
     end
 
     # Returns a Result. Tokens FCM reports as dead come back so the caller can
@@ -69,10 +86,41 @@ class FcmClient
     def credentials
       return @credentials if defined?(@credentials) && @credentials
 
-      raw = ENV["FCM_SERVICE_ACCOUNT_JSON"].presence
-      parsed = raw ? (JSON.parse(raw) rescue nil) : nil
+      parsed = parse_json(service_account_file_contents)
+      parsed ||= parse_json(ENV["FCM_SERVICE_ACCOUNT_JSON"])
       parsed ||= Rails.application.credentials.fcm&.deep_stringify_keys
       @credentials = parsed if parsed && parsed["private_key"].present? && parsed["client_email"].present?
+    end
+
+    def service_account_file_contents
+      explicit = ENV["FCM_SERVICE_ACCOUNT_FILE"].presence
+      if explicit
+        unless File.readable?(explicit)
+          Rails.logger.error("FCM_SERVICE_ACCOUNT_FILE is set to #{explicit}, which cannot be read.")
+          return
+        end
+
+        return File.read(explicit)
+      end
+
+      path = key_paths.find { |candidate| File.readable?(candidate) }
+      path ? File.read(path) : nil
+    end
+
+    def key_paths
+      DEFAULT_KEY_PATHS.map do |path|
+        path.start_with?("/") ? path : Rails.root.join(path).to_s
+      end
+    end
+
+    def parse_json(raw)
+      return if raw.blank?
+
+      parsed = JSON.parse(raw)
+      parsed.is_a?(Hash) ? parsed : nil
+    rescue JSON::ParserError
+      Rails.logger.error("FCM service account is not valid JSON.")
+      nil
     end
 
     def project_id

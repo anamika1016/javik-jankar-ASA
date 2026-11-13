@@ -26,12 +26,25 @@ nothing was sent. **Nothing is sent silently.**
 In the Firebase console: **Project settings → Service accounts → Generate new
 private key**. That downloads a `.json` file.
 
-On the production server:
+Copy that file onto the production server and point the app at it:
 
 ```bash
-FCM_SERVICE_ACCOUNT_JSON='<paste the whole contents of that .json file>'
-FCM_PROJECT_ID='<the project_id from the same file>'
+sudo mkdir -p /etc/asa
+sudo cp kishan-6817f-firebase-adminsdk-*.json /etc/asa/fcm-service-account.json
+sudo chmod 600 /etc/asa/fcm-service-account.json
+sudo chown <the user the app runs as> /etc/asa/fcm-service-account.json
 ```
+
+Then set, wherever the app's environment is defined:
+
+```bash
+FCM_SERVICE_ACCOUNT_FILE=/etc/asa/fcm-service-account.json
+FCM_PROJECT_ID=kishan-6817f
+```
+
+Pasting the whole JSON into `FCM_SERVICE_ACCOUNT_JSON` works too, but the
+file is easier to get right — the key contains newlines that are easy to
+mangle in a shell variable.
 
 Restart the app, then:
 

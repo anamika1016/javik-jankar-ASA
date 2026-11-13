@@ -20,3 +20,6 @@
 
 # Precompiled assets. The server builds its own on deploy.
 /public/assets
+
+# Firebase service account key -- never commit this.
+config/fcm-service-account.json

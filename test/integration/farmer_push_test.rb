@@ -230,6 +230,60 @@ class FarmerPushTest < ActionDispatch::IntegrationTest
     assert_select ".farmer-sub", text: /Sent to 1 of 1 device/
   end
 
+  # The service-account file is how this gets deployed, so the reading of it
+  # is worth pinning: a typo'd path must say so, not look like "no Firebase".
+  test "credentials are read from the service account file on disk" do
+    unstub_fcm
+    path = Rails.root.join("tmp", "fcm-test-account.json")
+    File.write(path, { "project_id" => "kishan-6817f", "client_email" => "a@b.iam.gserviceaccount.com",
+                       "private_key" => "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----\n" }.to_json)
+
+    with_env("FCM_SERVICE_ACCOUNT_FILE" => path.to_s) do
+      assert FcmClient.configured?
+    end
+  ensure
+    FileUtils.rm_f(path)
+    FcmClient.remove_instance_variable(:@credentials) if FcmClient.instance_variable_defined?(:@credentials)
+  end
+
+  # Editing a systemd unit is the step most likely to go wrong, so dropping
+  # the file at the conventional path has to be enough on its own.
+  test "the key file is picked up from the default path with no env var set" do
+    unstub_fcm
+    path = Rails.root.join("config", "fcm-service-account.json")
+    File.write(path, { "project_id" => "kishan-6817f", "client_email" => "a@b.iam.gserviceaccount.com",
+                       "private_key" => "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----\n" }.to_json)
+
+    with_env("FCM_SERVICE_ACCOUNT_FILE" => nil, "FCM_SERVICE_ACCOUNT_JSON" => nil) do
+      assert FcmClient.configured?, "the file at the default path should be enough"
+    end
+  ensure
+    FileUtils.rm_f(path)
+    FcmClient.remove_instance_variable(:@credentials) if FcmClient.instance_variable_defined?(:@credentials)
+  end
+
+  test "the status task names the exact paths to put the file at" do
+    unstub_fcm
+    with_env("FCM_SERVICE_ACCOUNT_FILE" => nil, "FCM_SERVICE_ACCOUNT_JSON" => nil) do
+      output = capture_rake("farmer_push:status")
+      assert_match(%r{/etc/asa/fcm-service-account\.json.*not found}, output)
+      assert_match(%r{config/fcm-service-account\.json.*not found}, output)
+    end
+  ensure
+    FcmClient.remove_instance_variable(:@credentials) if FcmClient.instance_variable_defined?(:@credentials)
+  end
+
+  test "an unreadable service account path is reported, not silently ignored" do
+    unstub_fcm
+    with_env("FCM_SERVICE_ACCOUNT_FILE" => "/no/such/fcm.json") do
+      assert_not FcmClient.configured?
+      output = capture_rake("farmer_push:status")
+      assert_match(%r{FILE=/no/such/fcm\.json}, output)
+    end
+  ensure
+    FcmClient.remove_instance_variable(:@credentials) if FcmClient.instance_variable_defined?(:@credentials)
+  end
+
   test "the status task reports credentials, devices and recent broadcasts" do
     register("tok-mp", MP_FARMER)
     perform_enqueued_jobs do
@@ -254,6 +308,14 @@ class FarmerPushTest < ActionDispatch::IntegrationTest
 
   # $stdout is swapped first so the ensure always has something to put back;
   # loading the tasks can raise, and restoring nil breaks every later test.
+  def with_env(values)
+    previous = values.keys.index_with { |key| ENV[key] }
+    values.each { |key, value| ENV[key] = value }
+    yield
+  ensure
+    previous.each { |key, value| value.nil? ? ENV.delete(key) : ENV[key] = value }
+  end
+
   def capture_rake(task)
     original = $stdout
     out = StringIO.new

@@ -1,7 +1,18 @@
 namespace :farmer_push do
   desc "Check push is wired up: credentials, registered devices, recent broadcasts"
   task status: :environment do
-    puts "Firebase configured : #{FcmClient.configured? ? 'yes' : 'NO — set FCM_SERVICE_ACCOUNT_JSON and FCM_PROJECT_ID'}"
+    if FcmClient.configured?
+      puts "Firebase configured : yes"
+    else
+      puts "Firebase configured : NO"
+      puts "  Put the Firebase service-account .json at either of these, then restart:"
+      FcmClient.expected_key_paths.each do |path|
+        puts "    #{path} #{File.exist?(path) ? '(exists but could not be read or parsed)' : '(not found)'}"
+      end
+      puts "  Or set FCM_SERVICE_ACCOUNT_FILE / FCM_SERVICE_ACCOUNT_JSON."
+      puts "  Currently: FILE=#{ENV['FCM_SERVICE_ACCOUNT_FILE'].presence || '(unset)'} " \
+           "JSON=#{ENV['FCM_SERVICE_ACCOUNT_JSON'].present? ? '(set)' : '(unset)'}"
+    end
     puts "Registered devices  : #{FarmerDevice.count}"
     FarmerDevice.joins(:farmer_app_login).group("farmer_app_logins.state_name").count
       .each { |state, count| puts "  #{state.presence || '(no state)'}: #{count}" }
