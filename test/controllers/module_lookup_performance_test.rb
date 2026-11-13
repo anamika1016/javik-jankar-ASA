@@ -68,8 +68,9 @@ class ModuleLookupPerformanceTest < ActiveSupport::TestCase
 
   test "dashboard office visibility preserves normalized FCO and TO matches" do
     office = "Performance#{SecureRandom.hex(4)}"
-    matching_fcoc = create_test_vrp("FCO Match", fcoc: "FCO-C #{office}")
+    matching_fcoc = create_test_vrp("FCO Match", fcoc: " #{office.upcase} ")
     matching_to = create_test_vrp("TO Match", to_name: office)
+    prefixed = create_test_vrp("Prefixed Office", fcoc: "FCO-C #{office}")
     outside = create_test_vrp("Outside", fcoc: "Elsewhere#{SecureRandom.hex(4)}", to_name: "Other")
     controller = ModulesController.new
     controller.define_singleton_method(:model_ready?) { |_| true }
@@ -84,6 +85,9 @@ class ModuleLookupPerformanceTest < ActiveSupport::TestCase
 
     assert_equal [matching_fcoc.id, matching_to.id].sort, visible.map(&:id).sort
     assert_not_includes visible.map(&:id), outside.id
+    # This legacy helper normalizes labels, not office prefixes. Do not widen
+    # access while checking that the narrower SQL read preserves its behavior.
+    assert_not_includes visible.map(&:id), prefixed.id
     assert_equal 3, queries.size
     assert queries[0].include?("DISTINCT")
     assert queries[1].include?("DISTINCT")

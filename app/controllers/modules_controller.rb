@@ -2928,8 +2928,26 @@ class ModulesController < ApplicationController
       end
       { positions: positions, blank: blank }
     end
-    positions = index[:blank] + training_vrp_owner_values(target.vrp).flat_map { |value| index[:positions].fetch(value, []) }
-    positions.uniq.sort.map { |position| records[position] }
+    # Multiple activities for one JJ reuse the same owner/month candidates.
+    # Cache by the complete normalized identity, so a changed name/mobile does
+    # not reuse the old owner's selection. Return a fresh outer array as before.
+    owner_values = training_vrp_owner_values(target.vrp)
+    cache = index[:candidates] ||= {}
+    return cache[owner_values].dup if cache.key?(owner_values)
+
+    positions = index[:blank] + owner_values.flat_map { |value| index[:positions].fetch(value, []) }
+    candidates = positions.uniq.sort.map { |position| records[position] }
+    # Legacy blank-owner rows can match every JJ. Bound retained references as
+    # well as identities so a large archive cannot multiply request memory.
+    if candidates.size <= 100_000
+      if cache.size >= 128 || index[:candidate_references].to_i + candidates.size > 100_000
+        cache.clear
+        index[:candidate_references] = 0
+      end
+      cache[owner_values] = candidates
+      index[:candidate_references] = index[:candidate_references].to_i + candidates.size
+    end
+    candidates.dup
   end
 
   def training_achievement_for_records(records)
@@ -3223,11 +3241,7 @@ class ModulesController < ApplicationController
     @approved_other_target_completed_farmer_ids_by_target = Hash.new { |hash, key| hash[key] = [] }
     return @approved_other_target_completed_farmer_ids_by_target unless model_ready?(:ModuleRecord)
 
-    records = other_target_progress_records_scope
-    candidate_months = other_target_candidate_targets.map { |target| normalize_dashboard_text(target.month_name) }.reject(&:blank?).uniq
-    records = records.where("LOWER(BTRIM(data::jsonb ->> 'month')) IN (?)", candidate_months) if candidate_months.present?
-    records = records
-      .order(created_at: :asc)
+    records = other_target_calculation_candidates(other_target_records_for_calculation(created_at: :asc))
       .select { |record| approved_other_target_record?(record) }
 
     index_other_target_records_by_target(records, @approved_other_target_completed_farmer_ids_by_target)
@@ -12677,7 +12691,7 @@ class ModulesController < ApplicationController
     @approved_other_target_achievement_indexes ||= {}
     return @approved_other_target_achievement_indexes[candidate_key] if @approved_other_target_achievement_indexes.key?(candidate_key)
 
-    records = other_target_records_for_calculation(updated_at: :desc)
+    records = other_target_calculation_candidates(other_target_records_for_calculation(updated_at: :desc))
 
     @approved_other_target_achievement_indexes[candidate_key] = records
       .select { |record| approved_other_target_record?(record) }
@@ -12708,6 +12722,43 @@ class ModulesController < ApplicationController
           achieved_at: entry[:achieved_dates].join(", ")
         }
       end
+  end
+
+  # A scoped Bill List calculates each owner's totals separately. The monthly
+  # rows are shared, but scanning all of them again for each owner is quadratic.
+  # Index only necessary matching conditions; the complete legacy matcher still
+  # decides the result, including saved IDs with incomplete owner metadata.
+  def other_target_calculation_candidates(records)
+    return records if records.empty?
+
+    targets = other_target_candidate_targets
+    return records if targets.blank?
+
+    @other_target_calculation_record_indexes ||= {}.compare_by_identity
+    index = @other_target_calculation_record_indexes[records] ||= begin
+      by_id = Hash.new { |hash, key| hash[key] = [] }
+      by_owner_month = Hash.new { |hash, key| hash[key] = [] }
+      records.each_with_index do |record, position|
+        data = record.data || {}
+        saved_id = data["target_mapping_id"].to_s.strip
+        by_id[saved_id] << position if saved_id.present?
+        owner = normalize_dashboard_text(data["jeevika_jankar_id"].presence || data["jeevika_jankar_name"].presence || data["select_vrp"])
+        month = normalize_dashboard_text(data["month"])
+        by_owner_month[[owner, month]] << position if owner.present? && month.present?
+      end
+      [by_id, by_owner_month]
+    end
+    positions = targets.flat_map do |target|
+      direct_positions = index[0].fetch(target.id.to_s, [])
+      next direct_positions if index[1].empty?
+
+      month = normalize_dashboard_text(target.month_name)
+      owners = [target.vrp_id, target.vrp&.name, target.vrp&.user_name]
+        .map { |value| normalize_dashboard_text(value) }.reject(&:blank?).uniq
+      direct_positions + owners.flat_map { |owner| index[1].fetch([owner, month], []) }
+    end
+    # Preserve SQL order and duplicate source rows by indexing positions.
+    positions.uniq.sort.map { |position| records[position] }
   end
 
   def other_target_record_target_mapping_ids(record)
@@ -12891,7 +12942,10 @@ class ModulesController < ApplicationController
             .select { |record| training_record_matches_dashboard_target?(record, target, []) }
           records.any? ? records.sum { |record| training_form_achievement_count(record) } : progress[:completed]
         else
-          other_target_achievement_index.dig(target.id.to_s, :achievement).to_f
+          # The full bill uses the grouped progress value, including saved
+          # fallback quantities and its target cap. Keep the fast total equal
+          # to that value instead of substituting a raw index hit (or zero).
+          progress[:completed]
         end
         next {
           target_mapping_id: progress[:target_mapping_id],
@@ -13907,7 +13961,10 @@ class ModulesController < ApplicationController
     end
     return nil if training_targets.blank?
 
+    candidates = training_targets.flat_map { |target| dashboard_training_candidates_for_target(target) }.to_set
     training_records = dashboard_training_form_records_for_month(month).select do |training|
+      next false unless candidates.include?(training)
+
       training_targets.any? do |target|
         training_record_matches_dashboard_target?(training, target, [])
       end
@@ -14250,9 +14307,17 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_bill_cc_name(record)
-    values = [jeevika_bill_vrp(record)&.cluster_incharge, record.data["cluster_incharge"], record.data["cc_name"]] +
-      jeevika_bill_detail_rows(record).flat_map { |item| [item["cluster_incharge"], item["cc_name"]] }
-    values.map { |value| value.to_s.strip }.reject { |value| value.blank? || value.match?(/\A(?:-|null|nil)\z/i) }.first || "-"
+    [jeevika_bill_vrp(record)&.cluster_incharge, record.data["cluster_incharge"], record.data["cc_name"]].each do |value|
+      label = value.to_s.strip
+      return label unless label.blank? || label.match?(/\A(?:-|null|nil)\z/i)
+    end
+    jeevika_bill_detail_rows(record).each do |item|
+      [item["cluster_incharge"], item["cc_name"]].each do |value|
+        label = value.to_s.strip
+        return label unless label.blank? || label.match?(/\A(?:-|null|nil)\z/i)
+      end
+    end
+    "-"
   end
 
   def first_present_from_items(items, *keys)
@@ -15098,22 +15163,21 @@ class ModulesController < ApplicationController
     normalized_label = normalize_dashboard_user_label(label.to_s.sub(/\s*\([^)]*\)\s*\z/, ""))
     return false if normalized_label.blank?
 
-    @user_record_cluster_incharge_label_cache ||= {}
-    return @user_record_cluster_incharge_label_cache[normalized_label] if @user_record_cluster_incharge_label_cache.key?(normalized_label)
+    @dashboard_cluster_role_label_index ||= begin
+      @dashboard_cluster_role_users ||= User.order(:first_name, :last_name, :user_name).to_a
+      @dashboard_cluster_role_users.each_with_object({}) do |user, index|
+        role = (user.respond_to?(:role_name) ? user.role_name : nil).presence ||
+          (user.respond_to?(:role) ? user.role : nil)
+        next unless role.to_s.downcase.include?("cluster")
 
-    @dashboard_cluster_role_users ||= User.order(:first_name, :last_name, :user_name).to_a
-    @user_record_cluster_incharge_label_cache[normalized_label] = @dashboard_cluster_role_users.any? do |user|
-      user_labels = [
-        user.respond_to?(:full_name) ? user.full_name : nil,
-        user.respond_to?(:user_name) ? user.user_name : nil,
-        user.respond_to?(:name) ? user.name : nil
-      ].compact_blank.map { |value| normalize_dashboard_user_label(value) }
-      next false unless user_labels.include?(normalized_label)
-
-      role = (user.respond_to?(:role_name) ? user.role_name : nil).presence ||
-        (user.respond_to?(:role) ? user.role : nil)
-      role.to_s.downcase.include?("cluster")
+        [
+          user.respond_to?(:full_name) ? user.full_name : nil,
+          user.respond_to?(:user_name) ? user.user_name : nil,
+          user.respond_to?(:name) ? user.name : nil
+        ].compact_blank.each { |value| index[normalize_dashboard_user_label(value)] = true }
+      end
     end
+    @dashboard_cluster_role_label_index.key?(normalized_label)
   end
 
   def hierarchy_cluster_incharge_labels

@@ -148,7 +148,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_11_140000) do
     t.string "village_name"
     t.index ["aadhaar_digest"], name: "index_farmer_app_logins_on_aadhaar_digest"
     t.index ["farmer_external_id"], name: "index_farmer_app_logins_on_farmer_external_id", unique: true
-    t.index ["last_logged_in_at", "id"], name: "index_farmer_app_logins_on_recent_login", order: :desc
+    t.index ["last_logged_in_at"], name: "index_farmer_app_logins_on_last_logged_in_at", order: :desc
     t.index ["mobile_no"], name: "index_farmer_app_logins_on_mobile_no"
     t.index ["state_id"], name: "index_farmer_app_logins_on_state_id"
   end

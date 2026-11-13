@@ -8,6 +8,7 @@ from pathlib import Path
 
 requests = {}
 sources = defaultdict(lambda: {"count": 0, "total_ms": 0, "max_ms": 0, "log_lines": []})
+stages = defaultdict(lambda: {"count": 0, "total_ms": 0, "max_ms": 0, "log_lines": []})
 for line_number, line in enumerate(Path(sys.argv[1]).read_text().splitlines(), 1):
     match = re.search(r"\[([0-9a-f-]{36})\] (.*)", line)
     if not match:
@@ -18,6 +19,18 @@ for line_number, line in enumerate(Path(sys.argv[1]).read_text().splitlines(), 1
     if start:
         request["path"] = start.group(1)
         request["log_line"] = line_number
+    stage = re.search(r"PERFORMANCE_STAGE stage=(\S+) duration_ms=([\d.]+)(.*)", event)
+    if stage:
+        name, duration, details = stage.groups()
+        measurement = {"stage": name, "duration_ms": float(duration), "log_line": line_number}
+        for key, value in re.findall(r"(cpu_process_ms|gc_process_ms|allocations_process|items)=([\d.]+)", details):
+            measurement[key] = float(value) if "." in value else int(value)
+        request.setdefault("stages", []).append(measurement)
+        entry = stages[name]
+        entry["count"] += 1
+        entry["total_ms"] += float(duration)
+        entry["max_ms"] = max(entry["max_ms"], float(duration))
+        entry["log_lines"].append(line_number)
     sql = re.search(r"PERFORMANCE_SQL duration_ms=([\d.]+).* source=(\S+)", event)
     if sql:
         duration, source = sql.groups()
@@ -37,6 +50,10 @@ for line_number, line in enumerate(Path(sys.argv[1]).read_text().splitlines(), 1
         counts = re.search(r"\((\d+) quer(?:y|ies), (\d+) cached\)", event)
         if counts:
             request["queries"], request["cached_queries"] = map(int, counts.groups())
-print(json.dumps({"requests": sorted(requests.values(), key=lambda row: row.get("duration_ms", 0), reverse=True),
+print(json.dumps({"request_count": len(requests),
+    "completed_request_count": sum("duration_ms" in row for row in requests.values()),
+    "requests": sorted(requests.values(), key=lambda row: row.get("duration_ms", 0), reverse=True),
+    "stages": sorted(({"stage": key, **value} for key, value in stages.items()),
+                     key=lambda row: row["total_ms"], reverse=True),=-------
     "sql_sources": sorted(({"source": key, **value} for key, value in sources.items()),
                           key=lambda row: row["total_ms"], reverse=True)}, indent=2))

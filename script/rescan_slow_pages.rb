@@ -65,7 +65,7 @@ Object.new.extend(ActiveSupport::Testing::TimeHelpers).travel_to(Time.zone.parse
       add_module.call("gram-panchayat-master", { "state" => "State", "district" => "District", "block" => "Block", "gram_panchayat_name" => "Gram #{number}", "gp_code" => number.to_s })
       add_module.call("village-master", { "state" => "State", "district" => "District", "block" => "Block", "gram_panchayat" => "Gram #{number}", "gp_code" => number.to_s, "village_name" => "Village #{number}", "village_code" => "v#{number}" })
     end
-    20.times do |number|
+    Integer(ENV.fetch("RESCAN_OWNERS", "20")).times do |number|
       owner = Vrp.new(id: 9_000_000 + number, name: "Audit JJ #{number}", user_name: "audit_jj_#{number}",
         aadhar_no: "123456789012", account_no: "123", address: "Test", branch: "Test", date_of_birth: Date.new(1990, 1, 1),
         date_of_joining: Date.current, email: "audit#{number}@example.test", experience_in_years: 0, father_husband_name: "Test",
@@ -82,6 +82,15 @@ Object.new.extend(ActiveSupport::Testing::TimeHelpers).travel_to(Time.zone.parse
           village_id: "v#{number}", village_name: "Village #{number}", month_name: "October", main_activity_name: activity,
           activity_name: "Work #{activity}", target_quantity: 10, afl_ids: farmers.map(&:id),
           created_at: Time.current - (number * 3 + index).seconds, updated_at: Time.current - (number * 3 + index).seconds)
+        if activity == "Visit"
+          Integer(ENV.fetch("RESCAN_OTHER_RECORDS_PER_OWNER", "0")).times do |entry|
+            add_module.call("other-target", { "target_mapping_id" => target.id.to_s,
+              "jeevika_jankar_id" => owner.id.to_s, "month" => "October", "ics" => "Block",
+              "village" => "Village #{number}", "training_topic" => "Visit", "training_subject" => "Work Visit",
+              "achievement" => "1", "approval_status" => entry.even? ? "Approved" : "Pending",
+              "selected_farmer_ids" => farmers.first(2).map { |farmer| farmer.id.to_s }, "achievement_date" => "2026-10-10" })
+          end
+        end
         if ENV["RESCAN_EXPORTS"] == "1" && activity == "Visit"
           add_module.call("other-target", { "jeevika_jankar_id" => owner.id.to_s, "jeevika_jankar_name" => owner.name,
             "month" => "October", "target_mapping_id" => target.id.to_s, "contact_number" => owner.mobile_no,

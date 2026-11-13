@@ -11,7 +11,7 @@ const languageSource = extract('    const googleLanguageCodes =', '    const pre
 // A combo that behaves like Google's: it ignores a value that is not one of its
 // options, which is why the empty placeholder never reverted the page.
 const makeCombo = () => ({
-  options: ['', 'en', 'hi', 'mr', 'or', 'gu'],
+  options: ['', 'en', 'hi', 'mr', 'or', 'gu'].map((value) => ({ value })),
   value: '',
   changes: [],
   dispatchEvent(event) { this.changes.push({ value: this.value, type: event.type }); }
@@ -22,6 +22,7 @@ const buildContext = ({ combo = makeCombo(), translated = false } = {}) => {
   const timers = [];
   const context = {
     document: {
+      getElementById: () => null,
       cookie: '',
       documentElement: { className: translated ? 'translated-ltr' : '' },
       querySelector: (selector) => (selector === '.goog-te-combo' ? combo : null),
@@ -43,6 +44,7 @@ const buildContext = ({ combo = makeCombo(), translated = false } = {}) => {
     get: () => cookies.join('; '),
     set: (value) => { cookies.push(value); }
   });
+  context.setTimeout = context.window.setTimeout;
   vm.createContext(context);
   vm.runInContext(`${languageSource}\nthis.applyGoogleLanguage = applyGoogleLanguage;`, context);
   return context;
@@ -94,6 +96,7 @@ test('a switch retries while Google has not attached its select yet', async () =
   const timers = [];
   const context = {
     document: {
+      getElementById: () => null,
       documentElement: { className: '' },
       querySelector: (selector) => (selector === '.goog-te-combo' ? combo : null),
       createElement: () => ({ style: {} }),
@@ -111,6 +114,7 @@ test('a switch retries while Google has not attached its select yet', async () =
     get: () => cookies.join('; '),
     set: (value) => { cookies.push(value); }
   });
+  context.setTimeout = context.window.setTimeout;
   vm.createContext(context);
   vm.runInContext(`${languageSource}\nthis.applyGoogleLanguage = applyGoogleLanguage;`, context);
 

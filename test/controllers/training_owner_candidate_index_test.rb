@@ -31,7 +31,7 @@ class TrainingOwnerCandidateIndexTest < ActiveSupport::TestCase
     reads = 0
     original = controller.method(:training_record_owner_values)
     controller.define_singleton_method(:training_record_owner_values) { |record| reads += 1; original.call(record) }
-    50.times do |id|
+    150.times do |id|
       target = TargetMapping.new(month_name: "November")
       target.vrp = Vrp.new(id: id, name: "Owner #{id}")
       assert_equal [records[id]], controller.send(:dashboard_training_candidates_for_target, target)
@@ -56,4 +56,33 @@ class TrainingOwnerCandidateIndexTest < ActiveSupport::TestCase
     assert_same actual, controller.send(:dashboard_training_form_records, [target], [])
     assert_equal 1, reads
   end
+  test "reused candidates isolate array edits and follow changed identities and source snapshots" do
+    c = ModulesController.new
+    owner = Vrp.new(id: 12, name: "First JJ", user_name: "login", mobile_no: "111")
+    target = TargetMapping.new(month_name: "November", vrp: owner)
+    records = [ModuleRecord.new(id: 1, data: { "trainer_name" => "First JJ" }),
+      ModuleRecord.new(id: 2, data: { "trainer_name" => "Second JJ" }),
+      ModuleRecord.new(id: 3, data: {}),
+      ModuleRecord.new(id: 4, data: { "trainer_contact" => "222" })]
+    records.insert(1, records.first)
+    c.define_singleton_method(:dashboard_training_form_records_for_month) { |_| records }
+    verify = lambda do
+      expected = records.select { |r| c.send(:training_record_vrp_scope_matches?, r, owner) }
+      actual = c.send(:dashboard_training_candidates_for_target, target)
+      assert_equal expected.map(&:object_id), actual.map(&:object_id)
+      actual.clear
+      assert_equal expected.map(&:object_id), c.send(:dashboard_training_candidates_for_target, target).map(&:object_id)
+    end
+    verify.call
+    owner.name = "Second JJ"
+    verify.call
+    owner.mobile_no = "222"
+    verify.call
+    owner.name = "First JJ"
+    owner.mobile_no = "111"
+    verify.call
+    records = records.reverse + [ModuleRecord.new(id: 5, data: { "vrp_id" => "12" })]
+    verify.call
+  end
+
 end

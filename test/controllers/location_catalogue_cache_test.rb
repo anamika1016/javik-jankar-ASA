@@ -16,7 +16,8 @@ class LocationCatalogueCacheTest < ActiveSupport::TestCase
   def location_master_controller(slug)
     controller = ModulesController.new
     controller.instance_variable_set(:@slug, slug)
-    controller.define_singleton_method(:request) { Struct.new(:format).new(Mime[:html]) }
+    controller.request = ActionDispatch::TestRequest.create
+    controller.params = ActionController::Parameters.new(slug: slug)
     controller
   end
 

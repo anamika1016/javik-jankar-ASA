@@ -56,6 +56,49 @@ class BillingPageScalingTest < ActiveSupport::TestCase
     refute optimized.instance_variable_get(:@jeevika_bill_totals_progress_only)
   end
 
+  test "fast Other Activity totals equal full bill totals when achievement exceeds the target" do
+    vrp = owner(70)
+    ModuleRecord.create!(module_slug: "add-activity-group", data: { "main_activity_name" => "Visit", "main_activity_type" => "Other" })
+    t = target(vrp, "October", 1)
+    t.update!(main_activity_name: "Visit", target_quantity: 10)
+    ModuleRecord.create!(module_slug: "other-target", data: {
+      "target_mapping_id" => t.id.to_s, "month" => "October", "achievement" => "25", "status" => "Approved"
+    })
+    full = calculator(nil).send(:jeevika_jankar_bill_rows, vrp_id: vrp.id.to_s, month_name: "October")
+    fast = calculator(nil).send(:jeevika_jankar_bill_rows, vrp_id: vrp.id.to_s, month_name: "October", totals_only: true)
+    c = calculator(nil)
+    assert_equal c.send(:jeevika_jankar_target_summary_from_rows, full), c.send(:jeevika_jankar_target_summary_from_rows, fast)
+    assert_equal 10.0, fast.sole[:achievement_count]
+  end
+
+  test "live training fallback skips unrelated owners but retains aliases blank owners and duplicate handling" do
+    vrp = owner(71)
+    t = target(vrp, "October", 1)
+    c = calculator(nil)
+    c.define_singleton_method(:jeevika_jankar_bill_target_records) { |**_| [t] }
+    c.define_singleton_method(:jeevika_jankar_main_activity_settings) { {} }
+    c.define_singleton_method(:jeevika_jankar_sub_activity_settings) { |_| {} }
+    c.define_singleton_method(:jeevika_jankar_activity_setting_for) { |*| { main_activity_type: "Training" } }
+    values = [vrp.id.to_s, vrp.name, vrp.user_name, vrp.mobile_no, nil, "Unrelated JJ"]
+    records = values.each_with_index.map do |value, i|
+      ModuleRecord.new(id: 60000 + i, data: { "jeevika_jankar_id" => value,
+        "month" => "October", "main_activity" => "Training", "sub_activity" => "Work",
+        "ics_block" => "I", "gram_name" => "V", "selected_farmer_ids" => ["farmer-#{i}"] })
+    end
+    records.insert(2, records.first)
+    c.define_singleton_method(:dashboard_training_form_records_for_month) { |_| records }
+    expected = records.select { |r| c.send(:training_record_matches_dashboard_target?, r, t, []) }
+      .uniq(&:id).sum { |r| c.send(:training_form_achievement_count, r) }
+    original = c.method(:training_record_matches_dashboard_target?)
+    c.define_singleton_method(:training_record_matches_dashboard_target?) do |record, *args|
+      raise "Scanned unrelated owner" if record.data["jeevika_jankar_id"] == "Unrelated JJ"
+      original.call(record, *args)
+    end
+    assert_equal 5.0, expected
+    assert_equal expected, c.send(:jeevika_jankar_live_training_achievement,
+      ModuleRecord.new(data: { "select_vrp" => vrp.id.to_s, "bill_month" => "October" }))
+  end
+
   test "totals skip weekly display work and dashboard calls retain it" do
     vrp = owner(40)
     target(vrp, "October", 1)

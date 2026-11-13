@@ -1521,17 +1521,22 @@ module VrpAccess
     return false unless model_ready?(:User)
 
     normalized_label = normalize_approver_label(label)
-    @cluster_mapping_users ||= User.order(:first_name, :last_name, :user_name).to_a
-    @cluster_mapping_users.any? do |user|
-      name = (user.respond_to?(:full_name) ? user.full_name : nil).presence ||
-        (user.respond_to?(:user_name) ? user.user_name : nil)
-      next false unless normalize_approver_label(name) == normalized_label ||
-        normalize_approver_label(user.respond_to?(:user_name) ? user.user_name : nil) == normalized_label
+    # Build once per request; checking many hierarchy labels must not rescan
+    # and normalize every registered user for each label.
+    @cluster_role_label_index ||= begin
+      @cluster_mapping_users ||= User.order(:first_name, :last_name, :user_name).to_a
+      @cluster_mapping_users.each_with_object({}) do |user, index|
+        role = (user.respond_to?(:role_name) ? user.role_name : nil).presence ||
+          (user.respond_to?(:role) ? user.role : nil)
+        next unless role.to_s.downcase.include?("cluster")
 
-      role = (user.respond_to?(:role_name) ? user.role_name : nil).presence ||
-        (user.respond_to?(:role) ? user.role : nil)
-      role.to_s.downcase.include?("cluster")
+        name = (user.respond_to?(:full_name) ? user.full_name : nil).presence ||
+          (user.respond_to?(:user_name) ? user.user_name : nil)
+        index[normalize_approver_label(name)] = true
+        index[normalize_approver_label(user.respond_to?(:user_name) ? user.user_name : nil)] = true
+      end
     end
+    @cluster_role_label_index.key?(normalized_label)
   end
 
   def normalize_hierarchy_label(label)
