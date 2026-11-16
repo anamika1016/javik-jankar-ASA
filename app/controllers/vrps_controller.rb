@@ -2150,6 +2150,9 @@ class VrpsController < ApplicationController
   end
 
   def read_vrp_location_catalogue_revision
+    version = ModuleRecordReadVersion.read(slugs: LOCATION_HIERARCHY_MODULE_SLUGS)
+    return version if version
+
     ModuleRecord.where(module_slug: LOCATION_HIERARCHY_MODULE_SLUGS)
       .pick(Arel.sql("MD5(COALESCE(STRING_AGG(id::text || ':' || xmin::text || ':' || ctid::text, ',' ORDER BY id), ''))"))
   end

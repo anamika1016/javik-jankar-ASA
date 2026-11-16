@@ -62,13 +62,13 @@ class ModuleFieldOptionsCacheTest < ActiveSupport::TestCase
     %w[first second].each { |field| warm.send(:projected_module_field_values, scope, [field]) }
     controller = ModulesController.new
     probes = []
-    callback = ->(*args) { sql = args.last[:sql]; probes << sql if sql.include?("STRING_AGG") }
+    callback = ->(*args) { sql = args.last[:sql]; probes << sql if sql.include?("STRING_AGG") || sql.include?("FROM module_record_read_versions") }
     actual = nil
     ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
       actual = %w[first second].map { |field| controller.send(:projected_module_field_values, scope, [field]) }
     end
     assert_equal [["One"], ["Two"]], actual
     assert_equal 1, probes.size
-    assert_match(/WHERE.*module_slug.*=/, probes.first)
+    assert_match(/(?:WHERE.*module_slug.*=|module:options-probe-audit)/, probes.first)
   end
 end

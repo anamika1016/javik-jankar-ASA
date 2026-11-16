@@ -65,7 +65,7 @@ class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
 
     # A cold read probes the revision before and after its one payload query.
     # Only stable fills are cached; warm reads still need one revision probe.
-    assert_equal 3, queries.size
+    assert_equal(ModuleRecordReadVersion.read ? 1 : 3, queries.size)
     payload_query = queries.find { |sql| sql.include?("jsonb_each") }
     assert payload_query
     assert_includes payload_query, "module_slug"

@@ -15,6 +15,8 @@ class SharedCatalogueCache
       app/controllers/vrps_controller.rb app/models/module_record.rb
       app/services/catalogue_read_cache.rb app/services/shared_catalogue_cache.rb
       app/services/module_record_read_query.rb
+      app/services/module_record_read_version.rb
+      app/services/module_field_options_cache.rb
     ].each { |path| digest << File.binread(Rails.root.join(path)) }
     digest.hexdigest.freeze
   end

@@ -295,9 +295,10 @@ class ModuleReadPerformanceTest < ActiveSupport::TestCase
       state_rows.index { |row| row[:record_id] == older.id }
     assert_includes all_rows.map { |row| row[:record_id] }, village.id
     assert_equal "Inactive", all_rows.find { |row| row[:record_id] == village.id }[:status]
-    # Initial revision + one source payload read + an uncached revision guard
-    # before publishing a cold fill. Repeated reads do not reload the payload.
-    assert_equal 3, queries.size
+    # Trigger-backed revisions read the small version table, so only the
+    # payload statement touches module_records. The legacy path uses two
+    # additional source fingerprint probes before publishing a cold fill.
+    assert_equal(ModuleRecordReadVersion.read ? 1 : 3, queries.size)
     assert_equal 1, queries.count { |sql| sql.include?("jsonb_object_agg") }
   end
 

@@ -289,7 +289,7 @@ class ModuleLookupPerformanceTest < ActiveSupport::TestCase
     queries = capture_queries("module_records") do
       2.times { assert_equal expected, controller.send(:location_hierarchy_mappings) }
     end
-    assert_equal 2, queries.size
+    assert_equal(ModuleRecordReadVersion.read ? 1 : 2, queries.size)
     projection = queries.find { |sql| sql.include?("jsonb_object_agg") }
     assert projection
     assert_not_includes projection, "extra"

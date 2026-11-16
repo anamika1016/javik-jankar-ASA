@@ -9437,6 +9437,13 @@ class ModulesController < ApplicationController
     @module_cluster_visible_vrp_id_strings ||= module_cluster_visible_vrp_ids.map(&:to_s)
   end
 
+  def module_cluster_visible_vrp_id?(id)
+    # Preserve the existing exact string IDs, but avoid scanning the entire
+    # cluster population for every training/target/bill visibility check.
+    @module_cluster_visible_vrp_id_set ||= module_cluster_visible_vrp_id_strings.to_set
+    @module_cluster_visible_vrp_id_set.include?(id)
+  end
+
   def cached_vrp_lookup(vrp_id)
     return if vrp_id.blank? || !model_ready?(:Vrp)
 
@@ -9874,12 +9881,12 @@ class ModulesController < ApplicationController
 
   def cached_jeevika_bill_summary_records
     key = ["jj-bill-summary-records-v1", jeevika_jankar_bill_process_revision]
-    attribute_rows = DashboardCacheFill.synchronize(key) do
-      dashboard_read_cache.fetch(key, expires_in: 1.hour) do
-        bill_summary_scope(ModuleRecord.where(module_slug: "jeevika-jankar-bill-process"))
-          .order(created_at: :desc)
-          .map { |record| record.attributes.merge("data" => record.data.to_json) }
-      end
+    attribute_rows = CatalogueReadCache.fetch(dashboard_read_cache, key,
+      version: jeevika_jankar_bill_process_revision, current_version: -> { read_jeevika_jankar_bill_process_revision },
+      shared: shared_form_catalogue_cache) do
+      bill_summary_scope(ModuleRecord.where(module_slug: "jeevika-jankar-bill-process"))
+        .order(created_at: :desc)
+        .map { |record| record.attributes.merge("data" => record.data.to_json) }
     end
     attribute_rows.map { |attributes| ModuleRecord.instantiate(attributes) }
   end
@@ -10127,7 +10134,7 @@ class ModulesController < ApplicationController
       if %w[jeevika-jankar-bill-process jeevika-jankar-bill-list].include?(record.module_slug)
         return true if jeevika_bill_vrp_office_visible?(vrp)
       end
-      return true if module_cluster_visible_vrp_id_strings.include?(vrp.id.to_s)
+      return true if module_cluster_visible_vrp_id?(vrp.id.to_s)
       return true if training_supervised_vrp_ids.include?(vrp.id.to_s)
     end
 
@@ -11051,6 +11058,10 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_bill_rows(records)
+    ReadStageTrace.measure("bill.rows") { build_jeevika_bill_rows(records) }
+  end
+
+  def build_jeevika_bill_rows(records)
     preload_jeevika_bill_process_totals(records)
     Array(records).map do |record|
       data = record.data
@@ -11317,7 +11328,7 @@ class ModulesController < ApplicationController
     return vrp.id.to_s == current_vrp_record&.id.to_s if vrp_login_user?
     return true if jeevika_bill_vrp_registered_by_current_user?(vrp)
     return true if jeevika_bill_vrp_office_visible?(vrp)
-    return true if module_cluster_visible_vrp_id_strings.include?(vrp.id.to_s)
+    return true if module_cluster_visible_vrp_id?(vrp.id.to_s)
 
     false
   end
@@ -12647,12 +12658,20 @@ class ModulesController < ApplicationController
   def jeevika_jankar_bill_process_revision
     return @jeevika_jankar_bill_process_revision if defined?(@jeevika_jankar_bill_process_revision)
 
+    @jeevika_jankar_bill_process_revision = read_jeevika_jankar_bill_process_revision
+  end
+
+  def read_jeevika_jankar_bill_process_revision
+    if (version = ModuleRecordReadVersion.read(slugs: ["jeevika-jankar-bill-process"]))
+      return version
+    end
+
     version = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process").pick(
       Arel.sql("COUNT(*)"),
       Arel.sql("COALESCE(SUM((xmin::text)::bigint), 0)"),
       Arel.sql("COALESCE(MAX((xmin::text)::bigint), 0)")
     )
-    @jeevika_jankar_bill_process_revision = version.join(":")
+    version.join(":")
   end
 
   def build_jeevika_jankar_existing_bill_keys
@@ -14400,7 +14419,7 @@ class ModulesController < ApplicationController
       # A cluster incharge still sees the bills of the Jeevika Jankars mapped
       # under them. This branch returned before that was ever checked, which
       # left their Bill List empty.
-      return module_cluster_incharge_login? && module_cluster_visible_vrp_id_strings.include?(vrp.id.to_s)
+      return module_cluster_incharge_login? && module_cluster_visible_vrp_id?(vrp.id.to_s)
     end
     return true if jeevika_bill_created_by_current_user?(record)
     return true if jeevika_bill_approver_visible?(record)
@@ -14410,7 +14429,7 @@ class ModulesController < ApplicationController
     return true if vrp_login_user? && vrp.id.to_s == current_vrp_record&.id.to_s
     return true if jeevika_bill_vrp_registered_by_current_user?(vrp)
     return true if jeevika_bill_vrp_office_visible?(vrp)
-    return true if module_cluster_visible_vrp_id_strings.include?(vrp.id.to_s)
+    return true if module_cluster_visible_vrp_id?(vrp.id.to_s)
 
     false
   end
@@ -16849,6 +16868,9 @@ class ModulesController < ApplicationController
   end
 
   def read_location_catalogue_revision
+    version = ModuleRecordReadVersion.read(slugs: LOCATION_MODULE_SLUGS)
+    return version if version
+
     version_rows = ModuleRecord.where(module_slug: LOCATION_MODULE_SLUGS)
       .group(:module_slug).order(:module_slug)
       .pluck(

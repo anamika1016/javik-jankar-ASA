@@ -16,6 +16,31 @@ class TrainingEditApproval
 
   # Only the latest revision controls billing; untouched records remain eligible.
   def self.unapproved_record_ids
+    version = ModuleRecordReadVersion.read(slugs: [SLUG])
+    return legacy_unapproved_record_ids unless version
+
+    key = ["training-unapproved-clock-v1", ModuleRecord.connection_pool.db_config.database, version]
+    DashboardCacheFill.synchronize(key) do
+      cached = REVISION_READ_CACHE.read(key)
+      unless cached
+        cached = shared_revision_cache(:read, key)
+        REVISION_READ_CACHE.write(key, cached, expires_in: 10.minutes) if cached.is_a?(Array) && cached.all? { |id| id.is_a?(String) }
+      end
+      next cached.dup if cached.is_a?(Array) && cached.all? { |id| id.is_a?(String) }
+
+      ids = read_unapproved_revision_rows("NULL").filter_map do |record_id, status, _|
+        record_id = record_id.to_s
+        record_id if record_id.present? && status != "Approved"
+      end
+      if ModuleRecordReadVersion.read(slugs: [SLUG]) == version
+        REVISION_READ_CACHE.write(key, ids, expires_in: 10.minutes)
+        shared_revision_cache(:write, key, ids, expires_in: 1.day)
+      end
+      ids.dup
+    end
+  end
+
+  def self.legacy_unapproved_record_ids
     # Revision JSON contains before/proposed snapshots and uploaded evidence.
     # Check tuple versions without reading those TOAST payloads on every page.
     # ctid also changes on a second update in the same transaction, where xmin

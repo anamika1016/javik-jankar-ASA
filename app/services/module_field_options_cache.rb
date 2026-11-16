@@ -12,16 +12,21 @@ class ModuleFieldOptionsCache
   end
 
   def self.revision(scope = ModuleRecord.all)
-    ModuleRecord.uncached(dirties: false) do
-      revision_scope(scope).pick(Arel.sql("MD5(COALESCE(STRING_AGG(id::text || ':' || xmin::text || ':' || ctid::text, ',' ORDER BY id), ''))"))
+    source = revision_scope(scope).where_values_hash["module_slug"]
+    ModuleRecordReadVersion.fetch(slugs: source) do
+      ModuleRecord.uncached(dirties: false) do
+        revision_scope(scope).pick(Arel.sql("MD5(COALESCE(STRING_AGG(id::text || ':' || xmin::text || ':' || ctid::text, ',' ORDER BY id), ''))"))
+      end
     end
   end
 
-  def self.fetch(scope, fields, version: nil)
+  def self.fetch(scope, fields, version: nil, shared: nil)
     version ||= revision(scope)
     key = ["module-field-options-v2", ModuleRecord.connection_pool.db_config.database,
       scope.to_sql, fields, version]
     cache = Rails.env.test? ? Rails.cache : STORE
-    CatalogueReadCache.fetch(cache, key, version: version, current_version: -> { revision(scope) }) { yield }.deep_dup
+    shared ||= SharedCatalogueCache.default if Rails.env.production?
+    CatalogueReadCache.fetch(cache, key, version: version, current_version: -> { revision(scope) },
+      shared: shared) { yield }.deep_dup
   end
 end

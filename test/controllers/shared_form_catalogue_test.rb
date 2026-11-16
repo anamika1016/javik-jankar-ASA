@@ -17,6 +17,35 @@ class SharedFormCatalogueTest < ActiveSupport::TestCase
     FileUtils.remove_entry(@directory)
   end
 
+  test "bill summaries and dropdowns reuse shared fills while preserving data isolation and direct edit freshness" do
+    bill = ModuleRecord.create!(module_slug: "jeevika-jankar-bill-process", data: {
+      "status" => "Final Approved", "grand_total" => "100.00",
+      "bill_items" => [{ "activity" => "Original", "farmer_details" => [{ "name" => "Large unused detail" }] }]
+    })
+    first = consumer(ModulesController)
+    expected = first.send(:bill_summary_scope, ModuleRecord.where(id: bill.id)).first.data
+    assert_equal expected, first.send(:cached_jeevika_bill_summary_records).find { |row| row.id == bill.id }.data
+    Rails.cache.clear
+    second = consumer(ModulesController)
+    second.define_singleton_method(:bill_summary_scope) { |_| raise "Rebuilt shared bill summary" }
+    rows = second.send(:cached_jeevika_bill_summary_records)
+    assert_equal expected, rows.find { |row| row.id == bill.id }.data
+    rows.find { |row| row.id == bill.id }.data["bill_items"].first["activity"] = "Request-local edit"
+    assert_equal expected, consumer(ModulesController).send(:cached_jeevika_bill_summary_records).find { |row| row.id == bill.id }.data
+    bill.update_columns(data: bill.data.merge("grand_total" => "200.00"))
+    assert_equal "200.00", consumer(ModulesController).send(:cached_jeevika_bill_summary_records).find { |row| row.id == bill.id }.data["grand_total"]
+
+    scope = ModuleRecord.where(id: bill.id, module_slug: bill.module_slug)
+    assert_equal ["200.00"], ModuleFieldOptionsCache.fetch(scope, ["grand_total"], shared: @shared) { [bill.reload.data["grand_total"]] }
+    Rails.cache.clear
+    actual = ModuleFieldOptionsCache.fetch(scope, ["grand_total"], shared: @shared) { raise "Rebuilt shared dropdown" }
+    assert_equal ["200.00"], actual
+    actual.first.replace("Caller mutation")
+    assert_equal ["200.00"], ModuleFieldOptionsCache.fetch(scope, ["grand_total"], shared: @shared) { raise "Rebuilt shared dropdown" }
+    bill.update_columns(data: bill.data.merge("grand_total" => "300.00"))
+    assert_equal ["300.00"], ModuleFieldOptionsCache.fetch(scope, ["grand_total"], shared: @shared) { [bill.reload.data["grand_total"]] }
+  end
+
   test "directory and sorted master records reuse shared data without changing rows or order" do
     ModulesController::LG_DIRECTORY_MEMORY_CACHE.clear
     expected = consumer(ModulesController).send(:lg_directory_rows)

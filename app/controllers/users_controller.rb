@@ -123,6 +123,9 @@ class UsersController < ApplicationController
   end
 
   def user_form_catalogue_revision
+    version = ModuleRecordReadVersion.read(slugs: FORM_OPTION_SLUGS)
+    return version if version
+
     # Tuple identity also detects imports preserving timestamps and repeated
     # writes in one transaction. Keep this reader fresh for cold-fill checks.
     ModuleRecord.where(module_slug: FORM_OPTION_SLUGS)

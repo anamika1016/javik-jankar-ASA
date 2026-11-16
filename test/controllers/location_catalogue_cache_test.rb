@@ -31,7 +31,7 @@ class LocationCatalogueCacheTest < ActiveSupport::TestCase
       assert_equal expected, actual
       actual.find { |row| row[:id] == record.id.to_s }[:state] = "Changed in memory"
     end
-    assert queries.any? { |sql| sql.include?("SUM((xmin::text)::bigint)") }
+    assert queries.any? { |sql| sql.include?("SUM((xmin::text)::bigint)") || sql.include?("FROM module_record_read_versions") }
     assert_empty queries.grep(/jsonb_object_agg/)
     assert_equal expected, catalogue
   end

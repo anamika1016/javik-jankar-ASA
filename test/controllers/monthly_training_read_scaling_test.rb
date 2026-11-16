@@ -51,7 +51,10 @@ class MonthlyTrainingReadScalingTest < ActiveSupport::TestCase
       end
     end
     assert_equal 2, instantiated
-    assert_equal 3, queries.size
+    # A new cold version-stamp fill has a final revision guard as well as its
+    # first probe. Only one statement loads latest revisions and one loads the
+    # countable training payload; later reads reuse this request's snapshot.
+    assert_equal(ModuleRecordReadVersion.read ? 4 : 3, queries.size)
     assert queries.any? { |sql| sql.include?("DISTINCT ON") }
     assert controller.instance_variable_defined?(:@unapproved_training_record_ids)
   end
