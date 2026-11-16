@@ -237,6 +237,7 @@ Rails.application.routes.draw do
     get :saved_farmers, on: :collection
     get :user_blocks, on: :collection
     get :jj_mapped_farmers, on: :collection
+    get :jj_user_options, on: :collection
   end
 
   resources :modules, param: :slug, only: [:show], controller: :modules do

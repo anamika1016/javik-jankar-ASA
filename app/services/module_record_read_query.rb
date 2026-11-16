@@ -1,6 +1,25 @@
 # Read projections belong here so lists can avoid loading large JSON payloads
 # before the controller has applied the current user's visibility rules.
 class ModuleRecordReadQuery
+  # Preserve JSON types and caller ordering without transferring unrelated
+  # uploads/history or instantiating a model just to read dropdown fields.
+  def self.field_value_rows(scope, keys)
+    return [] if keys.empty?
+
+    quoted_keys = keys.map { |key| ModuleRecord.connection.quote(key.to_s) }
+    scope.pluck(Arel.sql("json_build_array(#{quoted_keys.map { |key| "data::json -> #{key}" }.join(', ')})"))
+  end
+
+  def self.projected_data_rows(scope, keys)
+    return [] if keys.empty?
+
+    quoted_keys = keys.map { |key| ModuleRecord.connection.quote(key.to_s) }.join(", ")
+    object = "CASE WHEN jsonb_typeof(data::jsonb) = 'object' THEN data::jsonb ELSE '{}'::jsonb END"
+    projection = "(SELECT COALESCE(jsonb_object_agg(key, value), '{}'::jsonb) " \
+      "FROM jsonb_each(#{object}) WHERE key IN (#{quoted_keys}))"
+    scope.pluck(:id, Arel.sql(projection))
+  end
+
   def self.admin_training_list_rows(scope, limit: 100)
     slug = ModuleRecord.connection.quote(TrainingEditApproval::SLUG)
     # Match the Ruby list key exactly: latest revision by ID, Pending first,

@@ -14,6 +14,10 @@ class ApplicationController < ActionController::Base
 
   private
 
+  def shared_form_catalogue_cache
+    SharedCatalogueCache.default if Rails.env.production?
+  end
+
   def handle_invalid_authenticity_token
     reset_session
     redirect_to login_path, alert: "Session expired. Please login again."

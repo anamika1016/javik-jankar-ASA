@@ -40,3 +40,34 @@ test('Block Wise ignores a farmer response after a newer selection request', asy
   await pending;
   assert.equal(rendered.length, 0);
 });
+
+test('empty initial Block Wise catalogues load through existing JSON and retain authoritative FCO options', async () => {
+  const { context } = setup();
+  const fills = [], requests = [], errors = [];
+  context.fcoSelect = { value: '', dataset: {} };
+  context.icsSelect = null;
+  context.blockSelect.value = '';
+  context.blockFcoOptions = [];
+  context.targetBlockOptions = [];
+  context.targetSelectedValues = () => [];
+  context.syncTargetVillageHidden = () => {};
+  context.syncTargetEntryMode = () => {};
+  context.fillTargetSelect = (select, options) => fills.push({ select, options });
+  context.clearTargetFarmers = (message) => { if (message) errors.push(message); };
+  context.console = { error: (...args) => errors.push(args) };
+  const offices = [{ value: '1||Office', label: 'Office' }];
+  let payload = { fco_options: offices, block_options: [], village_options: [] };
+  context.fetch = async (url) => { requests.push(String(url)); return { ok: true, json: async () => payload }; };
+  await context.load();
+  assert.equal(errors.length, 0);
+  assert.match(requests[0], /target_entry_mode=block_wise/);
+  assert.equal(JSON.stringify(context.blockFcoOptions), JSON.stringify(offices));
+  assert.ok(fills.some((entry) => entry.select === context.fcoSelect && entry.options === offices));
+  context.fcoSelect.value = '1||Office';
+  payload = { fco_options: [{ value: 'stale', label: 'Unrelated' }], block_options: [{ value: '2||Block', label: 'Block' }], village_options: [] };
+  await context.load();
+  assert.equal(errors.length, 0);
+  assert.match(requests[1], /fco_id=1%7C%7COffice/);
+  assert.equal(JSON.stringify(context.blockFcoOptions), JSON.stringify(offices));
+  assert.equal(context.targetBlockOptions[0].value, '2||Block');
+});

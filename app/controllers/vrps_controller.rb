@@ -2135,7 +2135,8 @@ class VrpsController < ApplicationController
     key = ["vrp/location-browser-attribute-v2", vrp_location_catalogue_revision]
     escaped = ReadStageTrace.measure("vrp.location_attribute") do
       CatalogueReadCache.fetch(vrp_location_catalogue_cache, key,
-        version: vrp_location_catalogue_revision, current_version: -> { read_vrp_location_catalogue_revision }) do
+        version: vrp_location_catalogue_revision, current_version: -> { read_vrp_location_catalogue_revision },
+        shared: shared_form_catalogue_cache) do
         String.new(ERB::Util.html_escape(ERB::Util.json_escape(location_hierarchy_mappings.to_json)))
       end
     end
@@ -2478,18 +2479,21 @@ class VrpsController < ApplicationController
     cache_key = [module_slug, id, field_key]
     return @module_record_labels_cache[cache_key] if @module_record_labels_cache.key?(cache_key)
 
-    record = ModuleRecord.find_by(module_slug: module_slug, id: id)
+    preload_module_record_labels(module_slug, [id])
+    record = @module_record_label_records[[module_slug, ModuleRecord.type_for_attribute("id").cast(id)]]
     label = module_record_display_label(module_slug, record, field_key)
     @module_record_labels_cache[cache_key] = label.present? ? label : (id.to_s.match?(/\A\d+\z/) ? "" : id.to_s)
   end
 
   def module_record_labels(module_slug, ids, field_key)
+    preload_module_record_labels(module_slug, ids)
     Array(ids)
       .filter_map { |id| module_record_label(module_slug, id, field_key).presence }
       .join(", ")
   end
 
   def vrp_detail_location_label(module_slug, primary_id, fallback_ids, field_key)
+    preload_module_record_labels(module_slug, [primary_id, *Array(fallback_ids)])
     module_record_label(module_slug, primary_id, field_key).presence ||
       Array(fallback_ids)
         .filter_map { |id| module_record_label(module_slug, id, field_key).presence }
@@ -2497,6 +2501,23 @@ class VrpsController < ApplicationController
       primary_id.to_s.presence ||
       Array(fallback_ids).reject(&:blank?).first.to_s.presence ||
       ""
+  end
+
+  def preload_module_record_labels(module_slug, ids)
+    return unless model_ready?(:ModuleRecord)
+
+    @module_record_label_records ||= {}
+    id_type = ModuleRecord.type_for_attribute("id")
+    missing_ids = Array(ids).reject(&:blank?).map { |id| id_type.cast(id) }.uniq
+      .reject { |id| @module_record_label_records.key?([module_slug, id]) }
+    return if missing_ids.empty?
+
+    # Nil misses are cached too. Keep the original slug constraint and full
+    # selected record data so legacy label fallbacks remain available.
+    missing_ids.each { |id| @module_record_label_records[[module_slug, id]] = nil }
+    ModuleRecord.where(module_slug: module_slug, id: missing_ids).each do |record|
+      @module_record_label_records[[module_slug, record.id]] = record
+    end
   end
 
   def vrp_detail_hierarchy_label(vrp, level)

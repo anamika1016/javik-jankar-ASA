@@ -1,0 +1,6 @@
+<select name="mobile_no" class="target-field" required style="width: 100%; padding: 0.6rem 0.75rem; border-radius: 6px; border: 1px solid var(--border-color, #cbd5e1); background: var(--bg-input, #fff); font-size: 0.9rem;">
+  <option value=""><%= local_assigns[:loading] ? "Loading Jeevika Jankars…" : "Select Jeevika Jankar" %></option>
+  <% users.each do |user| %>
+    <option value="<%= user[:mobile_no] %>" <%= "selected" if selected_mobile == user[:mobile_no] %>><%= user[:label] %></option>
+  <% end %>
+</select>

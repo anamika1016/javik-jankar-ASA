@@ -777,27 +777,17 @@
       </section>
     </div>
   <% elsif @slug == "office-list" %>
-    <section class="module-card lg-directory-card">
-      <div class="module-card-header"><h2>Office Detail List</h2></div>
-      <div class="vrp-list-toolbar compact lg-directory-actions" style="justify-content: flex-end;">
-        <%= link_to "Export Excel", export_module_path(@slug, format: :xlsx), class: "list-btn export" %>
-      </div>
-      <div class="table-shell lg-directory-table-shell">
-        <table class="module-table user-list-table" id="office_detail_list" data-paginated-table data-page-size="25">
-          <thead><tr><th>ID</th><th>Office Name</th><th>Description</th><th>Parent Office</th><th>Office Category</th><th>Office Level</th><th>State</th><th>District</th><th>Block</th><th>Gram Panchayat</th><th>Village</th></tr></thead>
-          <tbody>
-            <% if @office_list_rows.any? %>
-              <% @office_list_rows.each do |row| %>
-                <tr><td><%= row[:id] %></td><td><%= row[:name] || "-" %></td><td><%= row[:desc] || "-" %></td><td><%= row[:parent] || "-" %></td><td><%= row[:office_name] || "-" %></td><td><%= row[:office_level] || "-" %></td><td><%= row[:states].presence || "-" %></td><td><%= row[:districts].presence || "-" %></td><td><%= row[:blocks].presence || "-" %></td><td><%= row[:gps].presence || "-" %></td><td><%= row[:villages].presence || "-" %></td></tr>
-              <% end %>
-            <% else %>
-              <tr><td colspan="11">No offices found.</td></tr>
-            <% end %>
-          </tbody>
-        </table>
-      </div>
-      <div class="table-pagination" data-pagination-for="office_detail_list"></div>
-    </section>
+    <% if @deferred_office_list %>
+      <turbo-frame id="office_list_content" src="<%= module_path(@slug) %>">
+        <section class="module-card lg-directory-card">
+          <div class="module-card-header"><h2>Office Detail List</h2></div>
+          <p role="status">Loading offices…</p>
+          <noscript><%= link_to "Load offices", module_path(@slug, load_offices: "1") %></noscript>
+        </section>
+      </turbo-frame>
+    <% else %>
+      <%= render "office_list" %>
+    <% end %>
   <% elsif @slug == "lg-directory-list" %>
     <section class="module-card lg-directory-card">
       <div class="module-card-header">

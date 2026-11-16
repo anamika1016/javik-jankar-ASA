@@ -53,6 +53,12 @@
           <% staff_jj_picker = @jj_name_options.present? %>
           <div>
             <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem; color: var(--text-color, #334155);">Jeevika Jankar Name<%= " (API List)" unless staff_jj_picker %> *</label>
+            <% if @deferred_api_vrp_users %>
+              <turbo-frame id="jj_api_user_picker" src="<%= jj_user_options_target_mappings_path %>">
+                <%= render "jj_api_user_select", users: [], selected_mobile: "", loading: true %>
+              </turbo-frame>
+              <noscript><%= link_to "Load Jeevika Jankar list", jj_mapped_farmers_path(request.query_parameters.merge(load_users: "1")) %></noscript>
+            <% else %>
             <select name="mobile_no" class="target-field" required style="width: 100%; padding: 0.6rem 0.75rem; border-radius: 6px; border: 1px solid var(--border-color, #cbd5e1); background: var(--bg-input, #fff); font-size: 0.9rem;">
               <option value="">Select Jeevika Jankar</option>
               <% if staff_jj_picker %>
@@ -67,6 +73,7 @@
                 <% end %>
               <% end %>
             </select>
+            <% end %>
           </div>
 
           <% unless staff_jj_picker %>

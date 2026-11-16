@@ -5624,32 +5624,44 @@ function initDeferredLayoutPage() {
     table.dataset.alphaSorted = "true";
   };
 
-  document.querySelectorAll("[data-paginated-table]").forEach((table, index) => {
-    const rows = Array.from(table.querySelectorAll("tbody tr"));
-    rows.forEach((row) => {
-      if (row.children.length === 1 || row.textContent.toLowerCase().includes("no records")) {
-        row.dataset.emptyRow = "true";
+  const initializePaginatedTables = (root = document) => {
+    root.querySelectorAll("[data-paginated-table]").forEach((table, index) => {
+      const rows = Array.from(table.querySelectorAll("tbody tr"));
+      rows.forEach((row) => {
+        if (row.children.length === 1 || row.textContent.toLowerCase().includes("no records")) {
+          row.dataset.emptyRow = "true";
+        }
+      });
+      const largeTable = table.dataset.fastOpenTable === "true" || rows.length > 250;
+      ensureTableSearch(table, index);
+      ensureTablePagination(table);
+      if (!largeTable) {
+        sortTableRowsAlphabetically(table);
+        setupColumnFilters(table);
       }
+      paginateTable(table, 1);
     });
-    const largeTable = table.dataset.fastOpenTable === "true" || rows.length > 250;
-    ensureTableSearch(table, index);
-    ensureTablePagination(table);
-    if (!largeTable) {
-      sortTableRowsAlphabetically(table);
-      setupColumnFilters(table);
-    }
-    paginateTable(table, 1);
-  });
 
-  document.querySelectorAll("[data-table-search]").forEach((input) => {
-    if (input.dataset.tableSearchBound === "true") return;
+    root.querySelectorAll("[data-table-search]").forEach((input) => {
+      if (input.dataset.tableSearchBound === "true") return;
 
-    input.dataset.tableSearchBound = "true";
-    input.addEventListener("input", () => {
-      const table = document.getElementById(input.dataset.tableSearch);
-      if (table) paginateTable(table, 1);
+      input.dataset.tableSearchBound = "true";
+      input.addEventListener("input", () => {
+        const table = document.getElementById(input.dataset.tableSearch);
+        if (table) paginateTable(table, 1);
+      });
     });
-  });
+  };
+  initializePaginatedTables();
+  // Only the independently loaded Office List needs this table-only setup.
+  // Do not rerun form or language handlers when a frame finishes loading.
+  if (window.__officeTableFrameHandler) {
+    document.removeEventListener("turbo:frame-load", window.__officeTableFrameHandler);
+  }
+  window.__officeTableFrameHandler = (event) => {
+    if (event.target?.id === "office_list_content") initializePaginatedTables(event.target);
+  };
+  document.addEventListener("turbo:frame-load", window.__officeTableFrameHandler);
 
   // Simple client-side row filter for report tables (Demonstration Method / CC and JJ lists).
   document.querySelectorAll("[data-report-search]").forEach((input) => {

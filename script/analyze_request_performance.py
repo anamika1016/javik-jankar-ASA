@@ -54,6 +54,6 @@ print(json.dumps({"request_count": len(requests),
     "completed_request_count": sum("duration_ms" in row for row in requests.values()),
     "requests": sorted(requests.values(), key=lambda row: row.get("duration_ms", 0), reverse=True),
     "stages": sorted(({"stage": key, **value} for key, value in stages.items()),
-                     key=lambda row: row["total_ms"], reverse=True),=-------
+                     key=lambda row: row["total_ms"], reverse=True),
     "sql_sources": sorted(({"source": key, **value} for key, value in sources.items()),
                           key=lambda row: row["total_ms"], reverse=True)}, indent=2))

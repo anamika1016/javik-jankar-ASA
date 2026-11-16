@@ -27,11 +27,11 @@ class TargetMappingsController < ApplicationController
       @main_activity_options = module_options("add-activity-group", "main_activity_name", "activity_group_name")
       @main_activity_type_map = main_activity_type_map
       @target_sub_activity_map = target_sub_activity_map
-      @block_fco_options = filtered_office_fco_options
-      @block_options_by_fco = @block_fco_options.to_h do |option|
-        fco_id, = parse_location_value(option[:value])
-        [fco_id, office_block_options(option[:value])]
-      end
+      # Entry opens in ICS mode. The existing vrp_mappings request loads the
+      # authoritative Office List and selected FCO's blocks on a mode change;
+      # do not fetch every office/block merely to render the unused JSON here.
+      @block_fco_options = []
+      @block_options_by_fco = {}
     end
     @target_mappings = dashboard_filtered_target_mappings(visible_target_mappings)
       .preload(:vrp_ics_mapping).order(updated_at: :desc).to_a
@@ -134,7 +134,12 @@ class TargetMappingsController < ApplicationController
   end
 
   def jj_mapped_farmers
-    @api_vrp_users = ReadStageTrace.measure("external.jj_catalogue") { fetch_external_vrp_users }
+    # A blank admin report needs the remote list only for its picker, not for
+    # authentication, scoping or report data. Let that frame load independently
+    # instead of holding the entire navigation on an external HTTP request.
+    @deferred_api_vrp_users = request.format.html? && jj_mapped_farmers_admin? &&
+      params[:mobile_no].to_s.strip.blank? && params[:vrp_mobile].to_s.strip.blank? && params[:load_users] != "1"
+    @api_vrp_users = @deferred_api_vrp_users ? [] : ReadStageTrace.measure("external.jj_catalogue") { fetch_external_vrp_users }
     @month_options = [
       ["January (01)", "1"],
       ["February (02)", "2"],
@@ -159,12 +164,7 @@ class TargetMappingsController < ApplicationController
     vrp_in_db = Vrp.find_by("mobile_no = ? OR user_name = ?", user_mobile, user_mobile) if defined?(Vrp) && Vrp.table_exists? && user_mobile.present?
     api_vrp_match = @api_vrp_users.find { |u| u[:mobile_no] == user_mobile } if user_mobile.present?
 
-    is_admin = current_app_user.is_a?(Hash) && (
-      user_type.casecmp?("admin") ||
-      current_app_user["role"].to_s.casecmp?("admin") ||
-      user_mobile.casecmp?("admin") ||
-      (helpers.respond_to?(:admin_user?) && helpers.admin_user?)
-    )
+    is_admin = jj_mapped_farmers_admin?
 
     if is_admin
       @is_vrp_login = false
@@ -239,6 +239,13 @@ class TargetMappingsController < ApplicationController
     end
   end
 
+  def jj_user_options
+    return head :forbidden unless jj_mapped_farmers_admin?
+
+    @api_vrp_users = ReadStageTrace.measure("external.jj_catalogue") { fetch_external_vrp_users }
+    render layout: false
+  end
+
   def vrp_mappings
     block_wise = target_entry_mode_block_wise?
     village_value = target_village_param
@@ -307,6 +314,14 @@ class TargetMappingsController < ApplicationController
   end
 
   private
+
+  def jj_mapped_farmers_admin?
+    user = current_app_user
+    mobile = user&.dig("mobile_no").to_s.strip.presence || user&.dig("username").to_s.strip
+    user.is_a?(Hash) && (user["user_type"].to_s.casecmp?("admin") ||
+      user["role"].to_s.casecmp?("admin") || mobile.casecmp?("admin") ||
+      (helpers.respond_to?(:admin_user?) && helpers.admin_user?))
+  end
 
   # The farmer API frequently omits the address block, so the village would show
   # as "-" even though the list was fetched for one specific village. Keep the
@@ -2160,24 +2175,26 @@ end
 
 
   def fetch_external_vrp_users
-    Rails.cache.fetch("asa-external-vrp-users-list", expires_in: 10.minutes, skip_nil: true) do
-      uri = URI("https://asa.ploughmanagro.com/api/get_user_list")
-      response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 5, read_timeout: 12) do |http|
-        http.get(uri.request_uri)
+    DashboardCacheFill.synchronize("asa-external-vrp-users-list") do
+      Rails.cache.fetch("asa-external-vrp-users-list", expires_in: 10.minutes, skip_nil: true) do
+        uri = URI("https://asa.ploughmanagro.com/api/get_user_list")
+        response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 5, read_timeout: 12) do |http|
+          http.get(uri.request_uri)
+        end
+        return [] unless response.is_a?(Net::HTTPSuccess)
+
+        payload = JSON.parse(response.body)
+        return [] unless (payload["status"] == true || payload["status_code"] == 200) && payload["result"].is_a?(Array)
+
+        payload["result"].filter_map do |u|
+          name = u.dig("user_profile", "name").to_s.strip
+          mobile = u["mobile_no"].to_s.strip.presence || u["username"].to_s.strip
+          next if mobile.blank?
+
+          display_name = name.present? ? "#{name} (#{mobile})" : mobile
+          { id: u["id"].to_s, name: name.presence || mobile, mobile_no: mobile, label: display_name }
+        end.uniq { |u| u[:mobile_no] }.sort_by { |u| u[:name].downcase }
       end
-      return [] unless response.is_a?(Net::HTTPSuccess)
-
-      payload = JSON.parse(response.body)
-      return [] unless (payload["status"] == true || payload["status_code"] == 200) && payload["result"].is_a?(Array)
-
-      payload["result"].filter_map do |u|
-        name = u.dig("user_profile", "name").to_s.strip
-        mobile = u["mobile_no"].to_s.strip.presence || u["username"].to_s.strip
-        next if mobile.blank?
-
-        display_name = name.present? ? "#{name} (#{mobile})" : mobile
-        { id: u["id"].to_s, name: name.presence || mobile, mobile_no: mobile, label: display_name }
-      end.uniq { |u| u[:mobile_no] }.sort_by { |u| u[:name].downcase }
     end
   rescue StandardError => error
     Rails.logger.warn("Unable to fetch external VRP users: #{error.class} - #{error.message}")

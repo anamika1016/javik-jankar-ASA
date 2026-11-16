@@ -1431,7 +1431,13 @@ class ModulesController < ApplicationController
     @records = module_records_required_for_show? ? ReadStageTrace.measure("module_records") { module_records } : []
     return render(partial: "modules/saved_records") if master_saved_records_frame_request?
     @jeevika_bill_user_filters = !admin_dashboard_user? if @slug == "jeevika-jankar-bill-list"
-    prepare_office_list_data if @slug == "office-list"
+    if @slug == "office-list"
+      @deferred_office_list = request.format.html? && params[:load_offices] != "1" && request.headers["Turbo-Frame"] != "office_list_content"
+      unless @deferred_office_list
+        prepare_office_list_data
+        return render(partial: "modules/office_list_frame") if request.headers["Turbo-Frame"] == "office_list_content"
+      end
+    end
     prepare_lg_directory_data if @slug == "lg-directory-list"
     prepare_vrp_bill_data if @slug == "vrp-bill-add"
     prepare_jeevika_jankar_bill_data if @slug == "jeevika-jankar-bill-process"
@@ -2071,6 +2077,7 @@ class ModulesController < ApplicationController
   def download_bill
     load_module!
     @record = ModuleRecord.find(params[:id])
+    @jeevika_bill_history_record_ids = [@record.id.to_s]
     redirect_to module_path("jeevika-jankar-bill-list"), alert: "You are not allowed to view this bill." and return unless jeevika_jankar_bill_downloadable?(@record)
     @bill_print_mode = true
     @records = []
@@ -2082,6 +2089,7 @@ class ModulesController < ApplicationController
   def download_bill_attachments
     load_module!
     record = ModuleRecord.find(params[:id])
+    @jeevika_bill_history_record_ids = [record.id.to_s]
     list_path = module_path("jeevika-jankar-bill-list")
     unless jeevika_jankar_bill_downloadable?(record)
       redirect_to list_path, alert: "You are not allowed to download these attachments.", status: :see_other and return
@@ -9913,14 +9921,18 @@ class ModulesController < ApplicationController
     # Warm unfiltered pages need only 15 records, not a new model and decoded
     # JSON Hash for every master row. Retain the original Ruby sort (including
     # legacy aliases and equal-key order) in the revision-keyed attribute cache.
-    key = ["jj-location-sorted-page-v1", module_slug, @module&.dig(:fields), location_catalogue_revision]
-    attribute_rows = DashboardCacheFill.synchronize(key) do
-      location_catalogue_cache.fetch(key, expires_in: 1.hour) do
-        cached_location_master_records(module_slug).sort_by { |record| module_record_sort_value(record) }
-          .map { |record| record.attributes.merge("data" => record.data.to_json) }
-      end
-    end
+    attribute_rows = cached_location_master_page_attributes(module_slug)
     paginated_master_records(attribute_rows).map { |attributes| ModuleRecord.instantiate(attributes) }
+  end
+
+  def cached_location_master_page_attributes(module_slug)
+    key = ["jj-location-sorted-page-v1", module_slug, @module&.dig(:fields), location_catalogue_revision]
+    CatalogueReadCache.fetch(location_catalogue_cache, key,
+      version: location_catalogue_revision, current_version: -> { read_location_catalogue_revision },
+      shared: shared_form_catalogue_cache) do
+      cached_location_master_records(module_slug).sort_by { |record| module_record_sort_value(record) }
+        .map { |record| record.attributes.merge("data" => record.data.to_json) }
+    end
   end
 
   # jsonb_each refuses anything that is not a JSON object - it raises
@@ -9954,6 +9966,11 @@ class ModulesController < ApplicationController
   end
 
   def module_records_required_for_show?
+    # These branches of show render only the selected/entry form. Their saved
+    # records live on separate list screens; loading every sibling here does
+    # not contribute any HTML, including on validation-error rerenders.
+    return false if OTHER_TARGET_MODULE_SLUGS.include?(@slug) ||
+      %w[approval-master access-control vrp-bill-add jeevika-jankar-bill-process jeevika-jankar-transfer].include?(@slug)
     # These lists render their own API/projected rows, never @records. Loading
     # and sorting full ModuleRecords first duplicates the cold catalogue work.
     return false if @record.blank? && %w[lg-directory-list office-list].include?(@slug)
@@ -9964,9 +9981,9 @@ class ModulesController < ApplicationController
     return false if @slug == "training-form"
     return true if @record.present?
     return true if @slug.to_s.end_with?("-list")
-    # These entry screens include a Saved Records table.  Loading the visible
+    # These entry screens include a Saved Records table. Loading the visible
     # records here makes a just-saved entry appear immediately after redirect.
-    return true if (%w[training-form add-farmer-form] + OTHER_TARGET_MODULE_SLUGS).include?(@slug)
+    return true if @slug == "add-farmer-form"
     return true if %w[state-master district-master block-master gram-panchayat-master village-master month-master project-master].include?(@slug)
     return true if %w[stakeholder-master stakeholder-role role-name parent-office-add office-category-add office-mapping-add].include?(@slug)
     return true if %w[add-activity-group add-vrp-activity task-completion-indicator].include?(@slug)
@@ -10461,10 +10478,10 @@ class ModulesController < ApplicationController
     # render/read it, which showed up as long GC pauses on master pages.  Rows
     # are made immutable as they enter the shared cache; callers receive a new
     # outer Array for request-local filtering without duplicating every row.
-    rows = DashboardCacheFill.synchronize(key) do
-      LG_DIRECTORY_MEMORY_CACHE.fetch(key, expires_in: 1.hour) do
-        ReadStageTrace.measure("location.directory_build") { build_lg_directory_rows }.map(&:freeze).freeze
-      end
+    rows = CatalogueReadCache.fetch(LG_DIRECTORY_MEMORY_CACHE, key,
+      version: location_catalogue_revision, current_version: -> { read_location_catalogue_revision },
+      shared: shared_form_catalogue_cache) do
+      ReadStageTrace.measure("location.directory_build") { build_lg_directory_rows }.map(&:freeze).freeze
     end
     rows.dup
   end
@@ -10897,6 +10914,9 @@ class ModulesController < ApplicationController
     return if params[:view_id].blank?
 
     record = ModuleRecord.find_by(id: params[:view_id])
+    # Both visibility/approval helpers and the detail template ask about this
+    # one bill. Scope their history before either can initialize the index.
+    @jeevika_bill_history_record_ids = record ? [record.id.to_s] : []
     if record.present? && jeevika_jankar_bill_record_visible?(record)
       @bill_detail_record = record
     else
@@ -13521,10 +13541,8 @@ class ModulesController < ApplicationController
     return @module_record_values_cache[cache_key] if @module_record_values_cache.key?(cache_key)
 
     @module_record_values_cache[cache_key] = active_module_records_scope(module_slug)
-      .order(created_at: :desc)
-      .flat_map do |record|
-        keys.filter_map { |key| record.data[key].presence }
-      end
+      .then { |scope| ModuleRecordReadQuery.field_value_rows(scope.order(created_at: :desc), keys) }
+      .flat_map { |values| values.filter_map(&:presence) }
       .flat_map { |value| value.is_a?(Array) ? value : value.to_s.split(",") }
       .map(&:to_s)
       .map(&:strip)
@@ -13559,8 +13577,13 @@ class ModulesController < ApplicationController
 
   def module_record_sort_value(record)
     visible_fields = @module&.dig(:fields) || []
-    sort_field = visible_fields.reject { |field| field == "Status" }.first
-    sort_key = sort_field&.parameterize(separator: "_")
+    # A cold master list sorts thousands of rows by the same field. Repeating
+    # parameterize for each village allocates/transliterates the label again.
+    @module_record_sort_keys ||= {}
+    sort_field, sort_key = @module_record_sort_keys[visible_fields] ||= begin
+      field = visible_fields.find { |candidate| candidate != "Status" }
+      [field, field&.parameterize(separator: "_")]
+    end
 
     module_record_field_value(record, sort_field).presence ||
       record.data[sort_key].presence ||
@@ -13659,9 +13682,8 @@ class ModulesController < ApplicationController
   end
 
   def gram_panchayat_name_lookup
-    @gram_panchayat_name_lookup ||= ModuleRecord
-      .where(module_slug: ["gram-panchayat-master", "lg-directory-list", "village-master"])
-      .pluck(:id, :data)
+    @gram_panchayat_name_lookup ||= ModuleRecordReadQuery.projected_data_rows(
+      ModuleRecord.where(module_slug: ["gram-panchayat-master", "lg-directory-list", "village-master"]), LOCATION_DATA_KEYS)
       .map { |id, data| LocationRecord.new(id, data) }
       .select { |record| active_module_record?(record) }
       .each_with_object({}) do |record, lookup|
@@ -14937,9 +14959,8 @@ class ModulesController < ApplicationController
   end
 
   def gram_panchayat_location_records
-    @gram_panchayat_location_records ||= ModuleRecord
-      .where(module_slug: ["gram-panchayat-master", "lg-directory-list"])
-      .pluck(:id, :data)
+    @gram_panchayat_location_records ||= ModuleRecordReadQuery.projected_data_rows(
+      ModuleRecord.where(module_slug: ["gram-panchayat-master", "lg-directory-list"]), LOCATION_DATA_KEYS)
       .map { |id, data| LocationRecord.new(id, data) }
       .select { |candidate| active_module_record?(candidate) }
   end
@@ -16808,15 +16829,15 @@ class ModulesController < ApplicationController
     return @location_hierarchy_browser_attribute if defined?(@location_hierarchy_browser_attribute)
 
     key = ["jj-location-browser-attribute-v1", location_catalogue_revision]
-    escaped = DashboardCacheFill.synchronize(key) do
-      location_catalogue_cache.fetch(key, expires_in: 1.hour) do
-        # html_escape hands back a SafeBuffer, and SafeBuffer#to_s returns
-        # itself, so store an explicit plain String. What is cached is then
-        # unambiguous text rather than something whose html_safe? flag has to
-        # survive the store, and the line below is the single place that
-        # decides this value is safe to write out as-is.
-        String.new(ERB::Util.html_escape(ERB::Util.json_escape(location_hierarchy_browser_json)))
-      end
+    escaped = CatalogueReadCache.fetch(location_catalogue_cache, key,
+      version: location_catalogue_revision, current_version: -> { read_location_catalogue_revision },
+      shared: shared_form_catalogue_cache) do
+      # html_escape hands back a SafeBuffer, and SafeBuffer#to_s returns
+      # itself, so store an explicit plain String. What is cached is then
+      # unambiguous text rather than something whose html_safe? flag has to
+      # survive the store, and the line below is the single place that
+      # decides this value is safe to write out as-is.
+      String.new(ERB::Util.html_escape(ERB::Util.json_escape(location_hierarchy_browser_json)))
     end
     @location_hierarchy_browser_attribute = escaped.html_safe
   end
@@ -16824,6 +16845,10 @@ class ModulesController < ApplicationController
   def location_catalogue_revision
     return @location_catalogue_revision if defined?(@location_catalogue_revision)
 
+    @location_catalogue_revision = read_location_catalogue_revision
+  end
+
+  def read_location_catalogue_revision
     version_rows = ModuleRecord.where(module_slug: LOCATION_MODULE_SLUGS)
       .group(:module_slug).order(:module_slug)
       .pluck(
@@ -16832,7 +16857,7 @@ class ModulesController < ApplicationController
         Arel.sql("COALESCE(SUM((xmin::text)::bigint), 0)"),
         Arel.sql("COALESCE(MAX((xmin::text)::bigint), 0)")
       )
-    @location_catalogue_revision = Digest::SHA256.hexdigest(version_rows.to_json)
+    Digest::SHA256.hexdigest(version_rows.to_json)
   end
 
   def location_catalogue_cache
@@ -17310,7 +17335,7 @@ class ModulesController < ApplicationController
 
     if module_slug == "gram-panchayat-master" && field_key == "gram_panchayat_name"
       scope = active_module_records_scope(module_slug)
-      return @values_from_module_cache[cache_key] = ModuleFieldOptionsCache.fetch(scope, ["gram-label-v1", *GRAM_PANCHAYAT_NAME_KEYS]) do
+      return @values_from_module_cache[cache_key] = ModuleFieldOptionsCache.fetch(scope, ["gram-label-v1", *GRAM_PANCHAYAT_NAME_KEYS], version: module_field_options_revision(scope)) do
         keys = GRAM_PANCHAYAT_NAME_KEYS.map { |key| ModuleRecord.connection.quote(key) }
         scope.order(created_at: :desc)
           .pluck(Arel.sql("json_build_array(#{keys.map { |key| "data::json -> #{key}" }.join(', ')})"))
@@ -17338,13 +17363,19 @@ class ModulesController < ApplicationController
     # Keep JSON types, record order, key order and Ruby presence/uniq semantics.
     # Do not instantiate records (including their unrelated uploads/large arrays)
     # merely to read a handful of dropdown values.
-    ModuleFieldOptionsCache.fetch(scope, field_keys) do
+    ModuleFieldOptionsCache.fetch(scope, field_keys, version: module_field_options_revision(scope)) do
       scope.where("data::jsonb ?| ARRAY[#{quoted_keys.join(', ')}]::text[]")
         .order(created_at: :desc)
         .pluck(Arel.sql("json_build_array(#{quoted_keys.map { |key| "data::json -> #{key}" }.join(', ')})"))
         .flat_map { |values| values.filter_map(&:presence) }
         .uniq
     end
+  end
+
+  def module_field_options_revision(scope)
+    @module_field_options_revisions ||= {}
+    key = ModuleFieldOptionsCache.revision_scope(scope).to_sql
+    @module_field_options_revisions[key] ||= ModuleFieldOptionsCache.revision(scope)
   end
 
   def approver_options

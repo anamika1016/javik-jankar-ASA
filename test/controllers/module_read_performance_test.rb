@@ -295,9 +295,10 @@ class ModuleReadPerformanceTest < ActiveSupport::TestCase
       state_rows.index { |row| row[:record_id] == older.id }
     assert_includes all_rows.map { |row| row[:record_id] }, village.id
     assert_equal "Inactive", all_rows.find { |row| row[:record_id] == village.id }[:status]
-    # The directory checks one compact source revision so cached results remain
-    # fresh across requests; all source payloads are still read only once.
-    assert_equal 2, queries.size
+    # Initial revision + one source payload read + an uncached revision guard
+    # before publishing a cold fill. Repeated reads do not reload the payload.
+    assert_equal 3, queries.size
+    assert_equal 1, queries.count { |sql| sql.include?("jsonb_object_agg") }
   end
 
   test "dashboard batches FCO counts while preserving aliases, distinct JJ and month matching" do
