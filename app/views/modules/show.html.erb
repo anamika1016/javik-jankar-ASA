@@ -1529,6 +1529,8 @@
               <th>Module Name</th>
               <th>Stakeholder Category</th>
               <th>User Name</th>
+              <th>FCO Name</th>
+              <th>TO Name</th>
               <th>Approval Levels</th>
               <th>Status</th>
             </tr>
@@ -1551,6 +1553,9 @@
                   <td><%= module_name %></td>
                   <td><%= stakeholder_name %></td>
               <td><%= user_name %></td>
+                  <% user_office = approval_user_office_for(user_name) %>
+                  <td><%= user_office[:fco] %></td>
+                  <td><%= user_office[:to] %></td>
               <td>
                     <div class="approval-level-stack">
                       <% display_records.each do |record| %>
@@ -1568,7 +1573,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="6">No records saved yet.</td>
+                <td colspan="8">No records saved yet.</td>
               </tr>
             <% end %>
           </tbody>
@@ -2341,7 +2346,8 @@
               <%# TO Name sits right after the list's FCO column. %>
               <% to_name_after_field = { "training-form-list" => "FCO Name", "other-target-list" => "Department", "other-target-with-farmer-list" => "Department" }[@slug] %>
               <% @module[:fields].each do |field| %>
-                <th><%= resource_person_label(field) %></th>
+                <%# Other Target lists keep FCO in "Department"; show it as FCO Name. %>
+                <th><%= to_name_after_field == "Department" && field == "Department" ? "FCO Name" : resource_person_label(field) %></th>
                 <% if field == to_name_after_field %><th>TO Name</th><% end %>
               <% end %>
             </tr>

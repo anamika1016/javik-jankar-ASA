@@ -39,13 +39,40 @@ class FcoListsToNameTest < ActionDispatch::IntegrationTest
     assert_equal [@vrp.fcoc, @vrp.to_name], row_after("training-form-list", "FCO Name")
   end
 
-  test "other target lists show TO after Department" do
+  test "other target lists show Department as FCO Name, with TO after it" do
     %w[other-target other-target-with-farmer].each do |slug|
       ModuleRecord.create!(module_slug: slug, data: {
         "jeevika_jankar_name" => @vrp.name, "jeevika_jankar_id" => @vrp.id.to_s,
         "department" => @vrp.fcoc, "fcoc_name" => @vrp.fcoc, "month" => "October"
       })
-      assert_equal [@vrp.fcoc, @vrp.to_name], row_after("#{slug}-list", "Department")
+      assert_equal [@vrp.fcoc, @vrp.to_name], row_after("#{slug}-list", "FCO Name")
     end
+  end
+
+  test "an exported FCO Name column uploads back into Department" do
+    controller = ModulesController.new
+    controller.instance_variable_set(:@module, ModulesController::MODULES.fetch("other-target-list"))
+    assert_equal "department", controller.send(:module_import_header_key, "FCO Name")
+    assert_equal "department", controller.send(:module_import_header_key, "Department")
+
+    controller.instance_variable_set(:@module, ModulesController::MODULES.fetch("training-form-list"))
+    assert_equal "fco_name", controller.send(:module_import_header_key, "FCO Name")
+  end
+
+  test "approval list shows the user's FCO and TO" do
+    User.create!(user_name: "appr_#{@tag}", password: "secret", first_name: "Appr", last_name: "User#{@tag}",
+                 user_type: "user", status: "Active", office_name: "FCO-Appr#{@tag}", sub_office_name: "TO-Appr#{@tag}")
+    ModuleRecord.create!(module_slug: "approval-master", data: {
+      "module_name" => "Jeevika Jankar Bill", "stakeholder_name" => "ASA", "user_name" => "Appr User#{@tag}",
+      "status" => "Active", "approval_level" => "First Approval", "approver_approved_by" => "Someone"
+    })
+    get module_path("approval-list")
+    assert_response :success
+    table = css_select("#approval_list_table").first
+    headers = table.css("thead th").map { |th| th.text.strip }
+    assert_equal ["User Name", "FCO Name", "TO Name", "Approval Levels"], headers[3, 4]
+    cells = table.css("tbody tr").find { |tr| tr.text.include?("Appr User#{@tag}") }.css("td").map { |td| td.text.strip }
+    assert_equal ["FCO-Appr#{@tag}", "TO-Appr#{@tag}"], cells[4, 2]
+    assert_equal headers.size, cells.size
   end
 end

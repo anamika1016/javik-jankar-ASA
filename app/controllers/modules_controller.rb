@@ -58,6 +58,7 @@ class ModulesController < ApplicationController
                 :jeevika_bill_description_rows, :jeevika_bill_bank_rows,
                 :jeevika_bill_prepared_by, :jeevika_bill_approved_by_rows,
                 :jeevika_bill_payment_month_options, :jeevika_bill_payment_rows, :jeevika_jankar_to_name_for,
+                :approval_user_office_for,
                 :jeevika_payment_bill_date_options, :jeevika_payment_selectable_rows,
                 :jeevika_payment_detail_rows, :jeevika_completed_payment_rows,
                 :jeevika_completed_payment_month_options, :jeevika_completed_payment_date_options,
@@ -10867,6 +10868,8 @@ class ModulesController < ApplicationController
       normalized_import_header(candidate) == normalized_header ||
         normalized_import_header(helpers.resource_person_label(candidate)) == normalized_header
     end
+    # Other Target lists show their Department column as "FCO Name".
+    field ||= "Department" if normalized_header == "fconame" && @module[:fields].include?("Department") && !@module[:fields].include?("FCO Name")
     field&.parameterize(separator: "_")
   end
 
@@ -11188,6 +11191,23 @@ class ModulesController < ApplicationController
   # TO name for a list row, from its Jeevika Jankar (or else its FCO).
   def jeevika_jankar_to_name_for(vrp_id, fco = nil)
     (@jeevika_jankar_to_names ||= JeevikaJankarToName.new).for(vrp_id: vrp_id, fco: fco)
+  end
+
+  # FCO and TO of an Approval List user, from that user's own office
+  # (office name = FCO, sub office = TO). Users are read once per page.
+  def approval_user_office_for(user_name)
+    @approval_user_offices ||= User.pluck(:first_name, :last_name, :user_name, :office_name, :sub_office_name)
+      .each_with_object({}) do |(first_name, last_name, login, fco, to), offices|
+        office = { fco: fco.to_s.strip.presence, to: to.to_s.strip.presence }
+        [[first_name, last_name].compact.join(" "), login].each do |name|
+          key = name.to_s.squish.downcase
+          offices[key] ||= office if key.present?
+        end
+      end
+    office = @approval_user_offices[user_name.to_s.squish.downcase] || {}
+    fco = office[:fco] || "-"
+    to = office[:to] || (fco == "-" ? "-" : jeevika_jankar_to_name_for(nil, fco))
+    { fco: fco, to: to }
   end
 
   def preload_jeevika_payment_passbooks!(records)
