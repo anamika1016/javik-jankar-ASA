@@ -103,8 +103,9 @@ class BillListReadScalingTest < ActiveSupport::TestCase
     controller.define_singleton_method(:jeevika_bill_bank_rows) { |_| [{ bank_name: "Bank", ifsc_code: "IFSC", account_number: "123" }] }
     controller.define_singleton_method(:jeevika_bill_status_label) { |_| "Final Approved" }
     controller.define_singleton_method(:jeevika_bill_summary) do |_|
-      { activity_groups: "Training", activity_names: "Soil", total_amount: 5000 }
+      { activity_groups: "Training", activity_names: "Soil", total_amount: 5000, to: "TO-Kesinga" }
     end
+    controller.define_singleton_method(:jeevika_bill_fcoc_name) { |_| "FCO-Bhawanipatna" }
     controller.define_singleton_method(:jeevika_jankar_display_name) { |value| value }
     controller.define_singleton_method(:jeevika_jankar_vrp_label) { |_| "JJ Twelve" }
     controller.define_singleton_method(:jeevika_jankar_bill_total_payment) { |_| "5000.00" }
@@ -122,6 +123,8 @@ class BillListReadScalingTest < ActiveSupport::TestCase
       status_class: "approved",
       vrp_id: "12",
       name: "JJ Twelve",
+      fcoc_name: "FCO-Bhawanipatna",
+      to_name: "TO-Kesinga",
       financial_year: "2026-27",
       bill_month: "October",
       activity_groups: "Training",

@@ -11167,6 +11167,9 @@ class ModulesController < ApplicationController
         status_class: status_class,
         vrp_id: data["select_vrp"],
         name: jeevika_jankar_display_name(data["select_vrp_name"].presence || jeevika_jankar_vrp_label(data["select_vrp"])),
+        # Same FCOC and TO as the Bill List shows for this bill.
+        fcoc_name: jeevika_bill_fcoc_name(record),
+        to_name: summary[:to].presence || "-",
         financial_year: data["financial_year"].presence || "-",
         bill_month: data["bill_month"].presence || "-",
         activity_groups: summary[:activity_groups].presence || "-",

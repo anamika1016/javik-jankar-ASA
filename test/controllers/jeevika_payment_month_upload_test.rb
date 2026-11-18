@@ -256,4 +256,17 @@ class JeevikaPaymentMonthUploadTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_select "#jeevika_jankar_updated_payment_table td", text: "TAB-#{@tag}"
   end
+
+  test "payment list shows the FCOC and TO names the bill list shows" do
+    get module_path("jeevika-jankar-payment-list", payment_month: "October")
+    assert_response :success
+
+    headers = css_select("#jeevika_jankar_payment_table thead th").map { |th| th.text.strip }
+    assert_equal %w[Name FCOC\ Name TO\ Name Financial\ Year].map { |h| h.tr("\\", "") }, headers[2, 4]
+    row = css_select("#jeevika_jankar_payment_table tbody tr").find { |tr| tr.text.include?("Pay JJ") }
+    assert row, "October bill row should be listed"
+    cells = row.css("td").map { |td| td.text.strip }
+    assert_equal "FCO-C Sausar", cells[3]
+    assert_equal cells.size, headers.size
+  end
 end
