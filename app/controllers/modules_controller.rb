@@ -57,7 +57,7 @@ class ModulesController < ApplicationController
                 :jeevika_bill_block_name,
                 :jeevika_bill_description_rows, :jeevika_bill_bank_rows,
                 :jeevika_bill_prepared_by, :jeevika_bill_approved_by_rows,
-                :jeevika_bill_payment_month_options, :jeevika_bill_payment_rows,
+                :jeevika_bill_payment_month_options, :jeevika_bill_payment_rows, :jeevika_jankar_to_name_for,
                 :jeevika_payment_bill_date_options, :jeevika_payment_selectable_rows,
                 :jeevika_payment_detail_rows, :jeevika_completed_payment_rows,
                 :jeevika_completed_payment_month_options, :jeevika_completed_payment_date_options,
@@ -11185,6 +11185,11 @@ class ModulesController < ApplicationController
     end
   end
 
+  # TO name for a list row, from its Jeevika Jankar (or else its FCO).
+  def jeevika_jankar_to_name_for(vrp_id, fco = nil)
+    (@jeevika_jankar_to_names ||= JeevikaJankarToName.new).for(vrp_id: vrp_id, fco: fco)
+  end
+
   def preload_jeevika_payment_passbooks!(records)
     vrps = Array(records).filter_map { |record| jeevika_bill_vrp(record) }.uniq(&:id)
     vrps.reject! do |vrp|
@@ -11278,6 +11283,8 @@ class ModulesController < ApplicationController
         {
           jeevika_jankar_id: item["jeevika_jankar_id"].presence || "-",
           name: item["jeevika_jankar_name"].presence || vrp&.name.presence || "-",
+          fcoc_name: vrp&.fcoc.to_s.strip.presence || "-",
+          to_name: jeevika_jankar_to_name_for(item["jeevika_jankar_id"], vrp&.fcoc),
           mobile_no: vrp&.mobile_no.presence || "-",
           financial_year: item["financial_year"].presence || "-",
           bill_month: item["bill_month"].presence || "-",

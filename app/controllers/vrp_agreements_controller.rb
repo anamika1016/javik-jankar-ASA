@@ -12,12 +12,13 @@ class VrpAgreementsController < ApplicationController
   def export
     rows = accepted_agreement_rows
     send_xlsx(
-      headers: ["Name", "Village", "FCO Name", "Mobile Number", "Accepted At", "Signature"],
+      headers: ["Name", "Village", "FCO Name", "TO Name", "Mobile Number", "Accepted At", "Signature"],
       rows: rows.map do |agreement|
         [
           agreement[:name],
           agreement[:village],
           agreement[:fcoc],
+          agreement[:to_name],
           agreement[:mobile_no],
           agreement[:accepted_at].presence || "-",
           agreement[:signature_present] ? "Signed" : "Signature missing"
@@ -60,7 +61,7 @@ class VrpAgreementsController < ApplicationController
       # image. Loading that text for every accepted agreement makes the list
       # transfer and allocate an image payload per row. The signed detail page
       # still loads the real attribute through its own query.
-      .select(:id, :name, :user_name, :mobile_no, :fcoc, :agreement_accepted_at, :village_ids,
+      .select(:id, :name, :user_name, :mobile_no, :fcoc, :to_name, :agreement_accepted_at, :village_ids,
         Arel.sql("NULLIF(BTRIM(agreement_signature_data), '') IS NOT NULL AS agreement_signature_present"))
       .where.not(agreement_accepted_at: nil)
       .order(agreement_accepted_at: :desc)
@@ -70,12 +71,14 @@ class VrpAgreementsController < ApplicationController
     # query twice on every list/export request.
     vrps = scope.to_a
     @agreement_village_resolver = AgreementVillageName.new.preload(vrps)
+    to_names = JeevikaJankarToName.new
     vrps.map do |vrp|
         {
           id: vrp.id,
           name: vrp.name.presence || vrp.user_name.presence || "-",
           village: agreement_village_name(vrp),
           fcoc: vrp.fcoc.presence || "-",
+          to_name: to_names.for(vrp_id: vrp.id, fco: vrp.fcoc),
           mobile_no: vrp.mobile_no.presence || "-",
           accepted_at: vrp.agreement_accepted_at&.strftime("%d/%m/%Y %I:%M %p"),
           signature_present: vrp[:agreement_signature_present]

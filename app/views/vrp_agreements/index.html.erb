@@ -26,6 +26,7 @@
             <th>View</th>
             <th>Name</th>
             <th>FCO Name</th>
+            <th>TO Name</th>
             <th>Village</th>
             <th>Mobile Number</th>
             <th>Signature</th>
@@ -41,6 +42,7 @@
                 <td><%= link_to "Open", vrp_agreement_record_path(agreement[:id]), class: "table-action", target: "_blank", rel: "noopener" %></td>
                 <td><%= agreement[:name] %></td>
                 <td><%= agreement[:fcoc] %></td>
+                <td><%= agreement[:to_name] %></td>
                 <td><%= agreement[:village] %></td>
                 <td><%= agreement[:mobile_no] %></td>
                 <td><%= agreement[:signature_present] ? "Signed" : "Signature missing" %></td>
@@ -51,7 +53,7 @@
             <% end %>
           <% else %>
             <tr>
-              <td colspan="<%= agreement_admin_user? ? 7 : 6 %>">No accepted agreements found for your mapped Jeevika Jankars.</td>
+              <td colspan="<%= agreement_admin_user? ? 8 : 7 %>">No accepted agreements found for your mapped Jeevika Jankars.</td>
             </tr>
           <% end %>
         </tbody>

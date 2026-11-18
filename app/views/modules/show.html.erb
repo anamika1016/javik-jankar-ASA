@@ -1886,6 +1886,8 @@
             <tr>
               <th>Jeevika Jankar ID</th>
               <th>Name</th>
+              <th>FCO Name</th>
+              <th>TO Name</th>
               <th>Mobile</th>
               <th>Financial Year</th>
               <th>Bill Month</th>
@@ -1904,6 +1906,8 @@
                 <tr>
                   <td><%= row[:jeevika_jankar_id] %></td>
                   <td><%= row[:name] %></td>
+                  <td><%= row[:fcoc_name] %></td>
+                  <td><%= row[:to_name] %></td>
                   <td><%= row[:mobile_no] %></td>
                   <td><%= row[:financial_year] %></td>
                   <td><%= row[:bill_month] %></td>
@@ -1918,7 +1922,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="12">No completed payment records found<%= selected_month.present? ? " for this month#{selected_date.present? ? ' and date' : ''}." : "." %></td>
+                <td colspan="14">No completed payment records found<%= selected_month.present? ? " for this month#{selected_date.present? ? ' and date' : ''}." : "." %></td>
               </tr>
             <% end %>
           </tbody>
@@ -2334,8 +2338,11 @@
             <tr>
               <th><input type="checkbox" data-module-select-all></th>
               <% if @slug == "training-form-list" %><th>Approval Status</th><% end %>
+              <%# TO Name sits right after the list's FCO column. %>
+              <% to_name_after_field = { "training-form-list" => "FCO Name", "other-target-list" => "Department", "other-target-with-farmer-list" => "Department" }[@slug] %>
               <% @module[:fields].each do |field| %>
                 <th><%= resource_person_label(field) %></th>
+                <% if field == to_name_after_field %><th>TO Name</th><% end %>
               <% end %>
             </tr>
           </thead>
@@ -2501,12 +2508,15 @@
                         <% end %>
                       </td>
                     <% end %>
+                    <% if field == to_name_after_field %>
+                      <td><%= jeevika_jankar_to_name_for(record.data["jeevika_jankar_id"], record.data["fco_name"].presence || record.data["fcoc_name"].presence || value) %></td>
+                    <% end %>
                   <% end %>
                 </tr>
               <% end %>
             <% else %>
               <tr>
-                <td colspan="<%= @module[:fields].size + 1 %>">No records saved yet.</td>
+                <td colspan="<%= @module[:fields].size + 1 + (to_name_after_field ? 1 : 0) %>">No records saved yet.</td>
               </tr>
             <% end %>
           </tbody>

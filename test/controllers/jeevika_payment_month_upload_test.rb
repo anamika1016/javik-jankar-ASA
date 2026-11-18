@@ -22,7 +22,7 @@ class JeevikaPaymentMonthUploadTest < ActionDispatch::IntegrationTest
       email: "pay#{@tag}@example.com", experience_in_years: 1,
       office_detail_id: 0, to_office_detail_id: 0, vrp_type_ids: [1],
       gram_panchayat_ids: [1], village_ids: [1], is_active: true,
-      is_deleted: false, status: 55, password: "secret", fcoc: "FCO-C Sausar"
+      is_deleted: false, status: 55, password: "secret", fcoc: "FCO-C Sausar", to_name: "TO-Sausar"
     )
     @oct_a = bill("October", "2026-10-29")
     @oct_b = bill("October", "2026-10-28")
@@ -268,5 +268,25 @@ class JeevikaPaymentMonthUploadTest < ActionDispatch::IntegrationTest
     cells = row.css("td").map { |td| td.text.strip }
     assert_equal "FCO-C Sausar", cells[3]
     assert_equal cells.size, headers.size
+  end
+
+  test "payment list and completed payment list show the FCO and TO names" do
+    get module_path("jeevika-jankar-payment-list", payment_month: "October")
+    row = css_select("#jeevika_jankar_payment_table tbody tr").find { |tr| tr.text.include?("Pay JJ") }
+    assert_equal ["FCO-C Sausar", "TO-Sausar"], row.css("td").map { |td| td.text.strip }[3, 2]
+
+    with_fake_sms do
+      post payment_details_module_path(SLUG), params: { module_record: {
+        payment_month: "October|2026-2027", selected_bill_ids: [@oct_a.id],
+        transaction_id: "TO-#{@tag}", transaction_type: "NEFT", transaction_date: "2026-11-01"
+      } }
+    end
+    get module_path("jeevika-jankar-completed-payment-list", payment_month: "October")
+    table = css_select("table").find { |t| t.text.include?("TO-#{@tag}") }
+    headers = table.css("thead th").map { |th| th.text.strip }
+    assert_equal ["Name", "FCO Name", "TO Name", "Mobile"], headers[1, 4]
+    cells = table.css("tbody tr").find { |tr| tr.text.include?("TO-#{@tag}") }.css("td").map { |td| td.text.strip }
+    assert_equal ["FCO-C Sausar", "TO-Sausar"], cells[2, 2]
+    assert_equal headers.size, cells.size
   end
 end

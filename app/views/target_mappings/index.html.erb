@@ -393,6 +393,7 @@
               <tr>
                 <th>Jeevika Jankar</th>
                 <th>FCO</th>
+                <th>TO</th>
                 <th>ICS</th>
                 <th>Village</th>
                 <th>Month</th>
@@ -441,6 +442,7 @@
                   <tr>
                     <td><%= target.vrp&.name %></td>
                   <td><%= target.fco_name.presence || target.fco_id %></td>
+                  <td><%= target_to_name_for(target) %></td>
                   <td><%= target.ics_name.presence || target.ics_id %></td>
                   <td><%= target.village_name.presence || target.village_id %></td>
                   <td><%= target.month_name %></td>
@@ -522,7 +524,7 @@
               <% end %>
             <% else %>
               <tr>
-	                <td colspan="<%= @target_summary_mode.present? ? 4 : (show_mapping_actions ? 20 : 19) %>">No target mapping saved yet.</td>
+	                <td colspan="<%= @target_summary_mode.present? ? 4 : (show_mapping_actions ? 21 : 20) %>">No target mapping saved yet.</td>
               </tr>
             <% end %>
           </tbody>

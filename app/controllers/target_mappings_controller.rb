@@ -4,7 +4,7 @@ require "uri"
 class TargetMappingsController < ApplicationController
   before_action :block_vrp_target_write, only: [:create, :destroy]
 
-  helper_method :target_type_label_for
+  helper_method :target_type_label_for, :target_to_name_for
 
   TRAINING_TARGET_FIELDS = {
     "opg_training" => "OPG Training",
@@ -1940,10 +1940,15 @@ end
     }
   end
 
+  # TO of a mapping's Jeevika Jankar (or of its FCO), shown after FCO.
+  def target_to_name_for(target)
+    (@target_to_names ||= JeevikaJankarToName.new).for(vrp_id: target.vrp_id, fco: target.fco_name)
+  end
+
   def send_target_mappings_xlsx
     has_cc = TargetMapping.column_names.include?("cc_target")
     headers = [
-      "Jeevika Jankar", "FCO", "ICS", "Village", "Month", "Completion Date",
+      "Jeevika Jankar", "FCO", "TO", "ICS", "Village", "Month", "Completion Date",
       "Main Activity", "Sub Activity",
       "OPG Training", "General Training/Meeting", "Input Demo INM", "Input Demo PM", "Exposer",
       *(has_cc ? ["CC Target"] : []),
@@ -1958,6 +1963,7 @@ end
       [
         target.vrp&.name,
         target.fco_name.presence || target.fco_id,
+        target_to_name_for(target),
         target.ics_name.presence || target.ics_id,
         target.village_name.presence || target.village_id,
         target.month_name,
