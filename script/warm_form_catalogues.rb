@@ -7,6 +7,7 @@
 tasks = {
   module_location_attribute: -> { ModulesController.new.send(:location_hierarchy_browser_attribute) },
   vrp_location_attribute: -> { VrpsController.new.send(:vrp_location_browser_attribute) },
+  vrp_detail_village_index: -> { VrpsController.new.send(:vrp_detail_village_index) },
   user_form_options: -> { UsersController.new.send(:user_form_options_payload) },
   lg_directory_rows: -> { ModulesController.new.send(:lg_directory_rows) },
   training_revision_ids: -> { TrainingEditApproval.unapproved_record_ids },

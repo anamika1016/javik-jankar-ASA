@@ -4,6 +4,10 @@ Rails.application.routes.draw do
   get "farmer-app-logins", to: "farmer_app_logins#index", as: :farmer_app_logins
   get "farmer-app-logins/export", to: "farmer_app_logins#export", as: :export_farmer_app_logins
 
+  # Login Detail by App -- who signed in from the Jeevika Jankar mobile app.
+  get "app-login-detail", to: "app_user_logins#index", as: :app_user_logins
+  get "app-login-detail/export", to: "app_user_logins#export", as: :export_app_user_logins
+
   # Farmer feed: published from the web, read by the Android app.
   resources :farmer_news, path: "farmer-news", only: [:index, :create, :destroy] do
     patch :toggle_status, on: :member

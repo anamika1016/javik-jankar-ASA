@@ -38,6 +38,16 @@ module Api
         params[:token].presence
       end
 
+      # Records who signed in from the mobile app, for the Login Detail by App
+      # screen. Deliberately swallows its own errors: a missing log line is a
+      # far smaller problem than a field worker who cannot sign in.
+      def record_app_login(payload, method)
+        AppUserLogin.record!(payload: payload, method: method, request: request)
+      rescue StandardError => error
+        Rails.logger.warn("App login not recorded: #{error.class} - #{error.message}")
+        nil
+      end
+
       def vrp_agreement_required?(user)
         user.is_a?(Vrp) &&
           Vrp.column_names.include?("agreement_accepted_at") &&

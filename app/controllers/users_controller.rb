@@ -9,7 +9,7 @@ class UsersController < ApplicationController
   # revision remains part of the key, preserving the existing invalidation and
   # option values while making warm reads process-local.
   # Allow the escaped catalogue plus dropdowns to remain in the bounded store.
-  USER_FORM_OPTIONS_MEMORY_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 64.megabytes)
+  USER_FORM_OPTIONS_MEMORY_CACHE = ImmutableCatalogueStore.new(size: 64.megabytes)
   FORM_OPTION_SLUGS = %w[
     stakeholder-master stakeholder-role role-name user-management-role person-type
     state-master district-master block-master gram-panchayat-master village-master

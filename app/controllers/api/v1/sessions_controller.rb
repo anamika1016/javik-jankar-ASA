@@ -27,12 +27,14 @@ module Api
         end
 
         token = ApiAuthToken.encode(user)
+        payload = app_user_session_payload(user)
+        record_app_login(payload, :password)
 
         render json: {
           success: true,
           message: "Logged in successfully.",
           token: token,
-          user: app_user_session_payload(user)
+          user: payload
         }, status: :ok
       end
 
@@ -57,11 +59,14 @@ module Api
           }, status: :forbidden
         end
 
+        payload = app_user_session_payload(user)
+        record_app_login(payload, :password)
+
         render json: {
           success: true,
           message: "Jeevika Jankar logged in successfully.",
           token: ApiAuthToken.encode(user),
-          user: app_user_session_payload(user)
+          user: payload
         }, status: :ok
       end
 

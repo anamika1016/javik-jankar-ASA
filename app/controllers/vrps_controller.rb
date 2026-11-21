@@ -16,7 +16,7 @@ class VrpsController < ApplicationController
   # revision, so creates, edits, imports and deletes still take effect on the
   # very next request.
   # Retain the escaped catalogue alongside projected rows and label lists.
-  VRP_LOCATION_MEMORY_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 64.megabytes)
+  VRP_LOCATION_MEMORY_CACHE = ImmutableCatalogueStore.new(size: 64.megabytes)
   LOCATION_OPTION_DATA_KEYS = %w[
     deleted is_deleted discarded status
     state_name state state_code state_id
@@ -2103,17 +2103,7 @@ class VrpsController < ApplicationController
     return if missing_slugs.empty?
 
     missing_slugs.each { |slug| @vrp_form_records_by_slug[slug] = [] }
-    cache_key = ["vrp/location-catalogue-v2", missing_slugs, vrp_location_catalogue_revision]
-    records = CatalogueReadCache.fetch(vrp_location_catalogue_cache, cache_key,
-      version: vrp_location_catalogue_revision, current_version: -> { read_vrp_location_catalogue_revision }) do
-      ModuleRecord.where(module_slug: missing_slugs)
-        .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
-        .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
-        .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
-        .where("COALESCE(BTRIM(data::jsonb ->> 'status'), '') = '' OR LOWER(BTRIM(data::jsonb ->> 'status')) = 'active'")
-        .order(created_at: :desc)
-        .pluck(:module_slug, :id, Arel.sql(location_option_data_projection))
-    end
+    records = vrp_location_catalogue_rows(missing_slugs)
 
     records.each do |module_slug, id, data|
       # The projection is cast to SQL text so PostgreSQL returns only the
@@ -2126,6 +2116,20 @@ class VrpsController < ApplicationController
       # that guarantee explicit and prevents a future helper mutation from
       # leaking into a later request.
       @vrp_form_records_by_slug[module_slug] << VrpLocationRecord.new(id, data.deep_dup)
+    end
+  end
+
+  def vrp_location_catalogue_rows(slugs)
+    cache_key = ["vrp/location-catalogue-v2", slugs, vrp_location_catalogue_revision]
+    CatalogueReadCache.fetch(vrp_location_catalogue_cache, cache_key,
+      version: vrp_location_catalogue_revision, current_version: -> { read_vrp_location_catalogue_revision }) do
+      ModuleRecord.where(module_slug: slugs)
+        .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
+        .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
+        .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
+        .where("COALESCE(BTRIM(data::jsonb ->> 'status'), '') = '' OR LOWER(BTRIM(data::jsonb ->> 'status')) = 'active'")
+        .order(created_at: :desc)
+        .pluck(:module_slug, :id, Arel.sql(location_option_data_projection))
     end
   end
 
@@ -2167,12 +2171,16 @@ class VrpsController < ApplicationController
     # before records (and their JSON payloads) are materialized. This powers
     # the VRP form's location and role dropdowns and previously loaded inactive
     # master records only to discard them in Ruby.
-    @vrp_form_records_by_slug[module_slug] ||= ModuleRecord.where(module_slug: module_slug)
+    @vrp_form_records_by_slug[module_slug] ||= vrp_form_records_scope(module_slug).to_a
+  end
+
+  def vrp_form_records_scope(module_slug)
+    ModuleRecord.where(module_slug: module_slug)
       .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
       .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
       .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
       .where("COALESCE(BTRIM(data::jsonb ->> 'status'), '') = '' OR LOWER(BTRIM(data::jsonb ->> 'status')) = 'active'")
-      .order(created_at: :desc).to_a
+      .order(created_at: :desc)
   end
 
   def location_option_data_projection
@@ -2558,15 +2566,57 @@ class VrpsController < ApplicationController
     @detail_location_records_by_selection ||= {}
     key = [village_ids, gram_panchayat_ids]
     records = @detail_location_records_by_selection[key] ||= begin
-      village_records = village_ids.empty? ? [] : active_records_for_location("village-master").select do |record|
-        vrp_detail_location_record_matches?(record, village_ids, "village-master", "village_name")
-      end
+      village_records = village_ids.empty? ? [] : vrp_detail_village_records(village_ids)
       gram_panchayat_records = gram_panchayat_ids.empty? ? [] : active_records_for_location("gram-panchayat-master").select do |record|
         vrp_detail_location_record_matches?(record, gram_panchayat_ids, "gram-panchayat-master", "gram_panchayat_name")
       end
       village_records + gram_panchayat_records
     end
     records.dup
+  end
+
+  def vrp_detail_village_index
+    version = vrp_location_catalogue_revision
+    key = ["vrp/detail-village-index-v1", version]
+    CatalogueReadCache.fetch(vrp_location_catalogue_cache, key,
+      version: version, current_version: -> { read_vrp_location_catalogue_revision },
+      shared: shared_form_catalogue_cache) do
+      index = {}
+      # Keep the original single-source ordering rather than interleaving
+      # villages with other master modules before resolving duplicate labels.
+      # JSON (not JSONB) also preserves nested legacy label Hash order when
+      # Ruby converts those values to strings for its original matcher.
+      keys = %w[village_name village name deleted is_deleted discarded status].map { |key| ModuleRecord.connection.quote(key) }.join(", ")
+      object = "CASE WHEN json_typeof(data::json) = 'object' THEN data::json ELSE '{}'::json END"
+      projection = Arel.sql("(SELECT COALESCE(json_object_agg(key, value), '{}'::json) FROM json_each(#{object}) WHERE key IN (#{keys}))")
+      vrp_form_records_scope("village-master").pluck(:id, projection).each_with_index do |(id, data), position|
+        data = JSON.parse(data) if data.is_a?(String)
+        record = VrpLocationRecord.new(id, data)
+        next unless active_module_record?(record)
+        values = [id.to_s, module_record_display_label("village-master", record, "village_name"), first_present_data(record, "name")]
+          .map { |value| value.to_s.strip.downcase }.reject(&:blank?).uniq
+        entry = [position, id]
+        values.each { |value| (index[value] ||= []) << entry }
+      end
+      index
+    end
+  end
+
+  def vrp_detail_village_records(selected_values)
+    ReadStageTrace.measure("vrp.detail_villages") do
+      values = Array(selected_values).map { |value| value.to_s.strip.downcase }.reject(&:blank?).uniq
+      index = vrp_detail_village_index
+      ids = values.flat_map { |value| index.fetch(value, []) }.uniq.sort_by(&:first).map(&:last)
+      next [] if ids.empty?
+
+      # Hydrate only matches, in the exact original catalogue order. Recheck
+      # the original Ruby matcher after hydration, retaining aliases/types and
+      # excluding a row whose label changed between the two reads.
+      records = vrp_form_records_scope("village-master").where(id: ids).index_by(&:id)
+      ids.filter_map { |id| records[id] }.select do |record|
+        active_module_record?(record) && vrp_detail_location_record_matches?(record, selected_values, "village-master", "village_name")
+      end
+    end
   end
 
   def vrp_detail_location_record_matches?(record, selected_values, module_slug, field_key)

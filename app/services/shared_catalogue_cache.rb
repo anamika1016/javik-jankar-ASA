@@ -17,6 +17,7 @@ class SharedCatalogueCache
       app/services/module_record_read_query.rb
       app/services/module_record_read_version.rb
       app/services/module_field_options_cache.rb
+      app/services/immutable_catalogue_store.rb
     ].each { |path| digest << File.binread(Rails.root.join(path)) }
     digest.hexdigest.freeze
   end

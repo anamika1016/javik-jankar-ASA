@@ -370,8 +370,8 @@ class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
     })
     controller = VrpsController.new
     reads = []
-    controller.define_singleton_method(:active_records_for_location) do |slug|
-      reads << slug
+    controller.define_singleton_method(:vrp_detail_village_records) do |_values|
+      reads << "village-master"
       [row]
     end
     empty = Vrp.new(village_ids: [], gram_panchayat_ids: [])

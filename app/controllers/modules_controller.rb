@@ -30,12 +30,12 @@ class ModulesController < ApplicationController
   # other on every request - turning a cache into a rebuild loop. The headroom
   # below keeps the projections, the master rows and both forms of the
   # catalogue resident together.
-  LOCATION_CATALOGUE_MEMORY_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 96.megabytes)
+  LOCATION_CATALOGUE_MEMORY_CACHE = ImmutableCatalogueStore.new(size: 96.megabytes)
   # The LG directory is assembled from the same six location sources, but its
   # compaction and code lookups are considerably more CPU intensive than a
   # dropdown. Keep that derived, read-only table separate so a large directory
   # cannot evict the form catalogue.
-  LG_DIRECTORY_MEMORY_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 32.megabytes)
+  LG_DIRECTORY_MEMORY_CACHE = ImmutableCatalogueStore.new(size: 32.megabytes)
   # Dashboard count keys include source table revisions. Keep their short-lived
   # values local so an ordinary cache hit does not contend on Solid Cache's DB.
   DASHBOARD_READ_MEMORY_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 32.megabytes)
@@ -2949,7 +2949,7 @@ class ModulesController < ApplicationController
     # Legacy blank-owner rows can match every JJ. Bound retained references as
     # well as identities so a large archive cannot multiply request memory.
     if candidates.size <= 100_000
-      if cache.size >= 128 || index[:candidate_references].to_i + candidates.size > 100_000
+      if cache.size >= 1024 || index[:candidate_references].to_i + candidates.size > 100_000
         cache.clear
         index[:candidate_references] = 0
       end
@@ -8196,10 +8196,12 @@ class ModulesController < ApplicationController
 
     selected_farmer_ids = training_record_selected_farmer_ids(record)
     return @training_record_target_match_cache[cache_key] = false if selected_farmer_ids.blank?
-    return @training_record_target_match_cache[cache_key] = false unless training_record_target_assignment_matches?(record, target)
     return @training_record_target_match_cache[cache_key] = false unless training_record_matches_month?(record, target.month_name)
     return @training_record_target_match_cache[cache_key] = false unless training_record_vrp_scope_matches?(record, target.vrp)
     return @training_record_target_match_cache[cache_key] = false unless training_record_target_location_matches?(record, target)
+    # These are the same AND predicates. Reject cheap scope mismatches before
+    # resolving referenced assignments/signatures across the target catalogue.
+    return @training_record_target_match_cache[cache_key] = false unless training_record_target_assignment_matches?(record, target)
 
     summary = training_summary(record)
     topics = training_activity_values(record.data["main_activities"].presence || summary[:training_topic])
@@ -8234,8 +8236,6 @@ class ModulesController < ApplicationController
     record_month = normalize_dashboard_text(data["month"].presence || data["training_month"])
     record_ics = normalize_dashboard_text(data["ics_block"].presence || data["ics"])
     record_village = normalize_dashboard_text(data["gram_name"].presence || data["village"])
-    record_topics = training_activity_values(data["main_activities"].presence || data["main_activity"].presence || data["training_topic"])
-    record_subjects = training_activity_values(data["sub_activities"].presence || data["sub_activity"].presence || data["training_subject"])
 
     return false if record_month.present? && record_month != normalize_dashboard_text(target.month_name)
 
@@ -8244,6 +8244,8 @@ class ModulesController < ApplicationController
     return false if record_ics.present? && target_ics_values.present? && !target_ics_values.include?(record_ics)
     return false if record_village.present? && target_village_values.present? && !target_village_values.include?(record_village)
 
+    record_topics = training_activity_values(data["main_activities"].presence || data["main_activity"].presence || data["training_topic"])
+    record_subjects = training_activity_values(data["sub_activities"].presence || data["sub_activity"].presence || data["training_subject"])
     target_topic = normalize_dashboard_text(target.main_activity_name)
     target_subject = normalize_dashboard_text(target.activity_name)
     topic_matches = record_topics.blank? || record_topics.any? { |topic| dashboard_training_activity_text_matches?(topic, target_topic) }

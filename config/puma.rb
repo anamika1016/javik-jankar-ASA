@@ -46,6 +46,11 @@ worker_count = ENV.fetch("WEB_CONCURRENCY", 0)
 if worker_count.to_s == "auto" || worker_count.to_i.positive?
   workers worker_count
   preload_app!
+  before_fork do
+    # Fill once in the preloaded parent, before workers serve requests. Frozen
+    # catalogue graphs can then remain copy-on-write shared between workers.
+    CatalogueBootWarmup.run
+  end
 end
 
 # Specifies the `port` that Puma will listen on to receive requests; default is 3000.

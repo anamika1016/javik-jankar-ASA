@@ -14133,3 +14133,92 @@ a.farmer-stat:hover {
     flex: 1;
   }
 }
+
+/* ---- Login Detail by App ----------------------------------------------- */
+
+.login-range-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+  padding: 14px 16px;
+}
+
+/* Day / Month / All sit together as one control so it reads as a choice
+   rather than three unrelated links. */
+.login-range-modes {
+  display: flex;
+  gap: 0;
+}
+
+.login-range-modes .farmer-chip {
+  border-radius: 0;
+  margin-left: -1px;
+}
+
+.login-range-modes .farmer-chip:first-child {
+  border-radius: 999px 0 0 999px;
+  margin-left: 0;
+}
+
+.login-range-modes .farmer-chip:last-child {
+  border-radius: 0 999px 999px 0;
+}
+
+.login-range-modes .farmer-chip.is-on {
+  position: relative;
+  z-index: 1;
+}
+
+.login-range-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin: 0;
+  padding-left: 16px;
+  border-left: 1px solid #e1e8ea;
+}
+
+.login-range-form .farmer-field {
+  flex: 0 1 200px;
+}
+
+.login-range-quick {
+  display: flex;
+  gap: 6px;
+}
+
+.login-range-note {
+  margin: 0;
+  padding-left: 16px;
+  border-left: 1px solid #e1e8ea;
+  color: var(--vrp-muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 38px;
+}
+
+.login-method-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  font-weight: 800;
+  background: #eef4ff;
+  color: #27477d;
+}
+
+.login-method-pill.otp {
+  background: #f1f8f5;
+  color: var(--vrp-primary-dark);
+}
+
+@media (max-width: 760px) {
+  .login-range-form,
+  .login-range-note {
+    padding-left: 0;
+    border-left: 0;
+  }
+}

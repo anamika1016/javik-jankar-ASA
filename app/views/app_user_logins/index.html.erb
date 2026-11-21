@@ -1,0 +1,196 @@
+<% content_for :title, "JJ App Login Detail" %>
+<% filters = range_params.merge(q: @search, kind: @kind) %>
+
+<section class="module-page farmer-login-page">
+  <div class="module-hero">
+    <div>
+      <p class="vrp-eyebrow">Login Detail by App</p>
+      <h1>JJ App Login Detail</h1>
+      <p>Jeevika Jankar and staff who signed in from the mobile app — <%= @range_label %>.</p>
+    </div>
+    <div class="dashboard-actions">
+      <%= link_to "Export Excel", export_app_user_logins_path(**filters), class: "list-btn export" %>
+    </div>
+  </div>
+
+  <%# Day, month or everything. The mode is chosen first, then its own input
+      is shown -- two date boxes side by side only invite picking the wrong
+      one. %>
+  <section class="module-card farmer-filter-bar">
+    <div class="login-range-bar">
+      <div class="login-range-modes">
+        <%= link_to "Day", app_user_logins_path(view: "day", date: (@date || Date.current), q: @search, kind: @kind),
+              class: "farmer-chip #{'is-on' if @view == 'day'}" %>
+        <%= link_to "Month", app_user_logins_path(view: "month", month: (@month || Date.current).strftime("%Y-%m"), q: @search, kind: @kind),
+              class: "farmer-chip #{'is-on' if @view == 'month'}" %>
+        <%= link_to "All", app_user_logins_path(view: "all", q: @search, kind: @kind),
+              class: "farmer-chip #{'is-on' if @view == 'all'}" %>
+      </div>
+
+      <% if @view == "day" %>
+        <%= form_with url: app_user_logins_path, method: :get, local: true, data: { turbo: false },
+                      html: { class: "login-range-form" } do %>
+          <%= hidden_field_tag :view, "day" %>
+          <%= hidden_field_tag :q, @search if @search.present? %>
+          <%= hidden_field_tag :kind, @kind if @kind %>
+          <label class="farmer-field">
+            <span>Pick a date</span>
+            <input type="date" name="date" value="<%= @date %>" max="<%= Date.current %>"
+                   onchange="this.form.requestSubmit()">
+          </label>
+          <div class="login-range-quick">
+            <%= link_to "Today", app_user_logins_path(view: "day", date: Date.current, q: @search, kind: @kind),
+                  class: "farmer-chip #{'is-on' if @date == Date.current}" %>
+            <%= link_to "Yesterday", app_user_logins_path(view: "day", date: Date.yesterday, q: @search, kind: @kind),
+                  class: "farmer-chip #{'is-on' if @date == Date.yesterday}" %>
+          </div>
+        <% end %>
+      <% elsif @view == "month" %>
+        <%= form_with url: app_user_logins_path, method: :get, local: true, data: { turbo: false },
+                      html: { class: "login-range-form" } do %>
+          <%= hidden_field_tag :view, "month" %>
+          <%= hidden_field_tag :q, @search if @search.present? %>
+          <%= hidden_field_tag :kind, @kind if @kind %>
+          <label class="farmer-field">
+            <span>Pick a month</span>
+            <input type="month" name="month" value="<%= @month.strftime("%Y-%m") %>"
+                   max="<%= Date.current.strftime("%Y-%m") %>" onchange="this.form.requestSubmit()">
+          </label>
+          <div class="login-range-quick">
+            <%= link_to "This month", app_user_logins_path(view: "month", month: Date.current.strftime("%Y-%m"), q: @search, kind: @kind),
+                  class: "farmer-chip #{'is-on' if @month == Date.current.beginning_of_month}" %>
+            <%= link_to "Last month", app_user_logins_path(view: "month", month: 1.month.ago.strftime("%Y-%m"), q: @search, kind: @kind),
+                  class: "farmer-chip #{'is-on' if @month == 1.month.ago.to_date.beginning_of_month}" %>
+          </div>
+        <% end %>
+      <% else %>
+        <p class="login-range-note">Showing every login ever recorded.</p>
+      <% end %>
+    </div>
+  </section>
+
+  <div class="farmer-stat-row">
+    <%= link_to app_user_logins_path(**range_params, q: @search),
+          class: "farmer-stat #{'is-selected' unless @kind}" do %>
+      <span class="farmer-stat-value"><%= @summary[:people] %></span>
+      <span class="farmer-stat-label">People</span>
+    <% end %>
+    <div class="farmer-stat">
+      <span class="farmer-stat-value"><%= @summary[:logins] %></span>
+      <span class="farmer-stat-label">Total Logins</span>
+    </div>
+    <%= link_to app_user_logins_path(**range_params, q: @search, kind: "Vrp"),
+          class: "farmer-stat #{'is-selected' if @kind == 'Vrp'}" do %>
+      <span class="farmer-stat-value"><%= @summary[:jeevika_jankars] %></span>
+      <span class="farmer-stat-label">Jeevika Jankar</span>
+    <% end %>
+    <%= link_to app_user_logins_path(**range_params, q: @search, kind: "User"),
+          class: "farmer-stat #{'is-selected' if @kind == 'User'}" do %>
+      <span class="farmer-stat-value"><%= @summary[:staff] %></span>
+      <span class="farmer-stat-label">Staff Users</span>
+    <% end %>
+  </div>
+
+  <section class="module-card">
+    <div class="module-card-header farmer-list-header">
+      <h2>Login Records</h2>
+      <div class="farmer-list-header-right">
+        <span class="record-count"><%= @total_count %> records</span>
+        <%= form_with url: app_user_logins_path, method: :get, local: true, data: { turbo: false },
+                      html: { class: "farmer-inline-search" } do %>
+          <% range_params.each { |key, value| concat hidden_field_tag(key, value) } %>
+          <%= hidden_field_tag :kind, @kind if @kind %>
+          <input type="search" name="q" value="<%= @search %>" aria-label="Search app logins"
+                 placeholder="Name, username, role, office…">
+          <button type="submit" class="list-btn active">Search</button>
+          <% if @search.present? || @kind %>
+            <%= link_to "Clear", app_user_logins_path(**range_params), class: "list-btn" %>
+          <% end %>
+        <% end %>
+      </div>
+    </div>
+
+    <% if @records.blank? %>
+      <p class="farmer-empty">
+        <% if @search.present? || @kind %>
+          No login matches this search for <%= @range_label %>.
+        <% elsif @view == "all" %>
+          Nobody has signed in from the mobile app yet.
+        <% else %>
+          Nobody signed in from the mobile app in <%= @range_label %>.
+        <% end %>
+      </p>
+    <% else %>
+      <div class="table-shell">
+        <table class="module-table compact-table farmer-login-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Login Time</th>
+              <th>Name</th>
+              <th>Type</th>
+              <th>Role</th>
+              <th>Office / FCO</th>
+              <th>Mobile</th>
+              <th>Login By</th>
+              <th>Device</th>
+              <th>IP</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @records.each_with_index do |record, index| %>
+              <tr>
+                <td><%= (@page - 1) * AppUserLoginsController::PER_PAGE + index + 1 %></td>
+                <td><%= farmer_login_time(record.logged_in_at) %></td>
+                <td>
+                  <strong><%= record.name.presence || "-" %></strong>
+                  <% if record.username.present? %>
+                    <small class="farmer-sub"><%= record.username %></small>
+                  <% end %>
+                </td>
+                <td>
+                  <span class="farmer-method <%= record.record_type == "Vrp" ? "aadhaar" : "mobile" %>">
+                    <%= record.user_kind %>
+                  </span>
+                </td>
+                <td><%= record.role.presence || "-" %></td>
+                <td>
+                  <%= record.office_name.presence || "-" %>
+                  <% if record.fcoc.present? %>
+                    <small class="farmer-sub"><%= record.fcoc %></small>
+                  <% end %>
+                </td>
+                <%# Masked: this is an attendance trail, not a contact list. %>
+                <td><%= record.masked_mobile %></td>
+                <td>
+                  <span class="login-method-pill <%= record.login_method %>">
+                    <%= record.login_method == "otp" ? "OTP" : "Password" %>
+                  </span>
+                </td>
+                <td>
+                  <%= record.device.presence || "-" %>
+                  <% if record.app_version.present? %>
+                    <small class="farmer-sub">App v<%= record.app_version %></small>
+                  <% end %>
+                </td>
+                <td><%= record.ip.presence || "-" %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+
+      <% if @total_pages > 1 %>
+        <div class="farmer-pager">
+          <% if @page > 1 %>
+            <%= link_to "← Previous", app_user_logins_path(**filters, page: @page - 1), class: "list-btn" %>
+          <% end %>
+          <span class="farmer-pager-label">Page <%= @page %> of <%= @total_pages %></span>
+          <% if @page < @total_pages %>
+            <%= link_to "Next →", app_user_logins_path(**filters, page: @page + 1), class: "list-btn" %>
+          <% end %>
+        </div>
+      <% end %>
+    <% end %>
+  </section>
+</section>

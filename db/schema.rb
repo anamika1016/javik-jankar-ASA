@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_16_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_19_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -95,6 +95,26 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_120000) do
     t.index ["tracenet_no"], name: "index_afls_on_tracenet_no"
     t.index ["updated_at"], name: "index_afls_on_updated_at", order: :desc
     t.index ["village_id"], name: "index_afls_on_village_id"
+  end
+
+  create_table "app_user_logins", force: :cascade do |t|
+    t.string "app_version"
+    t.datetime "created_at", null: false
+    t.string "device"
+    t.string "fcoc"
+    t.string "ip"
+    t.datetime "logged_in_at", null: false
+    t.string "login_method", default: "password", null: false
+    t.string "mobile_no"
+    t.string "name"
+    t.string "office_name"
+    t.bigint "record_id", null: false
+    t.string "record_type", null: false
+    t.string "role"
+    t.datetime "updated_at", null: false
+    t.string "username"
+    t.index ["logged_in_at"], name: "index_app_user_logins_on_logged_in_at", order: :desc
+    t.index ["record_type", "record_id", "logged_in_at"], name: "index_app_user_logins_on_user_and_time"
   end
 
   create_table "asa360_master", force: :cascade do |t|

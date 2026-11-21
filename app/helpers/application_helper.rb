@@ -378,6 +378,13 @@ module ApplicationHelper
       ]
     },
     {
+      title: "Login Detail by App",
+      icon: "▣",
+      links: [
+        ["JJ App Login Detail", :route, :app_user_logins_path]
+      ]
+    },
+    {
       title: "Farmer 360",
       icon: "▤",
       links: [
