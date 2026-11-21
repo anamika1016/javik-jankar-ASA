@@ -141,11 +141,6 @@
             </label>
 
             <input type="hidden" name="target_mapping[target_quantity]" value="<%= @edit_payload[:target_quantity] %>" data-target-quantity-input>
-
-            <label data-target-farmer-only-field data-village-target-hide <%= "hidden" if village_target_selected %>>
-              <span>New Farmer Target</span>
-              <input type="number" name="target_mapping[new_farmer_target_quantity]" min="1" step="1" placeholder="Enter target without farmer selection" value="<%= @edit_payload[:new_farmer_target_quantity] %>" data-new-farmer-target-input <%= "disabled" if village_target_selected %>>
-            </label>
           </div>
 
           <div class="target-training-fields" data-target-training-fields hidden>
