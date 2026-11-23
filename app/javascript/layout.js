@@ -952,8 +952,10 @@ function initDeferredLayoutPage() {
       if (select.id === "dash_fcoc") {
         const toSelect = form.querySelector("#dash_to_name");
         if (toSelect) toSelect.value = "";
+        const officeSelect = form.querySelector("#dash_office_id");
+        if (officeSelect) officeSelect.value = "";
       }
-      if (select.id === "dash_fcoc" || select.id === "dash_to_name") {
+      if (select.id === "dash_fcoc" || select.id === "dash_to_name" || select.id === "dash_office_id") {
         const icsSelect = form.querySelector("#dash_ics");
         if (icsSelect) icsSelect.value = "";
       }

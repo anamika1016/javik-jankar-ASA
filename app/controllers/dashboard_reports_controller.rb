@@ -164,6 +164,7 @@ class DashboardReportsController < ModulesController
     end
 
     @filter_to_options = dashboard_to_options
+    @filter_office_options = dashboard_mapped_master_offices.map { |office| [office["name"], office["id"].to_s] } if dashboard_block_wise_view?
 
     # 3. Cluster Incharge Filter (depends on selected Activity & FCO)
     current_cluster_labels = hierarchy_cluster_incharge_labels
@@ -199,6 +200,9 @@ class DashboardReportsController < ModulesController
     master_block_options = dashboard_ics_wise_view? ? [] : Array(dashboard_block_master_rows).map { |row| row["ICS Name"] }
     @filter_ics_options = (t_scope.map { |t| t.ics_name.presence || t.ics_id } +
       master_ics_options + master_block_options).uniq.compact_blank.sort
+    if dashboard_block_wise_view? && !dashboard_block_master_rows.nil?
+      @filter_ics_options = Array(@dashboard_block_master_all_rows).map { |row| row["ICS Name"] }.uniq.sort
+    end
     selected_ics_filter = dashboard_filter_param(:ics)
     if selected_ics_filter.present?
       selected_ics = selected_ics_filter.to_s
@@ -319,7 +323,7 @@ class DashboardReportsController < ModulesController
     filtered_vrp_ids = @filtered_vrps.map { |v| v.id.to_s }
     dashboard_filters_active = [
       dashboard_filter_param(:search), dashboard_filter_param(:activity), dashboard_filter_param(:main_activity),
-      dashboard_filter_param(:sub_activity), dashboard_filter_param(:fcoc), dashboard_filter_param(:to_name), dashboard_filter_param(:cluster_incharge),
+      dashboard_filter_param(:sub_activity), dashboard_filter_param(:fcoc), dashboard_filter_param(:office_id), dashboard_filter_param(:to_name), dashboard_filter_param(:cluster_incharge),
       dashboard_filter_param(:ics), dashboard_filter_param(:month), dashboard_filter_param(:post), dashboard_filter_param(:vrp_id)
     ].any?(&:present?) || [
       @dashboard_main_activity_filter_value, selected_sub_activity, @dashboard_fcoc_filter_value,
@@ -1017,6 +1021,9 @@ class DashboardReportsController < ModulesController
       binds[:summary_to_name] = normalize_dashboard_text(dashboard_filter_param(:to_name))
     end
 
+    office_predicate = dashboard_office_target_predicate(target_alias)
+    conditions << office_predicate if office_predicate
+
     ics_value = dashboard_filter_param(:ics, :ics_name)
     if ics_value.present?
       conditions << "(LOWER(BTRIM(#{target_alias}.ics_name)) = :summary_ics OR LOWER(BTRIM(#{target_alias}.ics_id)) = :summary_ics)"
@@ -1459,7 +1466,7 @@ class DashboardReportsController < ModulesController
       Digest::SHA256.hexdigest([
         dashboard_current_user_office_keys.sort,
         dashboard_visible_vrp_ids.sort,
-        params.permit(:to_name, :cluster_incharge, :post, :vrp_id, :main_activity, :sub_activity, :activity, :search).to_h
+        params.permit(:office_id, :to_name, :cluster_incharge, :post, :vrp_id, :main_activity, :sub_activity, :activity, :search).to_h
       ].to_json),
       normalize_dashboard_text(dashboard_filter_param(:ics, :ics_name)),
       normalize_dashboard_text(month_name),
@@ -2502,11 +2509,8 @@ class DashboardReportsController < ModulesController
     end
   end
 
-  # Master blocks are independent of target entries, reporting month and activity.
-  def dashboard_block_master_rows
-    return @dashboard_block_master_rows if defined?(@dashboard_block_master_rows)
+  def dashboard_scoped_master_fcos
     items = dashboard_office_list_items
-    return @dashboard_block_master_rows = nil if items.empty?
     selected = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
     keys = if selected.present?
       training_fcoc_filter_values(selected).map { |value| AgreementVrpScope.office_key(value) }
@@ -2523,6 +2527,58 @@ class DashboardReportsController < ModulesController
     offices.select! do |office|
       keys.nil? || keys.include?(AgreementVrpScope.office_key(office["name"])) || keys.include?(office["id"].to_s)
     end
+    offices
+  end
+
+  def dashboard_mapped_master_offices
+    return @dashboard_mapped_master_offices if defined?(@dashboard_mapped_master_offices)
+    return @dashboard_mapped_master_offices = [] if dashboard_global_view_user? &&
+      (@dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)).blank?
+    roots = dashboard_scoped_master_fcos
+    ids = roots.map { |office| office["id"].to_s }
+    names = roots.map { |office| AgreementVrpScope.office_key(office["name"]) }
+    @dashboard_mapped_master_offices = dashboard_office_list_items.select do |office|
+      parent = office["parent"] || {}
+      parent["id"].present? ? ids.include?(parent["id"].to_s) : names.include?(AgreementVrpScope.office_key(parent["name"]))
+    end.uniq { |office| office["id"].to_s }.sort_by { |office| office["name"].to_s.downcase }
+  end
+
+  def dashboard_selected_master_office
+    id = dashboard_filter_param(:office_id)
+    dashboard_mapped_master_offices.find { |office| office["id"].to_s == id } if id.present?
+  end
+
+  def dashboard_office_block_values
+    return nil if dashboard_filter_param(:office_id).blank?
+    zones = Array(dashboard_selected_master_office&.[]("territory_zones"))
+    zones.flat_map { |zone| Array(zone["block"]) }.flat_map do |block|
+      name = block["name"].presence || block["block_name"]
+      name = name["en"].presence || name["hn"] if name.is_a?(Hash)
+      [block["id"].presence || block["block_id"], name]
+    end.compact_blank.map { |value| normalize_dashboard_text(value) }.uniq
+  end
+
+  def dashboard_office_target_predicate(target_alias)
+    values = dashboard_office_block_values
+    return nil if values.nil?
+    return "1=0" if values.empty?
+    quoted = values.map { |value| ActiveRecord::Base.connection.quote(value) }.join(",")
+    "(#{target_alias}.target_entry_mode <> 'block_wise' OR LOWER(BTRIM(#{target_alias}.ics_id)) IN (#{quoted}) OR LOWER(BTRIM(#{target_alias}.ics_name)) IN (#{quoted}))"
+  end
+
+  # Master blocks are independent of target entries, reporting month and activity.
+  def dashboard_block_master_rows
+    return @dashboard_block_master_rows if defined?(@dashboard_block_master_rows)
+    items = dashboard_office_list_items
+    return @dashboard_block_master_rows = nil if items.empty?
+    offices = dashboard_scoped_master_fcos
+    if dashboard_filter_param(:office_id).present?
+      parent = dashboard_selected_master_office&.[]("parent") || {}
+      offices.select! do |office|
+        parent["id"].present? ? office["id"].to_s == parent["id"].to_s :
+          AgreementVrpScope.office_key(office["name"]) == AgreementVrpScope.office_key(parent["name"])
+      end
+    end
     selected_to = dashboard_filter_param(:to_name)
     if selected_to.present?
       to_key = selected_to.downcase.gsub(/[^a-z0-9]+/, " ").squish.sub(/\Ato\s+/, "").sub(/\s+to\z/, "")
@@ -2532,11 +2588,16 @@ class DashboardReportsController < ModulesController
       offices.select! { |office| to_offices.any? { |child| child.dig("parent", "id").to_s == office["id"].to_s } }
     end
     rows = offices.flat_map do |office|
-      blocks = if selected_to.present?
+      blocks = if dashboard_filter_param(:office_id).present?
+        Array(dashboard_selected_master_office&.[]("territory_zones")).flat_map { |zone| Array(zone["block"]) }
+      elsif selected_to.present?
         to_offices.select { |child| child.dig("parent", "id").to_s == office["id"].to_s }
           .flat_map { |child| Array(child["territory_zones"]) }.flat_map { |zone| Array(zone["block"]) }
       else
-        OfficeTerritoryDirectory.blocks_for(items, office["id"].to_s, office["name"])
+        child_blocks = dashboard_block_wise_view? ? dashboard_mapped_master_offices
+          .select { |child| child.dig("parent", "id").to_s == office["id"].to_s }
+          .flat_map { |child| Array(child["territory_zones"]) }.flat_map { |zone| Array(zone["block"]) } : []
+        child_blocks.presence || OfficeTerritoryDirectory.blocks_for(items, office["id"].to_s, office["name"])
       end
       blocks.filter_map do |block|
         id = block["id"].presence || block["block_id"].presence
@@ -2547,6 +2608,7 @@ class DashboardReportsController < ModulesController
           "ICS ID" => id.to_s, "ICS Name" => name, "Entry Mode" => "Block Wise" }
       end
     end
+    @dashboard_block_master_all_rows = rows.uniq { |row| normalize_dashboard_text(row["ICS ID"]) }
     location = dashboard_filter_param(:ics, :ics_name)
     rows.select! { |row| [row["ICS ID"], row["ICS Name"]].any? { |value| normalize_dashboard_text(value) == normalize_dashboard_text(location) } } if location.present?
     @dashboard_block_master_rows = rows.uniq { |row| normalize_dashboard_text(row["ICS ID"]) }
@@ -2743,6 +2805,8 @@ class DashboardReportsController < ModulesController
       end.map(&:id)
       scope = scope.where(vrp_id: ids)
     end
+    predicate = dashboard_office_target_predicate("target_mappings")
+    scope = scope.where(predicate) if predicate
     dashboard_ics_filtered_scope(scope)
   end
 
@@ -2821,6 +2885,11 @@ class DashboardReportsController < ModulesController
 
   def dashboard_current_user_office_names
     names = super
+    posting = current_app_user&.dig("sub_office_name").to_s.strip
+    categories = %w[office_name office_category].map { |key| current_app_user&.dig(key).to_s.strip.downcase }
+    if posting.present? && (posting.match?(/(?:\Afco(?:c|[-\s]|\z)|[-\s]fco(?:c)?\z)/i) || (categories & %w[fco fcoc fco-c]).any?)
+      names = [posting]
+    end
     roles = %w[role role_name stakeholder_role user_management_role person_type].filter_map do |key|
       value = current_app_user&.dig(key).to_s
       value if value.match?(/\Afco(?:c|[-\s]|\z)/i)
@@ -2978,7 +3047,7 @@ class DashboardReportsController < ModulesController
         vrp_id if values.include?(normalize_dashboard_text(fco_id)) || values.include?(normalize_dashboard_text(fco_name))
       end.to_set
       key = [AgreementVrpScope.office_key(fco), month, population_ids]
-      @dashboard_fco_active_vrp_records_cache[key] = if ids.any?
+      @dashboard_fco_active_vrp_records_cache[key] = if ids.any? || dashboard_filter_param(:office_id).present?
         population.select { |vrp| ids.include?(vrp.id) && dashboard_vrp_active_for_requirement?(vrp) }
       else
         population.select { |vrp| training_fcoc_text_matches?(vrp.fcoc, fco) && dashboard_vrp_active_for_requirement?(vrp) }

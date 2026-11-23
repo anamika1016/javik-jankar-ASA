@@ -385,7 +385,7 @@
         <nav class="dashboard-view-switch" aria-label="Dashboard view">
           <% entry_mode_views.each do |view| %>
             <% active = entry_mode_view && view[:key] == entry_mode_view[:key] %>
-            <%= link_to dashboard_path(request.query_parameters.merge("entry_mode" => view[:key]).except("page", "ics")),
+            <%= link_to dashboard_path(request.query_parameters.merge("entry_mode" => view[:key]).except("page", "ics", "office_id", "to_name")),
                   class: "dashboard-view-switch-item#{" active" if active}",
                   title: view[:caption],
                   aria: { current: active ? "page" : nil },
@@ -466,6 +466,14 @@
               id: "dash_fcoc", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
       </div>
 
+      <% if entry_mode_view && entry_mode_view[:key] == "block_wise" %>
+        <div class="dashboard-filter-field">
+          <label for="dash_office_id">Office Name</label>
+          <% office_placeholder = @dashboard_fcoc_filter_value.blank? && Array(@filter_office_options).empty? ? "Select FCO first" : "All Mapped Offices" %>
+          <%= f.select :office_id, options_for_select([[office_placeholder, ""]] + Array(@filter_office_options), params[:office_id]),
+                {}, id: "dash_office_id", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
+        </div>
+      <% else %>
       <div class="dashboard-filter-field">
         <label for="dash_to_name">TO</label>
         <%# TO belongs to an FCO, so the empty list means "pick an FCO first"
@@ -475,6 +483,8 @@
               options_for_select([[to_placeholder, ""]] + Array(@filter_to_options).map { |name| [name, name] }, params[:to_name]),
               {}, id: "dash_to_name", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
       </div>
+
+      <% end %>
 
       <%# ICS Name (cascades from the selected activity, FCO and Cluster Incharge).
           Block Wise targets keep their block in the same field, so the label
@@ -504,6 +514,7 @@
     params[:search].present?           ? "Search: #{params[:search]}"                 : nil,
     params[:activity].present?         ? "Activity: #{params[:activity]}"             : nil,
     params[:fcoc].present?             ? "FCO: #{params[:fcoc]}"                      : nil,
+    params[:office_id].present?       ? "Office: #{Array(@filter_office_options).find { |_, id| id == params[:office_id] }&.first}" : nil,
     params[:to_name].present?         ? "TO: #{params[:to_name]}"                    : nil,
     params[:month].present?            ? "Month: #{params[:month]}"                   : nil,
     params[:vrp_id].present?           ? "VRP ##{params[:vrp_id]}"                   : nil
