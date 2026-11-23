@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_23_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_23_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -480,13 +480,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_100000) do
   end
 
   create_table "vrp_profiles", force: :cascade do |t|
-    t.integer "block_id", null: false
+    t.string "block_id", null: false
     t.datetime "created_at", null: false
-    t.integer "district_id", null: false
-    t.integer "gram_panchayat_id", null: false
-    t.integer "state_id", null: false
+    t.string "district_id", null: false
+    t.string "gram_panchayat_id", null: false
+    t.string "state_id", null: false
     t.datetime "updated_at", null: false
-    t.integer "village_id", null: false
+    t.string "village_id", null: false
     t.integer "vrp_id", null: false
     t.index ["vrp_id"], name: "index_vrp_profiles_on_vrp_id"
   end

@@ -16,12 +16,23 @@ const clearCompletedNavigationProgress = () => {
   adapter?.hideFormProgressBar?.();
   document.documentElement.setAttribute("data-navigation-complete", "true");
   document.querySelectorAll(".turbo-progress-bar").forEach((bar) => bar.remove());
+  document.documentElement.removeAttribute("data-dashboard-switching");
 };
 
 const clearProgressWhenIdle = () => {
   const state = Turbo.navigator?.currentVisit?.state;
   if (state !== "initialized" && state !== "started") clearCompletedNavigationProgress();
 };
+
+document.addEventListener("turbo:before-visit", (event) => {
+  const url = new URL(event.detail.url, window.location.href);
+  const mode = url.searchParams.get("entry_mode");
+  const isSwitch = document.querySelector("[data-dashboard-mode-link]") &&
+    url.origin === window.location.origin && url.pathname === window.location.pathname &&
+    ["both", "ics_wise", "block_wise"].includes(mode);
+  if (isSwitch) document.documentElement.setAttribute("data-dashboard-switching", "true");
+  else document.documentElement.removeAttribute("data-dashboard-switching");
+});
 
 document.addEventListener("turbo:visit", markNavigationPending);
 document.addEventListener("turbo:submit-start", markNavigationPending);

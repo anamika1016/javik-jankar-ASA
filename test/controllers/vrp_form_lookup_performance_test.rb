@@ -381,7 +381,7 @@ class VrpFormLookupPerformanceTest < ActiveSupport::TestCase
     assert_equal ["Detail State", "Detail District", "Detail Block"], %i[state district block].map { |level|
       controller.send(:vrp_detail_hierarchy_label, vrp, level)
     }
-    assert_equal ["village-master"], reads
+    assert_empty reads, "Saved location IDs resolve directly without scanning the village catalogue"
     result = controller.send(:vrp_detail_location_records, vrp)
     result.clear
     assert_equal [row.id], controller.send(:vrp_detail_location_records, vrp).map(&:id)

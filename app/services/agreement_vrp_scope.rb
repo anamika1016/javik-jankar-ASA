@@ -1,4 +1,6 @@
 class AgreementVrpScope
+  # Legacy imports and Office List use these spellings for the same FCO.
+  OFFICE_NAME_ALIASES = { "bhabhra" => "bhabra", "jamatara" => "jamtara" }.freeze
   OFFICE_KEYS = %w[fcoc fcoc_name office_name office parent_office].freeze
 
   # Every screen that scopes by FCO has to cope with the same spellings of one
@@ -6,7 +8,8 @@ class AgreementVrpScope
   # "Bhawanipatna" -- so reduce them all to a single comparable key.
   def self.office_key(value)
     text = normalize_text(value.to_s.split("||").last)
-    text.sub(/\A(?:fcoc|fco(?:\s+c)?)(?:\s+|\z)/, "").sub(/\s+fco(?:\s+c)?\z/, "").strip
+    key = text.sub(/\A(?:fcoc|fco(?:\s+c)?)(?:\s+|\z)/, "").sub(/\s+fco(?:\s+c)?\z/, "").strip
+    OFFICE_NAME_ALIASES.fetch(key, key)
   end
 
   def self.normalize_text(value)

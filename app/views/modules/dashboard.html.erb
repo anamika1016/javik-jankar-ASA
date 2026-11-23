@@ -1,3 +1,4 @@
+<%= javascript_import_module_tag "dashboard_switcher" unless @vrp_dashboard %>
 <% content_for :title, "Dashboard" %>
 
 <% if @vrp_dashboard %>
@@ -65,6 +66,10 @@
         <div class="module-card-header training-participation-status-header">
           <div>
             <h2>Dashboard Summary</h2>
+          <p class="dashboard-panel-note">Unique master ICS and Blocks. Shared activities count once. Block village and farmer figures show saved target assignments.</p>
+          <% if entry_mode_view && entry_mode_view[:key] != "ics_wise" && @dashboard_block_master_rows.nil? %>
+            <p class="dashboard-panel-note">Block master is unavailable. Block figures currently show saved target locations.</p>
+          <% end %>
           </div>
         </div>
 
@@ -380,14 +385,14 @@
         <nav class="dashboard-view-switch" aria-label="Dashboard view">
           <% entry_mode_views.each do |view| %>
             <% active = entry_mode_view && view[:key] == entry_mode_view[:key] %>
-            <%= link_to dashboard_path(request.query_parameters.merge("entry_mode" => view[:key]).except("page")),
+            <%= link_to dashboard_path(request.query_parameters.merge("entry_mode" => view[:key]).except("page", "ics")),
                   class: "dashboard-view-switch-item#{" active" if active}",
                   title: view[:caption],
                   aria: { current: active ? "page" : nil },
-                  data: { turbo_prefetch: false } do %>
+                  data: { turbo_prefetch: true, dashboard_mode_link: true } do %>
               <span><%= view[:label] %></span>
               <% if entry_mode_counts[view[:key]].present? %>
-                <b><%= entry_mode_counts[view[:key]] %></b>
+                <b title="Target mapping entries"><%= entry_mode_counts[view[:key]] %> targets</b>
               <% end %>
             <% end %>
           <% end %>
@@ -463,8 +468,11 @@
 
       <div class="dashboard-filter-field">
         <label for="dash_to_name">TO</label>
+        <%# TO belongs to an FCO, so the empty list means "pick an FCO first"
+            rather than "there are none". Saying so beats a blank dropdown. %>
+        <% to_placeholder = Array(@filter_to_options).empty? && @dashboard_fcoc_filter_value.blank? ? "Select FCO first" : "All TO" %>
         <%= f.select :to_name,
-              options_for_select([["All TO", ""]] + Array(@filter_to_options).map { |name| [name, name] }, params[:to_name]),
+              options_for_select([[to_placeholder, ""]] + Array(@filter_to_options).map { |name| [name, name] }, params[:to_name]),
               {}, id: "dash_to_name", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
       </div>
 
@@ -547,7 +555,7 @@
               <div class="dashboard-summary-split" aria-label="View breakdown">
                 <% breakdown.each_with_index do |part, index| %>
                   <% if index.positive? %><i><%= part[:combines] ? "+" : "·" %></i><% end %>
-                  <em><%= part[:label] %> <b><%= part[:value] %></b></em>
+                  <em class="dashboard-summary-side dashboard-summary-side-<%= part[:label].to_s.downcase %>"><%= part[:label] %> <b><%= part[:value] %></b></em>
                 <% end %>
               </div>
             <% end %>
@@ -662,14 +670,32 @@
         <article class="metric-card metric-card-group metric-card-group-<%= card[:style] %>">
           <span class="metric-card-group-title"><%= card[:title] %></span>
           <button type="button" class="metric-card-popup-trigger" data-card-popup-trigger title="Open in popup" aria-label="Open <%= card[:title] %> details"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9"/><path d="M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></svg></button>
-          <div class="metric-card-group-items">
-            <% card[:items].each do |item| %>
-              <%= link_to item[:path], class: "metric-card-group-item metric-card-group-item-#{item[:title].to_s.parameterize}", data: { dashboard_card: true, turbo_prefetch: false } do %>
-                <span><%= item[:title] %></span>
-                <strong><%= item[:value] %></strong>
+          <% if card[:style] == "fco" %>
+            <div class="metric-card-group-items dashboard-fco-table">
+              <table>
+                <thead><tr><th>FCO</th><th>Required</th><th>Active</th><th>Vacant</th></tr></thead>
+                <tbody>
+                  <% card[:items].each_slice(3) do |items| %>
+                    <tr>
+                      <th scope="row"><%= items.first[:title].sub(/ Required\z/, "") %></th>
+                      <% items.each do |item| %>
+                        <td><%= link_to item[:value], item[:path], aria: { label: item[:title] }, class: "dashboard-fco-value dashboard-fco-value-#{item[:title].split.last.downcase}", data: { dashboard_card: true, turbo_prefetch: false } %></td>
+                      <% end %>
+                    </tr>
+                  <% end %>
+                </tbody>
+              </table>
+            </div>
+          <% else %>
+            <div class="metric-card-group-items">
+              <% card[:items].each do |item| %>
+                <%= link_to item[:path], class: "metric-card-group-item metric-card-group-item-#{item[:title].to_s.parameterize}", data: { dashboard_card: true, turbo_prefetch: false } do %>
+                  <span><%= item[:title] %></span>
+                  <strong><%= item[:value] %></strong>
+                <% end %>
               <% end %>
-            <% end %>
-          </div>
+            </div>
+          <% end %>
         </article>
       <% end %>
       <article class="metric-card metric-card-group metric-card-group-registration cc-jj-work-status">

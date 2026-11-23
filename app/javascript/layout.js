@@ -744,7 +744,7 @@ function initDeferredLayoutPage() {
           if (detail) popupBody.appendChild(detail.cloneNode(true));
           // FCO-wise JJ Requirement: 3 boxes per row so Sausar is row 1 and Turekela is row 2.
           const grid = popupBody.querySelector(".metric-card-group-items");
-          if (grid) grid.style.gridTemplateColumns = `repeat(${/requirement/i.test(titleText) ? 3 : 2}, minmax(0, 1fr))`;
+          if (grid && !grid.classList.contains("dashboard-fco-table")) grid.style.gridTemplateColumns = `repeat(${/requirement/i.test(titleText) ? 3 : 2}, minmax(0, 1fr))`;
         }
         if (typeof cardPopup.showModal === "function") cardPopup.showModal();
         else cardPopup.setAttribute("open", "");
@@ -2182,6 +2182,8 @@ function initDeferredLayoutPage() {
       const startIndex = locationLevels.indexOf(level) + 1;
       locationLevels.slice(startIndex).forEach((childLevel) => {
         if (selects[childLevel]) {
+          Array.from(selects[childLevel].options).forEach((option) => { option.selected = false; });
+          selects[childLevel].value = "";
           selects[childLevel].dataset.selectedValue = "";
           selects[childLevel].dataset.selectedValues = "[]";
         }

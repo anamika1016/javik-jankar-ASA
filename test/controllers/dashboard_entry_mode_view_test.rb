@@ -33,6 +33,87 @@ class DashboardEntryModeViewTest < ActionDispatch::IntegrationTest
     assert_select ".dashboard-view-switch-item.active span", text: "Both"
   end
 
+  test "population cards and lists count identities once across imported name and FPO variants" do
+    Afl.create!(fco_id: @farmer.fco_id, fco: "FCO-C Bhawanipatna", fpo_id: "import-variant",
+      fpo_name: "Different imported FPO", ics_id: " ics-a ", ics_name: "ICS ALPHA",
+      village_id: " v-a ", village_name: "VILLAGE A", tracenet_no: " FARMER-A ", farmer_name: "Duplicate import")
+    c = calculator(@admin, entry_mode: "ics_wise", month: "")
+    assert_equal 1, c.send(:dashboard_total_afl_ics_count)
+    assert_equal 1, c.send(:dashboard_total_afl_village_count)
+    assert_equal 1, c.send(:dashboard_total_afl_farmer_count)
+    %w[ics villages farmers].each do |type|
+      assert_equal 1, c.send(:dashboard_report_data, type).last.size, type
+    end
+    login(@admin)
+    get dashboard_path, params: { entry_mode: "both", month: "" }
+    assert_response :success
+    assert_select "#dashboard_summary_boxes .dashboard-summary-box:first-child strong", text: "2"
+    assert_select ".dashboard-fco-table tbody th", text: "Bhawanipatna", count: 1
+  end
+
+  test "office aliases from the same saved office appear only once" do
+    Afl.create!(fco_id: @farmer.fco_id, fco: "Bhawanipatna - FCO", tracenet_no: "ALIAS-1", farmer_name: "Alias farmer")
+    c = calculator(@admin, month: "")
+    names = c.send(:dashboard_fco_names)
+    assert_equal ["Bhawanipatna"], names.grep(/bhawanipatna/i)
+  end
+
+  test "JJ requirement is derived from selected targets and expands multi village assignments" do
+    c = calculator(@admin, month: "")
+    c.request = ActionDispatch::TestRequest.create
+    target = TargetMapping.new(fco_id: "1004", fco_name: "Sausar", village_id: '["v1","v2"]', village_name: "One, Two")
+    c.define_singleton_method(:dashboard_fco_active_vrp_count) { |*| 1 }
+    items = c.send(:dashboard_jj_requirement_items, "Sausar", [], [target, target])
+    assert_equal [2, 1, 1], items.map { |item| item[:value] }
+  end
+
+  test "master blocks with no target appear in count list and picker" do
+    offices = [{ "id" => 15, "name" => "Bhawanipatna - FCO", "office_name" => { "name" => "FCO" },
+      "territory_zones" => [{ "block" => [
+        { "id" => 42, "name" => { "en" => "Bhawanipatna" } },
+        { "id" => 43, "name" => { "en" => "Kesinga" } },
+        { "id" => 43, "name" => { "en" => "Kesinga duplicate" } }
+      ] }] }]
+    c = calculator(@admin, entry_mode: "block_wise", fcoc: "Bhawanipatna", month: "")
+    c.define_singleton_method(:dashboard_office_list_items) { offices }
+    assert_equal 2, c.send(:dashboard_block_entry_location_counts)[:ics_count]
+    rows = c.send(:dashboard_report_data, "ics").last
+    assert_equal %w[42 43], rows.map { |row| row["Block ID"] }
+    login(@admin)
+    original_items = OfficeTerritoryDirectory.method(:items)
+    OfficeTerritoryDirectory.define_singleton_method(:items) { offices }
+    begin
+      get dashboard_path, params: { entry_mode: "block_wise", fcoc: "Bhawanipatna", month: "" }
+      assert_response :success
+      assert_select "#dashboard_summary_boxes .dashboard-summary-box:first-child strong", text: "2"
+      assert_select "#dash_ics option", text: "Kesinga"
+    ensure
+      OfficeTerritoryDirectory.define_singleton_method(:items, original_items)
+    end
+  end
+
+  test "master block filter cannot widen an office login to another FCO" do
+    staff = User.create!(user_name: "master_block_staff", password: "secret", first_name: "Office", user_type: "User",
+      role: "Agronomist", office_name: "FCO-Bhawanipatna", status: "Active")
+    c = calculator(staff, entry_mode: "block_wise", fcoc: "Sausar")
+    offices = [{ "id" => 20, "name" => "Sausar-FCO", "office_name" => { "name" => "FCO" },
+      "territory_zones" => [{ "block" => [{ "id" => 1, "name" => { "en" => "Outside block" } }] }] }]
+    c.define_singleton_method(:dashboard_office_list_items) { offices }
+    assert_empty c.send(:dashboard_block_master_rows)
+  end
+
+  test "legacy FCO spelling variants form one popup row" do
+    assert_equal AgreementVrpScope.office_key("FCO-Bhabhra"), AgreementVrpScope.office_key("Bhabra")
+    assert_equal AgreementVrpScope.office_key("FCO-Jamatara"), AgreementVrpScope.office_key("Jamtara-FCO")
+    Afl.create!(fco_id: "bhabra-office", fco: "Bhabra", farmer_name: "Bhabra farmer")
+    Afl.create!(fco_id: "jamtara-office", fco: "Jamatara", farmer_name: "Jamtara farmer")
+    c = calculator(@admin, month: "")
+    offices = %w[Bhabhra Jamtara].map { |name| { "name" => "#{name}-FCO", "office_name" => { "name" => "FCO" } } }
+    c.define_singleton_method(:dashboard_office_list_items) { offices }
+    assert_equal 1, c.send(:dashboard_fco_names).count { |name| name == "Bhabra" }
+    assert_equal 1, c.send(:dashboard_fco_names).count { |name| name == "Jamtara" }
+  end
+
   test "TO options follow the selected FCO and filter its targets" do
     @vrp.update!(to_name: "TO-Bhawanipatna")
     [["FCO-C Bhawanipatna", "TO-Bhawanipatna"], ["FCO-C Sausar", "TO-Sausar"]].each do |office, name|

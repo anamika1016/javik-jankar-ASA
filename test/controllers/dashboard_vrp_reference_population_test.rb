@@ -33,9 +33,9 @@ class DashboardVrpReferencePopulationTest < ActionDispatch::IntegrationTest
       c = calculator(admin: admin)
       assert_equal @farmers.map(&:id).sort, c.send(:dashboard_total_afl_scope).pluck(:id).sort
       assert_equal 4, c.send(:dashboard_total_afl_farmer_count)
-      assert_equal 2, c.send(:dashboard_total_afl_ics_count)
-      # VRP groups village/ICS rows by FCO as well, preserving its grouping rules.
-      assert_equal 2, c.send(:dashboard_total_afl_village_count)
+      assert_equal 1, c.send(:dashboard_total_afl_ics_count)
+      # A legacy office ID and a blank office ID still refer to the same saved entity.
+      assert_equal 1, c.send(:dashboard_total_afl_village_count)
       assert_equal 4, c.send(:farmer_training_mapped_farmer_count_and_popups, month_name: "October", fcoc_name: "Bhawanipatna").first
       { "red" => 1, "yellow" => 2, "green" => 1 }.each do |status, expected|
         method = { "red" => :farmer_training_no_training_count_and_popups,

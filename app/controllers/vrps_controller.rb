@@ -1,7 +1,7 @@
 class VrpsController < ApplicationController
   include RequestLabelMatchCache
   helper_method :blank_display, :module_record_label, :module_record_labels, :vrp_detail_hierarchy_label,
-                :vrp_detail_location_label, :vrp_type_labels,
+                :vrp_detail_location_label, :vrp_saved_gp_names, :vrp_saved_village_names, :vrp_type_labels,
                 :approval_step_closed?, :closing_approval_history, :mapped_office_name?,
                 :admin_user?, :vrp_location_browser_attribute
 
@@ -143,6 +143,7 @@ class VrpsController < ApplicationController
       redirect_to vrps_path, status: :see_other, notice: "Jeevika JankaR updated successfully."
     else
       @vrp.build_vrp_profile unless @vrp.vrp_profile
+      set_form_dependencies
       render :edit, status: :unprocessable_entity
     end
   end
@@ -2359,9 +2360,9 @@ class VrpsController < ApplicationController
     return {} unless vrp
 
     profile = vrp.vrp_profile
-    state_rec = profile&.state_id.present? ? ModuleRecord.find_by(id: profile.state_id) : nil
-    district_rec = profile&.district_id.present? ? ModuleRecord.find_by(id: profile.district_id) : nil
-    block_rec = profile&.block_id.present? ? ModuleRecord.find_by(id: profile.block_id) : nil
+    state_rec = profile&.state_id.to_s.match?(/\A\d+\z/) ? ModuleRecord.find_by(module_slug: "state-master", id: profile.state_id) : nil
+    district_rec = profile&.district_id.to_s.match?(/\A\d+\z/) ? ModuleRecord.find_by(module_slug: "district-master", id: profile.district_id) : nil
+    block_rec = profile&.block_id.to_s.match?(/\A\d+\z/) ? ModuleRecord.find_by(module_slug: "block-master", id: profile.block_id) : nil
 
     state_name = state_rec ? (state_rec.data["state_name"].presence || state_rec.data["state"]) : (profile&.state_id.to_s.match?(/\A\d+\z/) ? nil : profile&.state_id)
     district_name = district_rec ? (district_rec.data["district_name"].presence || district_rec.data["district"]) : (profile&.district_id.to_s.match?(/\A\d+\z/) ? nil : profile&.district_id)
@@ -2532,16 +2533,8 @@ class VrpsController < ApplicationController
   end
 
   def vrp_detail_hierarchy_label(vrp, level)
-    profile = vrp&.vrp_profile
-    profile_value = case level
-    when :state
-      module_record_label("state-master", profile&.state_id, "state_name")
-    when :district
-      module_record_label("district-master", profile&.district_id, "district_name")
-    when :block
-      module_record_label("block-master", profile&.block_id, "block_name")
-    end
-    return profile_value if profile_value.present?
+    saved_value = vrp_saved_location_names(vrp)[level]
+    return saved_value if saved_value.present?
 
     vrp_detail_location_records(vrp).filter_map do |record|
       case level

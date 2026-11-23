@@ -1,6 +1,39 @@
 class DashboardReportsController < ModulesController
   # Dashboard reports ported from VRP; entry screens keep ModulesController.
   prepend_view_path Rails.root.join("app/views/modules")
+  DASHBOARD_PAGE_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 64.megabytes)
+  around_action :cache_dashboard_switch_response, only: :dashboard
+
+  # Keep rendered responses within one authenticated session. Source revisions
+  # are checked on every hit, so edits invalidate immediately, including deletes.
+  def cache_dashboard_switch_response
+    return yield unless request.get? && request.format.html? && !vrp_login_user?
+    return yield if flash.any? || %w[demonstration_list other_indicator_list work_status_list].any? { |key| params[key] == "true" }
+    session_id = session.id.to_s
+    return yield if session_id.blank?
+
+    extra_revision = ActiveRecord::Base.connection.select_one(<<~SQL.squish).values
+      SELECT (SELECT COUNT(*) FROM users) AS users_count, (SELECT MAX(updated_at)::text FROM users) AS users_updated,
+        (SELECT COUNT(*) FROM vrp_ics_mappings) AS mappings_count, (SELECT MAX(updated_at)::text FROM vrp_ics_mappings) AS mappings_updated
+    SQL
+    identity = [session_id, current_app_user, request.query_parameters.sort,
+      request.base_url, I18n.locale, Date.current, session[:language]]
+    key = ["dashboard-page-v1", Digest::SHA256.hexdigest(identity.to_json),
+      dashboard_sql_cache.source_revision, extra_revision, OfficeTerritoryDirectory.revision]
+    DashboardCacheFill.synchronize(key) do
+      if (html = DASHBOARD_PAGE_CACHE.read(key))
+        response.set_header("X-Dashboard-Cache", "hit")
+        render html: html.html_safe, layout: false
+      else
+        yield
+        if response.successful? && response.media_type == "text/html"
+          DASHBOARD_PAGE_CACHE.write(key, response.body, expires_in: 2.minutes)
+          response.set_header("X-Dashboard-Cache", "miss")
+        end
+      end
+    end
+  end
+  private :cache_dashboard_switch_response
 
   def cc_target_status_list
     @cc_target_status_report = CcTargetStatusReport.new(calculator: self)
@@ -98,7 +131,7 @@ class DashboardReportsController < ModulesController
     vrp_fcos = unfiltered_vrps.map(&:fcoc)
     target_fcos = unfiltered_targets.map(&:fco_name)
     afl_fcos = ModuleRecord.where(module_slug: "add-farmer-form").pluck(Arel.sql("data::jsonb ->> 'fco_name'"))
-    all_fcos = (DashboardFcoDirectory.names + vrp_fcos + target_fcos + afl_fcos).compact_blank.map { |f| f.to_s.strip }.reject(&:blank?)
+    all_fcos = (DashboardFcoDirectory.names + dashboard_master_fco_names + vrp_fcos + target_fcos + afl_fcos).compact_blank.map { |f| f.to_s.strip }.reject(&:blank?)
     @filter_fcoc_options = all_fcos.group_by { |f| AgreementVrpScope.office_key(f) }.filter_map { |key, names| DashboardFcoDirectory.name_for(names.first) if key.present? }.uniq.sort
     # A posted user only works in their own FCO, so the picker offers just that
     # one and comes pre-selected. Admin keeps the full list.
@@ -163,8 +196,9 @@ class DashboardReportsController < ModulesController
       end
       ics_farmers.distinct.pluck(Arel.sql("COALESCE(NULLIF(TRIM(ics_name), ''), ics_id)"))
     end
+    master_block_options = dashboard_ics_wise_view? ? [] : Array(dashboard_block_master_rows).map { |row| row["ICS Name"] }
     @filter_ics_options = (t_scope.map { |t| t.ics_name.presence || t.ics_id } +
-      master_ics_options).uniq.compact_blank.sort
+      master_ics_options + master_block_options).uniq.compact_blank.sort
     selected_ics_filter = dashboard_filter_param(:ics)
     if selected_ics_filter.present?
       selected_ics = selected_ics_filter.to_s
@@ -1239,35 +1273,35 @@ class DashboardReportsController < ModulesController
     training_method_count_defaults
   end
 
-  def dashboard_jj_requirement_items(fco_name, vrps, targets = nil)
-    normalized_fco = normalize_dashboard_text(fco_name)
-    fco_id = DashboardFcoDirectory.office_for(fco_name)&.dig(:id).presence || DashboardFcoDirectory.id_for(fco_name).presence || if normalized_fco.include?("1004") || normalized_fco.include?("sausar")
-               "1004"
-             elsif normalized_fco.include?("1006") || normalized_fco.include?("turekela")
-               "1006"
-             elsif normalized_fco.include?("1095") || normalized_fco.include?("pavijetpur")
-               "1095"
-             else
-               nil
-             end
-
-    selected_month = (params.key?(:month) ? dashboard_filter_param(:month) : dashboard_filter_param(:training_month).presence || DashboardDefaults.month)
-    active_count   = dashboard_fco_active_vrp_count(fco_name, selected_month, vrps)
-
-    if normalized_fco.include?("sausar") || fco_id == "1004"
-      required_count = [34, active_count].max
-    elsif normalized_fco.include?("turekela") || fco_id == "1006"
-      required_count = [24, active_count].max
-    else
-      fco_aliases = DashboardFcoDirectory.aliases_for(fco_name).map { |value| normalize_dashboard_text(value) }
-      fco_aliases << normalized_fco
-      fco_targets = Array(targets).select do |target|
-        target_values = [target.fco_name, target.fco_id, target.vrp&.fcoc].compact.map { |value| normalize_dashboard_text(value) }
-        target_values.any? { |value| fco_aliases.include?(value) }
-      end
-      req            = fco_targets.map { |t| normalize_dashboard_text(t.village_name) }.reject(&:blank?).uniq.size
-      required_count = [req, active_count].max
+  def dashboard_requirement_targets
+    conditions, binds = dashboard_summary_target_sql_filters_base(
+      target_alias: "target_mappings", vrp_alias: "vrps"
+    )
+    targets = dashboard_visible_target_scope.left_joins(:vrp)
+      .where(conditions.join(" AND "), binds).preload(:vrp).to_a
+    query = dashboard_filter_param(:search)
+    return targets if query.blank?
+    targets.select do |target|
+      [target.vrp&.name, target.month_name, target.village_name, target.main_activity_name, target.activity_name]
+        .any? { |value| normalize_dashboard_text(value).include?(normalize_dashboard_text(query)) }
     end
+  end
+
+  def dashboard_jj_requirement_items(fco_name, vrps, targets = nil)
+    selected_month = params.key?(:month) ? dashboard_filter_param(:month) : DashboardDefaults.month
+    active_count = dashboard_fco_active_vrp_count(fco_name, selected_month, vrps)
+    fco_targets = Array(targets).select do |target|
+      training_fcoc_text_matches?(target.fco_name, fco_name) ||
+        (training_fcoc_filter_values(fco_name) & training_fcoc_filter_values(target.fco_id)).any?
+    end
+    # Multi-village targets are individual assignments, not one comma-separated name.
+    village_keys = fco_targets.flat_map do |target|
+      ids = dashboard_target_village_id_list(target)
+      (ids.presence || target.village_name.to_s.split(",").map(&:strip)).map do |id|
+        [target.target_entry_mode, normalize_dashboard_text(id)]
+      end
+    end.reject { |_mode, value| value.blank? }.uniq
+    required_count = [village_keys.size, active_count].max
 
     vacant_count = [required_count - active_count, 0].max
 
@@ -2458,6 +2492,66 @@ class DashboardReportsController < ModulesController
     dashboard_entry_mode == TargetMapping::BLOCK_WISE_ENTRY_MODE
   end
 
+  def dashboard_office_list_items
+    @dashboard_office_list_items ||= OfficeTerritoryDirectory.items
+  end
+
+  def dashboard_master_fco_names
+    dashboard_office_list_items.filter_map do |office|
+      office["name"].presence if office.dig("office_name", "name").to_s.casecmp?("FCO")
+    end
+  end
+
+  # Master blocks are independent of target entries, reporting month and activity.
+  def dashboard_block_master_rows
+    return @dashboard_block_master_rows if defined?(@dashboard_block_master_rows)
+    items = dashboard_office_list_items
+    return @dashboard_block_master_rows = nil if items.empty?
+    selected = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
+    keys = if selected.present?
+      training_fcoc_filter_values(selected).map { |value| AgreementVrpScope.office_key(value) }
+    elsif dashboard_global_view_user?
+      nil
+    else
+      dashboard_current_user_office_keys
+    end
+    offices = items.select { |office| office.dig("office_name", "name").to_s.casecmp?("FCO") }
+    unless dashboard_global_view_user?
+      authorized_keys = (dashboard_current_user_office_keys + dashboard_vrps.map { |vrp| AgreementVrpScope.office_key(vrp.fcoc) }).compact_blank.uniq
+      offices.select! { |office| authorized_keys.include?(AgreementVrpScope.office_key(office["name"])) }
+    end
+    offices.select! do |office|
+      keys.nil? || keys.include?(AgreementVrpScope.office_key(office["name"])) || keys.include?(office["id"].to_s)
+    end
+    selected_to = dashboard_filter_param(:to_name)
+    if selected_to.present?
+      to_key = selected_to.downcase.gsub(/[^a-z0-9]+/, " ").squish.sub(/\Ato\s+/, "").sub(/\s+to\z/, "")
+      to_offices = items.select do |office|
+        office["name"].to_s.downcase.gsub(/[^a-z0-9]+/, " ").squish.sub(/\Ato\s+/, "").sub(/\s+to\z/, "") == to_key
+      end
+      offices.select! { |office| to_offices.any? { |child| child.dig("parent", "id").to_s == office["id"].to_s } }
+    end
+    rows = offices.flat_map do |office|
+      blocks = if selected_to.present?
+        to_offices.select { |child| child.dig("parent", "id").to_s == office["id"].to_s }
+          .flat_map { |child| Array(child["territory_zones"]) }.flat_map { |zone| Array(zone["block"]) }
+      else
+        OfficeTerritoryDirectory.blocks_for(items, office["id"].to_s, office["name"])
+      end
+      blocks.filter_map do |block|
+        id = block["id"].presence || block["block_id"].presence
+        raw_name = block["name"].presence || block["block_name"]
+        name = raw_name.is_a?(Hash) ? raw_name["en"].presence || raw_name["hn"] : raw_name
+        next if id.blank? || name.blank?
+        { "FCO ID" => office["id"].to_s, "FCO Name" => DashboardFcoDirectory.bare_name(office["name"]),
+          "ICS ID" => id.to_s, "ICS Name" => name, "Entry Mode" => "Block Wise" }
+      end
+    end
+    location = dashboard_filter_param(:ics, :ics_name)
+    rows.select! { |row| [row["ICS ID"], row["ICS Name"]].any? { |value| normalize_dashboard_text(value) == normalize_dashboard_text(location) } } if location.present?
+    @dashboard_block_master_rows = rows.uniq { |row| normalize_dashboard_text(row["ICS ID"]) }
+  end
+
   # Badge on each switcher button: how many target mappings that view would
   # show under the filters already applied, so an empty view is visible as
   # empty before it is opened.
@@ -2527,9 +2621,9 @@ class DashboardReportsController < ModulesController
     # id when one was; afl_ids is always a JSON array of ASA farmer ids.
     sql = <<~SQL.squish
       SELECT
-        COUNT(DISTINCT NULLIF(BTRIM(t.ics_id), '')) AS ics_count,
-        COUNT(DISTINCT NULLIF(BTRIM(village.value), '')) AS village_count,
-        COUNT(DISTINCT NULLIF(BTRIM(farmer.value), '')) AS farmer_count
+        COUNT(DISTINCT NULLIF(LOWER(BTRIM(t.ics_id)), '')) AS ics_count,
+        COUNT(DISTINCT NULLIF(LOWER(BTRIM(village.value)), '')) AS village_count,
+        COUNT(DISTINCT NULLIF(LOWER(BTRIM(farmer.value)), '')) AS farmer_count
       FROM (#{base.to_sql}) t
       LEFT JOIN vrps v ON v.id = t.vrp_id
       LEFT JOIN LATERAL jsonb_array_elements_text(
@@ -2549,7 +2643,7 @@ class DashboardReportsController < ModulesController
     ).first || {}
 
     @dashboard_block_entry_location_counts = {
-      ics_count: row["ics_count"].to_i,
+      ics_count: dashboard_block_master_rows&.size || row["ics_count"].to_i,
       village_count: row["village_count"].to_i,
       farmer_count: row["farmer_count"].to_i
     }
@@ -2586,7 +2680,11 @@ class DashboardReportsController < ModulesController
     visible_keys = if selected_fco.present?
       [AgreementVrpScope.office_key(selected_fco)]
     elsif dashboard_global_view_user?
-      nil
+      # A TO belongs to one FCO, so offering every TO in the country before an
+      # FCO is picked is a list of mostly dead ends. The field now waits for
+      # an FCO the way ICS already does. Any TO already chosen stays listed so
+      # the dropdown keeps showing what is actually filtering.
+      return [dashboard_filter_param(:to_name)].compact_blank
     else
       dashboard_current_user_office_keys
     end
@@ -2735,9 +2833,11 @@ class DashboardReportsController < ModulesController
   end
 
   def dashboard_fco_names
-    names = (DashboardFcoDirectory.names + dashboard_vrps.map(&:fcoc) +
+    names = (DashboardFcoDirectory.names + dashboard_master_fco_names + dashboard_vrps.map(&:fcoc) +
       (dashboard_global_view_user? ? [] : dashboard_current_user_office_names))
-      .compact_blank.map { |value| DashboardFcoDirectory.bare_name(value) }.uniq.sort
+      .compact_blank.reject { |value| DashboardFcoDirectory.invalid?(value) }
+      .map { |value| DashboardFcoDirectory.bare_name(DashboardFcoDirectory.name_for(value)) }
+      .uniq { |value| AgreementVrpScope.office_key(value) }.sort
     values = if dashboard_global_view_user?
       selected = dashboard_filter_param(:fcoc, :fco)
       selected.present? ? training_fcoc_filter_values(selected) : []
@@ -2879,7 +2979,7 @@ class DashboardReportsController < ModulesController
       end.to_set
       key = [AgreementVrpScope.office_key(fco), month, population_ids]
       @dashboard_fco_active_vrp_records_cache[key] = if ids.any?
-        population.select { |vrp| ids.include?(vrp.id) }
+        population.select { |vrp| ids.include?(vrp.id) && dashboard_vrp_active_for_requirement?(vrp) }
       else
         population.select { |vrp| training_fcoc_text_matches?(vrp.fcoc, fco) && dashboard_vrp_active_for_requirement?(vrp) }
       end
@@ -3021,6 +3121,9 @@ class DashboardReportsController < ModulesController
   # half of their totals. Built from the target rows rather than the farmer
   # master, for the reason in dashboard_block_entry_location_counts.
   def dashboard_block_entry_report_rows(type, headers)
+    if type == "ics" && (master_rows = dashboard_block_master_rows)
+      return master_rows.map { |row| headers.index_with { |header| row[header] } }
+    end
     return [] unless TargetMapping.column_names.include?("target_entry_mode")
 
     scope = dashboard_entry_mode_scope(
@@ -3034,7 +3137,8 @@ class DashboardReportsController < ModulesController
       block_cells = {
         "FCO ID" => target.fco_id, "FCO Name" => target.fco_name,
         "FPO ID" => nil, "FPO Name" => nil,
-        "ICS ID" => target.ics_id, "ICS Name" => target.ics_name
+        "ICS ID" => target.ics_id, "ICS Name" => target.ics_name,
+        "Entry Mode" => "Block Wise"
       }
       case type
       when "ics"
@@ -3058,7 +3162,7 @@ class DashboardReportsController < ModulesController
     # One row per distinct id, so the list length matches the box's count.
     key = type == "ics" ? "ICS ID" : type == "villages" ? "Village ID" : "TraceNet No"
     rows.reject { |row| row[key].to_s.strip.blank? }
-      .uniq { |row| row[key].to_s.strip }
+      .uniq { |row| normalize_dashboard_text(row[key]) }
       .map { |row| headers.index_with { |header| row[header] } }
   end
 
@@ -3104,12 +3208,24 @@ class DashboardReportsController < ModulesController
         values = scope.where.not(key => [nil, ""]).distinct.pluck(*columns.values)
       end
       headers = columns.keys
-      rows = values.map { |row| headers.zip(Array(row)).to_h }
+      headers += ["Entry Mode"] if dashboard_entry_mode == BOTH_ENTRY_MODE
+      rows = values.map { |row| columns.keys.zip(Array(row)).to_h }
+      identity_header = { "ics" => "ICS ID", "villages" => "Village ID", "farmers" => "TraceNet No" }.fetch(type)
+      rows = rows.reject { |row| DashboardFcoDirectory.invalid?(row[identity_header]) }
+        .uniq { |row| normalize_dashboard_text(row[identity_header]) }
+
       # The farmer master only covers ICS Wise work, so the Block Wise side of
       # the card's total has to come off the target rows to make the list add up.
+      rows.each { |row| row["Entry Mode"] = "ICS Wise" } if dashboard_entry_mode == BOTH_ENTRY_MODE
       rows = [] if dashboard_block_wise_view?
-      rows += dashboard_block_entry_report_rows(type, columns.keys) unless dashboard_ics_wise_view?
-      [type == "ics" ? "#{dashboard_entry_mode_view[:short]} List" : type == "villages" ? "Village List" : "Farmer List", columns.keys, rows]
+      rows += dashboard_block_entry_report_rows(type, headers) unless dashboard_ics_wise_view?
+      unless dashboard_ics_wise_view?
+        prefix = dashboard_block_wise_view? ? "Block" : "ICS / Block"
+        labels = { "ICS ID" => "#{prefix} ID", "ICS Name" => "#{prefix} Name" }
+        headers = headers.map { |header| labels.fetch(header, header) }
+        rows = rows.map { |row| row.transform_keys { |header| labels.fetch(header, header) } }
+      end
+      [type == "ics" ? "#{dashboard_entry_mode_view[:short]} List" : type == "villages" ? "Village List" : "Farmer List", headers, rows]
     when "main-indicators", "sub-indicators"
       field = type == "main-indicators" ? :main_activity_name : :activity_name
       title = type == "main-indicators" ? "Main Major Work Indicator" : "Sub Major Work Indicator"
@@ -3143,7 +3259,7 @@ class DashboardReportsController < ModulesController
       ["Jeevika Jankar Bills", ["Jeevika Jankar", "Month", "Status", "Amount"], rows]
     when "required", "vacant"
       office = @dashboard_fcoc_filter_value
-      items = dashboard_jj_requirement_items(office, dashboard_vrps, dashboard_summary_target_scope.to_a)
+      items = dashboard_jj_requirement_items(office, dashboard_vrps, dashboard_requirement_targets)
       rows = [{ "FCO Name" => office, "Required" => items[0][:value], "Active" => items[1][:value], "Vacant" => items[2][:value] }]
       ["FCO-wise JJ Requirement", ["FCO Name", "Required", "Active", "Vacant"], rows]
     else
@@ -3211,6 +3327,14 @@ class DashboardReportsController < ModulesController
       scope = scope.where(participation_fco_predicate("afls", office, farmer: true))
     end
     scope
+  end
+
+  def dashboard_total_afl_distinct_count(kind)
+    column = { ics: :ics_id, village: :village_id, farmer: :tracenet_no }.fetch(kind)
+    identity = "LOWER(BTRIM(#{column}))"
+    dashboard_total_afl_farmer_scope
+      .where("#{identity} NOT IN ('', 'null', 'nil', 'none', 'n/a', '-')")
+      .distinct.count(Arel.sql(identity))
   end
 
   def dashboard_total_afl_farmer_scope

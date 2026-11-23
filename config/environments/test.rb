@@ -4,6 +4,8 @@
 # and recreated between test runs. Don't rely on the data there!
 
 Rails.application.configure do
+  # Tests inject the external office catalogue; never call the live service.
+  config.x.office_directory_http_enabled = false
   # Settings specified here will take precedence over those in config/application.rb.
 
   # While tests run files are not watched, reloading is not necessary.

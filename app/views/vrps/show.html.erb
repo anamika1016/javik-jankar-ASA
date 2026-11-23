@@ -60,11 +60,11 @@
           </tr>
           <tr>
             <th>Gram Panchayats</th>
-            <td colspan="9"><%= module_record_labels("gram-panchayat-master", @vrp&.gram_panchayat_ids, "gram_panchayat_name") %></td>
+            <td colspan="9"><%= vrp_saved_gp_names(@vrp).join(", ") %></td>
           </tr>
           <tr>
             <th>Villages</th>
-            <td colspan="9"><%= module_record_labels("village-master", @vrp&.village_ids, "village_name") %></td>
+            <td colspan="9"><%= vrp_saved_village_names(@vrp).join(", ") %></td>
           </tr>
         </tbody>
       </table>
@@ -86,8 +86,8 @@
             <td><%= vrp_detail_hierarchy_label(@vrp, :state) %></td>
             <td><%= vrp_detail_hierarchy_label(@vrp, :district) %></td>
             <td><%= vrp_detail_hierarchy_label(@vrp, :block) %></td>
-            <td><%= vrp_detail_location_label("gram-panchayat-master", @vrp&.vrp_profile&.gram_panchayat_id, @vrp&.gram_panchayat_ids, "gram_panchayat_name") %></td>
-            <td><%= vrp_detail_location_label("village-master", @vrp&.vrp_profile&.village_id, @vrp&.village_ids, "village_name") %></td>
+            <td><%= vrp_saved_gp_names(@vrp).join(", ") %></td>
+            <td><%= vrp_saved_village_names(@vrp).join(", ") %></td>
           </tr>
         </tbody>
       </table>

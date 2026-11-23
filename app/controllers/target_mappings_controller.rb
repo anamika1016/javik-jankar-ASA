@@ -1263,29 +1263,7 @@ def office_block_options(fco_value)
   fco_id, fco_name = parse_location_value(fco_value)
   return [] if fco_id.blank? && fco_name.blank?
 
-  selected_name = fco_name.presence || fco_id
-  fco_offices = office_list_items.select { |office| office["id"].to_s.strip == fco_id }
-  if fco_offices.empty? && fco_id !~ /\A\d+\z/
-    fco_offices = office_list_items.select { |office| office["name"].to_s.strip.casecmp?(selected_name) }
-  end
-
-  territory_blocks = ->(offices) do
-    Array(offices).flat_map { |office| Array(office["territory_zones"]) }
-      .flat_map { |zone| Array(zone["block"]) }
-  end
-
-  blocks = territory_blocks.call(fco_offices)
-  if blocks.empty?
-child_offices = office_list_items.select do |office|
-  if fco_id.match?(/\A\d+\z/)
-    office.dig("parent", "id").to_s.strip == fco_id
-  else
-    office.dig("parent", "name").to_s.strip.casecmp?(selected_name)
-  end
-end
-    fpc_blocks = territory_blocks.call(child_offices.reject { |office| office["name"].to_s.match?(/\s*-\s*TO\s*\z/i) })
-    blocks = fpc_blocks.presence || territory_blocks.call(child_offices)
-  end
+  blocks = OfficeTerritoryDirectory.blocks_for(office_list_items, fco_id, fco_name)
 
   blocks
     .filter_map do |block|
@@ -1368,16 +1346,7 @@ end
   end
 
   def fetch_office_list_items(url)
-    uri = URI(url)
-    response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https", open_timeout: 3, read_timeout: 8) do |http|
-      http.get(uri.request_uri)
-    end
-    return [] unless response.is_a?(Net::HTTPSuccess)
-
-    Array(JSON.parse(response.body)["result"]).select { |item| item.is_a?(Hash) }
-  rescue StandardError => error
-    Rails.logger.warn("Unable to load Office List from #{url}: #{error.message}")
-    []
+    OfficeTerritoryDirectory.fetch(url)
   end
 
   def office_list_api_urls

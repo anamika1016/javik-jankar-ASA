@@ -79,6 +79,44 @@ class VrpsControllerTest < ActionDispatch::IntegrationTest
     assert_select ".table-shell.mt-4 tbody td", text: "Patavaler"
   end
 
+  test "location updates preserve names and show the same complete selections in eye and edit" do
+    admin = create_admin_user(user_name: "location_update_admin")
+    vrp = create_vrp(user_name: "location_update_jj", created_by_id: admin.id,
+      gram_panchayat_ids: ["Old GP"], village_ids: ["Old Village"],
+      vrp_profile_attributes: { state_id: "Old State", district_id: "Old District", block_id: "Old Block" })
+    ["Village One", "Village Two"].each do |village|
+      ModuleRecord.create!(module_slug: "lg-directory-list", data: {
+        "state_name" => "Jharkhand", "district_name" => "Deoghar", "cd_block_name" => "Sarath",
+        "gram_panchayat" => "Gaipathar", "village_name" => village, "status" => "Active"
+      })
+    end
+    # A same-named village elsewhere must never override the saved hierarchy.
+    ModuleRecord.create!(module_slug: "village-master", data: {
+      "state_name" => "Jharkhand", "district_name" => "Pakur", "block_name" => "Maheshpur",
+      "village_name" => "Village One", "status" => "Active"
+    })
+    post login_path, params: { login: admin.user_name, password: "secret" }
+    patch vrp_path(vrp), params: { vrp: {
+      confirmed_password: "secret", gram_panchayat_ids: ["Gaipathar"], village_ids: ["Village One", "Village Two"],
+      vrp_profile_attributes: { id: vrp.vrp_profile.id, state_id: "Jharkhand", district_id: "Deoghar", block_id: "Sarath" }
+    } }
+    assert_redirected_to vrps_path
+    profile = vrp.reload.vrp_profile
+    assert_equal ["Jharkhand", "Deoghar", "Sarath", "Gaipathar", "Village One"],
+      [profile.state_id, profile.district_id, profile.block_id, profile.gram_panchayat_id, profile.village_id]
+    get vrp_path(vrp)
+    assert_response :success
+    ["Jharkhand", "Deoghar", "Sarath", "Gaipathar", "Village One, Village Two"].each do |value|
+      assert_select ".table-shell.mt-4 tbody td", text: value
+    end
+    get edit_vrp_path(vrp)
+    assert_response :success
+    { state: "Jharkhand", district: "Deoghar", block: "Sarath" }.each do |level, value|
+      assert_select "select[data-location-level='#{level}'] option[selected]", text: value
+    end
+    assert_select "select[data-location-level='village'] option[selected]", count: 2
+  end
+
   test "location options cascade through names with punctuation and multiple panchayats" do
     admin = create_admin_user(user_name: "location_admin", password: "secret")
     post login_path, params: { login: admin.user_name, password: "secret" }
