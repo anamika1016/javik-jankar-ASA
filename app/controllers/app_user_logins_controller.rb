@@ -119,7 +119,9 @@ class AppUserLoginsController < ApplicationController
       record.logged_in_at&.in_time_zone&.strftime("%d-%m-%Y"),
       record.logged_in_at&.in_time_zone&.strftime("%I:%M %p"),
       record.name, record.username, record.user_kind, record.role,
-      record.office_name, record.fcoc,
+      # Both columns are filled for either kind of user now; a Jeevika Jankar
+      # carries their FCO in both, a staff user only in Office.
+      record.office_label, record.fcoc,
       # Masked in the sheet too: an export travels further than the screen.
       record.masked_mobile,
       record.login_method == "otp" ? "OTP" : "Password",

@@ -8,15 +8,28 @@
       <p>All accepted declarations are listed here. Signature availability is shown separately.</p>
     </div>
     <div class="dashboard-actions">
-      <%= link_to "Export Excel", export_vrp_agreements_path, class: "list-btn active" %>
+      <%# The export follows the search, so what is downloaded matches what
+          is on screen. %>
+      <%= link_to "Export Excel", export_vrp_agreements_path(q: @search), class: "list-btn active" %>
       <%= link_to "Back to Dashboard", dashboard_path, class: "list-btn" %>
     </div>
   </div>
 
   <section class="module-card">
-    <div class="module-card-header">
+    <div class="module-card-header farmer-list-header">
       <h2>Accepted Agreements</h2>
-      <span class="record-count"><%= @accepted_agreements.size %> records</span>
+      <div class="farmer-list-header-right">
+        <span class="record-count"><%= @accepted_agreements.size %> records</span>
+        <%= form_with url: vrp_agreements_path, method: :get, local: true, data: { turbo: false },
+                      html: { class: "farmer-inline-search" } do %>
+          <input type="search" name="q" value="<%= @search %>" aria-label="Search accepted agreements"
+                 placeholder="Name, village, FCO, TO or mobile">
+          <button type="submit" class="list-btn active">Search</button>
+          <% if @search.present? %>
+            <%= link_to "Clear", vrp_agreements_path, class: "list-btn" %>
+          <% end %>
+        <% end %>
+      </div>
     </div>
 
     <div class="table-shell">
@@ -53,7 +66,16 @@
             <% end %>
           <% else %>
             <tr>
-              <td colspan="<%= agreement_admin_user? ? 8 : 7 %>">No accepted agreements found for your mapped Jeevika Jankars.</td>
+              <td colspan="<%= agreement_admin_user? ? 8 : 7 %>">
+                <%# A search finding nothing is a different thing from having
+                    no agreements at all, and reads as a bug when worded the
+                    same way. %>
+                <% if @search.present? %>
+                  No accepted agreement matches &ldquo;<%= @search %>&rdquo;.
+                <% else %>
+                  No accepted agreements found for your mapped Jeevika Jankars.
+                <% end %>
+              </td>
             </tr>
           <% end %>
         </tbody>

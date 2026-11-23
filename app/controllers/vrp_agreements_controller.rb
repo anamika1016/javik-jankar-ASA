@@ -6,11 +6,12 @@ class VrpAgreementsController < ApplicationController
   helper_method :agreement_admin_user?
 
   def index
-    @accepted_agreements = accepted_agreement_rows
+    @search = params[:q].to_s.strip
+    @accepted_agreements = search_agreements(accepted_agreement_rows, @search)
   end
 
   def export
-    rows = accepted_agreement_rows
+    rows = search_agreements(accepted_agreement_rows, params[:q].to_s.strip)
     send_xlsx(
       headers: ["Name", "Village", "FCO Name", "TO Name", "Mobile Number", "Accepted At", "Signature"],
       rows: rows.map do |agreement|
@@ -51,6 +52,25 @@ class VrpAgreementsController < ApplicationController
   end
 
   private
+
+  # Filtered in Ruby rather than SQL because village and TO Name are resolved
+  # after the query, from separate masters -- a SQL WHERE could not match
+  # either, and those are two of the columns a reader actually searches by.
+  # The page already builds every row to render it, so this adds no load.
+  def search_agreements(rows, term)
+    return rows if term.blank?
+
+    needle = term.downcase
+    digits = term.gsub(/\D/, "")
+
+    rows.select do |row|
+      next true if %i[name village fcoc to_name].any? do |key|
+        row[key].to_s.downcase.include?(needle)
+      end
+
+      digits.present? && row[:mobile_no].to_s.gsub(/\D/, "").include?(digits)
+    end
+  end
 
   def accepted_agreement_rows
     return [] unless vrp_agreement_enabled?

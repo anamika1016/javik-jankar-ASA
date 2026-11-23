@@ -151,6 +151,69 @@ class AppUserLoginDetailTest < ActionDispatch::IntegrationTest
       response.headers["Content-Disposition"])
   end
 
+  # A User has office_name and no fcoc column; a Vrp has fcoc and none of the
+  # others. Reading only one of them left the Office / FCO column blank for
+  # half the rows, on screen and in the export.
+  test "a Jeevika Jankar's FCO fills the office column" do
+    AppUserLogin.record!(
+      payload: { "id" => 7, "record_type" => "Vrp", "name" => "Pinki Parihar",
+                 "username" => "pinki", "fcoc" => "FCO-Sausar" },
+      method: :password
+    )
+
+    login = AppUserLogin.sole
+    assert_equal "FCO-Sausar", login.office_name
+    assert_equal "FCO-Sausar", login.fcoc
+    assert_equal "FCO-Sausar", login.office_label
+    # The same name must not be printed twice in one cell.
+    assert_nil login.fcoc_sub_label
+
+    sign_in_admin
+    get app_user_logins_path
+    assert_response :success
+    assert_equal 1, response.body.scan("FCO-Sausar").size
+  end
+
+  test "a staff user's office fills the office column, through a real login" do
+    post "/api/v1/login", params: { login: @staff.user_name, password: "secret" }.to_json,
+      headers: { "Content-Type" => "application/json" }
+    assert_response :success
+
+    login = AppUserLogin.sole
+    assert_equal "FCO-Bhawanipatna", login.office_name
+    assert_equal "FCO-Bhawanipatna", login.office_label
+
+    sign_in_admin
+    get app_user_logins_path
+    assert_select "td", text: /FCO-Bhawanipatna/
+  end
+
+  test "an office and a different FCO are both shown" do
+    AppUserLogin.record!(
+      payload: { "id" => 8, "record_type" => "User", "name" => "Mixed User",
+                 "office_name" => "TO-Narla", "fcoc" => "FCO-Bhawanipatna" },
+      method: :password
+    )
+
+    login = AppUserLogin.sole
+    assert_equal "TO-Narla", login.office_label
+    assert_equal "FCO-Bhawanipatna", login.fcoc_sub_label
+  end
+
+  test "the export carries the office for both kinds of user" do
+    AppUserLogin.record!(
+      payload: { "id" => 9, "record_type" => "Vrp", "name" => "Pinki Parihar",
+                 "fcoc" => "FCO-Sausar" },
+      method: :password
+    )
+    controller = AppUserLoginsController.new
+    headers = AppUserLoginsController::EXPORT_HEADERS
+
+    row = controller.send(:export_row, AppUserLogin.first, 0)
+    assert_equal "FCO-Sausar", row[headers.index("Office")]
+    assert_equal "FCO-Sausar", row[headers.index("FCO")]
+  end
+
   test "a month shows that whole month and nothing outside it" do
     travel_to(Date.new(2026, 10, 5)) { record_login(@staff, name: "October Login") }
     travel_to(Date.new(2026, 10, 28)) { record_login(@staff, name: "Also October") }

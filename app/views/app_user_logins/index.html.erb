@@ -155,9 +155,9 @@
                 </td>
                 <td><%= record.role.presence || "-" %></td>
                 <td>
-                  <%= record.office_name.presence || "-" %>
-                  <% if record.fcoc.present? %>
-                    <small class="farmer-sub"><%= record.fcoc %></small>
+                  <%= record.office_label %>
+                  <% if record.fcoc_sub_label %>
+                    <small class="farmer-sub"><%= record.fcoc_sub_label %></small>
                   <% end %>
                 </td>
                 <%# Masked: this is an attendance trail, not a contact list. %>

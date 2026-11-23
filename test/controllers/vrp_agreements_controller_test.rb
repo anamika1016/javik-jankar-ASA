@@ -157,6 +157,88 @@ class VrpAgreementsControllerTest < ActionDispatch::IntegrationTest
 
   private
 
+  # The search covers every column on screen. Village and TO Name are the
+  # interesting ones: they are resolved after the query, so a SQL WHERE could
+  # never have matched them.
+  test "the search box narrows the list by name, FCO and mobile" do
+    create_vrp(user_name: "search_a", password: "secret", name: "Pinki Parihar",
+      mobile_no: "9876500011", fcoc: "FCO-Bhawanipatna",
+      agreement_accepted_at: Time.current, agreement_signature_data: "data:image/png;base64,x")
+    create_vrp(user_name: "search_b", password: "secret", name: "Rayali Bai",
+      mobile_no: "9876500022", fcoc: "FCO-Sausar",
+      agreement_accepted_at: Time.current, agreement_signature_data: "data:image/png;base64,x")
+
+    sign_in_search_admin
+
+    get vrp_agreements_path(q: "Pinki")
+    assert_response :success
+    assert_includes response.body, "Pinki Parihar"
+    refute_includes response.body, "Rayali Bai"
+
+    get vrp_agreements_path(q: "Sausar")
+    assert_includes response.body, "Rayali Bai"
+    refute_includes response.body, "Pinki Parihar"
+
+    # A number typed with spaces or dashes still matches.
+    get vrp_agreements_path(q: "98765-000 11")
+    assert_includes response.body, "Pinki Parihar"
+    refute_includes response.body, "Rayali Bai"
+  end
+
+  test "a search that finds nothing says so, not that there are no agreements" do
+    create_vrp(user_name: "search_c", password: "secret", name: "Pinki Parihar",
+      agreement_accepted_at: Time.current, agreement_signature_data: "data:image/png;base64,x")
+    sign_in_search_admin
+
+    get vrp_agreements_path(q: "zzzz-no-such-person")
+    assert_response :success
+    assert_includes response.body, "No accepted agreement matches"
+    refute_includes response.body, "No accepted agreements found for your mapped"
+  end
+
+  test "an empty search shows everything, as before" do
+    create_vrp(user_name: "search_d", password: "secret", name: "Pinki Parihar",
+      agreement_accepted_at: Time.current, agreement_signature_data: "data:image/png;base64,x")
+    sign_in_search_admin
+
+    get vrp_agreements_path(q: "   ")
+    assert_response :success
+    assert_includes response.body, "Pinki Parihar"
+  end
+
+  test "the export downloads what the search shows, not the whole list" do
+    create_vrp(user_name: "search_e", password: "secret", name: "Pinki Parihar",
+      agreement_accepted_at: Time.current, agreement_signature_data: "data:image/png;base64,x")
+    create_vrp(user_name: "search_f", password: "secret", name: "Rayali Bai",
+      agreement_accepted_at: Time.current, agreement_signature_data: "data:image/png;base64,x")
+    sign_in_search_admin
+
+    rows = nil
+    VrpAgreementsController.class_eval do
+      alias_method :__original_search_agreements, :search_agreements
+      define_method(:search_agreements) { |all, term| rows = __original_search_agreements(all, term) }
+    end
+
+    begin
+      get export_vrp_agreements_path(q: "Pinki")
+      assert_response :success
+      assert_equal ["Pinki Parihar"], rows.map { |row| row[:name] }
+    ensure
+      VrpAgreementsController.class_eval do
+        remove_method :search_agreements
+        alias_method :search_agreements, :__original_search_agreements
+        remove_method :__original_search_agreements
+        private :search_agreements
+      end
+    end
+  end
+
+  def sign_in_search_admin
+    @search_admin ||= User.create!(user_name: "agreement_admin", password: "secret",
+      first_name: "Admin", user_type: "admin", status: "Active")
+    post login_path, params: { login: @search_admin.user_name, password: "secret" }
+  end
+
   def create_vrp(attributes = {})
     defaults = {
       name: "Test VRP",

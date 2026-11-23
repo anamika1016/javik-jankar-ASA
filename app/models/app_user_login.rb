@@ -22,9 +22,14 @@ class AppUserLogin < ApplicationRecord
       role: payload[:role_name].presence || payload[:role].presence ||
         payload[:user_management_role].presence || payload[:person_type].presence ||
         Array(payload[:vrp_types]).first,
+      # Staff and Jeevika Jankar keep their office in different columns: a
+      # User has office_name and no fcoc, a Vrp has fcoc and none of the
+      # others. Reading only one of them left half the rows blank, so both
+      # feed the same label and the FCO is kept separately as well.
       office_name: payload[:office_name].presence || payload[:sub_office_name].presence ||
-        payload[:parent_office].presence || payload[:office],
-      fcoc: payload[:fcoc],
+        payload[:parent_office].presence || payload[:office].presence ||
+        payload[:fcoc].presence || payload[:fcoc_name],
+      fcoc: payload[:fcoc].presence || payload[:fcoc_name],
       login_method: method.to_s.presence_in(LOGIN_METHODS) || "password",
       ip: request&.remote_ip,
       device: (request&.headers&.[]("X-Device-Name").presence || request&.user_agent).to_s.first(200).presence,
@@ -36,6 +41,16 @@ class AppUserLogin < ApplicationRecord
   # Jeevika Jankar or staff, in words a reader expects.
   def user_kind
     record_type == "Vrp" ? "Jeevika Jankar" : "User"
+  end
+
+  # The office line for a reader: whatever was captured, without repeating
+  # the same name twice when office and FCO are the one value.
+  def office_label
+    office_name.presence || fcoc.presence || "-"
+  end
+
+  def fcoc_sub_label
+    fcoc.presence unless fcoc.to_s.strip.casecmp(office_name.to_s.strip).zero?
   end
 
   def masked_mobile
