@@ -74,7 +74,13 @@ class DashboardDemonstrationMethodReport
             SUM(cc_target) AS cc_target
           FROM village_target
           GROUP BY fco_id, fco_name, vrp_id
-        ), entry_data AS (
+        -- MATERIALIZED is load-bearing. The planner cannot see into the target
+        -- CTEs above, so it estimates one row from them; left to itself it then
+        -- inlines entry_data and re-runs the whole training-form scan, sort and
+        -- group once per row it actually finds -- 62 times on real data, turning
+        -- a 22ms aggregate into 1.3s. Computing it once is the difference
+        -- between a slow dashboard and a fast one.
+        ), entry_data AS MATERIALIZED (
           SELECT
             #{record_vrp_id_sql} AS vrp_id,
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'general training/meeting') AS general_training_done,
@@ -214,7 +220,13 @@ class DashboardDemonstrationMethodReport
         ), vrp_fco AS (
           SELECT DISTINCT t.fco_id, t.fco_name, t.vrp_id
           FROM scoped_targets t
-        ), entry_data AS (
+        -- MATERIALIZED is load-bearing. The planner cannot see into the target
+        -- CTEs above, so it estimates one row from them; left to itself it then
+        -- inlines entry_data and re-runs the whole training-form scan, sort and
+        -- group once per row it actually finds -- 62 times on real data, turning
+        -- a 22ms aggregate into 1.3s. Computing it once is the difference
+        -- between a slow dashboard and a fast one.
+        ), entry_data AS MATERIALIZED (
           SELECT vf.fco_id, vf.fco_name,
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'general training/meeting') AS general_training_meeting,
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'input demo inm') AS input_demo_inm,

@@ -4,8 +4,8 @@
   <div class="dashboard-topbar">
     <div><p class="vrp-eyebrow">Dashboard</p><h1><%= @report_title %></h1></div>
     <div class="dashboard-actions">
-      <%= link_to "Back to Dashboard", dashboard_path(request.query_parameters.except("format")), class: "list-btn active" %>
-      <%= link_to "Export Excel", dashboard_report_list_path(@report_type, request.query_parameters.merge(format: :xlsx)), class: "list-btn export", data: { report_export: true } %>
+      <%= link_to "Back to Dashboard", dashboard_path(request.query_parameters.except("format", "page")), class: "list-btn active" %>
+      <%= link_to "Export Excel", dashboard_report_list_path(@report_type, request.query_parameters.except("page").merge(format: :xlsx)), class: "list-btn export", data: { report_export: true } %>
     </div>
   </div>
   <section class="module-card">
@@ -17,7 +17,51 @@
       <%= search_field_tag :search, params[:search], placeholder: "Search all records", aria: { label: "Search all records" } %>
       <%= submit_tag "Search", class: "list-btn active" %>
     <% end %>
-    <p>Total: <%= @report_rows.size %></p>
-    <%= render "demonstration_method_table", headers: @report_headers, rows: @report_rows %>
+
+    <% page_size = @report_page_size.to_i %>
+    <% total = @report_total.to_i %>
+    <% page = @report_page.to_i %>
+    <% page_count = @report_page_count.to_i %>
+    <% first_row = total.zero? ? 0 : ((page - 1) * page_size) + 1 %>
+    <% last_row = [page * page_size, total].min %>
+    <p>Total: <%= total %><% if page_count > 1 %> &nbsp;·&nbsp; Showing <%= first_row %>&ndash;<%= last_row %><% end %></p>
+
+    <%# The server already paged these rows, so the browser-side paginator and
+        its search box would only ever act on this one page. The Month and
+        "Search all records" controls above cover every record. %>
+    <%= render "demonstration_method_table",
+          headers: @report_headers, rows: @report_rows,
+          paginated: false, searchable: false %>
+
+    <% if page_count > 1 %>
+      <% page_url = ->(target) { dashboard_report_list_path(@report_type, request.query_parameters.merge("page" => target)) } %>
+      <nav class="report-pager" aria-label="Pages">
+        <% if page > 1 %>
+          <%= link_to "‹ Prev", page_url.call(page - 1), class: "table-action", rel: "prev" %>
+        <% else %>
+          <span class="table-action is-disabled" aria-disabled="true">&lsaquo; Prev</span>
+        <% end %>
+
+        <%# A window around the current page, with both ends always reachable. %>
+        <% window = ((page - 2)..(page + 2)).select { |candidate| candidate.between?(1, page_count) } %>
+        <% shown = ([1] + window + [page_count]).uniq.sort %>
+        <% shown.each_with_index do |target, index| %>
+          <% if index.positive? && target > shown[index - 1] + 1 %>
+            <span class="report-pager-gap">&hellip;</span>
+          <% end %>
+          <% if target == page %>
+            <span class="table-action active" aria-current="page"><%= target %></span>
+          <% else %>
+            <%= link_to target, page_url.call(target), class: "table-action" %>
+          <% end %>
+        <% end %>
+
+        <% if page < page_count %>
+          <%= link_to "Next ›", page_url.call(page + 1), class: "table-action", rel: "next" %>
+        <% else %>
+          <span class="table-action is-disabled" aria-disabled="true">Next &rsaquo;</span>
+        <% end %>
+      </nav>
+    <% end %>
   </section>
 </section>

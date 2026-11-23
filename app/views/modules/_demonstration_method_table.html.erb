@@ -1,11 +1,18 @@
-<div class="list-controls">
-  <div class="list-search">
-    <span>⌕</span>
-    <input type="search" placeholder="Search records" data-table-search="dashboard_report_table">
+<%# paginated / searchable default to true so the Demonstration Method and
+    CC & JJ Work Status lists keep their browser-side paging and filter box.
+    A page that already paged on the server passes false for both. %>
+<% paginated = local_assigns.fetch(:paginated, true) %>
+<% searchable = local_assigns.fetch(:searchable, true) %>
+<% if searchable %>
+  <div class="list-controls">
+    <div class="list-search">
+      <span>⌕</span>
+      <input type="search" placeholder="Search records" data-table-search="dashboard_report_table">
+    </div>
   </div>
-</div>
+<% end %>
 <div class="table-shell">
-  <table class="module-table compact-table" id="dashboard_report_table" data-paginated-table data-page-size="25">
+  <table class="module-table compact-table" id="dashboard_report_table" <%= "data-paginated-table" if paginated %> data-page-size="25">
     <thead><tr><% headers.each do |header| %><th><%= header == "FFS" ? "Exposer" : header %></th><% end %></tr></thead>
     <tbody>
       <% rows.each do |row| %>
@@ -15,4 +22,6 @@
     </tbody>
   </table>
 </div>
-<div class="table-pagination" data-pagination-for="dashboard_report_table"></div>
+<% if paginated %>
+  <div class="table-pagination" data-pagination-for="dashboard_report_table"></div>
+<% end %>

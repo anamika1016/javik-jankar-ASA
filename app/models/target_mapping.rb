@@ -1,8 +1,32 @@
 class TargetMapping < ApplicationRecord
+  # How the location was picked when the target was given. ICS Wise walks the
+  # farmer master (FCO -> ICS -> Village); Block Wise walks the office/ASA
+  # directory (FCO -> Block -> Village) and keeps the block in ics_id/ics_name.
+  ICS_WISE_ENTRY_MODE = "ics_wise".freeze
+  BLOCK_WISE_ENTRY_MODE = "block_wise".freeze
+  ENTRY_MODES = [ICS_WISE_ENTRY_MODE, BLOCK_WISE_ENTRY_MODE].freeze
+
   belongs_to :vrp
   belongs_to :vrp_ics_mapping, optional: true
 
   serialize :afl_ids, coder: JSON
+
+  if column_names.include?("target_entry_mode")
+    scope :ics_wise, -> { where(target_entry_mode: ICS_WISE_ENTRY_MODE) }
+    scope :block_wise, -> { where(target_entry_mode: BLOCK_WISE_ENTRY_MODE) }
+
+    validates :target_entry_mode, inclusion: { in: ENTRY_MODES }
+  end
+
+  # Anything unrecognised is ICS Wise, the mode the Target Mapping form opens on.
+  def self.normalize_entry_mode(value)
+    normalized = value.to_s.strip.downcase
+    ENTRY_MODES.include?(normalized) ? normalized : ICS_WISE_ENTRY_MODE
+  end
+
+  def block_wise_entry?
+    has_attribute?(:target_entry_mode) && target_entry_mode.to_s == BLOCK_WISE_ENTRY_MODE
+  end
 
   before_validation :clean_afl_ids
 

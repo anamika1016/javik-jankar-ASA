@@ -12600,6 +12600,199 @@ body {
 
 .dashboard-page .dashboard-actions .list-search input { color: #243e31; background: transparent; }
 
+/* ICS Wise / Block Wise / Both switcher. Takes a full row of .dashboard-actions
+   so it sits above the clock and the search box. */
+.dashboard-view-switch {
+  display: flex;
+  /* Takes a full row of .dashboard-actions so it sits above the clock and the
+     search box. Sized with width, not a percentage flex-basis: .dashboard-actions
+     turns into a column below 900px, where a 100% basis would resolve against
+     its height and push the clock and search box out of the topbar entirely. */
+  flex: 0 0 auto;
+  width: 100%;
+  /* .dashboard-topbar stretches its children; hug the pills instead. */
+  align-self: flex-start;
+  align-items: center;
+  align-content: flex-start;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--dashboard-border, #e1e7ec);
+  border-radius: 999px;
+  background: var(--vrp-panel-soft);
+}
+
+.dashboard-view-switch-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex: 1 1 0;
+  min-height: 36px;
+  height: 36px;
+  padding: 7px 15px;
+  border-radius: 999px;
+  color: var(--vrp-muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dashboard-view-switch-item:hover {
+  background: #ffffff8c;
+  color: var(--vrp-text);
+}
+
+.dashboard-view-switch-item.active {
+  background: var(--vrp-panel);
+  color: var(--vrp-primary-dark);
+  box-shadow: 0 1px 3px #1832281f;
+}
+
+.dashboard-view-switch-item b {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #e8eef1;
+  color: var(--vrp-muted);
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.dashboard-view-switch-item.active b {
+  background: #e3eee5;
+  color: #477359;
+}
+
+/* Server-side pager for the dashboard report lists. */
+.report-pager {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.report-pager .table-action {
+  min-width: 38px;
+  justify-content: center;
+  text-align: center;
+}
+
+.report-pager .table-action.active {
+  background: #e5efe8;
+  border-color: #c9dcd1;
+  color: #355c46;
+  font-weight: 850;
+}
+
+.report-pager .table-action.is-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.report-pager-gap {
+  padding: 0 2px;
+  color: var(--vrp-muted);
+  font-weight: 800;
+}
+
+:root[data-theme="dark"] .report-pager .table-action.active {
+  background: #445a4a;
+  border-color: #56705c;
+  color: #d8ecdd;
+}
+
+.dashboard-panel-note {
+  margin: 5px 0 0;
+  max-width: 68ch;
+  color: var(--vrp-muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+/* Both view: the ICS / Block split under a summary box's combined figure. */
+.dashboard-page .dashboard-summary-box .dashboard-summary-split,
+.dashboard-summary-split {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--vrp-muted);
+}
+
+.dashboard-summary-split em {
+  font-style: normal;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #ffffff8f;
+  border: 1px solid #0000000f;
+}
+
+.dashboard-page .dashboard-summary-box .dashboard-summary-split em b,
+.dashboard-summary-split em b {
+  font-size: 0.78rem;
+  font-weight: 850;
+  color: var(--vrp-text);
+}
+
+.dashboard-summary-split i {
+  font-style: normal;
+  font-weight: 850;
+  opacity: 0.65;
+}
+
+:root[data-theme="dark"] .dashboard-summary-split em {
+  background: #ffffff14;
+  border-color: #ffffff1f;
+}
+
+.dashboard-page .filter-chip-view {
+  background: #e3eee5;
+  border-color: #c9dcd1;
+  color: #355c46;
+}
+
+@media (max-width: 540px) {
+  .dashboard-view-switch { flex-wrap: wrap; border-radius: 14px; }
+  .dashboard-view-switch-item { flex: 1 1 100%; border-radius: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-view-switch-item { transition: none; }
+}
+
+:root[data-theme="dark"] .dashboard-view-switch {
+  border-color: var(--vrp-line);
+  background: var(--vrp-panel-soft);
+}
+
+:root[data-theme="dark"] .dashboard-view-switch-item:hover { background: #ffffff14; }
+
+:root[data-theme="dark"] .dashboard-view-switch-item.active {
+  background: #31444c;
+  color: var(--vrp-primary);
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .dashboard-view-switch-item b { background: #3c4e56; color: var(--vrp-muted); }
+
+:root[data-theme="dark"] .dashboard-view-switch-item.active b { background: #445a4a; color: #a0d6ad; }
+
 .dashboard-page .dashboard-filter-bar {
   padding: 22px 24px;
   background: var(--vrp-panel);

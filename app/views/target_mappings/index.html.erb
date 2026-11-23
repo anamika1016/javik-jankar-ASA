@@ -42,11 +42,12 @@
               </select>
             </label>
 
+            <% selected_entry_mode = @edit_payload[:target_entry_mode].presence || TargetMapping::ICS_WISE_ENTRY_MODE %>
             <label>
               <span>Target Entry <em>*</em></span>
               <select name="target_mapping[target_entry_mode]" data-target-entry-mode required>
-                <option value="ics_wise" selected>ICS Wise</option>
-                <option value="block_wise">Block Wise</option>
+                <option value="ics_wise" <%= "selected" if selected_entry_mode == TargetMapping::ICS_WISE_ENTRY_MODE %>>ICS Wise</option>
+                <option value="block_wise" <%= "selected" if selected_entry_mode == TargetMapping::BLOCK_WISE_ENTRY_MODE %>>Block Wise</option>
               </select>
             </label>
 

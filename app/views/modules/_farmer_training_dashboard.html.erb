@@ -16,6 +16,12 @@
   <div class="module-card-header training-participation-status-header">
     <div>
       <h2>Farmer Training Participation Status</h2>
+      <%# Pending / Only 1 / 1+ are read off the registered-farmer master, and
+          Block Wise targets name farmers from the ASA directory, which is not
+          in that master. Say so, or the zeros read as a broken dashboard. %>
+      <% if @dashboard_entry_mode_view && @dashboard_entry_mode_view[:key] == TargetMapping::BLOCK_WISE_ENTRY_MODE %>
+        <p class="dashboard-panel-note">Block Wise targets address ASA directory farmers, so registered-farmer training history does not apply here — only Mapped Farmer is counted.</p>
+      <% end %>
     </div>
   </div>
 

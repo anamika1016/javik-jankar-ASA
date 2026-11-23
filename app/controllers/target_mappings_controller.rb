@@ -527,6 +527,12 @@ class TargetMappingsController < ApplicationController
     attrs[:main_activity_name] = target_activity_values(target_mapping_params[:main_activity_names]).first || attrs[:main_activity_name]
     attrs[:activity_name] = target_activity_values(target_mapping_params[:activity_names]).first || attrs[:activity_name]
     attrs[:target_quantity] = new_farmer_target_quantity if new_farmer_target_mode?
+    # Block Wise entries keep the block in ics_id/ics_name, so the row itself
+    # cannot say which picker filled it. Record the choice; the dashboard's
+    # ICS Wise / Block Wise / Both views read it.
+    if TargetMapping.column_names.include?("target_entry_mode")
+      attrs[:target_entry_mode] = TargetMapping.normalize_entry_mode(target_mapping_params[:target_entry_mode])
+    end
     attrs.merge!(training_target_attributes)
     attrs
   end
@@ -2073,6 +2079,9 @@ end
     {
       id: primary.id,
       vrp_id: primary.vrp_id.to_s,
+      # Reopen the form on the picker that was used, otherwise saving an edit
+      # would relabel a Block Wise target as ICS Wise.
+      target_entry_mode: primary.has_attribute?(:target_entry_mode) ? primary.target_entry_mode.to_s : TargetMapping::ICS_WISE_ENTRY_MODE,
       fco_id: encoded_location_value(primary.fco_id, primary.fco_name),
       ics_id: encoded_location_value(primary.ics_id, primary.ics_name),
       village_id: encoded_location_value(primary.village_id, primary.village_name),

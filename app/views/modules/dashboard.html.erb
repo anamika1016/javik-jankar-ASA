@@ -363,6 +363,9 @@
 <section class="dashboard-page">
 
   <%# ── TOP BAR ─────────────────────────────────────────────────────── %>
+  <% entry_mode_views = Array(@dashboard_entry_mode_views) %>
+  <% entry_mode_view = @dashboard_entry_mode_view || entry_mode_views.first %>
+  <% entry_mode_counts = @dashboard_entry_mode_counts || {} %>
   <div class="dashboard-topbar">
     <div>
       <p class="vrp-eyebrow">Dashboard Module</p>
@@ -371,11 +374,25 @@
     </div>
 
     <div class="dashboard-actions">
-      <div class="dashboard-header-clock" aria-label="Live Clock">
-        <span>Live</span>
-        <strong data-dashboard-clock-time><%= @dashboard_generated_at.strftime("%I:%M:%S %p") %></strong>
-        <small data-dashboard-clock-date><%= @dashboard_generated_at.strftime("%d %b %Y") %></small>
-      </div>
+      <%# ICS Wise / Block Wise / Both, in place of the old live clock. Reloads
+          the whole dashboard — boxes, panels, lists and exports — in that view. %>
+      <% if entry_mode_views.any? %>
+        <nav class="dashboard-view-switch" aria-label="Dashboard view">
+          <% entry_mode_views.each do |view| %>
+            <% active = entry_mode_view && view[:key] == entry_mode_view[:key] %>
+            <%= link_to dashboard_path(request.query_parameters.merge("entry_mode" => view[:key]).except("page")),
+                  class: "dashboard-view-switch-item#{" active" if active}",
+                  title: view[:caption],
+                  aria: { current: active ? "page" : nil },
+                  data: { turbo_prefetch: false } do %>
+              <span><%= view[:label] %></span>
+              <% if entry_mode_counts[view[:key]].present? %>
+                <b><%= entry_mode_counts[view[:key]] %></b>
+              <% end %>
+            <% end %>
+          <% end %>
+        </nav>
+      <% end %>
       <div class="list-search">
         <span>⌕</span>
         <input type="search" placeholder="Search dashboard" data-dashboard-search>
@@ -386,6 +403,10 @@
   <%# ── FILTER BAR ───────────────────────────────────────────────────── %>
   <%= form_with url: dashboard_path, method: :get, local: true,
         id: "dashboard-filter-form", class: "dashboard-filter-bar" do |f| %>
+    <%# Applying filters must not drop the ICS Wise / Block Wise / Both view. %>
+    <% if entry_mode_view.present? %>
+      <%= hidden_field_tag :entry_mode, entry_mode_view[:key] %>
+    <% end %>
     <% if params[:training_month].present? %>
       <%= hidden_field_tag :training_month, params[:training_month] %>
     <% end %>
@@ -440,12 +461,22 @@
               id: "dash_fcoc", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
       </div>
 
-      <%# ICS Name (cascades from the selected activity, FCO and Cluster Incharge) %>
       <div class="dashboard-filter-field">
-        <label for="dash_ics">ICS Name</label>
+        <label for="dash_to_name">TO</label>
+        <%= f.select :to_name,
+              options_for_select([["All TO", ""]] + Array(@filter_to_options).map { |name| [name, name] }, params[:to_name]),
+              {}, id: "dash_to_name", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
+      </div>
+
+      <%# ICS Name (cascades from the selected activity, FCO and Cluster Incharge).
+          Block Wise targets keep their block in the same field, so the label
+          follows the selected view. %>
+      <% ics_filter_label = entry_mode_view.present? ? entry_mode_view[:location_label] : "ICS Name" %>
+      <div class="dashboard-filter-field">
+        <label for="dash_ics"><%= ics_filter_label %></label>
         <%= f.select :ics,
               options_for_select(
-                [["All ICS", ""]] + (@filter_ics_options || []).map { |v| [v, v] },
+                [["All #{entry_mode_view.present? ? entry_mode_view[:short] : "ICS"}", ""]] + (@filter_ics_options || []).map { |v| [v, v] },
                 params[:ics]
               ),
               {},
@@ -454,7 +485,8 @@
 
       <div class="dashboard-filter-actions">
         <%= f.submit "Apply Filters", class: "list-btn active", id: "dash_apply_filters" %>
-        <%= link_to "Clear", dashboard_path, class: "table-action", id: "dash_clear_filters", data: { turbo: false, turbo_prefetch: false } %>
+        <%# Clearing the filters keeps the chosen view. %>
+        <%= link_to "Clear", dashboard_path(entry_mode_view.present? ? { entry_mode: entry_mode_view[:key] } : {}), class: "table-action", id: "dash_clear_filters", data: { turbo: false, turbo_prefetch: false } %>
       </div>
     </div>
   <% end %>
@@ -464,16 +496,20 @@
     params[:search].present?           ? "Search: #{params[:search]}"                 : nil,
     params[:activity].present?         ? "Activity: #{params[:activity]}"             : nil,
     params[:fcoc].present?             ? "FCO: #{params[:fcoc]}"                      : nil,
+    params[:to_name].present?         ? "TO: #{params[:to_name]}"                    : nil,
     params[:month].present?            ? "Month: #{params[:month]}"                   : nil,
     params[:vrp_id].present?           ? "VRP ##{params[:vrp_id]}"                   : nil
   ].compact %>
   <% if active_filters.any? %>
     <div class="dashboard-filter-chips">
       <span class="filter-chips-label">Active Filters:</span>
+      <% if entry_mode_view.present? %>
+        <span class="filter-chip filter-chip-view"><%= entry_mode_view[:label] %></span>
+      <% end %>
       <% active_filters.each do |chip| %>
         <span class="filter-chip"><%= chip %></span>
       <% end %>
-      <%= link_to "✕ Clear All", dashboard_path, class: "filter-chip-clear", data: { turbo: false, turbo_prefetch: false } %>
+      <%= link_to "✕ Clear All", dashboard_path(entry_mode_view.present? ? { entry_mode: entry_mode_view[:key] } : {}), class: "filter-chip-clear", data: { turbo: false, turbo_prefetch: false } %>
     </div>
   <% end %>
 
@@ -501,6 +537,20 @@
           <div class="training-participation-box total dashboard-summary-box">
             <span><%= card[:title] %></span>
             <strong><%= card[:value] %></strong>
+            <%# Both view: where the figure above came from. "+" when the two
+                sides add up to it, "of which" when they are a breakdown of
+                distinct names that can appear on both sides. %>
+            <% breakdown = Array(card[:breakdown]) %>
+            <%# A div, not a span: the box's own `> span` rules style its title
+                and would otherwise capture this too. %>
+            <% if breakdown.any? %>
+              <div class="dashboard-summary-split" aria-label="View breakdown">
+                <% breakdown.each_with_index do |part, index| %>
+                  <% if index.positive? %><i><%= part[:combines] ? "+" : "·" %></i><% end %>
+                  <em><%= part[:label] %> <b><%= part[:value] %></b></em>
+                <% end %>
+              </div>
+            <% end %>
             <div class="dashboard-summary-actions">
               <span class="dashboard-summary-action-popover">
                 <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true, turbo_prefetch: false } if card[:path].present? %>

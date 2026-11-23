@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_21_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_23_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -385,6 +385,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_21_100000) do
     t.string "main_activity_name"
     t.string "month_name", null: false
     t.decimal "opg_training_target", precision: 18, scale: 4
+    t.string "target_entry_mode", default: "ics_wise", null: false
     t.decimal "target_quantity", precision: 18, scale: 4, null: false
     t.datetime "updated_at", null: false
     t.string "village_id", null: false
@@ -401,6 +402,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_21_100000) do
     t.index ["created_by_type", "created_by_id", "updated_at"], name: "index_target_mappings_on_creator_and_updated_at", order: { updated_at: :desc }
     t.index ["created_by_type", "created_by_id"], name: "index_target_mappings_on_creator"
     t.index ["fco_id", "ics_id", "village_id", "main_activity_name", "activity_name"], name: "index_target_mappings_on_activity_scope"
+    t.index ["target_entry_mode", "month_name"], name: "index_target_mappings_on_entry_mode_and_month"
     t.index ["updated_at"], name: "index_target_mappings_on_updated_at", order: :desc
     t.index ["village_id"], name: "index_target_mappings_on_village_id_for_agreements"
     t.index ["vrp_ics_mapping_id"], name: "index_target_mappings_on_vrp_ics_mapping_id"

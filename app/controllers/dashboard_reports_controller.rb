@@ -130,6 +130,8 @@ class DashboardReportsController < ModulesController
       end
     end
 
+    @filter_to_options = dashboard_to_options
+
     # 3. Cluster Incharge Filter (depends on selected Activity & FCO)
     current_cluster_labels = hierarchy_cluster_incharge_labels
     @filter_cluster_incharge_options = v_scope.filter_map do |vrp|
@@ -147,13 +149,22 @@ class DashboardReportsController < ModulesController
       t_scope = t_scope.select { |t| t.vrp_id.present? && v_ids.include?(t.vrp_id) }
     end
 
-    # 4. ICS Filter
-    ics_farmers = dashboard_visible_farmer_scope
-    if @dashboard_fcoc_filter_value.present?
-      ics_farmers = ics_farmers.where(fco_id: training_fcoc_ids_from_param(@dashboard_fcoc_filter_value))
+    # 4. ICS / Block Filter
+    # The farmer master only knows ICS names, so it is not a source of options
+    # for the Block Wise view -- offering them there would be a list of dead
+    # ends. In that view the blocks on the (already Block Wise) target rows are
+    # the whole universe.
+    master_ics_options = if dashboard_block_wise_view?
+      []
+    else
+      ics_farmers = dashboard_visible_farmer_scope
+      if @dashboard_fcoc_filter_value.present?
+        ics_farmers = ics_farmers.where(fco_id: training_fcoc_ids_from_param(@dashboard_fcoc_filter_value))
+      end
+      ics_farmers.distinct.pluck(Arel.sql("COALESCE(NULLIF(TRIM(ics_name), ''), ics_id)"))
     end
     @filter_ics_options = (t_scope.map { |t| t.ics_name.presence || t.ics_id } +
-      ics_farmers.distinct.pluck(Arel.sql("COALESCE(NULLIF(TRIM(ics_name), ''), ics_id)"))).uniq.compact_blank.sort
+      master_ics_options).uniq.compact_blank.sort
     selected_ics_filter = dashboard_filter_param(:ics)
     if selected_ics_filter.present?
       selected_ics = selected_ics_filter.to_s
@@ -170,7 +181,22 @@ class DashboardReportsController < ModulesController
     weekly_target_scope = t_scope.dup
     # Monthly dashboard summary opens on the current month by default. Users
     # can still choose All Months or another month from the filter.
+    #
+    # When the current month has nothing mapped yet, opening on it shows a
+    # dashboard of zeros and reads as broken rather than as "no work recorded
+    # for November yet" -- so fall back to All Months and let the user narrow
+    # down. An explicitly chosen month, including All Months, always wins.
     default_dashboard_month = DashboardDefaults.month
+    if !params.key?(:month) &&
+        t_scope.none? { |t| normalize_dashboard_text(t.month_name) == normalize_dashboard_text(default_dashboard_month) }
+      # Record it as an explicit All Months selection rather than just leaving
+      # the value blank. Every panel below reads "All Months" as `params[:month]`
+      # present but empty, so a bare nil would leave the summary boxes on all
+      # months while the participation and weekly panels fell back to a single
+      # month -- one dashboard showing two different periods.
+      params[:month] = ""
+      @dashboard_filter_param_cache = {}
+    end
     @dashboard_month_filter_value = params.key?(:month) ? dashboard_filter_param(:month) : default_dashboard_month
     if @dashboard_month_filter_value.present?
       m = normalize_dashboard_text(@dashboard_month_filter_value)
@@ -259,7 +285,7 @@ class DashboardReportsController < ModulesController
     filtered_vrp_ids = @filtered_vrps.map { |v| v.id.to_s }
     dashboard_filters_active = [
       dashboard_filter_param(:search), dashboard_filter_param(:activity), dashboard_filter_param(:main_activity),
-      dashboard_filter_param(:sub_activity), dashboard_filter_param(:fcoc), dashboard_filter_param(:cluster_incharge),
+      dashboard_filter_param(:sub_activity), dashboard_filter_param(:fcoc), dashboard_filter_param(:to_name), dashboard_filter_param(:cluster_incharge),
       dashboard_filter_param(:ics), dashboard_filter_param(:month), dashboard_filter_param(:post), dashboard_filter_param(:vrp_id)
     ].any?(&:present?) || [
       @dashboard_main_activity_filter_value, selected_sub_activity, @dashboard_fcoc_filter_value,
@@ -331,6 +357,10 @@ class DashboardReportsController < ModulesController
     end || @training_sub_activity_options.first
     @dashboard_title = admin_dashboard_user? ? "Admin Dashboard" : dashboard_current_user_title
     @dashboard_caption = admin_dashboard_user? ? "Live complete system summary." : "Live summary for your mapped records."
+    # ICS Wise / Block Wise / Both switcher above the search box.
+    @dashboard_entry_mode_views = DASHBOARD_ENTRY_MODE_VIEWS
+    @dashboard_entry_mode_view = dashboard_entry_mode_view
+    @dashboard_entry_mode_counts = dashboard_entry_mode_target_counts
     @training_selected_month = selected_month
     @training_selected_sub_activity = selected_sub_activity
     default_status_month = default_vrp_dashboard_month(@training_month_options, targets)
@@ -907,12 +937,18 @@ class DashboardReportsController < ModulesController
   # aliases are configurable so the same predicate can be reused by the
   # "View List" pages, which join through ActiveRecord's real table names.
 
-  def dashboard_summary_target_sql_filters_base(include_activity_filters: true, target_alias: "t", vrp_alias: "v")
+  def dashboard_summary_target_sql_filters_base(include_activity_filters: true, target_alias: "t", vrp_alias: "v", entry_mode: dashboard_entry_mode)
     conditions = ["1=1"]
     binds = {}
     unless dashboard_global_view_user?
       conditions << "#{target_alias}.vrp_id IN (:authorized_vrp_ids)"
       binds[:authorized_vrp_ids] = dashboard_visible_vrp_ids
+    end
+
+    # ICS Wise / Block Wise / Both. Both adds nothing: it is every target.
+    if entry_mode != BOTH_ENTRY_MODE && TargetMapping.column_names.include?("target_entry_mode")
+      conditions << "#{target_alias}.target_entry_mode = :summary_entry_mode"
+      binds[:summary_entry_mode] = entry_mode
     end
 
     month_value = @dashboard_month_filter_value.presence || dashboard_filter_param(:month, :training_month)
@@ -940,6 +976,11 @@ class DashboardReportsController < ModulesController
     if fco_values.any?
       conditions << "(LOWER(BTRIM(#{target_alias}.fco_name)) IN (:summary_fco_values) OR LOWER(BTRIM(#{target_alias}.fco_id)) IN (:summary_fco_values) OR LOWER(BTRIM(#{vrp_alias}.fcoc)) IN (:summary_fco_values))"
       binds[:summary_fco_values] = fco_values
+    end
+
+    if dashboard_filter_param(:to_name).present?
+      conditions << "LOWER(BTRIM(#{vrp_alias}.to_name)) = :summary_to_name"
+      binds[:summary_to_name] = normalize_dashboard_text(dashboard_filter_param(:to_name))
     end
 
     ics_value = dashboard_filter_param(:ics, :ics_name)
@@ -1384,12 +1425,16 @@ class DashboardReportsController < ModulesController
       Digest::SHA256.hexdigest([
         dashboard_current_user_office_keys.sort,
         dashboard_visible_vrp_ids.sort,
-        params.permit(:cluster_incharge, :post, :vrp_id, :main_activity, :sub_activity, :activity, :search).to_h
+        params.permit(:to_name, :cluster_incharge, :post, :vrp_id, :main_activity, :sub_activity, :activity, :search).to_h
       ].to_json),
       normalize_dashboard_text(dashboard_filter_param(:ics, :ics_name)),
       normalize_dashboard_text(month_name),
       normalize_dashboard_text(fcoc_name),
       week_number.presence,
+      # ICS Wise / Block Wise / Both narrows the targets these counts are built
+      # from, so it has to separate the entries -- otherwise switching views
+      # reads back the previous view's numbers for the next 30 minutes.
+      dashboard_entry_mode,
       scope_signature,
       target_version,
       training_version,
@@ -2356,6 +2401,163 @@ class DashboardReportsController < ModulesController
     scope.where("LOWER(BTRIM(ics_id)) = :ics OR LOWER(BTRIM(ics_name)) = :ics", ics: normalize_dashboard_text(ics))
   end
 
+  # ── ICS WISE / BLOCK WISE / BOTH ───────────────────────────────────────────
+  # Target Mapping gives a target either ICS Wise (FCO -> ICS -> Village, out of
+  # the farmer master) or Block Wise (FCO -> Block -> Village, out of the
+  # office/ASA directory). Both land in target_mappings and Block Wise reuses
+  # the ics_id/ics_name columns for the block, so the dashboard switches between
+  # the two -- or shows them together -- off target_entry_mode.
+
+  BOTH_ENTRY_MODE = "both".freeze
+
+  DASHBOARD_ENTRY_MODE_VIEWS = [
+    {
+      key: BOTH_ENTRY_MODE,
+      label: "Both",
+      short: "ICS + Block",
+      location_label: "ICS / Block",
+      caption: "ICS Wise and Block Wise targets together."
+    },
+    {
+      key: TargetMapping::ICS_WISE_ENTRY_MODE,
+      label: "ICS Wise",
+      short: "ICS",
+      location_label: "ICS Name",
+      caption: "Targets given through FCO -> ICS -> Village."
+    },
+    {
+      key: TargetMapping::BLOCK_WISE_ENTRY_MODE,
+      label: "Block Wise",
+      short: "Block",
+      location_label: "Block",
+      caption: "Targets given through FCO -> Block -> Village."
+    }
+  ].freeze
+
+  # Both is the default: it is every target mapping, which is what the dashboard
+  # counted before the views existed, so a plain /dashboard keeps its numbers.
+  def dashboard_entry_mode
+    @dashboard_entry_mode ||= begin
+      requested = params[:entry_mode].to_s.strip.downcase
+      DASHBOARD_ENTRY_MODE_VIEWS.any? { |view| view[:key] == requested } ? requested : BOTH_ENTRY_MODE
+    end
+  end
+
+  def dashboard_entry_mode_view
+    DASHBOARD_ENTRY_MODE_VIEWS.find { |view| view[:key] == dashboard_entry_mode }
+  end
+
+  def dashboard_entry_mode_scope(scope, mode: dashboard_entry_mode)
+    return scope unless TargetMapping.column_names.include?("target_entry_mode")
+    return scope if mode == BOTH_ENTRY_MODE
+
+    scope.where(target_entry_mode: mode)
+  end
+
+  def dashboard_block_wise_view?
+    dashboard_entry_mode == TargetMapping::BLOCK_WISE_ENTRY_MODE
+  end
+
+  # Badge on each switcher button: how many target mappings that view would
+  # show under the filters already applied, so an empty view is visible as
+  # empty before it is opened.
+  def dashboard_entry_mode_target_counts
+    return {} unless TargetMapping.column_names.include?("target_entry_mode")
+
+    conditions, binds = dashboard_summary_target_sql_filters_base(
+      target_alias: "target_mappings", vrp_alias: "vrps", entry_mode: BOTH_ENTRY_MODE
+    )
+    by_mode = dashboard_entry_mode_scope(dashboard_authorized_target_scope, mode: BOTH_ENTRY_MODE)
+      .left_joins(:vrp)
+      .where(conditions.join(" AND "), binds)
+      .group(:target_entry_mode)
+      .count
+    by_mode.transform_keys!(&:to_s)
+    # Every view gets a badge, the empty ones included: a missing badge reads as
+    # "not counted" where a 0 reads as "nothing to see here".
+    DASHBOARD_ENTRY_MODE_VIEWS.to_h { |view| [view[:key], by_mode[view[:key]].to_i] }
+      .merge(BOTH_ENTRY_MODE => by_mode.values.sum)
+  rescue StandardError => error
+    Rails.logger.warn("Dashboard entry mode counts failed: #{error.class} - #{error.message}")
+    {}
+  end
+
+  def dashboard_ics_wise_view?
+    dashboard_entry_mode == TargetMapping::ICS_WISE_ENTRY_MODE
+  end
+
+  # Filters shared by the Block Wise side of the ICS / Village / Farmer boxes and
+  # by their View List pages, so the two always agree.
+  #
+  # These three boxes count a population, not work: how many ICS/blocks,
+  # villages and farmers this login covers. On the ICS Wise side that comes
+  # from the farmer master, which carries neither a month nor an activity, so
+  # the Block Wise side drops both too. Otherwise the two halves of one total
+  # would answer different questions, and the Block half would read 0 for every
+  # month with no mapping while the ICS half kept its full population.
+  #
+  # The entry mode is dropped as well -- the caller has already pinned the scope
+  # to Block Wise, and re-applying the selected view on top would empty it.
+  def dashboard_block_entry_sql_filters(target_alias:, vrp_alias:)
+    conditions, binds = dashboard_summary_target_sql_filters_base(
+      include_activity_filters: false,
+      target_alias: target_alias,
+      vrp_alias: vrp_alias,
+      entry_mode: BOTH_ENTRY_MODE
+    )
+    conditions = conditions.reject { |condition| condition.include?(":summary_month") }
+    [conditions, binds.except(:summary_month)]
+  end
+
+  # Block Wise work is addressed through the office/ASA directory, so the local
+  # farmer master holds nothing to count for it: its blocks, villages and
+  # farmers only exist on the target rows. Read them from there instead.
+  def dashboard_block_entry_location_counts
+    return @dashboard_block_entry_location_counts if defined?(@dashboard_block_entry_location_counts)
+    unless TargetMapping.column_names.include?("target_entry_mode")
+      return @dashboard_block_entry_location_counts = { ics_count: 0, village_count: 0, farmer_count: 0 }
+    end
+
+    base = dashboard_entry_mode_scope(
+      dashboard_authorized_target_scope,
+      mode: TargetMapping::BLOCK_WISE_ENTRY_MODE
+    )
+    conditions, binds = dashboard_block_entry_sql_filters(target_alias: "t", vrp_alias: "v")
+    # village_id holds a JSON array when several villages were picked and a bare
+    # id when one was; afl_ids is always a JSON array of ASA farmer ids.
+    sql = <<~SQL.squish
+      SELECT
+        COUNT(DISTINCT NULLIF(BTRIM(t.ics_id), '')) AS ics_count,
+        COUNT(DISTINCT NULLIF(BTRIM(village.value), '')) AS village_count,
+        COUNT(DISTINCT NULLIF(BTRIM(farmer.value), '')) AS farmer_count
+      FROM (#{base.to_sql}) t
+      LEFT JOIN vrps v ON v.id = t.vrp_id
+      LEFT JOIN LATERAL jsonb_array_elements_text(
+        CASE
+          WHEN BTRIM(COALESCE(t.village_id, '')) LIKE '[%' THEN t.village_id::jsonb
+          ELSE jsonb_build_array(TO_JSONB(BTRIM(COALESCE(t.village_id, ''))))
+        END
+      ) AS village(value) ON TRUE
+      LEFT JOIN LATERAL jsonb_array_elements_text(
+        CASE WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array' THEN t.afl_ids::jsonb ELSE '[]'::jsonb END
+      ) AS farmer(value) ON TRUE
+      WHERE #{conditions.join(" AND ")}
+    SQL
+
+    row = dashboard_sql_cache.select_all(
+      ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
+    ).first || {}
+
+    @dashboard_block_entry_location_counts = {
+      ics_count: row["ics_count"].to_i,
+      village_count: row["village_count"].to_i,
+      farmer_count: row["farmer_count"].to_i
+    }
+  rescue StandardError => error
+    Rails.logger.warn("Dashboard block-wise location counts failed: #{error.class} - #{error.message}")
+    @dashboard_block_entry_location_counts = { ics_count: 0, village_count: 0, farmer_count: 0 }
+  end
+
   def selected_participation_sql_week
     value = dashboard_filter_param(:week, :weekly_target_week).to_i
     (1..4).include?(value) ? value : nil
@@ -2378,8 +2580,28 @@ class DashboardReportsController < ModulesController
     @dashboard_vrps = offices.any? ? dashboard_vrp_read_scope.select { |vrp| offices.include?(AgreementVrpScope.office_key(vrp.fcoc)) } : []
   end
 
+  # Use the same active Sub Office master as the JJ registration form.
+  def dashboard_to_options
+    selected_fco = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
+    visible_keys = if selected_fco.present?
+      [AgreementVrpScope.office_key(selected_fco)]
+    elsif dashboard_global_view_user?
+      nil
+    else
+      dashboard_current_user_office_keys
+    end
+    ModuleRecord.where(module_slug: "office-mapping-add").filter_map do |record|
+      next unless active_module_record?(record)
+      office = first_present_data(record, "office_category", "category_name", "office_name", "office").to_s.strip
+      next if visible_keys && !visible_keys.include?(AgreementVrpScope.office_key(office))
+      first_present_data(record, "sub_office_name", "office_mapping", "office").to_s.strip.presence
+    end.uniq.sort
+  end
+
   def dashboard_vrp_read_scope
-    Vrp.select(Vrp.column_names - ["agreement_signature_data"])
+    scope = Vrp.select(Vrp.column_names - ["agreement_signature_data"])
+    selected_to = dashboard_filter_param(:to_name)
+    selected_to.present? ? scope.where("LOWER(BTRIM(to_name)) = ?", normalize_dashboard_text(selected_to)) : scope
   end
 
   def dashboard_target_mappings
@@ -2401,12 +2623,21 @@ class DashboardReportsController < ModulesController
     end
   end
 
+  # Every dashboard read funnels through here, so the ICS Wise / Block Wise /
+  # Both view only has to be applied once to reach the summary boxes, the
+  # panels, the View List pages and the exports alike.
+
   def dashboard_visible_target_scope
+    dashboard_entry_mode_scope(dashboard_authorized_target_scope)
+  end
+
+  def dashboard_authorized_target_scope
     scope = dashboard_global_view_user? ? TargetMapping.all : TargetMapping.where(vrp_id: dashboard_visible_vrp_ids)
     cluster = dashboard_filter_param(:cluster_incharge)
+    selected_to = dashboard_filter_param(:to_name)
     post = dashboard_filter_param(:post)
     selected = dashboard_filter_param(:vrp_id)
-    if cluster.present? || post.present? || selected.present?
+    if cluster.present? || post.present? || selected.present? || selected_to.present?
       ids = dashboard_vrps.select do |vrp|
         (cluster.blank? || cluster_label_matches?(cluster, vrp.cluster_incharge)) &&
           (post.blank? || vrp.role.to_s == post) &&
@@ -2418,7 +2649,7 @@ class DashboardReportsController < ModulesController
   end
 
   def dashboard_user_visible_farmer_scope
-    specific_jj_scope = dashboard_filter_param(:cluster_incharge, :post, :vrp_id).present?
+    specific_jj_scope = dashboard_filter_param(:cluster_incharge, :post, :vrp_id, :to_name).present?
     return Afl.all if dashboard_global_view_user? && !specific_jj_scope
     unless module_cluster_incharge_login? || vrp_login_user? || specific_jj_scope
       offices = dashboard_current_user_office_names.reject do |office|
@@ -2435,7 +2666,33 @@ class DashboardReportsController < ModulesController
   end
 
   def dashboard_visible_farmer_scope
-    dashboard_ics_filtered_scope(dashboard_user_visible_farmer_scope)
+    dashboard_entry_mode_farmer_scope(dashboard_ics_filtered_scope(dashboard_user_visible_farmer_scope))
+  end
+
+  # The Block Wise view cannot borrow the ICS Wise farmer population.
+  #
+  # ICS Wise addresses farmers out of the registered-farmer master (`afls`), and
+  # the VRP reference deliberately counts that whole authorized population --
+  # Pending means "registered but not yet trained", so farmers without a target
+  # have to be in it. Block Wise addresses farmers out of the ASA directory
+  # instead, and those ids are not in `afls` at all. Leaving the master
+  # unscoped there reported the entire ICS population inside the Block Wise
+  # view: Mapped Farmer 199 next to Pending 24,606 of unrelated farmers.
+  #
+  # So Block Wise narrows the population to the farmers its own targets name.
+  # ICS Wise and Both are untouched, keeping the reference behaviour.
+  def dashboard_entry_mode_farmer_scope(scope)
+    return scope unless dashboard_block_wise_view?
+
+    target_sql = dashboard_visible_target_scope.select(:afl_ids).to_sql
+    scope.where(<<~SQL.squish)
+      afls.id::text IN (
+        SELECT jsonb_array_elements_text(
+          CASE WHEN jsonb_typeof(block_targets.afl_ids::jsonb) = 'array'
+               THEN block_targets.afl_ids::jsonb ELSE '[]'::jsonb END
+        ) FROM (#{target_sql}) block_targets
+      )
+    SQL
   end
 
   def dashboard_participation_training_scope
@@ -2542,9 +2799,25 @@ class DashboardReportsController < ModulesController
     vrps = dashboard_vrps.index_by { |vrp| vrp.id.to_s }
     targets = dashboard_target_mappings.index_by { |target| target.id.to_s }
     names = vrps.values.map { |vrp| normalize_dashboard_text(vrp.name) }.compact_blank
+    # An Other Target entry is an achievement recorded against one target
+    # mapping, so it belongs to that mapping's view. `targets` is already
+    # narrowed to the selected view, so an entry whose mapping exists but is
+    # missing from `targets` is the other view's. An entry saved without a
+    # mapping id cannot be attributed; count it as ICS Wise, the way the target
+    # rows themselves default, so ICS Wise + Block Wise still adds up to Both
+    # rather than dropping out of both narrowed views.
+    linked_mapping_ids = records.filter_map { |record| record.data["target_mapping_id"].presence&.to_s }.uniq
+    known_mapping_ids = if dashboard_entry_mode == BOTH_ENTRY_MODE || linked_mapping_ids.empty?
+      []
+    else
+      TargetMapping.where(id: linked_mapping_ids).pluck(:id).map(&:to_s)
+    end
     rows = records.filter_map do |record|
       data = record.data
-      target = targets[data["target_mapping_id"].to_s]
+      mapping_id = data["target_mapping_id"].presence&.to_s
+      target = mapping_id && targets[mapping_id]
+      next if target.nil? && mapping_id.present? && known_mapping_ids.include?(mapping_id)
+      next if target.nil? && mapping_id.blank? && dashboard_block_wise_view?
       vrp_id = data["jeevika_jankar_id"].presence || data["vrp_id"].presence || data["select_vrp"].presence || target&.vrp_id&.to_s
       next unless dashboard_global_view_user? || vrps.key?(vrp_id.to_s) || (vrp_id.blank? && names.include?(normalize_dashboard_text(data["jeevika_jankar_name"])))
       vrp = vrps[vrp_id.to_s] || target&.vrp
@@ -2556,6 +2829,7 @@ class DashboardReportsController < ModulesController
       next if selected_ics.present? && ![ics, target&.ics_id].any? { |value| normalize_dashboard_text(value) == normalize_dashboard_text(selected_ics) }
       selected_vrp = dashboard_filter_param(:vrp_id)
       next if selected_vrp.present? && vrp_id.to_s != selected_vrp
+      next if dashboard_filter_param(:to_name).present? && normalize_dashboard_text(vrp&.to_name) != normalize_dashboard_text(dashboard_filter_param(:to_name))
       selected_cluster = dashboard_filter_param(:cluster_incharge)
       next if selected_cluster.present? && !cluster_label_matches?(selected_cluster, vrp&.cluster_incharge)
       {
@@ -2618,6 +2892,8 @@ class DashboardReportsController < ModulesController
 
   public
 
+  REPORT_LIST_PAGE_SIZE = 100
+
   def report_list
     @dashboard_month_filter_value = params.key?(:month) ? dashboard_filter_param(:month) : DashboardDefaults.month
     @dashboard_fcoc_filter_value = dashboard_filter_param(:fcoc, :fco)
@@ -2628,7 +2904,18 @@ class DashboardReportsController < ModulesController
     @report_rows = dashboard_search_rows(rows)
     @report_months = (Date::MONTHNAMES.compact + month_master_month_options).uniq
     respond_to do |format|
-      format.html { render :report_list }
+      format.html do
+        # The Farmer List is the whole farmer master -- 33,000 rows here. Sending
+        # them all and paging in the browser built a 9 MB page to show 25 rows,
+        # which is what made this screen crawl. Page on the server; the export
+        # below still gets every row.
+        @report_total = @report_rows.size
+        @report_page_size = REPORT_LIST_PAGE_SIZE
+        @report_page_count = [(@report_total / @report_page_size.to_f).ceil, 1].max
+        @report_page = params[:page].to_i.clamp(1, @report_page_count)
+        @report_rows = @report_rows.slice((@report_page - 1) * @report_page_size, @report_page_size) || []
+        render :report_list
+      end
       format.xlsx do
         send_xlsx(headers: @report_headers, rows: @report_rows.map { |row| @report_headers.map { |header| row[header] } },
           filename: "dashboard-#{@report_type}.xlsx", sheet_name: @report_title)
@@ -2647,9 +2934,11 @@ class DashboardReportsController < ModulesController
   end
 
   def dashboard_summary_cards(targets)
-    counts = dashboard_summary_login_counts(targets)
+    login_counts = dashboard_summary_login_counts(targets)
+    counts = dashboard_entry_mode_summary_counts(login_counts)
+    split = dashboard_entry_mode_split_counts(login_counts)
     [
-      ["Total ICS Count", :ics_count, "ics"],
+      ["Total #{dashboard_entry_mode_view[:short]} Count", :ics_count, "ics"],
       ["Total Villages Count", :village_count, "villages"],
       ["Total Farmer Count", :farmer_count, "farmers"],
       ["Total Mapped Main Activities", :main_activity_count, "main-indicators"],
@@ -2663,8 +2952,139 @@ class DashboardReportsController < ModulesController
       elsif type == "sub-indicators"
         dashboard_summary_activity_popup_items(:sub_activity)
       end
-      dashboard_summary_card(title, counts[key], "Selected login and reporting filters", path, export, popup_items: popup)
+      card = dashboard_summary_card(title, counts[key], "Selected login and reporting filters", path, export, popup_items: popup)
+      card.merge(breakdown: split[key] || [])
     end
+  end
+
+  # In the Both view each box shows where its total came from: how much is
+  # ICS Wise, how much is Block Wise, under the combined figure. The other two
+  # views are already one side only, so there is nothing to split.
+  #
+  # ICS / Village / Farmer add up exactly -- the farmer master and the office
+  # directory are separate universes. The activity counts are DISTINCT names,
+  # so an activity used in both views is one in the combined total and one on
+  # each side; the sides are a breakdown, not addends. `combines` says which.
+  def dashboard_entry_mode_split_counts(login_counts)
+    return {} unless dashboard_entry_mode == BOTH_ENTRY_MODE
+
+    block = dashboard_block_entry_location_counts
+    activity = dashboard_activity_counts_by_entry_mode
+    {
+      ics_count: [{ label: "ICS", value: login_counts[:ics_count].to_i, combines: true },
+                  { label: "Block", value: block[:ics_count], combines: true }],
+      village_count: [{ label: "ICS", value: login_counts[:village_count].to_i, combines: true },
+                      { label: "Block", value: block[:village_count], combines: true }],
+      farmer_count: [{ label: "ICS", value: login_counts[:farmer_count].to_i, combines: true },
+                     { label: "Block", value: block[:farmer_count], combines: true }],
+      main_activity_count: [
+        { label: "ICS", value: activity.dig(TargetMapping::ICS_WISE_ENTRY_MODE, :main_activity_count).to_i, combines: false },
+        { label: "Block", value: activity.dig(TargetMapping::BLOCK_WISE_ENTRY_MODE, :main_activity_count).to_i, combines: false }
+      ],
+      sub_activity_count: [
+        { label: "ICS", value: activity.dig(TargetMapping::ICS_WISE_ENTRY_MODE, :sub_activity_count).to_i, combines: false },
+        { label: "Block", value: activity.dig(TargetMapping::BLOCK_WISE_ENTRY_MODE, :sub_activity_count).to_i, combines: false }
+      ]
+    }
+  end
+
+  def dashboard_activity_counts_by_entry_mode
+    return @dashboard_activity_counts_by_entry_mode if defined?(@dashboard_activity_counts_by_entry_mode)
+    return @dashboard_activity_counts_by_entry_mode = {} unless TargetMapping.column_names.include?("target_entry_mode")
+
+    conditions, binds = dashboard_summary_target_sql_filters_base(
+      include_activity_filters: false, entry_mode: BOTH_ENTRY_MODE
+    )
+    sql = <<~SQL.squish
+      SELECT
+        t.target_entry_mode AS entry_mode,
+        COUNT(DISTINCT NULLIF(LOWER(BTRIM(t.main_activity_name)), '')) AS main_activity_count,
+        COUNT(DISTINCT NULLIF(LOWER(BTRIM(t.activity_name)), '')) AS sub_activity_count
+      FROM target_mappings t
+      LEFT JOIN vrps v ON v.id = t.vrp_id
+      WHERE #{conditions.join(" AND ")}
+      GROUP BY t.target_entry_mode
+    SQL
+
+    @dashboard_activity_counts_by_entry_mode = dashboard_sql_cache.select_all(
+      ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
+    ).to_h do |row|
+      [row["entry_mode"].to_s,
+       { main_activity_count: row["main_activity_count"].to_i, sub_activity_count: row["sub_activity_count"].to_i }]
+    end
+  rescue StandardError => error
+    Rails.logger.warn("Dashboard activity split failed: #{error.class} - #{error.message}")
+    @dashboard_activity_counts_by_entry_mode = {}
+  end
+
+  # View List / Export behind the first three summary boxes, for the Block Wise
+  # half of their totals. Built from the target rows rather than the farmer
+  # master, for the reason in dashboard_block_entry_location_counts.
+  def dashboard_block_entry_report_rows(type, headers)
+    return [] unless TargetMapping.column_names.include?("target_entry_mode")
+
+    scope = dashboard_entry_mode_scope(
+      dashboard_authorized_target_scope,
+      mode: TargetMapping::BLOCK_WISE_ENTRY_MODE
+    )
+    conditions, binds = dashboard_block_entry_sql_filters(target_alias: "target_mappings", vrp_alias: "vrps")
+    targets = scope.left_joins(:vrp).where(conditions.join(" AND "), binds).to_a
+
+    rows = targets.flat_map do |target|
+      block_cells = {
+        "FCO ID" => target.fco_id, "FCO Name" => target.fco_name,
+        "FPO ID" => nil, "FPO Name" => nil,
+        "ICS ID" => target.ics_id, "ICS Name" => target.ics_name
+      }
+      case type
+      when "ics"
+        [block_cells]
+      when "villages"
+        village_ids = dashboard_target_village_id_list(target)
+        village_names = target.village_name.to_s.split(",").map(&:strip).reject(&:blank?)
+        village_ids.each_with_index.map do |village_id, index|
+          block_cells.merge("Village ID" => village_id, "Village Name" => village_names[index])
+        end
+      else
+        Array(target.afl_ids).map(&:to_s).reject(&:blank?).map do |farmer_id|
+          block_cells.merge(
+            "Village ID" => nil, "Village Name" => target.village_name,
+            "TraceNet No" => farmer_id, "Farmer Name" => nil, "Father Name" => nil, "Mobile No" => nil
+          )
+        end
+      end
+    end
+
+    # One row per distinct id, so the list length matches the box's count.
+    key = type == "ics" ? "ICS ID" : type == "villages" ? "Village ID" : "TraceNet No"
+    rows.reject { |row| row[key].to_s.strip.blank? }
+      .uniq { |row| row[key].to_s.strip }
+      .map { |row| headers.index_with { |header| row[header] } }
+  end
+
+  def dashboard_target_village_id_list(target)
+    raw = target.village_id.to_s.strip
+    return [] if raw.blank?
+    return [raw] unless raw.start_with?("[")
+
+    Array(JSON.parse(raw)).map(&:to_s).reject(&:blank?)
+  rescue JSON::ParserError
+    [raw]
+  end
+
+  # The ICS / Village / Farmer totals come out of the farmer master, which only
+  # knows ICS Wise work. Add what the Block Wise target rows carry so the Block
+  # Wise view is not empty and Both is not short by the block side.
+  def dashboard_entry_mode_summary_counts(counts)
+    return counts if dashboard_ics_wise_view?
+
+    block_counts = dashboard_block_entry_location_counts
+    base = dashboard_block_wise_view? ? counts.merge(ics_count: 0, village_count: 0, farmer_count: 0) : counts
+    base.merge(
+      ics_count: base[:ics_count].to_i + block_counts[:ics_count],
+      village_count: base[:village_count].to_i + block_counts[:village_count],
+      farmer_count: base[:farmer_count].to_i + block_counts[:farmer_count]
+    )
   end
 
   def dashboard_report_data(type)
@@ -2673,15 +3093,23 @@ class DashboardReportsController < ModulesController
       scope = type == "ics" ? dashboard_total_afl_scope : dashboard_total_afl_farmer_scope
       common = { "FCO ID" => :fco_id, "FCO Name" => :fco, "FPO ID" => :fpo_id, "FPO Name" => :fpo_name, "ICS ID" => :ics_id, "ICS Name" => :ics_name }
       columns = type == "ics" ? common : common.merge("Village ID" => :village_id, "Village Name" => :village_name)
+      # pluck, not to_a: the Farmer List is the whole farmer master, and
+      # instantiating ~33,000 Afl objects to read ten columns off each was most
+      # of this page's time. Hashes are what the view and the export want anyway.
       if type == "farmers"
         columns = columns.merge("TraceNet No" => :tracenet_no, "Farmer Name" => :farmer_name, "Father Name" => :father_name, "Mobile No" => :mobile_no)
-        population = scope.where("NULLIF(BTRIM(tracenet_no), '') IS NOT NULL").order(:id).to_a
+        values = scope.where("NULLIF(BTRIM(tracenet_no), '') IS NOT NULL").order(:id).pluck(*columns.values)
       else
         key = type == "ics" ? :ics_id : :village_id
-        population = scope.where.not(key => [nil, ""]).select(*columns.values).distinct.to_a
+        values = scope.where.not(key => [nil, ""]).distinct.pluck(*columns.values)
       end
-      rows = population.map { |farmer| columns.transform_values { |field| farmer.public_send(field) } }
-      [type == "ics" ? "ICS List" : type == "villages" ? "Village List" : "Farmer List", columns.keys, rows]
+      headers = columns.keys
+      rows = values.map { |row| headers.zip(Array(row)).to_h }
+      # The farmer master only covers ICS Wise work, so the Block Wise side of
+      # the card's total has to come off the target rows to make the list add up.
+      rows = [] if dashboard_block_wise_view?
+      rows += dashboard_block_entry_report_rows(type, columns.keys) unless dashboard_ics_wise_view?
+      [type == "ics" ? "#{dashboard_entry_mode_view[:short]} List" : type == "villages" ? "Village List" : "Farmer List", columns.keys, rows]
     when "main-indicators", "sub-indicators"
       field = type == "main-indicators" ? :main_activity_name : :activity_name
       title = type == "main-indicators" ? "Main Major Work Indicator" : "Sub Major Work Indicator"
