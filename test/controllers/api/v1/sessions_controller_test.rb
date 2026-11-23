@@ -138,6 +138,66 @@ class Api::V1::SessionsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to dashboard_path
   end
 
+  test "agreement GET supports pre-login credentials and ASA terms" do
+    vrp = create_vrp(user_name: "agreement_mobile", password: "secret")
+    get "/api/v1/jeevika-jankar-agreement", params: { username: vrp.user_name, password: "secret" }
+    assert_response :success
+    agreement = response.parsed_body.fetch("agreement")
+    assert_equal vrp.name, agreement["name"]
+    assert_equal true, agreement["required"]
+    assert_includes agreement["intro"], "Action For Social Advancement"
+    assert_equal 7, agreement["terms"].size
+  end
+
+  test "agreement GET rejects incorrect credentials without exposing identity" do
+    create_vrp(user_name: "agreement_private", password: "secret")
+    get "/api/v1/jeevika-jankar-agreement", params: { username: "agreement_private", password: "wrong" }
+    assert_response :unauthorized
+    assert_nil response.parsed_body["agreement"]
+  end
+
+  test "agreement accepts signature before login and allows subsequent login" do
+    vrp = create_vrp(user_name: "agreement_accept", password: "secret")
+    signature = "data:image/png;base64,iVBORw0KGgo="
+    post "/api/v1/jeevika-jankar-agreement",
+      params: { username: vrp.user_name, password: "secret", signature_data: signature }, as: :json
+    assert_response :success
+    assert_equal vrp.id, ApiAuthToken.find_user(response.parsed_body["token"]).id
+    assert_equal true, response.parsed_body.dig("agreement", "accepted")
+    assert_equal signature, vrp.reload.agreement_signature_data
+    assert vrp.agreement_accepted_at.present?
+
+    post "/api/v1/jeevika-jankar-login", params: { username: vrp.user_name, password: "secret" }, as: :json
+    assert_response :success
+
+    post "/api/v1/jeevika-jankar-agreement",
+      params: { username: vrp.user_name, password: "secret", signature_data: signature }, as: :json
+    assert_response :conflict
+  end
+
+  test "agreement acceptance requires authentication and a signature" do
+    vrp = create_vrp(user_name: "agreement_unsigned", password: "secret")
+    post "/api/v1/jeevika-jankar-agreement", params: { signature_data: "data:image/png;base64,AAAA" }, as: :json
+    assert_response :unauthorized
+
+    post "/api/v1/jeevika-jankar-agreement", params: { username: vrp.user_name, password: "secret" }, as: :json
+    assert_response :unprocessable_entity
+    assert_nil vrp.reload.agreement_accepted_at
+  end
+
+  test "agreement supports bearer authentication and public terms" do
+    get "/api/v1/jeevika-jankar-agreement"
+    assert_response :success
+    assert_equal "-", response.parsed_body.dig("agreement", "name")
+
+    vrp = create_vrp(user_name: "agreement_bearer", password: "secret")
+    post "/api/v1/jeevika-jankar-agreement",
+      params: { signature_data: "data:image/png;base64,AAAA" },
+      headers: { "Authorization" => "Bearer #{ApiAuthToken.encode(vrp)}" }, as: :json
+    assert_response :success
+    assert vrp.reload.agreement_accepted?
+  end
+
   private
 
   def create_vrp(attributes = {})

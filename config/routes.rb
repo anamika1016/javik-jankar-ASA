@@ -30,6 +30,8 @@ Rails.application.routes.draw do
     namespace :v1 do
       post "login", to: "sessions#create"
       post "jeevika-jankar-login", to: "sessions#create_jeevika_jankar"
+      get "jeevika-jankar-agreement", to: "vrp_agreements#show"
+      post "jeevika-jankar-agreement", to: "vrp_agreements#accept"
       post "login/otp/send", to: "otp_logins#send_otp"
       post "login/otp/verify", to: "otp_logins#verify_otp"
 
