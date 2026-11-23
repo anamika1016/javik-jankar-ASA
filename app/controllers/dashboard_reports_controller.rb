@@ -3271,7 +3271,7 @@ class DashboardReportsController < ModulesController
       # of this page's time. Hashes are what the view and the export want anyway.
       if type == "farmers"
         columns = columns.merge("TraceNet No" => :tracenet_no, "Farmer Name" => :farmer_name, "Father Name" => :father_name, "Mobile No" => :mobile_no)
-        values = scope.where("NULLIF(BTRIM(tracenet_no), '') IS NOT NULL").order(:id).pluck(*columns.values)
+        values = scope.order(:id).pluck(*columns.values)
       else
         key = type == "ics" ? :ics_id : :village_id
         values = scope.where.not(key => [nil, ""]).distinct.pluck(*columns.values)
@@ -3280,8 +3280,10 @@ class DashboardReportsController < ModulesController
       headers += ["Entry Mode"] if dashboard_entry_mode == BOTH_ENTRY_MODE
       rows = values.map { |row| columns.keys.zip(Array(row)).to_h }
       identity_header = { "ics" => "ICS ID", "villages" => "Village ID", "farmers" => "TraceNet No" }.fetch(type)
-      rows = rows.reject { |row| DashboardFcoDirectory.invalid?(row[identity_header]) }
-        .uniq { |row| normalize_dashboard_text(row[identity_header]) }
+      unless type == "farmers"
+        rows = rows.reject { |row| DashboardFcoDirectory.invalid?(row[identity_header]) }
+          .uniq { |row| normalize_dashboard_text(row[identity_header]) }
+      end
 
       # The farmer master only covers ICS Wise work, so the Block Wise side of
       # the card's total has to come off the target rows to make the list add up.
@@ -3399,7 +3401,9 @@ class DashboardReportsController < ModulesController
   end
 
   def dashboard_total_afl_distinct_count(kind)
-    column = { ics: :ics_id, village: :village_id, farmer: :tracenet_no }.fetch(kind)
+    return dashboard_total_afl_farmer_scope.distinct.count(:id) if kind == :farmer
+
+    column = { ics: :ics_id, village: :village_id }.fetch(kind)
     identity = "LOWER(BTRIM(#{column}))"
     dashboard_total_afl_farmer_scope
       .where("#{identity} NOT IN ('', 'null', 'nil', 'none', 'n/a', '-')")
