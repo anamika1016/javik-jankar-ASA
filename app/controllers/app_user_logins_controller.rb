@@ -85,31 +85,69 @@ class AppUserLoginsController < ApplicationController
     scope = scope.where(logged_in_at: @range) if @range
     scope = scope.where(record_type: @kind) if @kind
     scope = apply_search(scope) if @search.present?
-    scope
+    visible_scope(scope)
   end
 
-  # Both counters in one trip rather than two sequential reads.
-  def count_summary
-    sql = <<~SQL.squish
-      SELECT COUNT(*) AS logins,
-             COUNT(DISTINCT (record_type || ':' || record_id)) AS people,
-             COUNT(DISTINCT (record_type || ':' || record_id))
-               FILTER (WHERE record_type = 'Vrp') AS jeevika_jankars,
-             COUNT(DISTINCT (record_type || ':' || record_id))
-               FILTER (WHERE record_type <> 'Vrp') AS staff
-      FROM app_user_logins
-    SQL
-    sql += " WHERE logged_in_at >= :from AND logged_in_at <= :to" if @range
+  # This page listed every sign-in to every login. An FCO office must only see
+  # the people who belong to that office, the same rule the rest of the app
+  # applies through AgreementVrpScope, and a Jeevika Jankar only their own.
+  def visible_scope(scope)
+    return scope if admin_login?
+    return scope.where(record_type: "Vrp", record_id: current_app_user["id"]) if jeevika_jankar_login?
 
-    row = AppUserLogin.connection.select_one(
-      AppUserLogin.sanitize_sql_array([sql, { from: @range&.first, to: @range&.last }])
-    ) || {}
+    office_keys = AgreementVrpScope.user_office_keys(current_app_user)
+    # A login with no office of its own is left as it was rather than being
+    # silently emptied; narrowing that case needs its own rule, not a guess.
+    return scope if office_keys.blank?
+
+    values = matching_office_values(office_keys)
+    return scope.none if values.empty?
+
+    scope.where(fcoc: values).or(scope.where(office_name: values))
+  end
+
+  # office_key folds "FCO-C Sausar", "FCO-Sausar" and "Sausar" onto one key, and
+  # it does that in Ruby. Resolve the stored spellings that match once, then
+  # filter on those exact values so the count and the page stay one SQL query -
+  # the same approach the cluster label match uses.
+  # visible_scope runs once for the list and once for the tiles, so without this
+  # the distinct read below would scan the login table twice for every page.
+  def matching_office_values(office_keys)
+    @matching_office_values ||= AppUserLogin.distinct.pluck(:fcoc, :office_name)
+      .flatten.compact_blank.uniq
+      .select { |value| office_keys.include?(AgreementVrpScope.office_key(value)) }
+  end
+
+  def admin_login?
+    current_app_user&.dig("user_type").to_s.strip.casecmp("admin").zero?
+  end
+
+  def jeevika_jankar_login?
+    current_app_user&.dig("record_type").to_s == "Vrp" && current_app_user["id"].present?
+  end
+
+  # Both counters in one trip rather than two sequential reads. The tiles have
+  # to count what the list is allowed to show, so they run over the same
+  # visible scope - otherwise an FCO saw its own rows under the whole
+  # organisation's totals. Kind and search stay out, as before: these are the
+  # totals for the chosen dates, not for the current filter.
+  def count_summary
+    scope = AppUserLogin.all
+    scope = scope.where(logged_in_at: @range) if @range
+    person = "(record_type || ':' || record_id)"
+
+    counts = visible_scope(scope).unscope(:order).pluck(
+      Arel.sql("COUNT(*)"),
+      Arel.sql("COUNT(DISTINCT #{person})"),
+      Arel.sql("COUNT(DISTINCT #{person}) FILTER (WHERE record_type = 'Vrp')"),
+      Arel.sql("COUNT(DISTINCT #{person}) FILTER (WHERE record_type <> 'Vrp')")
+    ).first || []
 
     {
-      logins: row["logins"].to_i,
-      people: row["people"].to_i,
-      jeevika_jankars: row["jeevika_jankars"].to_i,
-      staff: row["staff"].to_i
+      logins: counts[0].to_i,
+      people: counts[1].to_i,
+      jeevika_jankars: counts[2].to_i,
+      staff: counts[3].to_i
     }
   end
 
