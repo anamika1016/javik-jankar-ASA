@@ -185,6 +185,35 @@ class Api::V1::SessionsControllerTest < ActionDispatch::IntegrationTest
     assert_nil vrp.reload.agreement_accepted_at
   end
 
+  test "agreement accepts mobile signature formats as a real PNG data URI" do
+    png = "\x89PNG\r\n\x1A\n".b + SecureRandom.random_bytes(120)
+    canonical = "data:image/png;base64,#{Base64.strict_encode64(png)}"
+    wrapped = Base64.encode64(png) # Android Base64.DEFAULT style line breaks
+    {
+      "raw base64, no prefix" => Base64.strict_encode64(png),
+      "line breaks" => "data:image/png;base64,#{wrapped}",
+      "plus sent as space" => canonical.tr("+", " "),
+      "url-safe, unpadded" => Base64.urlsafe_encode64(png, padding: false),
+      "image/jpg prefix" => "data:image/jpg;base64,#{Base64.strict_encode64(png)}"
+    }.each_with_index do |(label, signature), index|
+      vrp = create_vrp(user_name: "agreement_format_#{index}", password: "secret")
+      post "/api/v1/jeevika-jankar-agreement",
+        params: { username: vrp.user_name, password: "secret", signature_data: signature }, as: :json
+      assert_response :success, label
+      assert_equal canonical, vrp.reload.agreement_signature_data, label
+    end
+  end
+
+  test "agreement rejects a signature that is not an image" do
+    vrp = create_vrp(user_name: "agreement_not_image", password: "secret")
+    ["hello world", Base64.strict_encode64("just some text"), "data:image/png;base64,%%%"].each do |signature|
+      post "/api/v1/jeevika-jankar-agreement",
+        params: { username: vrp.user_name, password: "secret", signature_data: signature }, as: :json
+      assert_response :unprocessable_entity, signature
+    end
+    assert_nil vrp.reload.agreement_accepted_at
+  end
+
   test "agreement supports bearer authentication and public terms" do
     get "/api/v1/jeevika-jankar-agreement"
     assert_response :success

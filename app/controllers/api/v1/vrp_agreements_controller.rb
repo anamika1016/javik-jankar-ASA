@@ -44,8 +44,8 @@ module Api
         return render json: { success: false, message: "Invalid Jeevika Jankar username or password." }, status: :unauthorized if vrp == :invalid_credentials
         return render json: { success: false, message: "Valid Jeevika Jankar login required." }, status: :unauthorized unless vrp.is_a?(Vrp)
 
-        signature = params[:signature_data].to_s.strip
-        unless signature.match?(/\Adata:image\/(?:png|jpeg);base64,[A-Za-z0-9+\/=]+\z/)
+        signature = normalized_agreement_signature(params[:signature_data].presence || params[:signature])
+        unless signature
           return render json: { success: false, message: "A valid digital signature is required." }, status: :unprocessable_entity
         end
 
@@ -65,6 +65,31 @@ module Api
       end
 
       private
+
+      SIGNATURE_DATA_URI = /\Adata:image\/(?:png|jpeg);base64,[A-Za-z0-9+\/=]+\z/
+      SIGNATURE_PREFIX = /\Adata:image\/(png|jpe?g);base64,/i
+
+      # Returns the signature as a PNG/JPEG data URI, or nil when it is not one.
+      # A value in the original strict format is kept exactly as sent. Mobile
+      # clients also commonly send the base64 without the "data:" prefix, with
+      # line breaks (Android Base64.DEFAULT), with "+" turned into spaces by
+      # form encoding, URL-safe base64, or image/jpg; those are decoded and must
+      # really be a PNG or JPEG image before they are accepted.
+      def normalized_agreement_signature(raw)
+        value = raw.to_s.strip
+        return value if value.match?(SIGNATURE_DATA_URI)
+        return if value.blank?
+
+        body = value.sub(SIGNATURE_PREFIX, "").tr(" ", "+").gsub(/\s+/, "").tr("-_", "+/")
+        body += "=" * ((4 - body.length % 4) % 4)
+        bytes = Base64.strict_decode64(body)
+        type = if bytes.start_with?("\x89PNG".b) then "png"
+               elsif bytes.start_with?("\xFF\xD8\xFF".b) then "jpeg"
+               end
+        "data:image/#{type};base64,#{Base64.strict_encode64(bytes)}" if type
+      rescue ArgumentError
+        nil
+      end
 
       def agreement_vrp_from_credentials
         login = params[:login].presence || params[:username].presence || params[:user_name].presence
