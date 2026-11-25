@@ -53,57 +53,15 @@ class VrpAgreementsController < ApplicationController
 
   private
 
-  # Filtered in Ruby rather than SQL because village and TO Name are resolved
-  # after the query, from separate masters -- a SQL WHERE could not match
-  # either, and those are two of the columns a reader actually searches by.
-  # The page already builds every row to render it, so this adds no load.
   def search_agreements(rows, term)
-    return rows if term.blank?
-
-    needle = term.downcase
-    digits = term.gsub(/\D/, "")
-
-    rows.select do |row|
-      next true if %i[name village fcoc to_name].any? do |key|
-        row[key].to_s.downcase.include?(needle)
-      end
-
-      digits.present? && row[:mobile_no].to_s.gsub(/\D/, "").include?(digits)
-    end
+    AcceptedAgreementList.search(rows, term)
   end
 
   def accepted_agreement_rows
-    return [] unless vrp_agreement_enabled?
-
-    scope = agreement_visible_vrps
-      .includes(:vrp_profile)
-      # The index/export needs only the presence flag, not the Base64 signature
-      # image. Loading that text for every accepted agreement makes the list
-      # transfer and allocate an image payload per row. The signed detail page
-      # still loads the real attribute through its own query.
-      .select(:id, :name, :user_name, :mobile_no, :fcoc, :to_name, :agreement_accepted_at, :village_ids,
-        Arel.sql("NULLIF(BTRIM(agreement_signature_data), '') IS NOT NULL AS agreement_signature_present"))
-      .where.not(agreement_accepted_at: nil)
-      .order(agreement_accepted_at: :desc)
-
-    # Materialize the narrowed result once. Calling `scope.to_a` for the
-    # resolver and then `scope.map` issued the identical accepted-agreement
-    # query twice on every list/export request.
-    vrps = scope.to_a
-    @agreement_village_resolver = AgreementVillageName.new.preload(vrps)
-    to_names = JeevikaJankarToName.new
-    vrps.map do |vrp|
-        {
-          id: vrp.id,
-          name: vrp.name.presence || vrp.user_name.presence || "-",
-          village: agreement_village_name(vrp),
-          fcoc: vrp.fcoc.presence || "-",
-          to_name: to_names.for(vrp_id: vrp.id, fco: vrp.fcoc),
-          mobile_no: vrp.mobile_no.presence || "-",
-          accepted_at: vrp.agreement_accepted_at&.strftime("%d/%m/%Y %I:%M %p"),
-          signature_present: vrp[:agreement_signature_present]
-        }
-      end
+    list = AcceptedAgreementList.new(agreement_visible_vrps)
+    rows = list.rows
+    @agreement_village_resolver = list.village_resolver
+    rows
   end
 
   def agreement_details(vrp)
@@ -121,10 +79,6 @@ class VrpAgreementsController < ApplicationController
     @agreement_village_resolver ? @agreement_village_resolver.call(vrp) : AgreementVillageName.call(vrp)
   end
 
-  def vrp_agreement_enabled?
-    defined?(Vrp) && Vrp.table_exists? && Vrp.column_names.include?("agreement_accepted_at")
-  end
-
   def agreement_layout
     action_name == "show" ? "agreement_pdf" : "application"
   end
@@ -140,16 +94,6 @@ class VrpAgreementsController < ApplicationController
   end
 
   def agreement_visible_vrps
-    return Vrp.all if current_app_user.blank? || agreement_admin_user?
-
-    if current_app_user["record_type"].to_s == "Vrp"
-      return Vrp.where(id: current_app_user["id"])
-    end
-
-    policy = ModulesController.new
-    policy.request = request
-    policy.instance_variable_set(:@current_app_user, current_app_user)
-    mapping = AgreementVrpScope.new(current_app_user, policy: policy)
-    mapping.resolve
+    AcceptedAgreementList.visible_vrps(current_app_user, request: request)
   end
 end

@@ -32,6 +32,9 @@ Rails.application.routes.draw do
       post "jeevika-jankar-login", to: "sessions#create_jeevika_jankar"
       get "jeevika-jankar-agreement", to: "vrp_agreements#show"
       post "jeevika-jankar-agreement", to: "vrp_agreements#accept"
+      # Accepted Agreement by Jeevika Jankar list, as on the web page.
+      get "accepted-agreements", to: "accepted_agreements#index"
+      get "accepted-agreements/:id", to: "accepted_agreements#show"
       post "login/otp/send", to: "otp_logins#send_otp"
       post "login/otp/verify", to: "otp_logins#verify_otp"
 
