@@ -194,7 +194,11 @@ class Api::V1::SessionsControllerTest < ActionDispatch::IntegrationTest
       "line breaks" => "data:image/png;base64,#{wrapped}",
       "plus sent as space" => canonical.tr("+", " "),
       "url-safe, unpadded" => Base64.urlsafe_encode64(png, padding: false),
-      "image/jpg prefix" => "data:image/jpg;base64,#{Base64.strict_encode64(png)}"
+      "image/jpg prefix" => "data:image/jpg;base64,#{Base64.strict_encode64(png)}",
+      "percent-encoded" => ERB::Util.url_encode(canonical),
+      "charset in prefix" => "data:image/png;charset=utf-8;base64,#{Base64.strict_encode64(png)}",
+      "quoted, JSON-escaped" => "\"data:image\\/png;base64,#{wrapped.gsub("\n", "\\n")}\"",
+      "octet-stream prefix" => "data:application/octet-stream;base64,#{Base64.strict_encode64(png)}"
     }.each_with_index do |(label, signature), index|
       vrp = create_vrp(user_name: "agreement_format_#{index}", password: "secret")
       post "/api/v1/jeevika-jankar-agreement",
@@ -240,6 +244,38 @@ class Api::V1::SessionsControllerTest < ActionDispatch::IntegrationTest
       params: { username: webp_vrp.user_name, password: "secret", signature_data: Base64.strict_encode64(webp) }, as: :json
     assert_response :success
     assert_equal "data:image/webp;base64,#{Base64.strict_encode64(webp)}", webp_vrp.reload.agreement_signature_data
+  end
+
+  test "agreement accepts the Android app's SVG signature and rejects unsafe SVG" do
+    drawing = '<svg xmlns="http://www.w3.org/2000/svg" width="219.79" height="127.52" viewBox="0 0 219.79 127.52">' \
+              '<path d="M 46.03 14 L 44.84 47.69 L 48.77 96.83" stroke="black" stroke-width="3" fill="none"/></svg>'
+    sent = "data:image/svg+xml;base64,#{Base64.strict_encode64(drawing)}"
+
+    vrp = create_vrp(user_name: "agreement_svg", password: "secret")
+    # The app sends credentials in the query string and the drawing as "signature".
+    post "/api/v1/jeevika-jankar-agreement?username=#{vrp.user_name}&password=secret", params: { signature: sent }, as: :json
+    assert_response :success
+    assert_equal sent, vrp.reload.agreement_signature_data
+
+    plain = create_vrp(user_name: "agreement_svg_text", password: "secret")
+    post "/api/v1/jeevika-jankar-agreement", params: { username: plain.user_name, password: "secret", signature: drawing }, as: :json
+    assert_response :success
+
+    unsafe = [
+      drawing.sub("</svg>", "<script>alert(1)</script></svg>"),
+      drawing.sub("<svg ", '<svg onload="alert(1)" '),
+      drawing.sub("<path ", '<a href="https://example.com"><path ').sub("/></svg>", "/></a></svg>"),
+      drawing.sub("<path ", "<image href=\"x.png\"/><path "),
+      '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+      "<?xml version=\"1.0\"?><!DOCTYPE svg [<!ENTITY x \"y\">]>#{drawing}"
+    ]
+    rejected = create_vrp(user_name: "agreement_svg_bad", password: "secret")
+    unsafe.each do |svg|
+      post "/api/v1/jeevika-jankar-agreement",
+        params: { username: rejected.user_name, password: "secret", signature: "data:image/svg+xml;base64,#{Base64.strict_encode64(svg)}" }, as: :json
+      assert_response :unprocessable_entity, svg
+    end
+    assert_nil rejected.reload.agreement_accepted_at
   end
 
   test "agreement says whether the signature was missing or unreadable" do
