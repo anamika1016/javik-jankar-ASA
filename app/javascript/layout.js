@@ -1720,6 +1720,37 @@ function initDeferredLayoutPage() {
     refreshParentOfficeField();
   });
 
+  // Crop form: the Crop Type list only shows types saved for the chosen season.
+  document.querySelectorAll("[data-crop-form]").forEach((formShell) => {
+    const seasonSelect = formShell.querySelector("[data-crop-season-select]");
+    const typeSelect = formShell.querySelector("[data-crop-type-select]");
+    if (!seasonSelect || !typeSelect) return;
+
+    let cropTypeMappings = [];
+    try {
+      cropTypeMappings = JSON.parse(formShell.dataset.cropTypeMap || "[]");
+    } catch (_error) {
+      cropTypeMappings = [];
+    }
+
+    const refreshCropTypes = () => {
+      const season = normalizeOption(seasonSelect.value);
+      const types = season
+        ? uniquePresent(cropTypeMappings.filter((mapping) => normalizeOption(mapping.season) === season).map((mapping) => mapping.type))
+        : [];
+      const blankLabel = !season ? "Select Crop Season first" : (types.length ? "Select Crop Type" : "No Crop Type saved for this season");
+      replaceSelectOptions(typeSelect, types, blankLabel);
+    };
+
+    seasonSelect.addEventListener("change", () => {
+      typeSelect.dataset.selectedValue = "";
+      typeSelect.value = "";
+      refreshCropTypes();
+    });
+
+    refreshCropTypes();
+  });
+
   document.querySelectorAll("[data-vrp-office-form]").forEach((formShell) => {
     const officeCategorySelect = formShell.querySelector("[data-vrp-office-category]");
     const officeNameSelect = formShell.querySelector("[data-vrp-office-name]");

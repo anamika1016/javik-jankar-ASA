@@ -77,7 +77,7 @@ class ModulesController < ApplicationController
                 :training_edit_revision_for, :dashboard_weekly_report_filter_params,
                 :jeevika_bill_observation_row, :jeevika_bill_fcoc_name, :training_target_browser_payload,
                 :jeevika_bill_image_upload?,
-                :jeevika_jankar_transfer_office_keys
+                :jeevika_jankar_transfer_office_keys, :crop_type_season_mappings
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
   OTHER_TARGET_MODULE_SLUGS = ["seed-distribution-target", "papl360-target", "other-target", "other-target-with-farmer"].freeze
@@ -726,6 +726,25 @@ class ModulesController < ApplicationController
       group: "Resource Person Type",
       purpose: "Saved access control records dekhne ke liye.",
       fields: ["Stakeholder", "Stakeholder Role", "Role Name", "Jeevika Jankar Type", "Module Name", "Sub Module Name", "Status"]
+    },
+    # Crop masters: Season -> Type (per season) -> Crop (per season + type).
+    "crop-season-master" => {
+      title: "Crop Season",
+      group: "Crop",
+      purpose: "Crop season (jaise Kharif, Rabi, Zaid) add karne ke liye.",
+      fields: ["Crop Season Name", "Status"]
+    },
+    "crop-type-master" => {
+      title: "Crop Type",
+      group: "Crop",
+      purpose: "Season select karke crop type add karne ke liye.",
+      fields: ["Crop Season", "Crop Type Name", "Status"]
+    },
+    "crop-master" => {
+      title: "Crop",
+      group: "Crop",
+      purpose: "Season aur crop type select karke crop name add karne ke liye.",
+      fields: ["Crop Season", "Crop Type", "Crop Name", "Status"]
     }
   }.freeze
 
@@ -15312,9 +15331,42 @@ class ModulesController < ApplicationController
       jeevika_jankar_bill_error_messages(data)
     when *OTHER_TARGET_MODULE_SLUGS
       seed_distribution_target_error_messages(data)
+    when *CROP_MASTER_KEYS.keys
+      crop_master_error_messages(data)
     else
       []
     end
+  end
+
+  # Data keys that make a crop master row unique, in hierarchy order.
+  CROP_MASTER_KEYS = {
+    "crop-season-master" => { "crop_season_name" => "Crop Season Name" },
+    "crop-type-master" => { "crop_season" => "Crop Season", "crop_type_name" => "Crop Type Name" },
+    "crop-master" => { "crop_season" => "Crop Season", "crop_type" => "Crop Type", "crop_name" => "Crop Name" }
+  }.freeze
+
+  def crop_master_error_messages(data)
+    fields = CROP_MASTER_KEYS.fetch(record_source_slug)
+    errors = missing_required_data_errors(data, fields)
+    return errors if errors.any?
+
+    normalize = ->(value) { value.to_s.strip.downcase }
+    wanted = fields.keys.map { |key| normalize.(data[key]) }
+    duplicate = active_module_records_scope(record_source_slug)
+      .where.not(id: @record&.id)
+      .any? { |row| fields.keys.map { |key| normalize.(row.data[key]) } == wanted }
+    duplicate ? ["#{@module[:title]} \"#{data[fields.keys.last]}\" pehle se saved hai."] : []
+  end
+
+  # Season -> crop types, used by the Crop form to filter the Crop Type dropdown.
+  def crop_type_season_mappings
+    return [] unless model_ready?(:ModuleRecord)
+
+    active_module_records_scope("crop-type-master").order(created_at: :desc).filter_map do |record|
+      season = record.data["crop_season"].to_s.strip
+      type = record.data["crop_type_name"].to_s.strip
+      { season: season, type: type } if season.present? && type.present?
+    end.uniq
   end
 
   def training_form_error_messages(data)
@@ -17163,7 +17215,9 @@ class ModulesController < ApplicationController
       "Role Name" => { module: "role-name", field: "role_name" },
       "User Management Role" => { module: "user-management-role", field: "user_management_role" },
       "Person Type" => { module: "person-type", field: "person_type" },
-      "Project Name" => { module: "project-master", field: "project_name" }
+      "Project Name" => { module: "project-master", field: "project_name" },
+      "Crop Season" => { module: "crop-season-master", field: "crop_season_name" },
+      "Crop Type" => { module: "crop-type-master", field: "crop_type_name" }
     }
   end
 

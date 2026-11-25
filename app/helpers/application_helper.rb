@@ -278,6 +278,15 @@ module ApplicationHelper
       ]
     },
     {
+      title: "Crop",
+      icon: "▥",
+      links: [
+        ["Crop Season", :module, "crop-season-master"],
+        ["Crop Type", :module, "crop-type-master"],
+        ["Crop", :module, "crop-master"]
+      ]
+    },
+    {
       title: "User Register",
       icon: "▩",
       links: [
