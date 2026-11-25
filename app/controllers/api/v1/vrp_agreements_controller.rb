@@ -44,9 +44,19 @@ module Api
         return render json: { success: false, message: "Invalid Jeevika Jankar username or password." }, status: :unauthorized if vrp == :invalid_credentials
         return render json: { success: false, message: "Valid Jeevika Jankar login required." }, status: :unauthorized unless vrp.is_a?(Vrp)
 
-        signature = normalized_agreement_signature(params[:signature_data].presence || params[:signature])
+        raw_signature = agreement_signature_param
+        signature = normalized_agreement_signature(raw_signature)
         unless signature
-          return render json: { success: false, message: "A valid digital signature is required." }, status: :unprocessable_entity
+          # Same message as before, plus what was wrong, so the app developer
+          # can tell a missing field from an unreadable image.
+          detail = if raw_signature.blank?
+            "No signature was received. Send it as signature_data: a data:image/png;base64,... string, plain base64 of a PNG/JPEG, or an image file."
+          else
+            "The signature received is not a PNG, JPEG or WEBP image."
+          end
+          return render json: { success: false, message: "A valid digital signature is required. #{detail}",
+                                error_code: raw_signature.blank? ? "signature_missing" : "signature_unreadable" },
+                        status: :unprocessable_entity
         end
 
         if vrp.agreement_accepted?
@@ -67,28 +77,41 @@ module Api
       private
 
       SIGNATURE_DATA_URI = /\Adata:image\/(?:png|jpeg);base64,[A-Za-z0-9+\/=]+\z/
-      SIGNATURE_PREFIX = /\Adata:image\/(png|jpe?g);base64,/i
+      SIGNATURE_PREFIX = /\Adata:image\/(png|jpe?g|webp);base64,/i
+      # Names mobile clients use for the drawn signature, most common first.
+      SIGNATURE_PARAM_KEYS = %i[signature_data signature signature_image digital_signature sign].freeze
 
-      # Returns the signature as a PNG/JPEG data URI, or nil when it is not one.
+      def agreement_signature_param
+        SIGNATURE_PARAM_KEYS.lazy.map { |key| params[key] }.find(&:present?)
+      end
+
+      # Returns the signature as a PNG/JPEG/WEBP data URI, or nil when it is not one.
       # A value in the original strict format is kept exactly as sent. Mobile
       # clients also commonly send the base64 without the "data:" prefix, with
       # line breaks (Android Base64.DEFAULT), with "+" turned into spaces by
       # form encoding, URL-safe base64, or image/jpg; those are decoded and must
       # really be a PNG or JPEG image before they are accepted.
       def normalized_agreement_signature(raw)
+        # An image sent as a multipart file upload.
+        return signature_data_uri(raw.read.to_s.b) if raw.respond_to?(:read)
+
         value = raw.to_s.strip
         return value if value.match?(SIGNATURE_DATA_URI)
         return if value.blank?
 
         body = value.sub(SIGNATURE_PREFIX, "").tr(" ", "+").gsub(/\s+/, "").tr("-_", "+/")
         body += "=" * ((4 - body.length % 4) % 4)
-        bytes = Base64.strict_decode64(body)
-        type = if bytes.start_with?("\x89PNG".b) then "png"
-               elsif bytes.start_with?("\xFF\xD8\xFF".b) then "jpeg"
-               end
-        "data:image/#{type};base64,#{Base64.strict_encode64(bytes)}" if type
+        signature_data_uri(Base64.strict_decode64(body))
       rescue ArgumentError
         nil
+      end
+
+      def signature_data_uri(bytes)
+        type = if bytes.start_with?("\x89PNG".b) then "png"
+               elsif bytes.start_with?("\xFF\xD8\xFF".b) then "jpeg"
+               elsif bytes.byteslice(0, 4) == "RIFF".b && bytes.byteslice(8, 4) == "WEBP".b then "webp"
+               end
+        "data:image/#{type};base64,#{Base64.strict_encode64(bytes)}" if type
       end
 
       def agreement_vrp_from_credentials

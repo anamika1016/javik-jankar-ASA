@@ -68,4 +68,17 @@ class CropMastersTest < ActionDispatch::IntegrationTest
     assert_select ".side-module summary", text: /Crop/
     assert_select "a.side-sub-link[href='#{module_path('crop-master')}']"
   end
+
+  test "each crop master lists the records saved on it" do
+    post records_module_path("crop-season-master"), params: { module_record: { crop_season_name: "Kharif", status: "Active" } }
+    post records_module_path("crop-type-master"), params: { module_record: { crop_season: "Kharif", crop_type_name: "Cereal", status: "Active" } }
+    post records_module_path("crop-master"), params: { module_record: { crop_season: "Kharif", crop_type: "Cereal", crop_name: "Paddy", status: "Active" } }
+
+    { "crop-season-master" => %w[Kharif], "crop-type-master" => %w[Kharif Cereal], "crop-master" => %w[Kharif Cereal Paddy] }.each do |slug, values|
+      get module_path(slug)
+      assert_response :success
+      rows = css_select("table tbody tr").map { |tr| tr.text.squish }
+      assert rows.any? { |row| values.all? { |value| row.include?(value) } }, "#{slug} should list #{values.join(' / ')}, got #{rows.inspect}"
+    end
+  end
 end

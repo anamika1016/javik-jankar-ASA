@@ -10016,6 +10016,7 @@ class ModulesController < ApplicationController
     return true if %w[state-master district-master block-master gram-panchayat-master village-master month-master project-master].include?(@slug)
     return true if %w[stakeholder-master stakeholder-role role-name parent-office-add office-category-add office-mapping-add].include?(@slug)
     return true if %w[add-activity-group add-vrp-activity task-completion-indicator].include?(@slug)
+    return true if %w[crop-season-master crop-type-master crop-master].include?(@slug)
     # This entry screen renders its own Saved Records table, so it needs the
     # records even though its slug does not end in "-list".
     return true if @slug == "user-hierarchy-mapping"

@@ -214,6 +214,47 @@ class Api::V1::SessionsControllerTest < ActionDispatch::IntegrationTest
     assert_nil vrp.reload.agreement_accepted_at
   end
 
+  test "agreement accepts a signature uploaded as an image file, sent under another name, or as WEBP" do
+    png = "\x89PNG\r\n\x1A\n".b + SecureRandom.random_bytes(80)
+    webp = "RIFF".b + [90].pack("V") + "WEBPVP8 ".b + SecureRandom.random_bytes(80)
+
+    file_vrp = create_vrp(user_name: "agreement_file", password: "secret")
+    Tempfile.create(["signature", ".png"], binmode: true) do |file|
+      file.write(png)
+      file.rewind
+      post "/api/v1/jeevika-jankar-agreement", params: {
+        username: file_vrp.user_name, password: "secret",
+        signature_data: Rack::Test::UploadedFile.new(file.path, "image/png", true)
+      }
+    end
+    assert_response :success
+    assert_equal "data:image/png;base64,#{Base64.strict_encode64(png)}", file_vrp.reload.agreement_signature_data
+
+    key_vrp = create_vrp(user_name: "agreement_key", password: "secret")
+    post "/api/v1/jeevika-jankar-agreement",
+      params: { username: key_vrp.user_name, password: "secret", signature_image: Base64.strict_encode64(png) }, as: :json
+    assert_response :success
+
+    webp_vrp = create_vrp(user_name: "agreement_webp", password: "secret")
+    post "/api/v1/jeevika-jankar-agreement",
+      params: { username: webp_vrp.user_name, password: "secret", signature_data: Base64.strict_encode64(webp) }, as: :json
+    assert_response :success
+    assert_equal "data:image/webp;base64,#{Base64.strict_encode64(webp)}", webp_vrp.reload.agreement_signature_data
+  end
+
+  test "agreement says whether the signature was missing or unreadable" do
+    vrp = create_vrp(user_name: "agreement_errors", password: "secret")
+    post "/api/v1/jeevika-jankar-agreement", params: { username: vrp.user_name, password: "secret" }, as: :json
+    assert_response :unprocessable_entity
+    assert_equal "signature_missing", response.parsed_body["error_code"]
+    assert_match "A valid digital signature is required.", response.parsed_body["message"]
+
+    post "/api/v1/jeevika-jankar-agreement",
+      params: { username: vrp.user_name, password: "secret", signature_data: "hello" }, as: :json
+    assert_equal "signature_unreadable", response.parsed_body["error_code"]
+    assert_nil vrp.reload.agreement_accepted_at
+  end
+
   test "agreement supports bearer authentication and public terms" do
     get "/api/v1/jeevika-jankar-agreement"
     assert_response :success
