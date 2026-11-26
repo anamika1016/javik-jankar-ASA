@@ -14588,3 +14588,13 @@ html[data-dashboard-switching] .turbo-progress-bar { display: none !important; }
 .module-form-grid .crop-grade-add { justify-self: start; min-height: 36px; padding: 6px 14px; font-size: 0.82rem; }
 /* Extra grade boxes must not stretch the fields beside them. */
 [data-crop-form] .module-form-grid { align-items: start; }
+
+/* Status: an Active switch at the left of the Save row instead of a full-width select. */
+.module-form-actions .status-switch { display: inline-flex; align-items: center; gap: 10px; margin-right: auto; cursor: pointer; user-select: none; font-size: 0.86rem; font-weight: 800; color: var(--vrp-text); }
+.module-form-actions .status-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.module-form-actions .status-switch__track { position: relative; width: 44px; height: 24px; border-radius: 999px; background: #cfd8dc; transition: background 0.18s ease; flex-shrink: 0; }
+.module-form-actions .status-switch__track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); transition: transform 0.18s ease; }
+.module-form-actions .status-switch input:checked + .status-switch__track { background: var(--vrp-primary); }
+.module-form-actions .status-switch input:checked + .status-switch__track::after { transform: translateX(20px); }
+.module-form-actions .status-switch input:focus-visible + .status-switch__track { outline: 2px solid var(--vrp-primary); outline-offset: 2px; }
+.module-form-actions .status-switch input:not(:checked) ~ .status-switch__label { color: #8a969c; }

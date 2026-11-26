@@ -129,6 +129,22 @@ class CropMastersTest < ActionDispatch::IntegrationTest
     assert_equal "A", record.reload.data["grade"]
   end
 
+  test "status is an Active switch beside Save, on by default" do
+    post records_module_path("crop-season-master"), params: { module_record: { crop_season_name: "Zaid", status: "Active" } }
+
+    get module_path("crop-season-master")
+    assert_select ".module-form-actions .status-switch input[type=checkbox][name='module_record[status]'][value=Active][checked]"
+    assert_select ".module-form-actions input[type=hidden][name='module_record[status]'][value=Inactive]"
+    assert_select ".module-form-grid select[name='module_record[status]']", count: 0
+
+    # Switch off: only the hidden Inactive is sent.
+    post records_module_path("crop-season-master"), params: { module_record: { crop_season_name: "Summer", status: "Inactive" } }
+    record = ModuleRecord.where(module_slug: "crop-season-master").find { |r| r.data["crop_season_name"] == "Summer" }
+    assert_equal "Inactive", record.data["status"]
+    get edit_module_record_path("crop-season-master", record)
+    assert_select ".status-switch input[type=checkbox]:not([checked])"
+  end
+
   test "sidebar shows the Crop menu" do
     get module_path("crop-season-master")
     assert_select ".side-module summary", text: /Crop/

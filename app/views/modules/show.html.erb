@@ -2603,6 +2603,7 @@
           "Training Register Upload" => "Evidence/Documentation Pdf"
         } if @slug == "training-form" %>
         <div class="module-form-grid <%= "user-registration-grid" if @slug == "new-user" || (@slug == "all-user" && @record.present?) %> <%= "training-form-grid" if @slug == "training-form" %>">
+          <% status_toggle_value = nil %>
           <% @module[:fields].each do |field| %>
             <% if @slug == "training-form" && training_form_sections&.key?(field) %>
               <% sec = training_form_sections[field] %>
@@ -2715,6 +2716,11 @@
                   </label>
                 </div>
               </div>
+              <% next %>
+            <% end %>
+            <%# Status (Active / Inactive) is a small switch beside Save, not a full-width field. %>
+            <% if field == "Status" %>
+              <% status_toggle_value = field_value.presence || "Active" %>
               <% next %>
             <% end %>
             <label>
@@ -3044,6 +3050,14 @@
         <% end %>
 
         <div class="module-form-actions">
+          <% if status_toggle_value %>
+            <input type="hidden" name="module_record[status]" value="Inactive">
+            <label class="status-switch" title="Off = Inactive">
+              <input type="checkbox" name="module_record[status]" value="Active" <%= "checked" if status_toggle_value == "Active" %>>
+              <span class="status-switch__track" aria-hidden="true"></span>
+              <span class="status-switch__label">Active</span>
+            </label>
+          <% end %>
           <%= link_to "Clear", module_path(@slug), class: "btn btn-secondary" %>
           <button type="submit" class="btn btn-primary"><%= @record.present? ? "Update" : "Save" %></button>
         </div>
