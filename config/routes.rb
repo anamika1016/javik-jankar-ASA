@@ -35,6 +35,11 @@ Rails.application.routes.draw do
       # Accepted Agreement by Jeevika Jankar list, as on the web page.
       get "accepted-agreements", to: "accepted_agreements#index"
       get "accepted-agreements/:id", to: "accepted_agreements#show"
+      # Crop masters for the app's dropdowns.
+      get "crop-seasons", to: "crops#seasons"
+      get "crop-types", to: "crops#types"
+      get "crops", to: "crops#index"
+      get "crop-masters", to: "crops#masters"
       post "login/otp/send", to: "otp_logins#send_otp"
       post "login/otp/verify", to: "otp_logins#verify_otp"
 
