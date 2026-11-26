@@ -77,7 +77,7 @@ class ModulesController < ApplicationController
                 :training_edit_revision_for, :dashboard_weekly_report_filter_params,
                 :jeevika_bill_observation_row, :jeevika_bill_fcoc_name, :training_target_browser_payload,
                 :jeevika_bill_image_upload?,
-                :jeevika_jankar_transfer_office_keys, :crop_type_season_mappings
+                :jeevika_jankar_transfer_office_keys, :crop_type_season_mappings, :seed_variety_crop_mappings
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
   OTHER_TARGET_MODULE_SLUGS = ["seed-distribution-target", "papl360-target", "other-target", "other-target-with-farmer"].freeze
@@ -758,6 +758,14 @@ class ModulesController < ApplicationController
       group: "Seed",
       purpose: "Seed crop select karke uski variety ka naam add karne ke liye.",
       fields: ["Seed Crop", "Seed Variety Name", "Status"]
+    },
+    # Amount Status / Subsidy Status: Active = the farmer is shown that value.
+    "seed-product-master" => {
+      title: "Seed Product Name",
+      group: "Seed",
+      purpose: "Seed crop, variety, brand, FPO aur supplier ke saath seed product add karne ke liye.",
+      fields: ["Seed Crop", "Seed Variety", "Seed Brand Name", "FPO", "Supplier/Company Name", "Description",
+               "Product Photo Upload", "Amount", "Amount Status", "Subsidy", "Subsidy Status", "Status"]
     }
   }.freeze
 
@@ -10029,7 +10037,7 @@ class ModulesController < ApplicationController
     return true if %w[state-master district-master block-master gram-panchayat-master village-master month-master project-master].include?(@slug)
     return true if %w[stakeholder-master stakeholder-role role-name parent-office-add office-category-add office-mapping-add].include?(@slug)
     return true if %w[add-activity-group add-vrp-activity task-completion-indicator].include?(@slug)
-    return true if %w[crop-season-master crop-type-master crop-master seed-crop-master seed-variety-master].include?(@slug)
+    return true if %w[crop-season-master crop-type-master crop-master seed-crop-master seed-variety-master seed-product-master].include?(@slug)
     # This entry screen renders its own Saved Records table, so it needs the
     # records even though its slug does not end in "-list".
     return true if @slug == "user-hierarchy-mapping"
@@ -13889,6 +13897,7 @@ class ModulesController < ApplicationController
     data = normalize_add_farmer_form_data(data) if record_source_slug == "add-farmer-form"
     data = normalize_seed_distribution_target_data(data) if other_target_record_source?
     data = normalize_jeevika_jankar_bill_data(data) if record_source_slug == "jeevika-jankar-bill-process"
+    data = normalize_seed_product_data(data) if record_source_slug == "seed-product-master"
 
     data
   end
@@ -15347,6 +15356,8 @@ class ModulesController < ApplicationController
       seed_distribution_target_error_messages(data)
     when *CROP_MASTER_KEYS.keys
       crop_master_error_messages(data)
+    when "seed-product-master"
+      seed_product_error_messages(data)
     else
       []
     end
@@ -15372,6 +15383,54 @@ class ModulesController < ApplicationController
       .where.not(id: @record&.id)
       .any? { |row| fields.keys.map { |key| normalize.(row.data[key]) } == wanted }
     duplicate ? ["#{@module[:title]} \"#{data[fields.keys.last]}\" pehle se saved hai."] : []
+  end
+
+  def seed_product_fpo_field?(field)
+    record_source_slug == "seed-product-master" && field == "FPO"
+  end
+
+  # FPOs are the ones the AFL upload carries (FPO Name column).
+  def seed_product_fpo_options
+    return [] unless model_ready?(:Afl)
+
+    Afl.where.not(fpo_name: [nil, ""]).distinct.pluck(:fpo_name).map(&:squish).uniq(&:downcase).sort_by(&:downcase)
+  end
+
+  # Seed crop -> its varieties, used by the Seed Product form to filter Seed Variety.
+  def seed_variety_crop_mappings
+    return [] unless model_ready?(:ModuleRecord)
+
+    active_module_records_scope("seed-variety-master").order(created_at: :desc).filter_map do |record|
+      crop = record.data["seed_crop"].to_s.strip
+      variety = record.data["seed_variety_name"].to_s.strip
+      { crop: crop, variety: variety } if crop.present? && variety.present?
+    end.uniq
+  end
+
+  def normalize_seed_product_data(data)
+    data["fpo"] = Array(data["fpo"]).map { |value| value.to_s.squish }.compact_blank.uniq
+    %w[amount subsidy].each { |key| data[key] = data[key].to_s.strip }
+    %w[amount_status subsidy_status status].each { |key| data[key] = data[key].presence || "Active" }
+    data
+  end
+
+  def seed_product_error_messages(data)
+    errors = missing_required_data_errors(data, {
+      "seed_crop" => "Seed Crop", "seed_variety" => "Seed Variety", "seed_brand_name" => "Seed Brand Name",
+      "supplier_company_name" => "Supplier/Company Name"
+    })
+    errors << "FPO required hai (kam se kam ek)." if Array(data["fpo"]).compact_blank.empty?
+    { "amount" => "Amount", "subsidy" => "Subsidy" }.each do |key, label|
+      value = data[key].to_s.strip
+      errors << "#{label} sahi number hona chahiye." if value.present? && !value.match?(/\A\d+(\.\d{1,2})?\z/)
+    end
+    return errors if errors.any?
+
+    wanted = %w[seed_crop seed_variety seed_brand_name supplier_company_name].map { |key| data[key].to_s.squish.downcase }
+    duplicate = active_module_records_scope("seed-product-master").where.not(id: @record&.id).any? do |row|
+      %w[seed_crop seed_variety seed_brand_name supplier_company_name].map { |key| row.data[key].to_s.squish.downcase } == wanted
+    end
+    duplicate ? ["Ye seed product (same crop, variety, brand aur supplier) pehle se saved hai."] : []
   end
 
   # Season -> crop types, used by the Crop form to filter the Crop Type dropdown.
@@ -15688,6 +15747,7 @@ class ModulesController < ApplicationController
     return true if training_people_field?(field)
     return true if training_activity_field?(field)
     return true if seed_distribution_target_field?(field)
+    return true if seed_product_fpo_field?(field)
 
     source = field_sources[field]
     (source.present? && source[:module] != (@slug || current_slug)) || static_field_options(field).any?
@@ -15700,6 +15760,7 @@ class ModulesController < ApplicationController
     return training_people_field_options(field) if training_people_field?(field)
     return training_activity_field_options(field) if training_activity_field?(field)
     return seed_distribution_target_field_options(field) if seed_distribution_target_field?(field)
+    return seed_product_fpo_options if seed_product_fpo_field?(field)
 
     source = field_sources[field]
     return [] unless ModuleRecord.table_exists?
@@ -17234,7 +17295,8 @@ class ModulesController < ApplicationController
       "Project Name" => { module: "project-master", field: "project_name" },
       "Crop Season" => { module: "crop-season-master", field: "crop_season_name" },
       "Crop Type" => { module: "crop-type-master", field: "crop_type_name" },
-      "Seed Crop" => { module: "seed-crop-master", field: "seed_crop_name" }
+      "Seed Crop" => { module: "seed-crop-master", field: "seed_crop_name" },
+      "Seed Variety" => { module: "seed-variety-master", field: "seed_variety_name" }
     }
   end
 

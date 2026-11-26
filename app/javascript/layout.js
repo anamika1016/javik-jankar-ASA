@@ -1723,6 +1723,37 @@ function initDeferredLayoutPage() {
   // Crop masters: type a name in English and pick its Hindi form.
   document.querySelectorAll(HINDI_TYPING_INPUTS).forEach(initHindiTyping);
 
+  // Seed Product form: the Seed Variety list only shows varieties of the chosen seed crop.
+  document.querySelectorAll("[data-seed-product-form]").forEach((formShell) => {
+    const cropSelect = formShell.querySelector("[data-seed-product-crop-select]");
+    const varietySelect = formShell.querySelector("[data-seed-product-variety-select]");
+    if (!cropSelect || !varietySelect) return;
+
+    let varietyMappings = [];
+    try {
+      varietyMappings = JSON.parse(formShell.dataset.seedVarietyMap || "[]");
+    } catch (_error) {
+      varietyMappings = [];
+    }
+
+    const refreshVarieties = () => {
+      const crop = normalizeOption(cropSelect.value);
+      const varieties = crop
+        ? uniquePresent(varietyMappings.filter((mapping) => normalizeOption(mapping.crop) === crop).map((mapping) => mapping.variety))
+        : [];
+      const blankLabel = !crop ? "Select Seed Crop first" : (varieties.length ? "Select Seed Variety" : "No Seed Variety saved for this crop");
+      replaceSelectOptions(varietySelect, varieties, blankLabel);
+    };
+
+    cropSelect.addEventListener("change", () => {
+      varietySelect.dataset.selectedValue = "";
+      varietySelect.value = "";
+      refreshVarieties();
+    });
+
+    refreshVarieties();
+  });
+
   // Crop form: the Crop Type list only shows types saved for the chosen season.
   document.querySelectorAll("[data-crop-form]").forEach((formShell) => {
     const seasonSelect = formShell.querySelector("[data-crop-season-select]");
@@ -8003,7 +8034,8 @@ function initDeferredLayoutPage() {
 // built-in transliteration when that cannot be reached); Space/Enter or a
 // click puts the Hindi word in. The field still accepts any text.
 const HINDI_TYPING_INPUTS = [
-  "crop_season_name", "crop_type_name", "crop_name", "seed_crop_name", "seed_variety_name"
+  "crop_season_name", "crop_type_name", "crop_name", "seed_crop_name", "seed_variety_name",
+  "seed_brand_name", "supplier_company_name"
 ].map((key) => `input[name="module_record[${key}]"]`).join(", ");
 const HINDI_TYPING_STORE_KEY = "hindiTyping";
 const hindiSuggestionCache = new Map();

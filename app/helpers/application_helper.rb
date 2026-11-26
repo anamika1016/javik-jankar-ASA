@@ -291,7 +291,8 @@ module ApplicationHelper
       icon: "▥",
       links: [
         ["Seed Crop Name", :module, "seed-crop-master"],
-        ["Seed Variety", :module, "seed-variety-master"]
+        ["Seed Variety", :module, "seed-variety-master"],
+        ["Seed Product Name", :module, "seed-product-master"]
       ]
     },
     {

@@ -1,5 +1,5 @@
       <% saved_record_fields = @module[:fields].reject { |field| field == "Status" } %>
-      <% full_saved_record_slugs = ["state-master", "district-master", "block-master", "gram-panchayat-master", "village-master", "person-type"] %>
+      <% full_saved_record_slugs = ["state-master", "district-master", "block-master", "gram-panchayat-master", "village-master", "person-type", "seed-product-master"] %>
       <% saved_record_fields = saved_record_fields.first(4) unless full_saved_record_slugs.include?(@slug) || @slug == "jeevika-jankar-transfer-list" %>
       <% server_paginated_master_list = defined?(@module_records_total_count) %>
       <% saved_records_url = ->(**options) { @record.present? ? edit_module_record_path(@slug, @record, **options) : module_path(@slug, **options) } %>
@@ -47,7 +47,14 @@
                 <% @records.each do |record| %>
                   <tr>
                     <% saved_record_fields.each do |field| %>
-                      <td><%= module_record_field_value(record, field).presence || "-" %></td>
+                      <% if @slug == "seed-product-master" && field == "Product Photo Upload" %>
+                        <% photo_urls = module_upload_public_urls(record.data["product_photo_upload"]) %>
+                        <td><%= photo_urls.any? ? link_to("View", photo_urls.first, target: "_blank", rel: "noopener", class: "table-action") : "-" %></td>
+                      <% elsif @slug == "seed-product-master" && field == "FPO" %>
+                        <td><%= Array(record.data["fpo"]).compact_blank.join(", ").presence || "-" %></td>
+                      <% else %>
+                        <td><%= module_record_field_value(record, field).presence || "-" %></td>
+                      <% end %>
                     <% end %>
                     <td><%= record.created_at&.strftime("%d-%m-%Y %I:%M %p") %></td>
                     <td><span class="status-pill <%= record.data["status"] == "Inactive" ? "inactive" : "active" %>"><%= record.data["status"].presence || "Active" %></span></td>
