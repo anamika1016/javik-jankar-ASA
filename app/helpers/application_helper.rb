@@ -287,6 +287,14 @@ module ApplicationHelper
       ]
     },
     {
+      title: "Seed",
+      icon: "▥",
+      links: [
+        ["Seed Crop Name", :module, "seed-crop-master"],
+        ["Seed Variety", :module, "seed-variety-master"]
+      ]
+    },
+    {
       title: "User Register",
       icon: "▩",
       links: [

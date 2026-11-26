@@ -1720,6 +1720,9 @@ function initDeferredLayoutPage() {
     refreshParentOfficeField();
   });
 
+  // Crop masters: type a name in English and pick its Hindi form.
+  document.querySelectorAll(HINDI_TYPING_INPUTS).forEach(initHindiTyping);
+
   // Crop form: the Crop Type list only shows types saved for the chosen season.
   document.querySelectorAll("[data-crop-form]").forEach((formShell) => {
     const seasonSelect = formShell.querySelector("[data-crop-season-select]");
@@ -7992,6 +7995,192 @@ function initDeferredLayoutPage() {
   };
 
   initializeLanguageSwitcher();
+}
+
+// ---------------------------------------------------------------------------
+// Hindi typing for crop and seed master names. With "अ हिंदी" on, the word being typed
+// in English is shown as Hindi suggestions (Google Input Tools, with a small
+// built-in transliteration when that cannot be reached); Space/Enter or a
+// click puts the Hindi word in. The field still accepts any text.
+const HINDI_TYPING_INPUTS = [
+  "crop_season_name", "crop_type_name", "crop_name", "seed_crop_name", "seed_variety_name"
+].map((key) => `input[name="module_record[${key}]"]`).join(", ");
+const HINDI_TYPING_STORE_KEY = "hindiTyping";
+const hindiSuggestionCache = new Map();
+
+function hindiTypingEnabled() {
+  try { return window.localStorage.getItem(HINDI_TYPING_STORE_KEY) === "on"; } catch (_error) { return false; }
+}
+
+function setHindiTypingEnabled(enabled) {
+  try { window.localStorage.setItem(HINDI_TYPING_STORE_KEY, enabled ? "on" : "off"); } catch (_error) { /* per-tab only */ }
+}
+
+function initHindiTyping(input) {
+  if (input.dataset.hindiTyping) return;
+  input.dataset.hindiTyping = "true";
+
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "hindi-typing-toggle";
+  toggle.textContent = "अ हिंदी";
+  toggle.title = "English में लिखें, हिंदी में बदलें";
+  const suggestions = document.createElement("div");
+  suggestions.className = "hindi-typing-suggestions";
+  suggestions.hidden = true;
+  input.insertAdjacentElement("afterend", suggestions);
+  input.insertAdjacentElement("afterend", toggle);
+
+  let enabled = hindiTypingEnabled();
+  let current = [];
+  let requestId = 0;
+  const syncToggle = () => {
+    toggle.setAttribute("aria-pressed", String(enabled));
+    toggle.classList.toggle("is-on", enabled);
+    input.lang = enabled ? "hi" : "";
+  };
+  syncToggle();
+
+  // The Latin word that ends at the caret.
+  const pendingWord = () => {
+    const before = input.value.slice(0, input.selectionStart ?? input.value.length);
+    const match = before.match(/[A-Za-z]+$/);
+    return match ? { word: match[0], start: before.length - match[0].length, end: before.length } : null;
+  };
+
+  const hide = () => { suggestions.hidden = true; suggestions.replaceChildren(); current = []; };
+
+  const render = (words) => {
+    current = words;
+    suggestions.replaceChildren(...words.map((word, index) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = index === 0 ? "is-first" : "";
+      chip.textContent = word;
+      // mousedown keeps the input focused and the caret where it was.
+      chip.addEventListener("mousedown", (event) => { event.preventDefault(); apply(word); });
+      return chip;
+    }));
+    suggestions.hidden = words.length === 0;
+  };
+
+  const apply = (word, trailing = "") => {
+    const pending = pendingWord();
+    if (!pending) return hide();
+    input.value = input.value.slice(0, pending.start) + word + trailing + input.value.slice(pending.end);
+    const caret = pending.start + word.length + trailing.length;
+    input.setSelectionRange(caret, caret);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    hide();
+  };
+
+  const refresh = async () => {
+    const pending = enabled && pendingWord();
+    if (!pending) return hide();
+    const id = ++requestId;
+    const words = await hindiSuggestions(pending.word);
+    if (id === requestId) render(words);
+  };
+
+  toggle.addEventListener("click", () => {
+    enabled = !enabled;
+    setHindiTypingEnabled(enabled);
+    syncToggle();
+    enabled ? refresh() : hide();
+    input.focus();
+  });
+
+  input.addEventListener("input", (event) => {
+    if (event.isTrusted) refresh();
+  });
+
+  input.addEventListener("keydown", (event) => {
+    if (!enabled) return;
+    if (event.key === "Escape") return hide();
+    if (event.key !== " " && event.key !== "Enter") return;
+    const pending = pendingWord();
+    if (!pending) return;
+    // Enter converts the word instead of submitting the form.
+    event.preventDefault();
+    const word = current[0] || hindiSuggestionCache.get(pending.word.toLowerCase())?.[0] || transliterateToHindi(pending.word);
+    apply(word, event.key === " " ? " " : "");
+  });
+
+  input.addEventListener("blur", () => {
+    if (!enabled) return hide();
+    const pending = pendingWord();
+    if (pending) apply(current[0] || transliterateToHindi(pending.word));
+    hide();
+  });
+}
+
+async function hindiSuggestions(word) {
+  const key = word.toLowerCase();
+  if (hindiSuggestionCache.has(key)) return hindiSuggestionCache.get(key);
+
+  let words = [];
+  try {
+    const url = `https://inputtools.google.com/request?text=${encodeURIComponent(key)}&itc=hi-t-i0-und&num=5&cp=0&cs=1&ie=utf-8&oe=utf-8`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2500);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    const body = await response.json();
+    if (body[0] === "SUCCESS") words = body[1]?.[0]?.[1] || [];
+  } catch (_error) {
+    words = [];
+  }
+  const local = transliterateToHindi(word);
+  if (!words.includes(local)) words = [...words, local];
+  words = words.filter(Boolean).slice(0, 5);
+  hindiSuggestionCache.set(key, words);
+  return words;
+}
+
+// Small phonetic fallback, used when Google cannot be reached. Capital T, Th,
+// D, Dh, N, Sh give ट ठ ड ढ ण ष; a final "a" is long, as in Hinglish
+// ("makka" -> "मक्का", "kela" -> "केला", "TamaaTar" -> "टमाटर").
+const HINDI_VOWELS = [
+  ["aa", "आ", "ा"], ["ai", "ऐ", "ै"], ["au", "औ", "ौ"], ["ee", "ई", "ी"], ["ii", "ई", "ी"],
+  ["oo", "ऊ", "ू"], ["uu", "ऊ", "ू"], ["ri", "ऋ", "ृ"], ["a", "अ", ""], ["i", "इ", "ि"],
+  ["u", "उ", "ु"], ["e", "ए", "े"], ["o", "ओ", "ो"]
+];
+const HINDI_RETROFLEX = [["Th", "ठ"], ["Dh", "ढ"], ["Sh", "ष"], ["T", "ट"], ["D", "ड"], ["N", "ण"]];
+const HINDI_CONSONANTS = [
+  ["chh", "छ"], ["ksh", "क्ष"], ["kh", "ख"], ["gh", "घ"], ["ch", "च"], ["jh", "झ"], ["th", "थ"], ["dh", "ध"],
+  ["ph", "फ"], ["bh", "भ"], ["sh", "श"], ["gy", "ज्ञ"], ["k", "क"], ["g", "ग"], ["c", "क"], ["j", "ज"],
+  ["t", "त"], ["d", "द"], ["n", "न"], ["p", "प"], ["f", "फ़"], ["b", "ब"], ["m", "म"], ["y", "य"],
+  ["r", "र"], ["l", "ल"], ["v", "व"], ["w", "व"], ["s", "स"], ["h", "ह"], ["z", "ज़"], ["q", "क़"], ["x", "क्स"]
+];
+
+function transliterateToHindi(word) {
+  const lower = word.toLowerCase();
+  let out = "";
+  let index = 0;
+  let afterConsonant = false;
+  while (index < word.length) {
+    const consonant = HINDI_RETROFLEX.find(([latin]) => word.startsWith(latin, index)) ||
+      HINDI_CONSONANTS.find(([latin]) => lower.startsWith(latin, index));
+    if (consonant) {
+      if (afterConsonant) out += "्";
+      out += consonant[1];
+      index += consonant[0].length;
+      afterConsonant = true;
+      continue;
+    }
+    const vowel = HINDI_VOWELS.find(([latin]) => lower.startsWith(latin, index));
+    if (vowel) {
+      const finalA = vowel[0] === "a" && index + 1 === word.length && afterConsonant;
+      out += finalA ? "ा" : (afterConsonant ? vowel[2] : vowel[1]);
+      index += vowel[0].length;
+      afterConsonant = false;
+      continue;
+    }
+    out += word[index];
+    index += 1;
+    afterConsonant = false;
+  }
+  return out;
 }
 
 const bootLayoutPage = () => {

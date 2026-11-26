@@ -745,6 +745,19 @@ class ModulesController < ApplicationController
       group: "Crop",
       purpose: "Season aur crop type select karke crop name add karne ke liye.",
       fields: ["Crop Season", "Crop Type", "Crop Name", "Status"]
+    },
+    # Seed masters: Seed Crop -> its varieties.
+    "seed-crop-master" => {
+      title: "Seed Crop Name",
+      group: "Seed",
+      purpose: "Seed crop ka naam add karne ke liye.",
+      fields: ["Seed Crop Name", "Status"]
+    },
+    "seed-variety-master" => {
+      title: "Seed Variety",
+      group: "Seed",
+      purpose: "Seed crop select karke uski variety ka naam add karne ke liye.",
+      fields: ["Seed Crop", "Seed Variety Name", "Status"]
     }
   }.freeze
 
@@ -10016,7 +10029,7 @@ class ModulesController < ApplicationController
     return true if %w[state-master district-master block-master gram-panchayat-master village-master month-master project-master].include?(@slug)
     return true if %w[stakeholder-master stakeholder-role role-name parent-office-add office-category-add office-mapping-add].include?(@slug)
     return true if %w[add-activity-group add-vrp-activity task-completion-indicator].include?(@slug)
-    return true if %w[crop-season-master crop-type-master crop-master].include?(@slug)
+    return true if %w[crop-season-master crop-type-master crop-master seed-crop-master seed-variety-master].include?(@slug)
     # This entry screen renders its own Saved Records table, so it needs the
     # records even though its slug does not end in "-list".
     return true if @slug == "user-hierarchy-mapping"
@@ -15343,7 +15356,9 @@ class ModulesController < ApplicationController
   CROP_MASTER_KEYS = {
     "crop-season-master" => { "crop_season_name" => "Crop Season Name" },
     "crop-type-master" => { "crop_season" => "Crop Season", "crop_type_name" => "Crop Type Name" },
-    "crop-master" => { "crop_season" => "Crop Season", "crop_type" => "Crop Type", "crop_name" => "Crop Name" }
+    "crop-master" => { "crop_season" => "Crop Season", "crop_type" => "Crop Type", "crop_name" => "Crop Name" },
+    "seed-crop-master" => { "seed_crop_name" => "Seed Crop Name" },
+    "seed-variety-master" => { "seed_crop" => "Seed Crop", "seed_variety_name" => "Seed Variety Name" }
   }.freeze
 
   def crop_master_error_messages(data)
@@ -17218,7 +17233,8 @@ class ModulesController < ApplicationController
       "Person Type" => { module: "person-type", field: "person_type" },
       "Project Name" => { module: "project-master", field: "project_name" },
       "Crop Season" => { module: "crop-season-master", field: "crop_season_name" },
-      "Crop Type" => { module: "crop-type-master", field: "crop_type_name" }
+      "Crop Type" => { module: "crop-type-master", field: "crop_type_name" },
+      "Seed Crop" => { module: "seed-crop-master", field: "seed_crop_name" }
     }
   end
 

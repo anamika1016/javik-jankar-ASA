@@ -14487,3 +14487,42 @@ a.farmer-stat:hover {
 }
 /* Mode switches use fresh server responses without the blue page progress bar. */
 html[data-dashboard-switching] .turbo-progress-bar { display: none !important; }
+
+/* Crop masters: Hindi typing toggle and suggestions under the name field. */
+.hindi-typing-toggle {
+  margin-top: 6px;
+  margin-right: 8px;
+  padding: 3px 10px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 999px;
+  background: var(--vrp-panel);
+  color: var(--vrp-muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.hindi-typing-toggle.is-on {
+  border-color: var(--vrp-primary);
+  background: var(--vrp-primary);
+  color: #fff;
+}
+.hindi-typing-suggestions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  vertical-align: top;
+}
+.hindi-typing-suggestions button {
+  padding: 3px 10px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 6px;
+  background: var(--vrp-panel-soft);
+  color: var(--vrp-text);
+  font-size: 14px;
+  cursor: pointer;
+}
+.hindi-typing-suggestions button.is-first {
+  border-color: var(--vrp-primary);
+  font-weight: 700;
+}
