@@ -36,8 +36,11 @@ class SeedProductMasterTest < ActionDispatch::IntegrationTest
     assert_select "input[name='module_record[product_photo_upload]'][type=file][accept='image/*']"
     assert_select "input[name='module_record[amount]'][type=number]"
     assert_select "input[name='module_record[subsidy]'][type=number]"
-    assert_select "select[name='module_record[amount_status]'] option", text: "Inactive"
-    assert_select "select[name='module_record[subsidy_status]'] option", text: "Inactive"
+    %w[amount_status subsidy_status].each do |key|
+      assert_select "input[type=hidden][name='module_record[#{key}]'][value=Inactive]"
+      assert_select "input[type=checkbox][name='module_record[#{key}]'][value=Active][checked]"
+      assert_select "select[name='module_record[#{key}]']", count: 0
+    end
     map = JSON.parse(css_select("[data-seed-product-form]").first["data-seed-variety-map"])
     assert_includes map, { "crop" => "Soybean", "variety" => "JS 9560" }
     assert_includes map, { "crop" => "Moong", "variety" => "Virat" }
@@ -88,5 +91,15 @@ class SeedProductMasterTest < ActionDispatch::IntegrationTest
     assert_equal [@fpo_a], record.data["fpo"]
     assert_equal "1500", record.data["amount"]
     assert_equal "/uploads/module_records/old.png", record.data["product_photo_upload"]
+  end
+
+  test "the show-to-farmer tick boxes save Active when ticked and Inactive when not" do
+    post records_module_path("seed-product-master"), params: { module_record: product(amount_status: %w[Inactive Active], subsidy_status: "Inactive") }
+    record = ModuleRecord.where(module_slug: "seed-product-master").last
+    assert_equal %w[Active Inactive], record.data.values_at("amount_status", "subsidy_status")
+
+    get edit_module_record_path("seed-product-master", record)
+    assert_select "input[type=checkbox][name='module_record[amount_status]'][checked]"
+    assert_select "input[type=checkbox][name='module_record[subsidy_status]'][checked]", count: 0
   end
 end

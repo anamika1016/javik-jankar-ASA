@@ -2735,14 +2735,18 @@
                 <input name="module_record[<%= field_key %>]" type="number" min="1" step="1" placeholder="New Farmer Target" value="<%= field_value %>" data-add-farmer-target readonly required>
               <% elsif add_farmer_form && field == "No. Farmer" %>
                 <input name="module_record[<%= field_key %>]" type="number" min="1" step="1" placeholder="Enter No. Farmer" value="<%= field_value %>" data-add-farmer-no-farmer required>
+              <% elsif @slug == "seed-product-master" && ["Amount Status", "Subsidy Status"].include?(field) %>
+                <%# Saved as Active/Inactive like before; unticked sends the hidden Inactive. %>
+                <input type="hidden" name="module_record[<%= field_key %>]" value="Inactive">
+                <span class="seed-show-farmer-check">
+                  <input type="checkbox" name="module_record[<%= field_key %>]" value="Active" <%= "checked" unless field_value == "Inactive" %>>
+                  Kisan ko <%= field.sub(" Status", "") %> dikhaye
+                </span>
               <% elsif field.downcase.include?("status") %>
                 <select name="module_record[<%= field_key %>]">
                   <option <%= "selected" if field_value == "Active" %>>Active</option>
                   <option <%= "selected" if field_value == "Inactive" %>>Inactive</option>
                 </select>
-                <% if @slug == "seed-product-master" && ["Amount Status", "Subsidy Status"].include?(field) %>
-                  <small class="field-hint">Active = kisan ko <%= field.sub(" Status", "") %> dikhega, Inactive = nahi dikhega.</small>
-                <% end %>
               <% elsif field.downcase.include?("upload") || field.downcase.include?("file") || field == "Field Photo" %>
                 <% upload_accept = field == "Excel Upload" ? "accept=\".csv,.xlsx,.xls\"" : nil %>
                 <% multiple_photo_upload = @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>

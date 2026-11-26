@@ -15410,7 +15410,11 @@ class ModulesController < ApplicationController
   def normalize_seed_product_data(data)
     data["fpo"] = Array(data["fpo"]).map { |value| value.to_s.squish }.compact_blank.uniq
     %w[amount subsidy].each { |key| data[key] = data[key].to_s.strip }
-    %w[amount_status subsidy_status status].each { |key| data[key] = data[key].presence || "Active" }
+    # The tick box sends Inactive (hidden) and, when ticked, Active.
+    %w[amount_status subsidy_status].each do |key|
+      data[key] = Array(data[key]).include?("Active") || data[key].blank? ? "Active" : "Inactive"
+    end
+    data["status"] = data["status"].presence || "Active"
     data
   end
 

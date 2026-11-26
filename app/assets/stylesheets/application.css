@@ -14490,6 +14490,12 @@ html[data-dashboard-switching] .turbo-progress-bar { display: none !important; }
 
 /* Crop masters: Hindi typing toggle and suggestions under the name field. */
 .hindi-typing-toggle {
+  /* Form labels stretch their children; keep this a small pill. */
+  align-self: flex-start;
+  justify-self: start;
+  display: inline-block;
+  width: auto !important;
+  min-height: 0;
   margin-top: 6px;
   margin-right: 8px;
   padding: 3px 10px;
@@ -14525,4 +14531,22 @@ html[data-dashboard-switching] .turbo-progress-bar { display: none !important; }
 .hindi-typing-suggestions button.is-first {
   border-color: var(--vrp-primary);
   font-weight: 700;
+}
+
+/* Seed Product: "show to farmer" tick box for Amount and Subsidy. */
+.seed-show-farmer-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  font-weight: 600;
+  color: var(--vrp-text);
+  cursor: pointer;
+}
+.seed-show-farmer-check input[type="checkbox"] {
+  width: 18px !important;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  accent-color: var(--vrp-primary);
 }
