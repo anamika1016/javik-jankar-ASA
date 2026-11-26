@@ -15411,8 +15411,9 @@ class ModulesController < ApplicationController
     data["fpo"] = Array(data["fpo"]).map { |value| value.to_s.squish }.compact_blank.uniq
     %w[amount subsidy].each { |key| data[key] = data[key].to_s.strip }
     # The tick box sends Inactive (hidden) and, when ticked, Active.
+    # Unticked by default: a value is shown to farmers only when ticked.
     %w[amount_status subsidy_status].each do |key|
-      data[key] = Array(data[key]).include?("Active") || data[key].blank? ? "Active" : "Inactive"
+      data[key] = Array(data[key]).include?("Active") ? "Active" : "Inactive"
     end
     data["status"] = data["status"].presence || "Active"
     data

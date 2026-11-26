@@ -42,7 +42,8 @@ class SeedProductMasterTest < ActionDispatch::IntegrationTest
     assert_select "input[name='module_record[subsidy]'][type=number]"
     %w[amount_status subsidy_status].each do |key|
       assert_select "input[type=hidden][name='module_record[#{key}]'][value=Inactive]"
-      assert_select "input[type=checkbox][name='module_record[#{key}]'][value=Active][checked]"
+      assert_select "input[type=checkbox][name='module_record[#{key}]'][value=Active]"
+      assert_select "input[type=checkbox][name='module_record[#{key}]'][checked]", count: 0
       assert_select "select[name='module_record[#{key}]']", count: 0
     end
     map = JSON.parse(css_select("[data-seed-product-form]").first["data-seed-variety-map"])
@@ -105,5 +106,11 @@ class SeedProductMasterTest < ActionDispatch::IntegrationTest
     get edit_module_record_path("seed-product-master", record)
     assert_select "input[type=checkbox][name='module_record[amount_status]'][checked]"
     assert_select "input[type=checkbox][name='module_record[subsidy_status]'][checked]", count: 0
+  end
+
+  test "amount and subsidy are not shown to farmers unless ticked" do
+    post records_module_path("seed-product-master"), params: { module_record: product.except(:amount_status, :subsidy_status) }
+    record = ModuleRecord.where(module_slug: "seed-product-master").last
+    assert_equal %w[Inactive Inactive], record.data.values_at("amount_status", "subsidy_status")
   end
 end

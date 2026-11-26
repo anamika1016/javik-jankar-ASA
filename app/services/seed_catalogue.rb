@@ -57,8 +57,9 @@ class SeedCatalogue
 
   def product_payload(record)
     data = record.data
-    show_amount = data["amount_status"].to_s != "Inactive"
-    show_subsidy = data["subsidy_status"].to_s != "Inactive"
+    # Shown to farmers only when ticked (saved as Active).
+    show_amount = data["amount_status"].to_s == "Active"
+    show_subsidy = data["subsidy_status"].to_s == "Active"
     {
       id: record.id,
       seed_crop: data["seed_crop"].to_s.strip,

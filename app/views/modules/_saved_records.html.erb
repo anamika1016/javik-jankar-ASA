@@ -52,7 +52,7 @@
                         <% photo_urls = module_upload_public_urls(record.data["product_photo_upload"]) %>
                         <td><%= photo_urls.any? ? link_to("View", photo_urls.first, target: "_blank", rel: "noopener", class: "table-action") : "-" %></td>
                       <% elsif @slug == "seed-product-master" && ["Amount Status", "Subsidy Status"].include?(field) %>
-                        <% shown = record.data[field.parameterize(separator: "_")].to_s != "Inactive" %>
+                        <% shown = record.data[field.parameterize(separator: "_")].to_s == "Active" %>
                         <td><span class="status-pill <%= shown ? "active" : "inactive" %>"><%= shown ? "Dikhega" : "Nahi dikhega" %></span></td>
                       <% elsif @slug == "seed-product-master" && field == "FPO" %>
                         <td><%= Array(record.data["fpo"]).compact_blank.join(", ").presence || "-" %></td>
