@@ -22,7 +22,8 @@ class FarmerTargetApi
   end
 
   def list
-    records = ModuleMirror.read_scope(@module_slug)
+    records = ModuleRecord
+      .where(module_slug: @module_slug)
       .order(created_at: :desc)
       .to_a
     records = records.select { |record| visible?(record) } if vrp_login_user?
@@ -34,7 +35,7 @@ class FarmerTargetApi
   end
 
   def find(id)
-    record = ModuleEntry.find_by(id: id, module_slug: @module_slug)
+    record = ModuleRecord.find_by(id: id, module_slug: @module_slug)
     return nil unless record && visible?(record)
 
     record
@@ -49,7 +50,7 @@ class FarmerTargetApi
     errors = validation_errors(data)
     return { success: false, errors: errors } if errors.any?
 
-    record = ModuleEntry.new(module_slug: @module_slug, data: data)
+    record = ModuleRecord.new(module_slug: @module_slug, data: data)
     if record.save
       { success: true, record: record }
     else
@@ -130,7 +131,7 @@ class FarmerTargetApi
         months: training_target_month_options,
         target_mappings: training_target_mappings,
         people_options: training_people_options,
-        training_methods: ["General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS"]
+        training_methods: ["Input Demo INM", "Input Demo PM", "FFS", "OPG Training"]
       }
     when *OTHER_TARGET_SLUGS
       {
@@ -967,9 +968,10 @@ class FarmerTargetApi
   end
 
   def active_month_master_months
-    return [] unless model_ready?(:ModuleEntry)
+    return [] unless model_ready?(:ModuleRecord)
 
-    (ModuleMirror.relation_for("month-master") || ModuleEntry.where(module_slug: "month-master"))
+    ModuleRecord
+      .where(module_slug: "month-master")
       .select { |record| active_module_record?(record) }
       .filter_map { |record| first_present_data(record, "month_name", "month", "name", "select_bill_month") }
   end
@@ -1287,9 +1289,9 @@ class FarmerTargetApi
 
   def staff_module_users
     return @staff_module_users if defined?(@staff_module_users)
-    return @staff_module_users = [] unless model_ready?(:ModuleEntry)
+    return @staff_module_users = [] unless model_ready?(:ModuleRecord)
 
-    @staff_module_users = ModuleEntry.where(module_slug: "new-user")
+    @staff_module_users = ModuleRecord.where(module_slug: "new-user")
       .select(:id, :data).order(updated_at: :desc).select { |record| active_module_record?(record) }
   end
 
@@ -1430,11 +1432,11 @@ class FarmerTargetApi
 
     if vrp.respond_to?(:created_by_type) && vrp.created_by_type.present?
       return User.find_by(id: vrp.created_by_id) if vrp.created_by_type == "User" && model_ready?(:User)
-      return ModuleEntry.find_by(id: vrp.created_by_id) if vrp.created_by_type == "ModuleRecord" && model_ready?(:ModuleEntry)
+      return ModuleRecord.find_by(id: vrp.created_by_id) if vrp.created_by_type == "ModuleRecord" && model_ready?(:ModuleRecord)
     end
 
     (model_ready?(:User) && User.find_by(id: vrp.created_by_id)) ||
-      (model_ready?(:ModuleEntry) && ModuleEntry.find_by(id: vrp.created_by_id))
+      (model_ready?(:ModuleRecord) && ModuleRecord.find_by(id: vrp.created_by_id))
   end
 
   def training_creator_name(creator)
@@ -1628,12 +1630,12 @@ class FarmerTargetApi
   end
 
   def other_target_completed_farmer_ids_for(target_mapping_id)
-    return [] unless model_ready?(:ModuleEntry)
+    return [] unless model_ready?(:ModuleRecord)
 
     target = model_ready?(:TargetMapping) ? TargetMapping.find_by(id: target_mapping_id) : nil
     mapped_farmer_ids = target ? target_farmer_ids(target) : nil
 
-    ModuleEntry
+    ModuleRecord
       .where(module_slug: @module_slug)
       .order(created_at: :asc)
       .reject { |record| @exclude_record_id.present? && record.id.to_s == @exclude_record_id.to_s }
@@ -1670,9 +1672,9 @@ class FarmerTargetApi
     return @training_completion_index if defined?(@training_completion_index)
 
     @training_completion_index = Hash.new { |hash, key| hash[key] = Set.new }
-    return @training_completion_index unless model_ready?(:ModuleEntry)
+    return @training_completion_index unless model_ready?(:ModuleRecord)
 
-    completion_scope = ModuleMirror.read_scope("training-form")
+    completion_scope = ModuleRecord.where(module_slug: "training-form")
     if defined?(@training_completion_months)
       completion_scope = completion_scope.where("LOWER(TRIM(COALESCE(data::jsonb ->> 'month', ''))) IN (?)", @training_completion_months)
     end
@@ -1781,9 +1783,9 @@ class FarmerTargetApi
   end
 
   def main_activity_settings
-    return {} unless model_ready?(:ModuleEntry)
+    return {} unless model_ready?(:ModuleRecord)
 
-    (ModuleMirror.relation_for("add-activity-group") || ModuleEntry.where(module_slug: "add-activity-group")).order(created_at: :desc)
+    ModuleRecord.where(module_slug: "add-activity-group").order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .each_with_object({}) do |record, settings|
         name = normalize_text(record.data["main_activity_name"].presence || record.data["activity_group_name"])
@@ -1797,9 +1799,9 @@ class FarmerTargetApi
   end
 
   def sub_activity_settings_for(activity_settings)
-    return {} unless model_ready?(:ModuleEntry)
+    return {} unless model_ready?(:ModuleRecord)
 
-    (ModuleMirror.relation_for("add-vrp-activity") || ModuleEntry.where(module_slug: "add-vrp-activity")).order(created_at: :desc)
+    ModuleRecord.where(module_slug: "add-vrp-activity").order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .each_with_object({}) do |record, settings|
         main_key = normalize_text(record.data["main_activity"].presence || record.data["activity_group"])
