@@ -29,8 +29,8 @@ class Api::V1::CropsControllerTest < ActionDispatch::IntegrationTest
     ModuleRecord.create!(module_slug: "crop-type-master", data: { "crop_season" => season, "crop_type_name" => name, "status" => status })
   end
 
-  def crop(season, type, name, status: "Active", grade: nil)
-    ModuleRecord.create!(module_slug: "crop-master", data: { "crop_season" => season, "crop_type" => type, "crop_name" => name, "grade" => grade, "status" => status }.compact)
+  def crop(season, type, name, status: "Active")
+    ModuleRecord.create!(module_slug: "crop-master", data: { "crop_season" => season, "crop_type" => type, "crop_name" => name, "status" => status })
   end
 
   def get_json(path, params = {})
@@ -68,16 +68,6 @@ class Api::V1::CropsControllerTest < ActionDispatch::IntegrationTest
     assert_equal [@kharif], crops.map { |row| row["crop_season"] }.uniq
 
     assert_equal %w[Moong], get_json("/api/v1/crops", crop_season: @kharif, crop_type_id: ModuleRecord.where(module_slug: "crop-type-master").find { |r| r.data["crop_type_name"] == "Pulse" && r.data["crop_season"] == @kharif }.id)["crops"].map { |row| row["name"] }
-  end
-
-  test "crops carry their grade, one row per grade" do
-    crop(@rabi, "Oilseed", "Mustard", grade: "B")
-    ModuleRecord.where(module_slug: "crop-master").find { |r| r.data["crop_name"] == "Mustard" && r.data["grade"].blank? }.tap { |r| r.update!(data: r.data.merge("grade" => "A")) }
-
-    crops = get_json("/api/v1/crops", crop_season: @rabi, crop_type: "Oilseed")["crops"]
-    assert_equal [%w[Mustard A], %w[Mustard B]], crops.map { |row| row.values_at("name", "grade") }.sort
-    tree_crops = get_json("/api/v1/crop-masters")["crop_seasons"].find { |row| row["name"] == @rabi }["crop_types"].first["crops"]
-    assert_equal %w[A B], tree_crops.map { |row| row["grade"] }.sort
   end
 
   test "crop-masters gives season, types and crops in one call" do

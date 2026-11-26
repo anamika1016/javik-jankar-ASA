@@ -744,7 +744,7 @@ class ModulesController < ApplicationController
       title: "Crop",
       group: "Crop",
       purpose: "",
-      fields: ["Crop Season", "Crop Type", "Crop Name", "Grade", "Status"]
+      fields: ["Crop Season", "Crop Type", "Crop Name", "Status"]
     },
     # Seed masters: Seed Crop -> its varieties.
     "seed-crop-master" => {
@@ -1521,12 +1521,6 @@ class ModulesController < ApplicationController
       module_slug: record_source_slug,
       data: normalized_module_data
     )
-
-    # Crop: "A, B, C" in Grade saves one crop row per grade.
-    if record_source_slug == "crop-master" && crop_grades(record.data).size > 1
-      create_crop_grades(record.data)
-      return
-    end
 
     data_errors = module_data_error_messages(record.data)
     if data_errors.any?
@@ -15373,8 +15367,7 @@ class ModulesController < ApplicationController
   CROP_MASTER_KEYS = {
     "crop-season-master" => { "crop_season_name" => "Crop Season Name" },
     "crop-type-master" => { "crop_season" => "Crop Season", "crop_type_name" => "Crop Type Name" },
-    # A crop is saved once per grade (Wheat A and Wheat B are two rows).
-    "crop-master" => { "crop_season" => "Crop Season", "crop_type" => "Crop Type", "crop_name" => "Crop Name", "grade" => "Grade" },
+    "crop-master" => { "crop_season" => "Crop Season", "crop_type" => "Crop Type", "crop_name" => "Crop Name" },
     "seed-crop-master" => { "seed_crop_name" => "Seed Crop Name" },
     "seed-variety-master" => { "seed_crop" => "Seed Crop", "seed_variety_name" => "Seed Variety Name" }
   }.freeze
@@ -15383,57 +15376,13 @@ class ModulesController < ApplicationController
     fields = CROP_MASTER_KEYS.fetch(record_source_slug)
     errors = missing_required_data_errors(data, fields)
     return errors if errors.any?
-    if record_source_slug == "crop-master" && crop_grades(data).size > 1
-      return ["Ek record mein ek hi Grade likhein (kai Grade ek saath sirf naye Crop par)."]
-    end
 
     normalize = ->(value) { value.to_s.strip.downcase }
     wanted = fields.keys.map { |key| normalize.(data[key]) }
     duplicate = active_module_records_scope(record_source_slug)
       .where.not(id: @record&.id)
       .any? { |row| fields.keys.map { |key| normalize.(row.data[key]) } == wanted }
-    label = record_source_slug == "crop-master" ? "#{data['crop_name'].to_s.squish} (Grade #{data['grade'].to_s.squish})" : data[fields.keys.last]
-    duplicate ? ["#{@module[:title]} \"#{label}\" pehle se saved hai."] : []
-  end
-
-  CROP_GRADE_SEPARATOR = /[,;\n]/
-
-  def crop_grades(data)
-    data["grade"].to_s.split(CROP_GRADE_SEPARATOR).map(&:squish).reject(&:blank?).uniq(&:downcase)
-  end
-
-  # New crop with several grades: one row per grade; a grade already saved for
-  # this crop is skipped and named in the message.
-  def create_crop_grades(data)
-    saved = []
-    skipped = []
-    first_error = nil
-    ModuleRecord.transaction do
-      crop_grades(data).each do |grade|
-        grade_data = data.merge("grade" => grade)
-        errors = crop_master_error_messages(grade_data)
-        if errors.any? { |message| message.include?("pehle se saved hai") }
-          skipped << grade
-        elsif errors.any?
-          first_error = errors.to_sentence
-          raise ActiveRecord::Rollback
-        else
-          ModuleRecord.create!(module_slug: record_source_slug, data: grade_data)
-          saved << grade
-        end
-      end
-    end
-
-    if first_error || saved.empty?
-      @records = module_records_required_for_show? ? module_records : []
-      flash.now[:alert] = first_error || "#{data['crop_name'].to_s.squish}: Grade #{skipped.join(', ')} pehle se saved hai."
-      render :show, status: :unprocessable_entity
-      return
-    end
-
-    notice = "#{@module[:title]} saved for Grade #{saved.join(', ')}."
-    notice += " Grade #{skipped.join(', ')} pehle se saved tha, chhod diya." if skipped.any?
-    redirect_to module_path(module_redirect_slug), notice: notice
+    duplicate ? ["#{@module[:title]} \"#{data[fields.keys.last]}\" pehle se saved hai."] : []
   end
 
   def seed_product_fpo_field?(field)

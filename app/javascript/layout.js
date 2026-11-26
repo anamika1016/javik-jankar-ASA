@@ -1754,56 +1754,6 @@ function initDeferredLayoutPage() {
     refreshVarieties();
   });
 
-  // New crop: one box per grade. "+ Add Grade" adds a box; on save the grades
-  // go together in the Grade field and the server saves one row per grade.
-  document.querySelectorAll("[data-crop-grades]").forEach((group) => {
-    if (group.dataset.cropGradesReady === "true") return;
-    group.dataset.cropGradesReady = "true";
-    const mainInput = group.querySelector("[data-crop-grade-input]");
-    const extra = group.querySelector("[data-crop-grade-extra]");
-    const addButton = group.querySelector("[data-add-crop-grade]");
-    const form = group.closest("form");
-    if (!mainInput || !extra || !addButton || !form) return;
-
-    const addBox = (value = "") => {
-      const row = document.createElement("span");
-      row.className = "crop-grade-row";
-      const input = document.createElement("input");
-      input.type = "text";
-      input.placeholder = "Enter Grade";
-      input.value = value;
-      input.setAttribute("data-crop-grade-more", "");
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.className = "crop-grade-remove";
-      remove.setAttribute("aria-label", "Remove grade");
-      remove.textContent = "×";
-      remove.addEventListener("click", () => row.remove());
-      row.append(input, remove);
-      extra.append(row);
-      return input;
-    };
-
-    // After a failed save the grades come back together: one box each again.
-    const saved = mainInput.value.split(/[,;\n]/).map((value) => value.trim()).filter(Boolean);
-    if (saved.length > 1) {
-      mainInput.value = saved[0];
-      saved.slice(1).forEach((value) => addBox(value));
-    }
-
-    addButton.addEventListener("click", (event) => {
-      event.preventDefault();
-      addBox().focus();
-    });
-
-    form.addEventListener("submit", () => {
-      const grades = [mainInput, ...extra.querySelectorAll("[data-crop-grade-more]")]
-        .map((input) => input.value.trim())
-        .filter(Boolean);
-      mainInput.value = grades.join(", ");
-    });
-  });
-
   // Crop form: the Crop Type list only shows types saved for the chosen season.
   document.querySelectorAll("[data-crop-form]").forEach((formShell) => {
     const seasonSelect = formShell.querySelector("[data-crop-season-select]");

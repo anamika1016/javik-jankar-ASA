@@ -12,7 +12,7 @@ class CropCatalogue
     @types = rows("crop-type-master") { |data| { name: data["crop_type_name"], crop_season: data["crop_season"] } }
       .select { |type| season_keys.include?(key(type[:crop_season])) }
     type_keys = @types.map { |type| [key(type[:crop_season]), key(type[:name])] }.to_set
-    @crops = rows("crop-master") { |data| { name: data["crop_name"], grade: data["grade"], crop_season: data["crop_season"], crop_type: data["crop_type"] } }
+    @crops = rows("crop-master") { |data| { name: data["crop_name"], crop_season: data["crop_season"], crop_type: data["crop_type"] } }
       .select { |crop| type_keys.include?([key(crop[:crop_season]), key(crop[:crop_type])]) }
   end
 
@@ -41,7 +41,7 @@ class CropCatalogue
   def tree
     @seasons.map do |season|
       season.merge(crop_types: types(crop_season: season[:name]).map do |type|
-        type.except(:crop_season).merge(crops: crops(crop_season: season[:name], crop_type: type[:name]).map { |crop| crop.slice(:id, :name, :grade) })
+        type.except(:crop_season).merge(crops: crops(crop_season: season[:name], crop_type: type[:name]).map { |crop| crop.slice(:id, :name) })
       end)
     end
   end
