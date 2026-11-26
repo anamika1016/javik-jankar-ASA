@@ -131,7 +131,7 @@ class FarmerTargetApi
         months: training_target_month_options,
         target_mappings: training_target_mappings,
         people_options: training_people_options,
-        training_methods: ["Input Demo INM", "Input Demo PM", "FFS", "OPG Training"]
+        training_methods: ["General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS"]
       }
     when *OTHER_TARGET_SLUGS
       {

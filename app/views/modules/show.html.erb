@@ -2384,7 +2384,10 @@
                   <td>
                     <input type="checkbox"
                       value="<%= edit_module_record_path(edit_slug, record) %>"
-                      data-module-row-select>
+                      data-module-row-select
+                      <% if @slug == "training-form-list" %>
+                        data-module-row-paths="<%= json_escape(group_records.map { |item| module_record_path("training-form", item) }.to_json) %>"
+                      <% end %>>
                     <% if @slug == "training-form-list" %>
                       <%= link_to "👁", edit_module_record_path("training-form", record), class: "table-action", title: "View Training Form", style: "margin-left:4px;text-decoration:none;" %>
                     <% end %>
