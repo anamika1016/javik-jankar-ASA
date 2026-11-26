@@ -2919,7 +2919,16 @@
               <% elsif other_target_form && field == "Achievement" %>
                 <input name="module_record[<%= field_key %>]" type="number" min="0" step="any" placeholder="Enter Achievement" value="<%= field_value %>" data-seed-achievement required>
               <% else %>
+                <% if @slug == "crop-master" && field == "Grade" && @record.blank? %>
+                  <%# New crop: one box per grade; "+ Add Grade" adds more (one row is saved per grade). %>
+                  <span class="crop-grade-group" data-crop-grades>
+                    <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter Grade" value="<%= field_value %>" data-crop-grade-input>
+                    <span class="crop-grade-extra" data-crop-grade-extra></span>
+                    <button type="button" class="btn btn-secondary crop-grade-add" data-add-crop-grade>+ Add Grade</button>
+                  </span>
+                <% else %>
                 <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= field_label %>" value="<%= field_value %>" <%= "readonly" if @slug == "training-form" && ["FCO Name", "Trainee Department", "Trainer Name", "Trainer Contact"].include?(field) && current_app_user&.dig("record_type").to_s == "Vrp" %> <%= "data-user-management-role-input" if @slug == "role-management" && field == "User Management Role" %> <%= required_attr %>>
+                <% end %>
               <% end %>
             </label>
             <% if @slug == "training-form" && field == "Photo Long Shot" %>

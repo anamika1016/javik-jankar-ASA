@@ -14576,3 +14576,15 @@ html[data-dashboard-switching] .turbo-progress-bar { display: none !important; }
   accent-color: var(--vrp-primary);
   cursor: pointer;
 }
+
+/* Crop: one box per grade on a new crop ("+ Add Grade"). */
+.module-form-grid .crop-grade-group { display: grid; gap: 8px; }
+.module-form-grid .crop-grade-extra { display: grid; gap: 8px; }
+.module-form-grid .crop-grade-extra:empty { display: none; }
+.module-form-grid .crop-grade-row { display: flex; gap: 8px; align-items: center; }
+.module-form-grid .crop-grade-row input { flex: 1 1 auto; }
+.module-form-grid .crop-grade-remove { flex: 0 0 42px; height: 42px; border: 1px solid #f1c7c7; border-radius: 8px; background: #fff5f5; color: #c0392b; font-size: 1.2rem; font-weight: 700; cursor: pointer; }
+.module-form-grid .crop-grade-remove:hover { background: #fde8e8; }
+.module-form-grid .crop-grade-add { justify-self: start; min-height: 36px; padding: 6px 14px; font-size: 0.82rem; }
+/* Extra grade boxes must not stretch the fields beside them. */
+[data-crop-form] .module-form-grid { align-items: start; }
