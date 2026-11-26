@@ -731,39 +731,39 @@ class ModulesController < ApplicationController
     "crop-season-master" => {
       title: "Crop Season",
       group: "Crop",
-      purpose: "Crop season (jaise Kharif, Rabi, Zaid) add karne ke liye.",
+      purpose: "",
       fields: ["Crop Season Name", "Status"]
     },
     "crop-type-master" => {
       title: "Crop Type",
       group: "Crop",
-      purpose: "Season select karke crop type add karne ke liye.",
+      purpose: "",
       fields: ["Crop Season", "Crop Type Name", "Status"]
     },
     "crop-master" => {
       title: "Crop",
       group: "Crop",
-      purpose: "Season aur crop type select karke crop name add karne ke liye.",
+      purpose: "",
       fields: ["Crop Season", "Crop Type", "Crop Name", "Status"]
     },
     # Seed masters: Seed Crop -> its varieties.
     "seed-crop-master" => {
       title: "Seed Crop Name",
       group: "Seed",
-      purpose: "Seed crop ka naam add karne ke liye.",
+      purpose: "",
       fields: ["Seed Crop Name", "Status"]
     },
     "seed-variety-master" => {
       title: "Seed Variety",
       group: "Seed",
-      purpose: "Seed crop select karke uski variety ka naam add karne ke liye.",
+      purpose: "",
       fields: ["Seed Crop", "Seed Variety Name", "Status"]
     },
     # Amount Status / Subsidy Status: Active = the farmer is shown that value.
     "seed-product-master" => {
       title: "Seed Product Name",
       group: "Seed",
-      purpose: "Seed crop, variety, brand, FPO aur supplier ke saath seed product add karne ke liye.",
+      purpose: "",
       fields: ["Seed Crop", "Seed Variety", "Seed Brand Name", "FPO", "Supplier/Company Name", "Description",
                "Product Photo Upload", "Amount", "Amount Status", "Subsidy", "Subsidy Status", "Status"]
     }

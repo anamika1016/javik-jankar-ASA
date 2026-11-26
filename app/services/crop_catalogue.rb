@@ -18,6 +18,17 @@ class CropCatalogue
 
   attr_reader :seasons
 
+  # Records of one master that the web dropdowns treat as active: not
+  # deleted, and status blank or Active.
+  def self.active_records(slug)
+    ModuleRecord.where(module_slug: slug)
+      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
+      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
+      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
+      .where("COALESCE(BTRIM(data::jsonb ->> 'status'), '') = '' OR LOWER(BTRIM(data::jsonb ->> 'status')) = 'active'")
+      .order(:id)
+  end
+
   def types(crop_season: nil)
     @types.select { |type| matches?(type[:crop_season], crop_season) }
   end
@@ -41,12 +52,7 @@ class CropCatalogue
   private
 
   def rows(slug)
-    ModuleRecord.where(module_slug: slug)
-      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
-      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
-      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
-      .where("COALESCE(BTRIM(data::jsonb ->> 'status'), '') = '' OR LOWER(BTRIM(data::jsonb ->> 'status')) = 'active'")
-      .order(:id)
+    self.class.active_records(slug)
       .filter_map do |record|
         row = yield(record.data).transform_values { |value| value.to_s.strip }
         { id: record.id }.merge(row) if row[:name].present?

@@ -2700,6 +2700,23 @@
                             else
                               resource_person_label(field)
                             end %>
+            <%# Seed Product: the show-to-farmer tick sits inside the Amount/Subsidy field. %>
+            <% next if @slug == "seed-product-master" && ["Amount Status", "Subsidy Status"].include?(field) %>
+            <% if @slug == "seed-product-master" && ["Amount", "Subsidy"].include?(field) %>
+              <% status_key = "#{field_key}_status" %>
+              <div class="seed-amount-field">
+                <label for="seed_product_<%= field_key %>"><%= field_label %> (Rs.)</label>
+                <div class="seed-amount-row">
+                  <input id="seed_product_<%= field_key %>" name="module_record[<%= field_key %>]" type="number" min="0" step="0.01" placeholder="Enter <%= field_label %>" value="<%= field_value %>">
+                  <input type="hidden" name="module_record[<%= status_key %>]" value="Inactive">
+                  <label class="seed-show-farmer-check" title="Tick = kisan ko <%= field_label %> dikhega">
+                    <input type="checkbox" name="module_record[<%= status_key %>]" value="Active" <%= "checked" unless @record&.data&.[](status_key).to_s == "Inactive" %>>
+                    Kisan ko dikhaye
+                  </label>
+                </div>
+              </div>
+              <% next %>
+            <% end %>
             <label>
               <span>
                 <%= field_label %>
@@ -2735,13 +2752,6 @@
                 <input name="module_record[<%= field_key %>]" type="number" min="1" step="1" placeholder="New Farmer Target" value="<%= field_value %>" data-add-farmer-target readonly required>
               <% elsif add_farmer_form && field == "No. Farmer" %>
                 <input name="module_record[<%= field_key %>]" type="number" min="1" step="1" placeholder="Enter No. Farmer" value="<%= field_value %>" data-add-farmer-no-farmer required>
-              <% elsif @slug == "seed-product-master" && ["Amount Status", "Subsidy Status"].include?(field) %>
-                <%# Saved as Active/Inactive like before; unticked sends the hidden Inactive. %>
-                <input type="hidden" name="module_record[<%= field_key %>]" value="Inactive">
-                <span class="seed-show-farmer-check">
-                  <input type="checkbox" name="module_record[<%= field_key %>]" value="Active" <%= "checked" unless field_value == "Inactive" %>>
-                  Kisan ko <%= field.sub(" Status", "") %> dikhaye
-                </span>
               <% elsif field.downcase.include?("status") %>
                 <select name="module_record[<%= field_key %>]">
                   <option <%= "selected" if field_value == "Active" %>>Active</option>
@@ -2874,16 +2884,14 @@
                 <% if jj_transfer_multi %>
                   <small class="field-hint" data-jj-transfer-hint>FCOC aur User Name select karein, phir Jeevika Jankar names select karein.</small>
                 <% end %>
-                <% if seed_fpo_multi %>
-                  <small class="field-hint"><%= options.any? ? "Ek se zyada FPO chun sakte hain." : "Koi FPO nahi mila (AFL Upload mein FPO Name)." %></small>
+                <% if seed_fpo_multi && options.blank? %>
+                  <small class="field-hint">Koi FPO nahi mila (AFL Upload mein FPO Name).</small>
                 <% end %>
                 <% if jj_transfer_multi && options.blank? %>
                   <small class="field-hint">Koi active registered Jeevika Jankar nahi mila.</small>
                 <% end %>
               <% elsif @slug == "seed-product-master" && field == "Description" %>
                 <textarea name="module_record[<%= field_key %>]" rows="3" placeholder="Enter Description"><%= field_value %></textarea>
-              <% elsif @slug == "seed-product-master" && ["Amount", "Subsidy"].include?(field) %>
-                <input name="module_record[<%= field_key %>]" type="number" min="0" step="0.01" placeholder="Enter <%= field_label %> (Rs.)" value="<%= field_value %>">
               <% elsif field.downcase.include?("remarks") || field.downcase.include?("address") %>
                 <textarea name="module_record[<%= field_key %>]" rows="3" placeholder="Enter <%= field %>" <%= required_attr %>><%= field_value %></textarea>
               <% elsif field.downcase.include?("password") %>

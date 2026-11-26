@@ -40,6 +40,12 @@ Rails.application.routes.draw do
       get "crop-types", to: "crops#types"
       get "crops", to: "crops#index"
       get "crop-masters", to: "crops#masters"
+      # Seed masters for the app.
+      get "seed-crops", to: "seeds#crops"
+      get "seed-varieties", to: "seeds#varieties"
+      get "seed-products", to: "seeds#products"
+      get "seed-products/:id", to: "seeds#product"
+      get "seed-masters", to: "seeds#masters"
       post "login/otp/send", to: "otp_logins#send_otp"
       post "login/otp/verify", to: "otp_logins#verify_otp"
 

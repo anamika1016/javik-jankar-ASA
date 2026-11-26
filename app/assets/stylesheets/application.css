@@ -14533,20 +14533,46 @@ html[data-dashboard-switching] .turbo-progress-bar { display: none !important; }
   font-weight: 700;
 }
 
-/* Seed Product: "show to farmer" tick box for Amount and Subsidy. */
-.seed-show-farmer-check {
+/* Seed Product: Amount/Subsidy with a small "show to farmer" tick on the right. */
+.module-form-grid .seed-amount-field {
+  display: grid;
+  gap: 7px;
+  align-content: start;
+  color: #2b373d;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+.module-form-grid .seed-amount-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.module-form-grid .seed-amount-row input[type="number"] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.module-form-grid label.seed-show-farmer-check {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
+  flex: 0 0 auto;
   min-height: 42px;
-  font-weight: 600;
+  padding: 0 12px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 8px;
+  background: var(--vrp-panel-soft);
   color: var(--vrp-text);
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
   cursor: pointer;
 }
-.seed-show-farmer-check input[type="checkbox"] {
-  width: 18px !important;
-  height: 18px;
+.module-form-grid label.seed-show-farmer-check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
   min-height: 0;
   margin: 0;
+  padding: 0;
   accent-color: var(--vrp-primary);
+  cursor: pointer;
 }

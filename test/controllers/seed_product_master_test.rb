@@ -34,7 +34,11 @@ class SeedProductMasterTest < ActionDispatch::IntegrationTest
     assert_select "input[name='module_record[supplier_company_name]'][type=text]"
     assert_select "textarea[name='module_record[description]']"
     assert_select "input[name='module_record[product_photo_upload]'][type=file][accept='image/*']"
-    assert_select "input[name='module_record[amount]'][type=number]"
+    assert_select ".seed-amount-row input[name='module_record[amount]'][type=number] ~ label.seed-show-farmer-check input[type=checkbox][name='module_record[amount_status]']"
+    assert_select ".seed-amount-row input[name='module_record[subsidy]'][type=number] ~ label.seed-show-farmer-check input[type=checkbox][name='module_record[subsidy_status]']"
+    form_labels = css_select("#module-form label > span").map { |span| span.text.squish }
+    assert_not_includes form_labels, "Amount Status"
+    assert_not_includes form_labels, "Subsidy Status"
     assert_select "input[name='module_record[subsidy]'][type=number]"
     %w[amount_status subsidy_status].each do |key|
       assert_select "input[type=hidden][name='module_record[#{key}]'][value=Inactive]"
@@ -59,7 +63,7 @@ class SeedProductMasterTest < ActionDispatch::IntegrationTest
     get module_path("seed-product-master")
     row = css_select("#module_saved_records tbody tr").map { |tr| tr.text.squish }.find { |text| text.include?("Mahabeej") }
     assert row, "saved product should be listed"
-    ["Soybean", "JS 9560", "#{@fpo_a}, #{@fpo_b}", "Seeds Co", "1200", "300.50", "View"].each { |text| assert_includes row, text }
+    ["Soybean", "JS 9560", "#{@fpo_a}, #{@fpo_b}", "Seeds Co", "1200", "300.50", "View", "Dikhega", "Nahi dikhega"].each { |text| assert_includes row, text }
   ensure
     FileUtils.rm_f(Rails.root.join("public", record.data["product_photo_upload"].to_s.delete_prefix("/"))) if record&.data&.[]("product_photo_upload").is_a?(String)
   end

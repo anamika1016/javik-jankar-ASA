@@ -34,8 +34,9 @@
           <table class="module-table" id="module_saved_records"<%= " data-paginated-table data-page-size=15" unless server_paginated_master_list %>>
             <thead>
               <tr>
+                <% seed_product_headers = { "Amount Status" => "Kisan ko Amount", "Subsidy Status" => "Kisan ko Subsidy", "Product Photo Upload" => "Photo" } %>
                 <% saved_record_fields.each do |field| %>
-                  <th><%= resource_person_label(field) %></th>
+                  <th><%= (@slug == "seed-product-master" && seed_product_headers[field]) || resource_person_label(field) %></th>
                 <% end %>
                 <th>Saved At</th>
                 <th>Status</th>
@@ -50,6 +51,9 @@
                       <% if @slug == "seed-product-master" && field == "Product Photo Upload" %>
                         <% photo_urls = module_upload_public_urls(record.data["product_photo_upload"]) %>
                         <td><%= photo_urls.any? ? link_to("View", photo_urls.first, target: "_blank", rel: "noopener", class: "table-action") : "-" %></td>
+                      <% elsif @slug == "seed-product-master" && ["Amount Status", "Subsidy Status"].include?(field) %>
+                        <% shown = record.data[field.parameterize(separator: "_")].to_s != "Inactive" %>
+                        <td><span class="status-pill <%= shown ? "active" : "inactive" %>"><%= shown ? "Dikhega" : "Nahi dikhega" %></span></td>
                       <% elsif @slug == "seed-product-master" && field == "FPO" %>
                         <td><%= Array(record.data["fpo"]).compact_blank.join(", ").presence || "-" %></td>
                       <% else %>
