@@ -2889,7 +2889,7 @@
                     <option value=""><%= options.any? ? "Select #{field_label}" : "No #{field_label} saved yet" %></option>
                   <% end %>
                   <% options.each do |option| %>
-                    <% reference_id = reference_options.find { |reference| normalized_dashboard_text(reference[:label]) == normalized_dashboard_text(option) }&.dig(:id) %>
+                    <% reference_id = reference_options.find { |reference| normalize_dashboard_text(reference[:label]) == normalize_dashboard_text(option) }&.dig(:id) %>
                     <% is_selected = if reference_options.any?
                       reference_ids.include?(reference_id.to_s) || (reference_ids.blank? && (jj_transfer_multi ? selected_jj.include?(option.to_s) : (seed_fpo_multi ? selected_fpos.include?(option.to_s) : option == field_value)))
                     else

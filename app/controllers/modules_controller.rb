@@ -16011,9 +16011,9 @@ class ModulesController < ApplicationController
   end
 
   def module_field_reference_id(field, label)
-    normalized = normalized_dashboard_text(label)
+    normalized = normalize_dashboard_text(label)
     module_field_reference_options(field).find do |option|
-      normalized_dashboard_text(option[:label]) == normalized
+      normalize_dashboard_text(option[:label]) == normalized
     end&.dig(:id)
   end
 
@@ -16032,7 +16032,7 @@ class ModulesController < ApplicationController
         ids.filter_map { |id| options.find { |option| option[:id].to_s == id.to_s } }
       else
         values.compact_blank.filter_map do |value|
-          options.find { |option| normalized_dashboard_text(option[:label]) == normalized_dashboard_text(value) }
+          options.find { |option| normalize_dashboard_text(option[:label]) == normalize_dashboard_text(value) }
         end
       end
       if selected.empty?
@@ -16065,7 +16065,7 @@ class ModulesController < ApplicationController
 
     user_option = module_field_reference_options("User Name").find do |option|
       option[:id].to_s == data["user_name_id"].to_s ||
-        normalized_dashboard_text(option[:label]) == normalized_dashboard_text(data["user_name"])
+        normalize_dashboard_text(option[:label]) == normalize_dashboard_text(data["user_name"])
     end
     data["user_name_id"] = user_option ? user_option[:id].to_i : nil
 
@@ -16075,7 +16075,7 @@ class ModulesController < ApplicationController
     if selected_ids.empty?
       selected_ids = Array(data["jeevika_jankar_names"]).filter_map do |label|
         module_field_reference_options("Jeevika Jankar Names").find do |option|
-          normalized_dashboard_text(option[:label]) == normalized_dashboard_text(label)
+          normalize_dashboard_text(option[:label]) == normalize_dashboard_text(label)
         end&.dig(:id)
       end
     end
