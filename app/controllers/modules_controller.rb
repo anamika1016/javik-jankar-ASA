@@ -42,7 +42,7 @@ class ModulesController < ApplicationController
   before_action :authorize_farmer_target_access
   before_action :authorize_jeevika_payment_module_access
 
-  helper_method :module_field_options, :module_select_field?, :static_field_options, :role_management_mappings,
+  helper_method :module_field_options, :module_field_reference_options, :module_select_field?, :static_field_options, :role_management_mappings,
                 :access_control_role_mappings, :access_control_field_options,
                 :location_hierarchy_mappings, :location_hierarchy_browser_json, :location_hierarchy_browser_attribute, :office_category_mappings, :training_target_mappings,
                 :training_activity_setup_mappings, :training_target_month_options, :user_hierarchy_cc_to_head_map,
@@ -886,7 +886,7 @@ class ModulesController < ApplicationController
     # 2. FCO Filter (depends on selected Activity)
     vrp_fcos = unfiltered_vrps.map(&:fcoc)
     target_fcos = unfiltered_targets.map(&:fco_name)
-    afl_fcos = ModuleEntry.where(module_slug: "add-farmer-form").pluck(Arel.sql("data::jsonb ->> 'fco_name'"))
+    afl_fcos = ModuleMirror.read_scope("add-farmer-form").pluck(Arel.sql("data::jsonb ->> 'fco_name'"))
     all_fcos = (vrp_fcos + target_fcos + afl_fcos).compact_blank.map { |f| f.to_s.strip }.reject(&:blank?)
     @filter_fcoc_options = all_fcos.group_by { |f| normalize_dashboard_text(f.sub(/\Afco\s*-\s*c\s+/i, "")) }.map { |_key, names| names.max_by(&:length) }.sort
     # A posted user only works in their own FCO, so the picker offers just that
@@ -1572,8 +1572,8 @@ class ModulesController < ApplicationController
 
     raw_data = module_record_params.to_h
     selected_bill_ids = Array(raw_data["selected_bill_ids"]).map(&:to_s).map(&:strip).reject(&:blank?).uniq
-    selected_records = ModuleEntry
-      .where(module_slug: "jeevika-jankar-bill-process", id: selected_bill_ids)
+    selected_records = ModuleMirror.read_scope("jeevika-jankar-bill-process")
+      .where(id: selected_bill_ids)
       .index_by { |record| record.id.to_s }
       .values_at(*selected_bill_ids)
       .compact
@@ -2350,7 +2350,7 @@ class ModulesController < ApplicationController
     village_record = if ModuleMirror.covers?("village-master")
       LgVillage.for_slug("village-master").find_by(id: village_id)
     else
-      ModuleEntry.find_by(module_slug: "village-master", id: village_id)
+      ModuleMirror.read_scope("village-master").find_by(id: village_id)
     end
     return "" unless village_record
 
@@ -2399,7 +2399,7 @@ class ModulesController < ApplicationController
     return [] unless model_ready?(:ModuleEntry)
 
     labels = vrp_bill_match_labels(vrp)
-    ModuleEntry.where(module_slug: "vrp-bill-add").order(created_at: :desc).select do |record|
+    ModuleMirror.read_scope("vrp-bill-add").order(created_at: :desc).select do |record|
       labels.include?(normalize_dashboard_text(record.data["select_vrp"]))
     end
   end
@@ -4670,7 +4670,7 @@ class ModulesController < ApplicationController
       ), achievement_detail AS (
         SELECT DISTINCT LOWER(TRIM((m.data::jsonb)->>'fco_name')) AS fco_key,
           TRIM((m.data::jsonb)->>'main_activity') AS main_activity_name, f.farmer_id
-        FROM (#{ModuleMirror.projection_scope.to_sql}) m
+        FROM (#{ModuleMirror.projection_scope(slugs: OTHER_TARGET_MODULE_SLUGS).to_sql}) m
         CROSS JOIN LATERAL (
           SELECT TRIM(value) AS farmer_id
           FROM jsonb_array_elements_text(COALESCE((m.data::jsonb)->'selected_farmer_ids', '[]'::jsonb))
@@ -5483,7 +5483,7 @@ class ModulesController < ApplicationController
     return unless model_ready?(:ModuleEntry)
 
     dashboard_read_cache.fetch(["dashboard/module-record-version", module_slug], expires_in: 1.minute) do
-      version = ModuleEntry.where(module_slug: module_slug).pick(Arel.sql("COUNT(*)"), Arel.sql("COALESCE(MAX(id), 0)"), Arel.sql("COALESCE(EXTRACT(EPOCH FROM MAX(updated_at))::bigint, 0)"))
+      version = ModuleMirror.read_scope(module_slug).pick(Arel.sql("COUNT(*)"), Arel.sql("COALESCE(MAX(id), 0)"), Arel.sql("COALESCE(EXTRACT(EPOCH FROM MAX(updated_at))::bigint, 0)"))
       version.join(":")
     end
   end
@@ -8618,7 +8618,7 @@ class ModulesController < ApplicationController
     return [] if current_labels.blank? && !admin_dashboard_user?
 
     rows = []
-    (ModuleMirror.relation_for("user-hierarchy-mapping") || ModuleEntry.where(module_slug: "user-hierarchy-mapping"))
+    ModuleMirror.relation_for("user-hierarchy-mapping")
       .order(updated_at: :desc)
       .select { |record| active_module_record?(record) }
       .each do |record|
@@ -9152,7 +9152,7 @@ class ModulesController < ApplicationController
     return [] unless model_ready?(:Vrp)
 
     @dashboard_approval_related_vrps ||= begin
-      history_by_vrp_id = ModuleEntry.where(module_slug: "vrp-approval-history")
+      history_by_vrp_id = ModuleMirror.read_scope("vrp-approval-history")
         .order(created_at: :asc)
         .to_a
         .group_by { |record| record.data["vrp_id"].to_s }
@@ -9335,8 +9335,7 @@ class ModulesController < ApplicationController
   def vrp_approval_history_for(vrp)
     return [] unless model_ready?(:ModuleEntry)
 
-    @dashboard_approval_history_by_vrp_id ||= ModuleEntry
-      .where(module_slug: "vrp-approval-history")
+    @dashboard_approval_history_by_vrp_id ||= ModuleMirror.read_scope("vrp-approval-history")
       .order(created_at: :asc)
       .to_a
       .group_by { |record| record.data["vrp_id"].to_s }
@@ -9436,7 +9435,7 @@ class ModulesController < ApplicationController
   def new_user_module_records
     return [] unless model_ready?(:ModuleEntry)
 
-    @new_user_module_records ||= ModuleEntry.where(module_slug: "new-user").to_a
+    @new_user_module_records ||= ModuleMirror.read_scope("new-user").to_a
   end
 
   def new_user_module_records_by_email
@@ -9458,7 +9457,7 @@ class ModulesController < ApplicationController
     key = id.to_s
     return @cached_module_record_find_by_id[key] if @cached_module_record_find_by_id.key?(key)
 
-    @cached_module_record_find_by_id[key] = ModuleEntry.find_by(id: id)
+    @cached_module_record_find_by_id[key] = ModuleMirror.find_by_id(id)
   end
 
   def preload_dashboard_vrp_identity_records!(vrps)
@@ -9519,7 +9518,7 @@ class ModulesController < ApplicationController
 
     @cached_module_record_find_by_id ||= {}
     creator_ids.each { |id| @cached_module_record_find_by_id[id] = nil }
-    ModuleEntry.where(id: creator_ids).find_each do |record|
+    ModuleMirror.records_by_id(creator_ids).each do |record|
       @cached_module_record_find_by_id[record.id.to_s] = record
     end
   end
@@ -10122,15 +10121,11 @@ class ModulesController < ApplicationController
 
   def active_module_records_scope(module_slug)
     ModuleMirror.read_scope(module_slug)
-      .merge(active_module_records_scope_for_all_modules)
+      .where(record_active: true)
   end
 
   def active_module_records_scope_for_all_modules
-    ModuleEntry
-      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
-      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
-      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
-      .where("COALESCE(BTRIM(data::jsonb ->> 'status'), '') = '' OR LOWER(BTRIM(data::jsonb ->> 'status')) = 'active'")
+    ModuleMirror.projection_scope(active_only: true)
   end
 
   def other_target_record_source?
@@ -10706,8 +10701,7 @@ class ModulesController < ApplicationController
       lg_directory_row_key(lg_directory_row_from_record(record, lg_directory_aliases_for_slug(record.module_slug)))
     end.to_set
 
-    ModuleEntry
-      .where(module_slug: lg_directory_allowed_slugs)
+    ModuleMirror.read_scope(lg_directory_allowed_slugs)
       .select do |record|
         row_keys.include?(lg_directory_row_key(lg_directory_row_from_record(record, lg_directory_aliases_for_slug(record.module_slug))))
       end
@@ -11026,7 +11020,7 @@ class ModulesController < ApplicationController
   def prepare_jeevika_jankar_bill_list
     return if params[:view_id].blank?
 
-    record = ModuleEntry.find_by(id: params[:view_id])
+    record = ModuleMirror.find_by_id(params[:view_id])
     # Both visibility/approval helpers and the detail template ask about this
     # one bill. Scope their history before either can initialize the index.
     @jeevika_bill_history_record_ids = record ? [record.id.to_s] : []
@@ -11341,7 +11335,7 @@ class ModulesController < ApplicationController
       ids &= Array(@jeevika_bill_visible_record_ids).map(&:to_s).reject(&:blank?)
       return if ids.empty?
     end
-    ModuleEntry.where(module_slug: "jeevika-jankar-bill-approval-history")
+    ModuleMirror.read_scope("jeevika-jankar-bill-approval-history")
       .where("data::jsonb ->> 'bill_id' IN (?)", ids).order(created_at: :asc, id: :asc).each do |history|
         @jeevika_payment_history_by_bill_id[history.data["bill_id"].to_s] << history
       end
@@ -12218,8 +12212,7 @@ class ModulesController < ApplicationController
 
   def jeevika_bill_approval_history_by_bill_id
     @jeevika_bill_approval_history_by_bill_id ||= begin
-      scope = ModuleEntry
-      .where(module_slug: "jeevika-jankar-bill-approval-history")
+      scope = ModuleMirror.read_scope("jeevika-jankar-bill-approval-history")
       .order(created_at: :asc, id: :asc)
       if defined?(@jeevika_bill_visible_record_ids)
         bill_ids = Array(@jeevika_bill_visible_record_ids).map(&:to_s).reject(&:blank?)
@@ -12449,7 +12442,7 @@ class ModulesController < ApplicationController
     # waiting for a TTL to lapse.
     stamp = [
       TargetMapping.maximum(:updated_at),
-      (ModuleEntry.where(module_slug: TARGET_RECORD_MODULE_SLUGS).maximum(:updated_at) if model_ready?(:ModuleEntry))
+      (ModuleMirror.read_scope(TARGET_RECORD_MODULE_SLUGS).maximum(:updated_at) if model_ready?(:ModuleEntry))
     ].compact.max
 
     cache_key = ["jj-achievement-keys", current_app_user&.dig("record_type"), current_app_user&.dig("id"), stamp.to_i]
@@ -12561,7 +12554,7 @@ class ModulesController < ApplicationController
     return @jeevika_jankar_transferred_vrps = [] if labels.blank?
 
     menu = current_sidebar_menu_title
-    ids = (ModuleMirror.relation_for("jeevika-jankar-transfer") || ModuleEntry.where(module_slug: "jeevika-jankar-transfer"))
+    ids = ModuleMirror.relation_for("jeevika-jankar-transfer")
       .select { |record| active_module_record?(record) }
       .select { |record| labels.include?(normalize_approver_label(record.data["user_name"])) }
       .select { |record| menu.blank? || record.data["sidebar_menu"].to_s.strip.casecmp(menu).zero? }
@@ -12795,7 +12788,7 @@ class ModulesController < ApplicationController
       return version
     end
 
-    version = ModuleEntry.where(module_slug: "jeevika-jankar-bill-process").pick(
+    version = ModuleMirror.read_scope("jeevika-jankar-bill-process").pick(
       Arel.sql("COUNT(*)"),
       Arel.sql("COALESCE(SUM((xmin::text)::bigint), 0)"),
       Arel.sql("COALESCE(MAX((xmin::text)::bigint), 0)")
@@ -13617,8 +13610,8 @@ class ModulesController < ApplicationController
     return @active_month_master_rows if defined?(@active_month_master_rows)
     return @active_month_master_rows = [] unless model_ready?(:ModuleEntry)
 
-    @active_month_master_rows = (ModuleMirror.relation_for("month-master") || ModuleEntry.where(module_slug: "month-master"))
-      .merge(active_module_records_scope_for_all_modules)
+    @active_month_master_rows = ModuleMirror.read_scope("month-master")
+      .where(record_active: true)
       .order(created_at: :desc)
       .to_a
   end
@@ -13646,7 +13639,7 @@ class ModulesController < ApplicationController
   def bill_activity_map
     return {} unless model_ready?(:ModuleEntry)
 
-    (ModuleMirror.relation_for("add-vrp-activity") || ModuleEntry.where(module_slug: "add-vrp-activity"))
+    ModuleMirror.relation_for("add-vrp-activity")
       .select { |record| active_module_record?(record) }
       .group_by { |record| first_present_data(record, "main_activity", "activity_group", "activity_group_name", "group_name").to_s }
       .transform_values do |records|
@@ -13662,8 +13655,7 @@ class ModulesController < ApplicationController
   def bill_tci_map
     return {} unless model_ready?(:ModuleEntry)
 
-    grouped = ModuleEntry
-      .where(module_slug: "task-completion-indicator")
+    grouped = ModuleMirror.read_scope("task-completion-indicator")
       .select { |record| active_module_record?(record) }
       .group_by { |record| first_present_data(record, "select_activity", "activity", "activity_name").to_s }
       .transform_values do |records|
@@ -13930,12 +13922,28 @@ class ModulesController < ApplicationController
     end
 
     if record_source_slug == "user-hierarchy-mapping"
+      level_1_ref = resolve_user_hierarchy_ref(data.delete("level_1_user_ref").presence || data["level_1_user"])
+      if level_1_ref
+        data["level_1_user"] = level_1_ref[:label]
+        data["level_1_user_id"] = level_1_ref[:id]
+        data["level_1_user_record_type"] = level_1_ref[:record_type]
+      else
+        data["level_1_user"] = ""
+        data["level_1_user_id"] = nil
+        data["level_1_user_record_type"] = nil
+      end
       level_2_mappings = normalize_user_hierarchy_mappings(data)
       level_2_users = level_2_mappings.filter_map { |mapping| mapping["level_2_user"].presence }.uniq
 
       data["level_2_mappings"] = level_2_mappings
       data["level_2_users"] = level_2_users
       data["level_2_user"] = level_2_users.join(", ")
+      data["level_2_user_ids"] = level_2_mappings.filter_map { |mapping| mapping["level_2_user_id"] }.uniq
+      data["level_2_user_record_types"] = level_2_mappings.filter_map { |mapping| mapping["level_2_user_record_type"] }.uniq
+      data["level_2_user_id"] = data["level_2_user_ids"].first
+      data["level_3_user_ids"] = level_2_mappings.flat_map { |mapping| Array(mapping["level_3_user_ids"]) }.uniq
+      data["level_3_user_record_types"] = level_2_mappings.flat_map { |mapping| Array(mapping["level_3_user_record_types"]) }.uniq
+      data["level_3_user_id"] = data["level_3_user_ids"].first
       data["level_3_users"] = []
       data["level_3_user"] = ""
       data["status"] = data["status"].presence || "Active"
@@ -13951,6 +13959,8 @@ class ModulesController < ApplicationController
     data = normalize_seed_distribution_target_data(data) if other_target_record_source?
     data = normalize_jeevika_jankar_bill_data(data) if record_source_slug == "jeevika-jankar-bill-process"
     data = normalize_seed_product_data(data) if record_source_slug == "seed-product-master"
+    normalize_field_source_references!(data)
+    normalize_jeevika_jankar_transfer_reference_ids!(data)
 
     data
   end
@@ -14712,17 +14722,41 @@ class ModulesController < ApplicationController
     data["cluster_coordinator_name"] = data["cluster_coordinator_name"].presence || data["internal_trainer_name_1"].presence
     data["agronomist_name"] = data["agronomist_name"].presence || data["internal_trainer_name_2"].presence
     data["main_activity_type"] = data["main_activity_type"].presence || "Training"
+    main_activity_options = module_field_reference_options("Main Activity")
+    main_activity_ids = Array(data["main_activity_ids"].presence || data["main_activity_id"]).map(&:to_s).reject(&:blank?)
     raw_main_activities = data["main_activity"].presence || data["training_topic"].presence
-    main_activities = Array(raw_main_activities).map(&:to_s).map(&:strip).reject(&:blank?).uniq
+    raw_main_values = Array(raw_main_activities).map(&:to_s).map(&:strip).reject(&:blank?)
+    main_activity_ids = raw_main_values if main_activity_ids.empty? && raw_main_values.any? { |value| main_activity_options.any? { |option| option[:id].to_s == value } }
+    main_activities = if main_activity_ids.any?
+      main_activity_options.filter_map { |option| option[:label] if main_activity_ids.include?(option[:id].to_s) }
+    else
+      raw_main_values
+    end.uniq
+    data["main_activity_ids"] = main_activity_ids.filter_map do |id|
+      option = main_activity_options.find { |candidate| candidate[:id].to_s == id }
+      option[:id].to_s.match?(/\A\d+\z/) ? option[:id].to_i : option[:id] if option
+    end.uniq
     data["main_activities"] = main_activities
     data["main_activity"] = main_activities.one? ? main_activities.first : main_activities
+    sub_activity_options = module_field_reference_options("Sub Activity")
+    sub_activity_ids = Array(data["sub_activity_ids"].presence || data["sub_activity_id"]).map(&:to_s).reject(&:blank?)
     raw_sub_activities = data["sub_activity"].presence || data["training_subject"].presence
     sub_activities = if raw_sub_activities.is_a?(Array)
       raw_sub_activities
     else
       raw_sub_activities.to_s.split(/,\s*(?=\d+\.\s*)/)
     end
-    sub_activities = sub_activities.map(&:to_s).map(&:strip).reject(&:blank?).uniq
+    raw_sub_values = sub_activities.map(&:to_s).map(&:strip).reject(&:blank?)
+    sub_activity_ids = raw_sub_values if sub_activity_ids.empty? && raw_sub_values.any? { |value| sub_activity_options.any? { |option| option[:id].to_s == value } }
+    sub_activities = if sub_activity_ids.any?
+      sub_activity_options.filter_map { |option| option[:label] if sub_activity_ids.include?(option[:id].to_s) }
+    else
+      raw_sub_values
+    end.uniq
+    data["sub_activity_ids"] = sub_activity_ids.filter_map do |id|
+      option = sub_activity_options.find { |candidate| candidate[:id].to_s == id }
+      option[:id].to_s.match?(/\A\d+\z/) ? option[:id].to_i : option[:id] if option
+    end.uniq
     data["sub_activities"] = sub_activities
     data["sub_activity"] = sub_activities.one? ? sub_activities.first : sub_activities
     data["training_topic"] = main_activities.join(", ") if main_activities.present?
@@ -15054,26 +15088,74 @@ class ModulesController < ApplicationController
       mapping = mapping.to_h if mapping.respond_to?(:to_h)
       next unless mapping.is_a?(Hash)
 
-      users = collapsed_hierarchy_users(mapping["level_2_user"], mapping["level_3_users"])
-      next if users.blank?
+      raw_ref = mapping.delete("level_2_user_ref").presence || mapping["level_2_user"]
+      ref = resolve_user_hierarchy_ref(raw_ref)
+      next unless ref
 
-      users.map do |level_2_user|
-        {
-          "level_2_user" => level_2_user,
-          "level_3_users" => []
-        }
-      end
+      [{
+        "level_2_user" => ref[:label],
+        "level_2_user_id" => ref[:id],
+        "level_2_user_record_type" => ref[:record_type],
+        "level_3_users" => [],
+        "level_3_user_ids" => [],
+        "level_3_user_record_types" => []
+      }]
     end
     mappings.flatten!
 
     return mappings if mappings.any?
 
-    collapsed_hierarchy_users(data["level_2_users"], data["level_3_users"]).map do |level_2_user|
+    collapsed_hierarchy_users(data["level_2_users"], data["level_3_users"]).filter_map do |level_2_user|
+      ref = resolve_user_hierarchy_ref(level_2_user)
+      next unless ref
+
       {
-        "level_2_user" => level_2_user,
-        "level_3_users" => []
+        "level_2_user" => ref[:label],
+        "level_2_user_id" => ref[:id],
+        "level_2_user_record_type" => ref[:record_type],
+        "level_3_users" => [],
+        "level_3_user_ids" => [],
+        "level_3_user_record_types" => []
       }
     end
+  end
+
+  def user_hierarchy_user_options
+    @user_hierarchy_user_options ||= begin
+      options = []
+      if model_ready?(:User)
+        options = User.select(:id, :first_name, :last_name, :user_name, :role)
+          .order(created_at: :desc).filter_map do |user|
+          name = user.full_name.presence || user.user_name.presence
+          next if name.blank?
+
+          label = user.role.present? ? "#{name} (#{user.role})" : name
+          { value: "User:#{user.id}", label: label, id: user.id, record_type: "User" }
+        end
+      end
+      if options.empty? && model_ready?(:ModuleEntry)
+        options = active_module_records_scope("new-user").order(created_at: :desc).filter_map do |record|
+          data = record.data
+          name = [data["first_name"], data["last_name"]].compact_blank.join(" ").presence || data["user_name"].presence
+          next if name.blank?
+
+          label = data["role"].present? ? "#{name} (#{data['role']})" : name
+          { value: "ModuleRecord:#{record.id}", label: label, id: record.id, record_type: "ModuleRecord" }
+        end
+      end
+      options.uniq { |option| [option[:record_type], option[:id]] }
+    end
+  end
+
+  def resolve_user_hierarchy_ref(value)
+    token = value.to_s
+    options = user_hierarchy_user_options
+    options.find { |option| option[:value] == token } ||
+      options.find { |option| normalized_user_hierarchy_label(option[:label]) == normalized_user_hierarchy_label(token) }
+  end
+
+  def normalized_user_hierarchy_label(value)
+    value.to_s.sub(/\s*\([^)]*\)\s*\z/, "").squish.downcase
   end
 
   def duplicate_access_control_record?(data, except_id: nil)
@@ -15089,7 +15171,7 @@ class ModulesController < ApplicationController
     vrp_type = normalized_access_value(data["jeevika_jankar_type"].presence || data["vrp_type"].presence || data["select_vrp_type"])
     return false if stakeholder.blank?
 
-    (ModuleMirror.relation_for("access-control") || ModuleEntry.where(module_slug: "access-control"))
+    ModuleMirror.relation_for("access-control")
       .where.not(id: except_id)
       .any? do |record|
         normalized_access_value(record.data["stakeholder_name"].presence || record.data["stakeholder"]) == stakeholder &&
@@ -15140,7 +15222,7 @@ class ModulesController < ApplicationController
   def sync_legacy_user_stakeholder_name(previous_name, next_name)
     return unless model_ready?(:ModuleEntry)
 
-    ModuleEntry.where(module_slug: "new-user").find_each do |user_record|
+    ModuleMirror.read_scope("new-user").find_each do |user_record|
       next unless user_record.data["stakeholder"].to_s.strip == previous_name
 
       user_record.update(data: user_record.data.merge("stakeholder" => next_name))
@@ -15257,8 +15339,7 @@ class ModulesController < ApplicationController
     return [] unless record
 
     data = record.data
-    @approval_channel_records ||= ModuleEntry
-      .where(module_slug: "approval-master")
+    @approval_channel_records ||= ModuleMirror.read_scope("approval-master")
       .order(created_at: :asc)
       .to_a
     @approval_channel_records.select { |approval_record| same_approval_channel?(approval_record.data, data) }
@@ -15618,8 +15699,7 @@ class ModulesController < ApplicationController
       errors << "Observation Parameter #{missing_observations.join(", ")} ke liye rating select karein."
     end
 
-    duplicate = ModuleEntry
-      .where(module_slug: "jeevika-jankar-bill-process")
+    duplicate = ModuleMirror.read_scope("jeevika-jankar-bill-process")
       .detect do |record|
         jeevika_jankar_bill_blocks_duplicate?(record) &&
           normalize_dashboard_text(record.data["select_vrp"]) == normalize_dashboard_text(data["select_vrp"]) &&
@@ -15818,7 +15898,7 @@ class ModulesController < ApplicationController
 
   def transfer_legacy_user_data
     @transfer_legacy_user_data ||= if model_ready?(:ModuleEntry)
-      ModuleEntry.where(module_slug: "new-user").order(updated_at: :desc).each_with_object({}) do |record, result|
+      ModuleMirror.read_scope("new-user").order(updated_at: :desc).each_with_object({}) do |record, result|
         result[record.data["user_name"].to_s] ||= record.data if active_module_record?(record)
       end
     else
@@ -15879,6 +15959,127 @@ class ModulesController < ApplicationController
     end
 
     generic_field_options(field)
+  end
+
+  def module_field_reference_options(field)
+    @module_field_reference_options ||= {}
+    return @module_field_reference_options[field.to_s] if @module_field_reference_options.key?(field.to_s)
+
+    if jeevika_jankar_transfer_field?(field)
+      options = case field
+      when "User Name"
+        user_hierarchy_user_options
+      when "Jeevika Jankar Names"
+        transferable_jeevika_jankar_vrps.filter_map do |vrp|
+          label = jeevika_jankar_transfer_label(vrp)
+          { id: vrp.id.to_s, label: label, record_type: "Vrp" } if label.present?
+        end
+      else
+        []
+      end
+      return @module_field_reference_options[field.to_s] = options
+    end
+
+    source = field_sources[field]
+    return @module_field_reference_options[field.to_s] = [] unless source
+    return @module_field_reference_options[field.to_s] = [] if source[:module] == (@slug || current_slug)
+    if source[:module] == "new-user" && source[:field] == "approver_name_with_role"
+      return @module_field_reference_options[field.to_s] = user_hierarchy_user_options.map do |option|
+        { id: option[:id].to_s, label: option[:label], record_type: option[:record_type] }
+      end
+    end
+
+    candidates = module_reference_source_keys(source[:module], source[:field])
+    @module_field_reference_options[field.to_s] = ModuleMirror.rows_for([source[:module]]).filter_map do |record|
+      label = candidates.filter_map { |key| record.data[key].presence }.first
+      next if label.blank?
+
+      { id: record.id.to_s, label: label.to_s, record_type: "ModuleRecord" }
+    end.uniq { |option| option[:id] }
+  end
+
+  def module_reference_source_keys(module_slug, field_key)
+    keys = [field_key]
+    keys << "role_name" if module_slug == "role-management" && field_key == "role"
+    keys << "activity_group_name" if module_slug == "add-activity-group" && field_key == "main_activity_name"
+    keys << "vrp_activity_name" if module_slug == "add-vrp-activity" && field_key == "activity_name"
+    keys.concat(%w[activity_name vrp_activity_name]) if module_slug == "add-vrp-activity" && field_key == "sub_activity_name"
+    keys << "category_name" if module_slug == "office-category-add" && field_key == "office_name"
+    keys << "vrp_type_name" if module_slug == "add-vrp-type" && field_key == "jeevika_jankar_type_name"
+    keys << "jeevika_jankar_type_name" if module_slug == "add-vrp-type" && field_key == "vrp_type_name"
+    keys.uniq
+  end
+
+  def module_field_reference_id(field, label)
+    normalized = normalized_dashboard_text(label)
+    module_field_reference_options(field).find do |option|
+      normalized_dashboard_text(option[:label]) == normalized
+    end&.dig(:id)
+  end
+
+  def normalize_field_source_references!(data)
+    field_sources.each do |field, source|
+      next if source[:module] == (@slug || current_slug)
+
+      key = field.parameterize(separator: "_")
+      raw_id = data["#{key}_id"]
+      raw_ids = data["#{key}_ids"]
+      raw_value = data[key]
+      values = raw_value.is_a?(Array) ? raw_value : [raw_value]
+      ids = raw_ids.present? ? Array(raw_ids) : Array(raw_id)
+      options = module_field_reference_options(field)
+      selected = if ids.any?(&:present?)
+        ids.filter_map { |id| options.find { |option| option[:id].to_s == id.to_s } }
+      else
+        values.compact_blank.filter_map do |value|
+          options.find { |option| normalized_dashboard_text(option[:label]) == normalized_dashboard_text(value) }
+        end
+      end
+      if selected.empty?
+        if data.key?("#{key}_id") || data.key?("#{key}_ids")
+          if raw_value.is_a?(Array) || raw_ids.present?
+            data["#{key}_ids"] = []
+            data["#{key}_id"] = nil
+          else
+            data["#{key}_id"] = nil
+          end
+        end
+        next
+      end
+
+      selected_ids = selected.map { |option| option[:id].to_s.match?(/\A\d+\z/) ? option[:id].to_i : option[:id].to_s }
+      if raw_value.is_a?(Array) || raw_ids.present?
+        data["#{key}_ids"] = selected_ids
+        data["#{key}_id"] = selected_ids.first
+      else
+        data["#{key}_id"] = selected_ids.first
+      end
+      record_types = selected.map { |option| option[:record_type] }.compact.uniq
+      data["#{key}_record_type"] = raw_value.is_a?(Array) || raw_ids.present? ? selected.map { |option| option[:record_type] } : record_types.first if record_types.any?
+      data[key] = raw_value.is_a?(Array) ? selected.map { |option| option[:label] } : selected.first[:label]
+    end
+  end
+
+  def normalize_jeevika_jankar_transfer_reference_ids!(data)
+    return unless record_source_slug == "jeevika-jankar-transfer"
+
+    user_option = module_field_reference_options("User Name").find do |option|
+      option[:id].to_s == data["user_name_id"].to_s ||
+        normalized_dashboard_text(option[:label]) == normalized_dashboard_text(data["user_name"])
+    end
+    data["user_name_id"] = user_option ? user_option[:id].to_i : nil
+
+    selected_ids = Array(data["jeevika_jankar_names_ids"]).filter_map do |id|
+      module_field_reference_options("Jeevika Jankar Names").find { |option| option[:id].to_s == id.to_s }&.dig(:id)
+    end
+    if selected_ids.empty?
+      selected_ids = Array(data["jeevika_jankar_names"]).filter_map do |label|
+        module_field_reference_options("Jeevika Jankar Names").find do |option|
+          normalized_dashboard_text(option[:label]) == normalized_dashboard_text(label)
+        end&.dig(:id)
+      end
+    end
+    data["jeevika_jankar_names_ids"] = selected_ids.map(&:to_i).uniq
   end
 
   def training_target_field?(field)
@@ -16093,8 +16294,7 @@ class ModulesController < ApplicationController
   def training_activity_mappings
     return [] unless model_ready?(:ModuleEntry)
 
-    ModuleEntry
-      .where(module_slug: "training-topic-mapping")
+    ModuleMirror.read_scope("training-topic-mapping")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .map do |record|
@@ -16756,7 +16956,7 @@ class ModulesController < ApplicationController
   def role_management_mappings
     return [] unless model_ready?(:ModuleEntry)
 
-    stakeholder_role_mappings = (ModuleMirror.relation_for("stakeholder-role") || ModuleEntry.where(module_slug: "stakeholder-role"))
+    stakeholder_role_mappings = ModuleMirror.relation_for("stakeholder-role")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .flat_map do |record|
@@ -16784,7 +16984,7 @@ class ModulesController < ApplicationController
         end
       end
 
-    role_mappings = (ModuleMirror.relation_for("role-name") || ModuleEntry.where(module_slug: "role-name"))
+    role_mappings = ModuleMirror.relation_for("role-name")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .flat_map do |record|
@@ -16804,8 +17004,7 @@ class ModulesController < ApplicationController
         end
       end
 
-    user_management_role_mappings = ModuleEntry
-      .where(module_slug: "user-management-role")
+    user_management_role_mappings = ModuleMirror.read_scope("user-management-role")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .flat_map do |record|
@@ -16824,8 +17023,7 @@ class ModulesController < ApplicationController
         end
       end
 
-    person_type_mappings = ModuleEntry
-      .where(module_slug: "person-type")
+    person_type_mappings = ModuleMirror.read_scope("person-type")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .flat_map do |record|
@@ -17135,7 +17333,7 @@ class ModulesController < ApplicationController
     version = ModuleRecordReadVersion.read(slugs: LOCATION_MODULE_SLUGS)
     return version if version
 
-    version_rows = ModuleEntry.where(module_slug: LOCATION_MODULE_SLUGS)
+    version_rows = ModuleMirror.read_scope(LOCATION_MODULE_SLUGS)
       .group(:module_slug).order(:module_slug)
       .pluck(
         :module_slug,
@@ -17171,7 +17369,7 @@ class ModulesController < ApplicationController
         )
 
         ModuleMirror.read_scope(normalized_slugs)
-          .merge(active_module_records_scope_for_all_modules)
+          .where(catalogue_active: true)
           .order(created_at: :desc)
           .pluck(:module_slug, :id, data_projection)
           .map { |slug, id, data| [slug, id, data].freeze }
@@ -17268,8 +17466,8 @@ class ModulesController < ApplicationController
 
   def active_records_for_location(module_slug)
     @active_records_for_location ||= {}
-    @active_records_for_location[module_slug] ||= ModuleEntry
-      .where(module_slug: module_slug)
+    @active_records_for_location[module_slug] ||= ModuleMirror.read_scope(module_slug)
+      .where(catalogue_active: true)
       .order(created_at: :desc)
       .pluck(:id, :data)
       .map { |id, data| LocationRecord.new(id, data) }
@@ -17612,7 +17810,7 @@ class ModulesController < ApplicationController
       "#{key.delete_prefix('select_')}_name"
     ].uniq
 
-    scope = ModuleMirror.projection_scope(active_only: true).merge(active_module_records_scope_for_all_modules)
+    scope = ModuleMirror.projection_scope(active_only: true)
       .where.not(module_slug: @slug || current_slug)
     @generic_field_options_cache[cache_key] = projected_module_field_values(scope, candidate_keys)
   end

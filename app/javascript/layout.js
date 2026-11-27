@@ -718,6 +718,32 @@ document.addEventListener("turbo:click", () => {
 function initDeferredLayoutPage() {
   initClipboardActions();
 
+  document.querySelectorAll("[data-module-reference-select]").forEach((select) => {
+    if (select.dataset.moduleReferenceBound === "true") return;
+    select.dataset.moduleReferenceBound = "true";
+    const key = select.dataset.referenceKey;
+    const holder = Array.from(select.parentElement.querySelectorAll("[data-module-reference-id-inputs]"))
+      .find((element) => element.dataset.moduleReferenceIdInputs === key);
+    if (!holder || !key) return;
+
+    const syncReferenceIds = () => {
+      holder.replaceChildren();
+      const selected = Array.from(select.selectedOptions).filter((option) => option.dataset.referenceId);
+      const multiple = holder.dataset.referenceMultiple === "true";
+      const values = selected.length ? selected : [{ dataset: { referenceId: "" } }];
+      values.forEach((option) => {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = multiple ? `module_record[${key}_ids][]` : `module_record[${key}_id]`;
+        input.value = option.dataset.referenceId;
+        holder.appendChild(input);
+      });
+    };
+
+    select.addEventListener("change", syncReferenceIds);
+    syncReferenceIds();
+  });
+
   // Card detail popup: a small trigger box opens that card's detail inside a modal dialog.
   const cardPopup = document.querySelector("[data-card-popup]");
   if (cardPopup && cardPopup.dataset.cardPopupBound !== "true") {
@@ -6293,7 +6319,7 @@ function initDeferredLayoutPage() {
       const userCell = document.createElement("div");
       userCell.className = "approval-level-cell";
       userCell.dataset.userRow = String(rowIndex);
-      userCell.appendChild(buildUserSelect(`module_record[level_2_mappings][${rowIndex}][level_2_user]`, "Select Subordinates"));
+      userCell.appendChild(buildUserSelect(`module_record[level_2_mappings][${rowIndex}][level_2_user_ref]`, "Select Subordinates"));
 
       const actionCell = document.createElement("div");
       actionCell.className = "approval-level-cell";

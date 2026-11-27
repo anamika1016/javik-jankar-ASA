@@ -621,7 +621,7 @@
     <% form_url = @record.present? ? module_record_path(@slug, @record) : records_module_path(@slug) %>
     <% form_method = @record.present? ? :patch : :post %>
     <% stakeholder_options = module_field_options("Stakeholder Category") %>
-    <% user_options = module_field_options("Level 1 User") %>
+    <% user_options = user_hierarchy_user_options %>
     <%
       collapse_hierarchy_users = lambda do |*values|
         values.flatten.flat_map do |value|
@@ -633,16 +633,16 @@
       end
     %>
     <% selected_stakeholder = @record&.data&.[]("stakeholder_category").to_s %>
-    <% selected_level_1 = @record&.data&.[]("level_1_user").to_s %>
+    <% selected_level_1 = user_options.find { |option| option[:id].to_s == @record&.data&.[]("level_1_user_id").to_s && option[:record_type] == (@record&.data&.[]("level_1_user_record_type").presence || "User") }&.dig(:value) || resolve_user_hierarchy_ref(@record&.data&.[]("level_1_user"))&.dig(:value) %>
     <% raw_level_2_mappings = @record&.data&.[]("level_2_mappings") %>
     <% raw_level_2_mappings = raw_level_2_mappings.values if raw_level_2_mappings.is_a?(Hash) %>
-    <% selected_level_2_users = Array(raw_level_2_mappings).flat_map do |mapping| %>
+    <% selected_level_2_users = Array(raw_level_2_mappings).filter_map do |mapping| %>
       <% next unless mapping.respond_to?(:[]) %>
-      <% collapse_hierarchy_users.call(mapping["level_2_user"], mapping["level_3_users"]) %>
+      <% option = user_options.find { |item| item[:id].to_s == mapping["level_2_user_id"].to_s && item[:record_type] == (mapping["level_2_user_record_type"].presence || "User") } || resolve_user_hierarchy_ref(mapping["level_2_user"]) %>
+      <% option&.dig(:value) %>
     <% end %>
-    <% selected_level_2_users = selected_level_2_users.compact_blank.uniq %>
     <% if selected_level_2_users.blank? %>
-      <% selected_level_2_users = collapse_hierarchy_users.call(@record&.data&.[]("level_2_users").presence || @record&.data&.[]("level_2_user"), @record&.data&.[]("level_3_users").presence || @record&.data&.[]("level_3_user")) %>
+      <% selected_level_2_users = collapse_hierarchy_users.call(@record&.data&.[]("level_2_users").presence || @record&.data&.[]("level_2_user"), @record&.data&.[]("level_3_users").presence || @record&.data&.[]("level_3_user")).filter_map { |label| resolve_user_hierarchy_ref(label)&.dig(:value) } %>
     <% end %>
     <% selected_level_2_users = [""] if selected_level_2_users.blank? %>
     <div class="module-grid">
@@ -664,10 +664,10 @@
 
             <label>
               <span>Head</span>
-              <select name="module_record[level_1_user]">
+              <select name="module_record[level_1_user_ref]">
                 <option value=""><%= user_options.any? ? "Select Head" : "No user saved yet" %></option>
                 <% user_options.each do |option| %>
-                  <option value="<%= option %>" <%= "selected" if option == selected_level_1 %>><%= option == "FFS" ? "Exposer" : option %></option>
+                  <option value="<%= option[:value] %>" <%= "selected" if option[:value] == selected_level_1 %>><%= option[:label] %></option>
                 <% end %>
               </select>
             </label>
@@ -699,10 +699,10 @@
                   <small>User <%= row_number %></small>
                 </div>
                 <div class="approval-level-cell" data-user-row="<%= row_number %>">
-                  <select name="module_record[level_2_mappings][<%= row_number %>][level_2_user]">
+                  <select name="module_record[level_2_mappings][<%= row_number %>][level_2_user_ref]">
                     <option value=""><%= user_options.any? ? "Select Subordinates" : "No user saved yet" %></option>
                     <% user_options.each do |option| %>
-                      <option value="<%= option %>" <%= "selected" if option == selected_level_2_user %>><%= option == "FFS" ? "Exposer" : option %></option>
+                      <option value="<%= option[:value] %>" <%= "selected" if option[:value] == selected_level_2_user %>><%= option[:label] %></option>
                     <% end %>
                   </select>
                 </div>
@@ -2801,6 +2801,9 @@
                 <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>">
               <% elsif module_select_field?(field) %>
                 <% options = (module_field_options(field) + static_field_options(field)).compact_blank.uniq %>
+                <% reference_options = module_field_reference_options(field) %>
+                <% reference_ids = Array(@record&.data&.[]("#{field_key}_id")).compact_blank.map(&:to_s) %>
+                <% reference_ids += Array(@record&.data&.[]("#{field_key}_ids")).compact_blank.map(&:to_s) %>
                 <% options << field_value if field_value.present? && !options.include?(field_value) %>
                 <% role_dependency_attr =
                   case field
@@ -2880,16 +2883,25 @@
                 <% transfer_field = @slug == "jeevika-jankar-transfer" && ["User Name", "Jeevika Jankar Names"].include?(field) %>
                 <% transfer_office_keys = transfer_field ? jeevika_jankar_transfer_office_keys(field) : {} %>
                 <% transfer_hook = (" data-jj-transfer-fcoc" if @slug == "jeevika-jankar-transfer" && field == "FCOC") || (" data-jj-transfer-user" if transfer_field && field == "User Name") || (" data-jj-transfer-jj" if jj_transfer_multi) %>
-                <select name="module_record[<%= field_key %>]<%= "[]" if jj_transfer_multi || seed_fpo_multi || (@slug == "training-form" && ["Main Activity", "Sub Activity"].include?(field)) %>" <%= role_dependency_attr&.html_safe %> <%= location_dependency_attr&.html_safe %> <%= training_target_attr&.html_safe %> <%= seed_target_attr&.html_safe %> <%= parent_office_dependency_attr&.html_safe %> <%= crop_dependency_attr&.html_safe %> <%= required_attr %> <%= transfer_hook&.html_safe %> <%= 'multiple data-chip-multiselect data-placeholder="Select Jeevika Jankar"'.html_safe if jj_transfer_multi %> <%= 'multiple data-chip-multiselect data-placeholder="Select FPO"'.html_safe if seed_fpo_multi %>>
+                <% reference_multi = jj_transfer_multi || seed_fpo_multi || (@slug == "training-form" && ["Main Activity", "Sub Activity"].include?(field)) %>
+                <select name="module_record[<%= field_key %>]<%= "[]" if reference_multi %>" <%= "data-module-reference-select data-reference-key=#{field_key}" if reference_options.any? %> <%= role_dependency_attr&.html_safe %> <%= location_dependency_attr&.html_safe %> <%= training_target_attr&.html_safe %> <%= seed_target_attr&.html_safe %> <%= parent_office_dependency_attr&.html_safe %> <%= crop_dependency_attr&.html_safe %> <%= required_attr %> <%= transfer_hook&.html_safe %> <%= 'multiple data-chip-multiselect data-placeholder="Select Jeevika Jankar"'.html_safe if jj_transfer_multi %> <%= 'multiple data-chip-multiselect data-placeholder="Select FPO"'.html_safe if seed_fpo_multi %>>
                   <% unless jj_transfer_multi || seed_fpo_multi %>
                     <option value=""><%= options.any? ? "Select #{field_label}" : "No #{field_label} saved yet" %></option>
                   <% end %>
                   <% options.each do |option| %>
-                    <% is_selected = jj_transfer_multi ? selected_jj.include?(option.to_s) : (seed_fpo_multi ? selected_fpos.include?(option.to_s) : option == field_value) %>
+                    <% reference_id = reference_options.find { |reference| normalized_dashboard_text(reference[:label]) == normalized_dashboard_text(option) }&.dig(:id) %>
+                    <% is_selected = if reference_options.any?
+                      reference_ids.include?(reference_id.to_s) || (reference_ids.blank? && (jj_transfer_multi ? selected_jj.include?(option.to_s) : (seed_fpo_multi ? selected_fpos.include?(option.to_s) : option == field_value)))
+                    else
+                      jj_transfer_multi ? selected_jj.include?(option.to_s) : (seed_fpo_multi ? selected_fpos.include?(option.to_s) : option == field_value)
+                    end %>
                     <% option_text = jj_transfer_multi ? jeevika_jankar_transfer_display(option) : (option == "FFS" ? "Exposer" : option) %>
-                    <option value="<%= option %>" <%= "selected" if is_selected %> <%= "data-office=\"#{ERB::Util.html_escape(transfer_office_keys[option])}\"".html_safe if transfer_office_keys[option].present? %>><%= option_text %></option>
+                    <option value="<%= option %>" <%= "selected" if is_selected %> <%= "data-reference-id=\"#{ERB::Util.html_escape(reference_id)}\"".html_safe if reference_id.present? %> <%= "data-office=\"#{ERB::Util.html_escape(transfer_office_keys[option])}\"".html_safe if transfer_office_keys[option].present? %>><%= option_text %></option>
                   <% end %>
                 </select>
+                <% if reference_options.any? %>
+                  <span hidden data-module-reference-id-inputs="<%= field_key %>" data-reference-multiple="<%= reference_multi %>"></span>
+                <% end %>
                 <% if jj_transfer_multi %>
                   <small class="field-hint" data-jj-transfer-hint>FCOC aur User Name select karein, phir Jeevika Jankar names select karein.</small>
                 <% end %>

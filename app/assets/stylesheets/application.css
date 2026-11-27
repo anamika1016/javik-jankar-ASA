@@ -12652,6 +12652,21 @@ body {
   box-shadow: 0 1px 3px #1832281f;
 }
 
+.dashboard-view-switch-item.is-loading {
+  opacity: 0.72;
+  cursor: progress;
+}
+
+.dashboard-navigation-error {
+  margin: 0 0 14px;
+  border: 1px solid #f3b4ae;
+  border-radius: 8px;
+  background: #fff5f3;
+  color: var(--vrp-danger);
+  padding: 12px 14px;
+  font-weight: 700;
+}
+
 .dashboard-view-switch-item b {
   display: inline-flex;
   align-items: center;

@@ -29,6 +29,7 @@ class TargetMapping < ApplicationRecord
   end
 
   before_validation :clean_afl_ids
+  before_validation :sync_master_reference_ids
 
   validates :vrp_id,
             :fco_id,
@@ -68,5 +69,32 @@ class TargetMapping < ApplicationRecord
 
   def clean_afl_ids
     self.afl_ids = Array(afl_ids).map(&:to_s).reject(&:blank?).uniq
+  end
+
+  def sync_master_reference_ids
+    self.month_id = master_record_id(ModuleMonth, :month_name, month_name) if has_attribute?(:month_id)
+    self.main_activity_id = master_record_id(ModuleMainActivity, :main_activity_name, main_activity_name) if has_attribute?(:main_activity_id)
+    return unless has_attribute?(:sub_activity_id)
+
+    scope = ModuleSubActivity.active
+    if has_attribute?(:main_activity_id) && ModuleSubActivity.column_names.include?("main_activity_id")
+      scope = scope.where(main_activity_id: main_activity_id)
+    elsif ModuleSubActivity.column_names.include?("main_activity")
+      scope = scope.where("LOWER(BTRIM(main_activity)) = ?", main_activity_name.to_s.strip.downcase)
+    end
+    self.sub_activity_id = scope.where("LOWER(BTRIM(sub_activity_name)) = ?", activity_name.to_s.strip.downcase)
+      .order(created_at: :desc, id: :desc).pick(:id)
+  rescue ActiveRecord::StatementInvalid, ActiveRecord::RecordNotFound
+    # Legacy rows without a matching master remain readable by their label.
+    self.month_id = nil if has_attribute?(:month_id)
+    self.main_activity_id = nil if has_attribute?(:main_activity_id)
+    self.sub_activity_id = nil if has_attribute?(:sub_activity_id)
+  end
+
+  def master_record_id(model, column, value)
+    return if value.blank? || !model.table_exists? || !model.column_names.include?(column.to_s)
+
+    model.active.where("LOWER(BTRIM(#{model.connection.quote_column_name(column)})) = ?", value.to_s.strip.downcase)
+      .order(created_at: :desc, id: :desc).pick(:id)
   end
 end

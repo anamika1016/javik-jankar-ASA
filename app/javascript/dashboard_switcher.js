@@ -3,6 +3,22 @@
 let generation = 0;
 let controller;
 const warmedNavigations = new WeakSet();
+let pendingModeLink = null;
+
+const clearPendingMode = () => {
+  if (!pendingModeLink?.isConnected) {
+    pendingModeLink = null;
+    return;
+  }
+  pendingModeLink.removeAttribute("aria-busy");
+  pendingModeLink.classList.remove("is-loading");
+  const label = pendingModeLink.querySelector("[data-dashboard-mode-label]");
+  if (label?.dataset.originalLabel) {
+    label.textContent = label.dataset.originalLabel;
+    delete label.dataset.originalLabel;
+  }
+  pendingModeLink = null;
+};
 
 const warmDashboardModes = () => {
   const navigation = document.querySelector(".dashboard-view-switch");
@@ -36,9 +52,39 @@ const warmDashboardModes = () => {
   else setTimeout(run, 150);
 };
 
-document.addEventListener("turbo:load", warmDashboardModes);
-document.addEventListener("turbo:before-visit", () => { generation++; controller?.abort(); });
+document.addEventListener("turbo:load", () => {
+  clearPendingMode();
+  warmDashboardModes();
+});
+document.addEventListener("turbo:before-visit", (event) => {
+  generation++;
+  controller?.abort();
+  const url = new URL(event.detail.url, window.location.href);
+  const link = [...document.querySelectorAll("[data-dashboard-mode-link]")]
+    .find((candidate) => candidate.href === url.href);
+  if (!link) return;
+
+  clearPendingMode();
+  pendingModeLink = link;
+  link.setAttribute("aria-busy", "true");
+  link.classList.add("is-loading");
+  const label = link.querySelector("[data-dashboard-mode-label]");
+  if (label) {
+    label.dataset.originalLabel = label.textContent;
+    label.textContent = "Loading…";
+  }
+});
 document.addEventListener("turbo:submit-start", () => { generation++; controller?.abort(); });
+document.addEventListener("turbo:fetch-request-error", () => {
+  const link = pendingModeLink;
+  if (!link) return;
+  clearPendingMode();
+  const message = document.createElement("div");
+  message.className = "dashboard-navigation-error";
+  message.setAttribute("role", "alert");
+  message.textContent = "Dashboard load nahi hua. Internet check karke dobara click karein.";
+  document.querySelector(".dashboard-page")?.prepend(message);
+});
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", warmDashboardModes);
 else warmDashboardModes();

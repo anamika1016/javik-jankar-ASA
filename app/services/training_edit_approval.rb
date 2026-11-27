@@ -145,7 +145,7 @@ class TrainingEditApproval
   def self.transfer_owner_username(vrp)
     return if vrp.blank?
 
-    (ModuleMirror.relation_for("jeevika-jankar-transfer") || ModuleEntry.where(module_slug: "jeevika-jankar-transfer"))
+    ModuleMirror.relation_for("jeevika-jankar-transfer")
       .order(updated_at: :desc, id: :desc)
       .find_each do |record|
         data = record.data
@@ -360,13 +360,53 @@ class TrainingEditApproval
     end
   end
 
+  # Every revision lives in this one table; module_entries is a view that unions
+  # it with 73 others and exposes the payload as text only.
+  ENTRY_TABLE = "module_training_edit_requests".freeze
+
+  # Reading through the view costs far more than the row count suggests. A
+  # revision carries before/proposed/evidence/history blobs, so Postgres has to
+  # de-TOAST and parse a whole payload to answer `data::jsonb ->> 'status'`:
+  # in production that filter read 308 MB to look at 40 rows and took 1.7 s,
+  # which the sidebar badge then paid on every page. The table stores the same
+  # value in a generated `status` column, so select straight from it and filter
+  # on the stored column, leaving the payload on disk.
+  def self.entry_scope
+    return ModuleEntry.where(module_slug: SLUG) unless dedicated_entry_table?
+
+    # The view maps this table wholly to SLUG, so mirror that literal rather
+    # than reading source_slug, and keep the columns callers already select.
+    ModuleEntry.from(<<~SQL.squish)
+      (SELECT id, #{ModuleEntry.connection.quote(SLUG)}::text AS module_slug,
+              payload_text AS data, created_at, updated_at, status,
+              id AS storage_order, xmin::text AS xmin, ctid::text AS ctid
+       FROM #{ENTRY_TABLE}) AS module_entries
+    SQL
+  end
+
+  def self.pending_entry_scope
+    return entry_scope.where(status: "Pending") if dedicated_entry_table?
+
+    entry_scope.where("data::jsonb ->> 'status' = 'Pending'")
+  end
+
+  def self.dedicated_entry_table?
+    return @dedicated_entry_table if defined?(@dedicated_entry_table)
+
+    connection = ModuleEntry.connection
+    @dedicated_entry_table = connection.data_source_exists?(ENTRY_TABLE) &&
+      (connection.columns(ENTRY_TABLE).map(&:name) & %w[payload_text status]).size == 2
+  rescue StandardError
+    @dedicated_entry_table = false
+  end
+
   def self.pending_for(actor)
     return [] if actor.blank?
 
     # The sidebar checks all pending revisions. Reuse one catalogue for this request
     # instead of loading every User and new-user record once per revision.
     staff_catalogue = TrainingStaffScope.staff_catalogue
-    ModuleEntry.where(module_slug: SLUG).where("data::jsonb ->> 'status' = 'Pending'").order(id: :desc).select do |revision|
+    pending_entry_scope.order(id: :desc).select do |revision|
       assign_automatic_approver!(revision, staff_catalogue: staff_catalogue)
       visible?(revision, actor)
     end
@@ -374,7 +414,7 @@ class TrainingEditApproval
 
   # Lists and badges need routing metadata, not image evidence or training snapshots.
   # Projected revisions are read-only; routing and decisions use complete records.
-  def self.summary_scope(scope = ModuleEntry.where(module_slug: SLUG))
+  def self.summary_scope(scope = entry_scope)
     scope.select(:id, :module_slug, :created_at, :updated_at)
       .select("(module_entries.data::jsonb - ARRAY['before', 'proposed', 'evidence', 'history'])::text AS data")
       .readonly
@@ -383,8 +423,7 @@ class TrainingEditApproval
   def self.summaries_for(actor, pending_only: false)
     return [] if actor.blank?
 
-    scope = ModuleEntry.where(module_slug: SLUG)
-    scope = scope.where("data::jsonb ->> 'status' = 'Pending'") if pending_only
+    scope = pending_only ? pending_entry_scope : entry_scope
     staff_catalogue = nil
     summary_scope(scope).order(id: :desc).filter_map do |summary|
       if summary.data["status"] == "Pending" && summary.data["approval_role"] != "agronomist"

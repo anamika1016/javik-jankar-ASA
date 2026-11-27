@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_24_150000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_27_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -335,16 +335,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_150000) do
     t.index ["status"], name: "index_jj_quizzes_on_status"
   end
 
-  create_table "lg_blocks", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "lg_blocks", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.boolean "active", default: true, null: false
     t.string "block_code"
     t.string "block_name"
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
     t.string "district_code"
     t.string "district_name"
     t.string "gp_code"
     t.string "gram_panchayat_name"
+    t.text "payload_text"
     t.string "source_slug", null: false
     t.string "state_code"
     t.string "state_name"
@@ -361,16 +363,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_150000) do
     t.index ["source_slug"], name: "index_lg_blocks_on_source_slug"
   end
 
-  create_table "lg_districts", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "lg_districts", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.boolean "active", default: true, null: false
     t.string "block_code"
     t.string "block_name"
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
     t.string "district_code"
     t.string "district_name"
     t.string "gp_code"
     t.string "gram_panchayat_name"
+    t.text "payload_text"
     t.string "source_slug", null: false
     t.string "state_code"
     t.string "state_name"
@@ -387,16 +391,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_150000) do
     t.index ["source_slug"], name: "index_lg_districts_on_source_slug"
   end
 
-  create_table "lg_gram_panchayats", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "lg_gram_panchayats", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.boolean "active", default: true, null: false
     t.string "block_code"
     t.string "block_name"
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
     t.string "district_code"
     t.string "district_name"
     t.string "gp_code"
     t.string "gram_panchayat_name"
+    t.text "payload_text"
     t.string "source_slug", null: false
     t.string "state_code"
     t.string "state_name"
@@ -413,16 +419,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_150000) do
     t.index ["source_slug"], name: "index_lg_gram_panchayats_on_source_slug"
   end
 
-  create_table "lg_states", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "lg_states", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.boolean "active", default: true, null: false
     t.string "block_code"
     t.string "block_name"
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
     t.string "district_code"
     t.string "district_name"
     t.string "gp_code"
     t.string "gram_panchayat_name"
+    t.text "payload_text"
     t.string "source_slug", null: false
     t.string "state_code"
     t.string "state_name"
@@ -438,16 +446,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_150000) do
     t.index ["source_slug"], name: "index_lg_states_on_source_slug"
   end
 
-  create_table "lg_villages", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "lg_villages", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.boolean "active", default: true, null: false
     t.string "block_code"
     t.string "block_name"
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
     t.string "district_code"
     t.string "district_name"
     t.string "gp_code"
     t.string "gram_panchayat_name"
+    t.text "payload_text"
     t.string "source_slug", null: false
     t.string "state_code"
     t.string "state_name"
@@ -466,92 +476,332 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_150000) do
     t.index ["village_code"], name: "index_lg_villages_on_village_code"
   end
 
-  create_table "module_access_controls", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "module_access_control_list_b9d538d4", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
-    t.virtual "can_view", type: :text, as: "NULLIF(btrim((data ->> 'can_view'::text)), ''::text)", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
-    t.virtual "role_name", type: :text, as: "NULLIF(btrim((data ->> 'role_name'::text)), ''::text)", stored: true
-    t.virtual "stakeholder", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder'::text)), ''::text)", stored: true
-    t.virtual "stakeholder_role", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_role'::text)), ''::text)", stored: true
+    t.text "payload_text"
+    t.string "source_slug", default: "access-control-list", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_access_control_list_b9d538d4_on_created_at"
+    t.index ["updated_at"], name: "index_module_access_control_list_b9d538d4_on_updated_at"
+  end
+
+  create_table "module_access_controls", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "can_view", type: :text, as: "NULLIF(btrim((data ->> 'can_view'::text)), ''::text)", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.virtual "role_name_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'role_name_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'role_name_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
+    t.string "source_slug", default: "access-control", null: false
+    t.virtual "stakeholder_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'stakeholder_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'stakeholder_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
+    t.virtual "stakeholder_role_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'stakeholder_role_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'stakeholder_role_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
     t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
     t.datetime "updated_at", null: false
     t.index "lower(btrim(can_view))", name: "index_module_access_controls_on_normalized_can_view"
-    t.index "lower(btrim(role_name))", name: "index_module_access_controls_on_normalized_role_name"
-    t.index "lower(btrim(stakeholder))", name: "index_module_access_controls_on_normalized_stakeholder"
-    t.index "lower(btrim(stakeholder_role))", name: "index_module_access_controls_on_normalized_stakeholder_role"
     t.index ["active"], name: "index_module_access_controls_on_active"
     t.index ["created_at"], name: "index_module_access_controls_on_created_at"
-    t.index ["role_name"], name: "index_module_access_controls_on_role_name"
-    t.index ["stakeholder_role", "role_name"], name: "index_module_access_controls_on_stakeholder_role_and_role_name"
+    t.index ["role_name_id"], name: "index_module_access_controls_on_role_name_id"
+    t.index ["stakeholder_id"], name: "index_module_access_controls_on_stakeholder_id"
+    t.index ["stakeholder_role_id", "role_name_id"], name: "idx_on_stakeholder_role_id_role_name_id_b7dfb38a5a"
+    t.index ["stakeholder_role_id"], name: "index_module_access_controls_on_stakeholder_role_id"
   end
 
-  create_table "module_approvals", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "module_activity_group_list_34a52e96", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "activity-group-list", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_activity_group_list_34a52e96_on_created_at"
+    t.index ["updated_at"], name: "index_module_activity_group_list_34a52e96_on_updated_at"
+  end
+
+  create_table "module_activity_master_2e19bce0", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "activity-master", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_activity_master_2e19bce0_on_created_at"
+    t.index ["updated_at"], name: "index_module_activity_master_2e19bce0_on_updated_at"
+  end
+
+  create_table "module_all_user_b8d83be4", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "all-user", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_all_user_b8d83be4_on_created_at"
+    t.index ["updated_at"], name: "index_module_all_user_b8d83be4_on_updated_at"
+  end
+
+  create_table "module_approval_list_27d1da1f", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "approval-list", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_approval_list_27d1da1f_on_created_at"
+    t.index ["updated_at"], name: "index_module_approval_list_27d1da1f_on_updated_at"
+  end
+
+  create_table "module_approval_status_summary_1483b5d5", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "approval-status-summary", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_approval_status_summary_1483b5d5_on_created_at"
+    t.index ["updated_at"], name: "index_module_approval_status_summary_1483b5d5_on_updated_at"
+  end
+
+  create_table "module_approvals", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.virtual "approval_level", type: :text, as: "NULLIF(btrim((data ->> 'approval_level'::text)), ''::text)", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
     t.virtual "module_name", type: :text, as: "NULLIF(btrim((data ->> 'module_name'::text)), ''::text)", stored: true
-    t.virtual "role_name", type: :text, as: "NULLIF(btrim((data ->> 'role_name'::text)), ''::text)", stored: true
-    t.virtual "stakeholder_role", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_role'::text)), ''::text)", stored: true
+    t.text "payload_text"
+    t.virtual "role_name_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'role_name_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'role_name_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
+    t.string "source_slug", default: "approval-master", null: false
+    t.virtual "stakeholder_role_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'stakeholder_role_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'stakeholder_role_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
     t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
     t.datetime "updated_at", null: false
     t.index "lower(btrim(approval_level))", name: "index_module_approvals_on_normalized_approval_level"
     t.index "lower(btrim(module_name))", name: "index_module_approvals_on_normalized_module_name"
-    t.index "lower(btrim(role_name))", name: "index_module_approvals_on_normalized_role_name"
-    t.index "lower(btrim(stakeholder_role))", name: "index_module_approvals_on_normalized_stakeholder_role"
     t.index ["active"], name: "index_module_approvals_on_active"
     t.index ["created_at"], name: "index_module_approvals_on_created_at"
     t.index ["module_name", "approval_level"], name: "index_module_approvals_on_module_name_and_approval_level"
+    t.index ["role_name_id"], name: "index_module_approvals_on_role_name_id"
+    t.index ["stakeholder_role_id"], name: "index_module_approvals_on_stakeholder_role_id"
   end
 
-  create_table "module_bills", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "module_bank_master_9e57e6ab", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "bank-master", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_bank_master_9e57e6ab_on_created_at"
+    t.index ["updated_at"], name: "index_module_bank_master_9e57e6ab_on_updated_at"
+  end
+
+  create_table "module_bill_approval_histories", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "jeevika-jankar-bill-approval-history", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "(((payload_text)::jsonb ->> 'bill_id'::text)), created_at, id", name: "index_entry_bill_history_on_bill_and_order"
+    t.index ["created_at"], name: "index_module_bill_approval_histories_on_created_at"
+    t.index ["updated_at"], name: "index_module_bill_approval_histories_on_updated_at"
+  end
+
+  create_table "module_bills", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text]))))", stored: true
-    t.virtual "bill_month", type: :text, as: "NULLIF(btrim((data ->> 'bill_month'::text)), ''::text)", stored: true
+    t.virtual "bill_month_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'bill_month_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'bill_month_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
     t.virtual "bill_status", type: :text, as: "NULLIF(btrim((data ->> 'status'::text)), ''::text)", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
     t.virtual "grand_total", type: :text, as: "NULLIF(btrim((data ->> 'grand_total'::text)), ''::text)", stored: true
-    t.virtual "select_vrp", type: :text, as: "NULLIF(btrim((data ->> 'select_vrp'::text)), ''::text)", stored: true
+    t.text "payload_text"
+    t.virtual "select_vrp", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'select_vrp'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'select_vrp'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
+    t.string "source_slug", default: "jeevika-jankar-bill-process", null: false
     t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
     t.datetime "updated_at", null: false
-    t.index "((data ->> 'bill_month'::text))", name: "index_module_bills_on_payload_month"
-    t.index "((data ->> 'select_vrp'::text)), ((data ->> 'bill_month'::text))", name: "index_module_bills_on_payload_owner_month"
-    t.index "lower(btrim(bill_month))", name: "index_module_bills_on_normalized_bill_month"
     t.index "lower(btrim(bill_status))", name: "index_module_bills_on_normalized_bill_status"
     t.index "lower(btrim(grand_total))", name: "index_module_bills_on_normalized_grand_total"
-    t.index "lower(btrim(select_vrp))", name: "index_module_bills_on_normalized_select_vrp"
     t.index ["active"], name: "index_module_bills_on_active"
-    t.index ["bill_month"], name: "index_module_bills_on_bill_month"
+    t.index ["bill_month_id"], name: "index_module_bills_on_bill_month_id"
     t.index ["created_at"], name: "index_module_bills_on_created_at"
-    t.index ["select_vrp", "bill_month"], name: "index_module_bills_on_select_vrp_and_bill_month"
+    t.index ["select_vrp", "bill_month_id"], name: "index_module_bills_on_select_vrp_and_bill_month_id"
+    t.index ["select_vrp"], name: "index_module_bills_on_select_vrp"
   end
 
-  create_table "module_jj_transfers", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "module_entry_identities", id: :bigint, default: nil, force: :cascade do |t|
+    t.string "module_slug", null: false
+    t.bigint "storage_order", default: -> { "nextval('module_entry_order_seq'::regclass)" }, null: false
+    t.index ["module_slug"], name: "index_module_entry_identities_on_module_slug"
+  end
+
+  create_table "module_farmer_forms", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "add-farmer-form", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_farmer_forms_on_created_at"
+    t.index ["updated_at"], name: "index_module_farmer_forms_on_updated_at"
+  end
+
+  create_table "module_ics_master_483e7ffc", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "ics-master", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_ics_master_483e7ffc_on_created_at"
+    t.index ["updated_at"], name: "index_module_ics_master_483e7ffc_on_updated_at"
+  end
+
+  create_table "module_jeevika_jankar_bill_list_083c76c4", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "jeevika-jankar-bill-list", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_jeevika_jankar_bill_list_083c76c4_on_created_at"
+    t.index ["updated_at"], name: "index_module_jeevika_jankar_bill_list_083c76c4_on_updated_at"
+  end
+
+  create_table "module_jeevika_jankar_completed_payment_l_bad7b61b", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "jeevika-jankar-completed-payment-list", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "idx_on_created_at_3516a8b79e"
+    t.index ["updated_at"], name: "idx_on_updated_at_03f3d68a4b"
+  end
+
+  create_table "module_jeevika_jankar_observation_list_9bfb7dc5", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "jeevika-jankar-observation-list", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "idx_on_created_at_151063a974"
+    t.index ["updated_at"], name: "idx_on_updated_at_9b09b7ee1e"
+  end
+
+  create_table "module_jeevika_jankar_payment_list_2e70d942", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "jeevika-jankar-payment-list", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "idx_on_created_at_a59f031d7e"
+    t.index ["updated_at"], name: "idx_on_updated_at_a3320af5d0"
+  end
+
+  create_table "module_jeevika_jankar_payment_list_detail_d8114659", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "jeevika-jankar-payment-list-detail", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "idx_on_created_at_9c89d2a1b3"
+    t.index ["updated_at"], name: "idx_on_updated_at_4abfb08ab5"
+  end
+
+  create_table "module_jeevika_jankar_transfer_list_73f1674d", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "jeevika-jankar-transfer-list", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "idx_on_created_at_2b43a9ffc0"
+    t.index ["updated_at"], name: "idx_on_updated_at_24c69125b6"
+  end
+
+  create_table "module_jj_transfers", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
     t.virtual "fcoc", type: :text, as: "NULLIF(btrim((data ->> 'fcoc'::text)), ''::text)", stored: true
+    t.virtual "jeevika_jankar_names_ids", type: :jsonb, as: "COALESCE((data -> 'jeevika_jankar_names_ids'::text), '[]'::jsonb)", stored: true
+    t.text "payload_text"
     t.virtual "sidebar_menu", type: :text, as: "NULLIF(btrim((data ->> 'sidebar_menu'::text)), ''::text)", stored: true
-    t.virtual "stakeholder_category", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_category'::text)), ''::text)", stored: true
+    t.string "source_slug", default: "jeevika-jankar-transfer", null: false
+    t.virtual "stakeholder_category_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'stakeholder_category_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'stakeholder_category_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
     t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
     t.datetime "updated_at", null: false
-    t.virtual "user_name", type: :text, as: "NULLIF(btrim((data ->> 'user_name'::text)), ''::text)", stored: true
+    t.virtual "user_name_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'user_name_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'user_name_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
     t.index "lower(btrim(fcoc))", name: "index_module_jj_transfers_on_normalized_fcoc"
     t.index "lower(btrim(sidebar_menu))", name: "index_module_jj_transfers_on_normalized_sidebar_menu"
-    t.index "lower(btrim(stakeholder_category))", name: "index_module_jj_transfers_on_normalized_stakeholder_category"
-    t.index "lower(btrim(user_name))", name: "index_module_jj_transfers_on_normalized_user_name"
     t.index ["active"], name: "index_module_jj_transfers_on_active"
     t.index ["created_at"], name: "index_module_jj_transfers_on_created_at"
     t.index ["fcoc"], name: "index_module_jj_transfers_on_fcoc"
-    t.index ["user_name"], name: "index_module_jj_transfers_on_user_name"
+    t.index ["jeevika_jankar_names_ids"], name: "index_module_jj_transfers_on_jeevika_jankar_names_ids", using: :gin
+    t.index ["stakeholder_category_id"], name: "index_module_jj_transfers_on_stakeholder_category_id"
+    t.index ["user_name_id"], name: "index_module_jj_transfers_on_user_name_id"
   end
 
-  create_table "module_main_activities", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "module_lg_directory_import_status_0543ee43", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "lg-directory-import-status", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_lg_directory_import_status_0543ee43_on_created_at"
+    t.index ["updated_at"], name: "index_module_lg_directory_import_status_0543ee43_on_updated_at"
+  end
+
+  create_table "module_main_activities", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
     t.virtual "main_activity_name", type: :text, as: "NULLIF(btrim((data ->> 'main_activity_name'::text)), ''::text)", stored: true
+    t.text "payload_text"
+    t.string "source_slug", default: "add-activity-group", null: false
     t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
     t.datetime "updated_at", null: false
     t.index "lower(btrim(main_activity_name))", name: "index_module_main_activities_on_normalized_main_activity_name"
@@ -560,12 +810,28 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_150000) do
     t.index ["main_activity_name"], name: "index_module_main_activities_on_main_activity_name"
   end
 
-  create_table "module_months", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "module_monthly_bill_summary_816eb1f0", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "monthly-bill-summary", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_monthly_bill_summary_816eb1f0_on_created_at"
+    t.index ["updated_at"], name: "index_module_monthly_bill_summary_816eb1f0_on_updated_at"
+  end
+
+  create_table "module_months", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
     t.virtual "financial_year", type: :text, as: "NULLIF(btrim((data ->> 'financial_year'::text)), ''::text)", stored: true
     t.virtual "month_name", type: :text, as: "NULLIF(btrim((data ->> 'month_name'::text)), ''::text)", stored: true
+    t.text "payload_text"
+    t.string "source_slug", default: "month-master", null: false
     t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
     t.datetime "updated_at", null: false
     t.index "lower(btrim(financial_year))", name: "index_module_months_on_normalized_financial_year"
@@ -575,114 +841,245 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_150000) do
     t.index ["financial_year", "month_name"], name: "index_module_months_on_financial_year_and_month_name"
   end
 
-  create_table "module_office_categories", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "module_new_user_6724757d", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "new-user", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "(((payload_text)::jsonb ->> 'mobile_no'::text))", name: "index_entry_users_on_mobile"
+    t.index "(((payload_text)::jsonb ->> 'user_name'::text)), updated_at DESC", name: "index_entry_users_on_username_and_updated"
+    t.index "lower(((payload_text)::jsonb ->> 'email'::text))", name: "index_entry_users_on_lower_email"
+    t.index "lower(((payload_text)::jsonb ->> 'user_name'::text))", name: "index_entry_users_on_lower_username"
+    t.index "lower(btrim(((payload_text)::jsonb ->> 'email'::text)))", name: "index_entry_users_on_normalized_email"
+    t.index "lower(btrim(COALESCE(((payload_text)::jsonb ->> 'user_name'::text), ''::text)))", name: "index_entry_users_on_normalized_username"
+    t.index ["created_at"], name: "index_module_new_user_6724757d_on_created_at"
+    t.index ["updated_at"], name: "index_module_new_user_6724757d_on_updated_at"
+  end
+
+  create_table "module_office_categories", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
     t.virtual "office_level", type: :text, as: "NULLIF(btrim((data ->> 'office_level'::text)), ''::text)", stored: true
     t.virtual "office_name", type: :text, as: "NULLIF(btrim((data ->> 'office_name'::text)), ''::text)", stored: true
-    t.virtual "parent_category", type: :text, as: "NULLIF(btrim((data ->> 'parent_category'::text)), ''::text)", stored: true
-    t.virtual "stakeholder_category", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_category'::text)), ''::text)", stored: true
+    t.virtual "parent_category_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'parent_category_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'parent_category_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
+    t.text "payload_text"
+    t.string "source_slug", default: "office-category-add", null: false
+    t.virtual "stakeholder_category_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'stakeholder_category_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'stakeholder_category_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
     t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
     t.datetime "updated_at", null: false
     t.index "lower(btrim(office_level))", name: "index_module_office_categories_on_normalized_office_level"
     t.index "lower(btrim(office_name))", name: "index_module_office_categories_on_normalized_office_name"
-    t.index "lower(btrim(parent_category))", name: "index_module_office_categories_on_normalized_parent_category"
-    t.index "lower(btrim(stakeholder_category))", name: "index_module_office_categories_on_normalized_stakeholder_catego"
     t.index ["active"], name: "index_module_office_categories_on_active"
     t.index ["created_at"], name: "index_module_office_categories_on_created_at"
     t.index ["office_name"], name: "index_module_office_categories_on_office_name"
-    t.index ["parent_category"], name: "index_module_office_categories_on_parent_category"
+    t.index ["parent_category_id"], name: "index_module_office_categories_on_parent_category_id"
+    t.index ["stakeholder_category_id"], name: "index_module_office_categories_on_stakeholder_category_id"
   end
 
-  create_table "module_other_farmer_targets", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "module_office_list_286e3232", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "office-list", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_office_list_286e3232_on_created_at"
+    t.index ["updated_at"], name: "index_module_office_list_286e3232_on_updated_at"
+  end
+
+  create_table "module_other_farmer_targets", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
     t.virtual "fcoc_name", type: :text, as: "NULLIF(btrim((data ->> 'fcoc_name'::text)), ''::text)", stored: true
-    t.virtual "jeevika_jankar_id", type: :text, as: "NULLIF(btrim((data ->> 'jeevika_jankar_id'::text)), ''::text)", stored: true
-    t.virtual "month", type: :text, as: "NULLIF(btrim((data ->> 'month'::text)), ''::text)", stored: true
+    t.virtual "jeevika_jankar_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'jeevika_jankar_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'jeevika_jankar_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
+    t.virtual "month_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'month_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'month_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
+    t.text "payload_text"
+    t.string "source_slug", default: "other-target-with-farmer", null: false
     t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
-    t.virtual "target_mapping_id", type: :text, as: "NULLIF(btrim((data ->> 'target_mapping_id'::text)), ''::text)", stored: true
+    t.virtual "target_mapping_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'target_mapping_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'target_mapping_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
     t.datetime "updated_at", null: false
-    t.index "lower(btrim((data ->> 'month'::text)))", name: "index_module_other_farmer_targets_on_payload_month"
     t.index "lower(btrim(fcoc_name))", name: "index_module_other_farmer_targets_on_normalized_fcoc_name"
-    t.index "lower(btrim(jeevika_jankar_id))", name: "index_module_other_farmer_targets_on_normalized_jeevika_jankar_"
-    t.index "lower(btrim(month))", name: "index_module_other_farmer_targets_on_normalized_month"
-    t.index "lower(btrim(target_mapping_id))", name: "index_module_other_farmer_targets_on_normalized_target_mapping_"
     t.index ["active"], name: "index_module_other_farmer_targets_on_active"
     t.index ["created_at"], name: "index_module_other_farmer_targets_on_created_at"
-    t.index ["month"], name: "index_module_other_farmer_targets_on_month"
+    t.index ["jeevika_jankar_id"], name: "index_module_other_farmer_targets_on_jeevika_jankar_id"
+    t.index ["month_id"], name: "index_module_other_farmer_targets_on_month_id"
     t.index ["target_mapping_id"], name: "index_module_other_farmer_targets_on_target_mapping_id"
   end
 
-  create_table "module_other_targets", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "module_other_target_list_410d4f4c", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "other-target-list", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_other_target_list_410d4f4c_on_created_at"
+    t.index ["updated_at"], name: "index_module_other_target_list_410d4f4c_on_updated_at"
+  end
+
+  create_table "module_other_target_with_farmer_list_0d98bf9f", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "other-target-with-farmer-list", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "idx_on_created_at_ca2b8c330d"
+    t.index ["updated_at"], name: "idx_on_updated_at_c4e9e19a39"
+  end
+
+  create_table "module_other_targets", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
     t.virtual "fcoc_name", type: :text, as: "NULLIF(btrim((data ->> 'fcoc_name'::text)), ''::text)", stored: true
-    t.virtual "ics_name", type: :text, as: "NULLIF(btrim((data ->> 'ics_name'::text)), ''::text)", stored: true
-    t.virtual "jeevika_jankar_id", type: :text, as: "NULLIF(btrim((data ->> 'jeevika_jankar_id'::text)), ''::text)", stored: true
-    t.virtual "month", type: :text, as: "NULLIF(btrim((data ->> 'month'::text)), ''::text)", stored: true
+    t.virtual "ics_name_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'ics_name_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'ics_name_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
+    t.virtual "jeevika_jankar_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'jeevika_jankar_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'jeevika_jankar_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
+    t.virtual "month_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'month_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'month_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
+    t.text "payload_text"
+    t.string "source_slug", default: "other-target", null: false
     t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
-    t.virtual "target_mapping_id", type: :text, as: "NULLIF(btrim((data ->> 'target_mapping_id'::text)), ''::text)", stored: true
+    t.virtual "target_mapping_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'target_mapping_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'target_mapping_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
     t.datetime "updated_at", null: false
-    t.index "lower(btrim((data ->> 'month'::text)))", name: "index_module_other_targets_on_payload_month"
     t.index "lower(btrim(fcoc_name))", name: "index_module_other_targets_on_normalized_fcoc_name"
-    t.index "lower(btrim(ics_name))", name: "index_module_other_targets_on_normalized_ics_name"
-    t.index "lower(btrim(jeevika_jankar_id))", name: "index_module_other_targets_on_normalized_jeevika_jankar_id"
-    t.index "lower(btrim(month))", name: "index_module_other_targets_on_normalized_month"
-    t.index "lower(btrim(target_mapping_id))", name: "index_module_other_targets_on_normalized_target_mapping_id"
     t.index ["active"], name: "index_module_other_targets_on_active"
     t.index ["created_at"], name: "index_module_other_targets_on_created_at"
-    t.index ["month"], name: "index_module_other_targets_on_month"
+    t.index ["ics_name_id"], name: "index_module_other_targets_on_ics_name_id"
+    t.index ["jeevika_jankar_id"], name: "index_module_other_targets_on_jeevika_jankar_id"
+    t.index ["month_id"], name: "index_module_other_targets_on_month_id"
     t.index ["target_mapping_id"], name: "index_module_other_targets_on_target_mapping_id"
   end
 
-  create_table "module_parent_offices", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "module_papl360_target_e2ff67fc", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "papl360-target", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_papl360_target_e2ff67fc_on_created_at"
+    t.index ["updated_at"], name: "index_module_papl360_target_e2ff67fc_on_updated_at"
+  end
+
+  create_table "module_papl360_target_list_08d81bec", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "papl360-target-list", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_papl360_target_list_08d81bec_on_created_at"
+    t.index ["updated_at"], name: "index_module_papl360_target_list_08d81bec_on_updated_at"
+  end
+
+  create_table "module_parent_offices", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
     t.virtual "office_level", type: :text, as: "NULLIF(btrim((data ->> 'office_level'::text)), ''::text)", stored: true
-    t.virtual "parent_office", type: :text, as: "NULLIF(btrim((data ->> 'parent_office'::text)), ''::text)", stored: true
+    t.virtual "parent_office_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'parent_office_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'parent_office_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
     t.virtual "parent_office_name", type: :text, as: "NULLIF(btrim((data ->> 'parent_office_name'::text)), ''::text)", stored: true
     t.virtual "parent_office_type", type: :text, as: "NULLIF(btrim((data ->> 'parent_office_type'::text)), ''::text)", stored: true
-    t.virtual "stakeholder_category", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_category'::text)), ''::text)", stored: true
+    t.text "payload_text"
+    t.string "source_slug", default: "parent-office-add", null: false
+    t.virtual "stakeholder_category_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'stakeholder_category_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'stakeholder_category_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
     t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
     t.datetime "updated_at", null: false
     t.index "lower(btrim(office_level))", name: "index_module_parent_offices_on_normalized_office_level"
-    t.index "lower(btrim(parent_office))", name: "index_module_parent_offices_on_normalized_parent_office"
-    t.index "lower(btrim(parent_office_name))", name: "index_module_parent_offices_on_normalized_parent_office_name"
-    t.index "lower(btrim(parent_office_type))", name: "index_module_parent_offices_on_normalized_parent_office_type"
-    t.index "lower(btrim(stakeholder_category))", name: "index_module_parent_offices_on_normalized_stakeholder_category"
     t.index ["active"], name: "index_module_parent_offices_on_active"
     t.index ["created_at"], name: "index_module_parent_offices_on_created_at"
-    t.index ["parent_office_name"], name: "index_module_parent_offices_on_parent_office_name"
-    t.index ["stakeholder_category", "office_level"], name: "idx_on_stakeholder_category_office_level_5bb4cc8ce0"
+    t.index ["parent_office_id"], name: "index_module_parent_offices_on_parent_office_id"
+    t.index ["stakeholder_category_id", "office_level"], name: "idx_on_stakeholder_category_id_office_level_5b9f24165e"
+    t.index ["stakeholder_category_id"], name: "index_module_parent_offices_on_stakeholder_category_id"
   end
 
-  create_table "module_payment_details", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "module_payment_details", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text]))))", stored: true
-    t.virtual "bill_month", type: :text, as: "NULLIF(btrim((data ->> 'bill_month'::text)), ''::text)", stored: true
+    t.virtual "bill_month_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'bill_month_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'bill_month_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
     t.virtual "bill_status", type: :text, as: "NULLIF(btrim((data ->> 'status'::text)), ''::text)", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
-    t.virtual "select_vrp", type: :text, as: "NULLIF(btrim((data ->> 'select_vrp'::text)), ''::text)", stored: true
+    t.text "payload_text"
+    t.virtual "select_vrp", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'select_vrp'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'select_vrp'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
+    t.string "source_slug", default: "jeevika-jankar-payment-detail", null: false
     t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
     t.datetime "updated_at", null: false
-    t.index "lower(btrim(bill_month))", name: "index_module_payment_details_on_normalized_bill_month"
     t.index "lower(btrim(bill_status))", name: "index_module_payment_details_on_normalized_bill_status"
-    t.index "lower(btrim(select_vrp))", name: "index_module_payment_details_on_normalized_select_vrp"
     t.index ["active"], name: "index_module_payment_details_on_active"
-    t.index ["bill_month"], name: "index_module_payment_details_on_bill_month"
+    t.index ["bill_month_id"], name: "index_module_payment_details_on_bill_month_id"
     t.index ["created_at"], name: "index_module_payment_details_on_created_at"
+    t.index ["select_vrp", "bill_month_id"], name: "index_module_payment_details_on_select_vrp_and_bill_month_id"
+    t.index ["select_vrp"], name: "index_module_payment_details_on_select_vrp"
   end
 
-  create_table "module_projects", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "module_payment_status_report_17d409eb", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "payment-status-report", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_payment_status_report_17d409eb_on_created_at"
+    t.index ["updated_at"], name: "index_module_payment_status_report_17d409eb_on_updated_at"
+  end
+
+  create_table "module_person_types", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "person-type", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_person_types_on_created_at"
+    t.index ["updated_at"], name: "index_module_person_types_on_updated_at"
+  end
+
+  create_table "module_position_type_486dc9a9", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "position-type", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_position_type_486dc9a9_on_created_at"
+    t.index ["updated_at"], name: "index_module_position_type_486dc9a9_on_updated_at"
+  end
+
+  create_table "module_projects", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
     t.virtual "project_name", type: :text, as: "NULLIF(btrim((data ->> 'project_name'::text)), ''::text)", stored: true
+    t.string "source_slug", default: "project-master", null: false
     t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
     t.datetime "updated_at", null: false
     t.index "lower(btrim(project_name))", name: "index_module_projects_on_normalized_project_name"
@@ -695,7 +1092,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_150000) do
     t.bigint "revision", null: false
   end
 
-  create_table "module_records", force: :cascade do |t|
+  create_table "module_records", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.text "data", null: false
     t.string "module_slug", null: false
@@ -722,44 +1119,105 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_150000) do
     t.index ["updated_at"], name: "index_module_records_on_updated_at", order: :desc
   end
 
-  create_table "module_roles", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "module_role_managements", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "role-management", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_role_managements_on_created_at"
+    t.index ["updated_at"], name: "index_module_role_managements_on_updated_at"
+  end
+
+  create_table "module_roles", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
     t.virtual "role_name", type: :text, as: "NULLIF(btrim((data ->> 'role_name'::text)), ''::text)", stored: true
-    t.virtual "stakeholder_category", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_category'::text)), ''::text)", stored: true
-    t.virtual "stakeholder_role", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_role'::text)), ''::text)", stored: true
+    t.string "source_slug", default: "role-name", null: false
+    t.virtual "stakeholder_category_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'stakeholder_category_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'stakeholder_category_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
+    t.virtual "stakeholder_role_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'stakeholder_role_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'stakeholder_role_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
     t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
     t.datetime "updated_at", null: false
     t.index "lower(btrim(role_name))", name: "index_module_roles_on_normalized_role_name"
-    t.index "lower(btrim(stakeholder_category))", name: "index_module_roles_on_normalized_stakeholder_category"
-    t.index "lower(btrim(stakeholder_role))", name: "index_module_roles_on_normalized_stakeholder_role"
     t.index ["active"], name: "index_module_roles_on_active"
     t.index ["created_at"], name: "index_module_roles_on_created_at"
     t.index ["role_name"], name: "index_module_roles_on_role_name"
-    t.index ["stakeholder_category", "stakeholder_role"], name: "idx_on_stakeholder_category_stakeholder_role_5f7f62ad08"
+    t.index ["stakeholder_category_id", "stakeholder_role_id"], name: "idx_on_stakeholder_category_id_stakeholder_role_id_9be4cbbc21"
+    t.index ["stakeholder_category_id"], name: "index_module_roles_on_stakeholder_category_id"
+    t.index ["stakeholder_role_id"], name: "index_module_roles_on_stakeholder_role_id"
   end
 
-  create_table "module_stakeholder_roles", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "module_seed_distribution_target_list_5453661e", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
-    t.virtual "stakeholder_category", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_category'::text)), ''::text)", stored: true
+    t.text "payload_text"
+    t.string "source_slug", default: "seed-distribution-target-list", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "idx_on_created_at_c7072152d4"
+    t.index ["updated_at"], name: "idx_on_updated_at_974f366457"
+  end
+
+  create_table "module_seed_distribution_targets", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "seed-distribution-target", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_seed_distribution_targets_on_created_at"
+    t.index ["updated_at"], name: "index_module_seed_distribution_targets_on_updated_at"
+  end
+
+  create_table "module_stakeholder_profile_603e5d20", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "stakeholder-profile", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_stakeholder_profile_603e5d20_on_created_at"
+    t.index ["updated_at"], name: "index_module_stakeholder_profile_603e5d20_on_updated_at"
+  end
+
+  create_table "module_stakeholder_roles", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "stakeholder-role", null: false
+    t.virtual "stakeholder_category_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'stakeholder_category_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'stakeholder_category_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
     t.virtual "stakeholder_role", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_role'::text)), ''::text)", stored: true
     t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
     t.datetime "updated_at", null: false
-    t.index "lower(btrim(stakeholder_category))", name: "index_module_stakeholder_roles_on_normalized_stakeholder_catego"
     t.index "lower(btrim(stakeholder_role))", name: "index_module_stakeholder_roles_on_normalized_stakeholder_role"
     t.index ["active"], name: "index_module_stakeholder_roles_on_active"
     t.index ["created_at"], name: "index_module_stakeholder_roles_on_created_at"
-    t.index ["stakeholder_category", "stakeholder_role"], name: "idx_on_stakeholder_category_stakeholder_role_cd8b188480"
+    t.index ["stakeholder_category_id", "stakeholder_role"], name: "idx_on_stakeholder_category_id_stakeholder_role_a73ea5f3ad"
+    t.index ["stakeholder_category_id"], name: "index_module_stakeholder_roles_on_stakeholder_category_id"
   end
 
-  create_table "module_stakeholders", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "module_stakeholders", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
     t.virtual "logo_upload", type: :text, as: "NULLIF(btrim((data ->> 'logo_upload'::text)), ''::text)", stored: true
+    t.text "payload_text"
+    t.string "source_slug", default: "stakeholder-master", null: false
     t.virtual "stakeholder_name", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_name_in_english'::text)), ''::text)", stored: true
     t.virtual "stakeholder_name_hindi", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_name_in_hindi'::text)), ''::text)", stored: true
     t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
@@ -772,100 +1230,350 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_150000) do
     t.index ["stakeholder_name"], name: "index_module_stakeholders_on_stakeholder_name"
   end
 
-  create_table "module_sub_activities", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "module_sub_activities", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
-    t.virtual "main_activity", type: :text, as: "NULLIF(btrim((data ->> 'main_activity'::text)), ''::text)", stored: true
+    t.virtual "main_activity_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'main_activity_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'main_activity_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
+    t.text "payload_text"
+    t.string "source_slug", default: "add-vrp-activity", null: false
     t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
     t.virtual "sub_activity_name", type: :text, as: "NULLIF(btrim((data ->> 'sub_activity_name'::text)), ''::text)", stored: true
     t.virtual "unit", type: :text, as: "NULLIF(btrim((data ->> 'unit'::text)), ''::text)", stored: true
     t.datetime "updated_at", null: false
-    t.index "lower(btrim(main_activity))", name: "index_module_sub_activities_on_normalized_main_activity"
     t.index "lower(btrim(sub_activity_name))", name: "index_module_sub_activities_on_normalized_sub_activity_name"
     t.index "lower(btrim(unit))", name: "index_module_sub_activities_on_normalized_unit"
     t.index ["active"], name: "index_module_sub_activities_on_active"
     t.index ["created_at"], name: "index_module_sub_activities_on_created_at"
-    t.index ["main_activity", "sub_activity_name"], name: "idx_on_main_activity_sub_activity_name_7a91dcb2a3"
+    t.index ["main_activity_id", "sub_activity_name"], name: "idx_on_main_activity_id_sub_activity_name_2fca51eead"
+    t.index ["main_activity_id"], name: "index_module_sub_activities_on_main_activity_id"
   end
 
-  create_table "module_sub_offices", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "module_sub_offices", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
     t.virtual "office_level", type: :text, as: "NULLIF(btrim((data ->> 'office_level'::text)), ''::text)", stored: true
-    t.virtual "office_name", type: :text, as: "NULLIF(btrim((data ->> 'office_name'::text)), ''::text)", stored: true
-    t.virtual "parent_category", type: :text, as: "NULLIF(btrim((data ->> 'parent_category'::text)), ''::text)", stored: true
-    t.virtual "stakeholder_category", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_category'::text)), ''::text)", stored: true
+    t.virtual "office_name_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'office_name_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'office_name_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
+    t.virtual "parent_category_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'parent_category_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'parent_category_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
+    t.text "payload_text"
+    t.string "source_slug", default: "office-mapping-add", null: false
+    t.virtual "stakeholder_category_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'stakeholder_category_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'stakeholder_category_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
     t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
     t.virtual "sub_office_name", type: :text, as: "NULLIF(btrim((data ->> 'sub_office_name'::text)), ''::text)", stored: true
     t.datetime "updated_at", null: false
     t.index "lower(btrim(office_level))", name: "index_module_sub_offices_on_normalized_office_level"
-    t.index "lower(btrim(office_name))", name: "index_module_sub_offices_on_normalized_office_name"
-    t.index "lower(btrim(parent_category))", name: "index_module_sub_offices_on_normalized_parent_category"
-    t.index "lower(btrim(stakeholder_category))", name: "index_module_sub_offices_on_normalized_stakeholder_category"
-    t.index "lower(btrim(sub_office_name))", name: "index_module_sub_offices_on_normalized_sub_office_name"
     t.index ["active"], name: "index_module_sub_offices_on_active"
     t.index ["created_at"], name: "index_module_sub_offices_on_created_at"
-    t.index ["office_name", "sub_office_name"], name: "index_module_sub_offices_on_office_name_and_sub_office_name"
-    t.index ["parent_category"], name: "index_module_sub_offices_on_parent_category"
+    t.index ["office_name_id", "sub_office_name"], name: "index_module_sub_offices_on_office_name_id_and_sub_office_name"
+    t.index ["office_name_id"], name: "index_module_sub_offices_on_office_name_id"
+    t.index ["parent_category_id"], name: "index_module_sub_offices_on_parent_category_id"
+    t.index ["stakeholder_category_id"], name: "index_module_sub_offices_on_stakeholder_category_id"
   end
 
-  create_table "module_trainings", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "module_task_completion_indicator_2dc4f3fb", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "task-completion-indicator", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_task_completion_indicator_2dc4f3fb_on_created_at"
+    t.index ["updated_at"], name: "index_module_task_completion_indicator_2dc4f3fb_on_updated_at"
+  end
+
+  create_table "module_task_completion_indicator_list_fc8d2b85", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "task-completion-indicator-list", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "idx_on_created_at_7c99fa6737"
+    t.index ["updated_at"], name: "idx_on_updated_at_d121c80dce"
+  end
+
+  create_table "module_task_indicator_master_c07b884a", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "task-indicator-master", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_task_indicator_master_c07b884a_on_created_at"
+    t.index ["updated_at"], name: "index_module_task_indicator_master_c07b884a_on_updated_at"
+  end
+
+  create_table "module_training_edit_requests", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "training-form-edit-request", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "(((payload_text)::jsonb ->> 'record_id'::text)), id DESC", name: "index_entry_edits_on_record_and_latest"
+    t.index "(((payload_text)::jsonb ->> 'status'::text)), id DESC", name: "index_entry_edits_on_status_and_latest"
+    t.index ["created_at"], name: "index_module_training_edit_requests_on_created_at"
+    t.index ["updated_at"], name: "index_module_training_edit_requests_on_updated_at"
+  end
+
+  create_table "module_training_form_list_88933913", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "training-form-list", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_training_form_list_88933913_on_created_at"
+    t.index ["updated_at"], name: "index_module_training_form_list_88933913_on_updated_at"
+  end
+
+  create_table "module_training_topic_mappings", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "training-topic-mapping", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_training_topic_mappings_on_created_at"
+    t.index ["updated_at"], name: "index_module_training_topic_mappings_on_updated_at"
+  end
+
+  create_table "module_trainings", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.virtual "cluster_coordinator_name", type: :text, as: "NULLIF(btrim((data ->> 'cluster_coordinator_name'::text)), ''::text)", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
-    t.virtual "jeevika_jankar_id", type: :text, as: "NULLIF(btrim((data ->> 'jeevika_jankar_id'::text)), ''::text)", stored: true
-    t.virtual "main_activity", type: :text, as: "NULLIF(btrim((data ->> 'main_activity'::text)), ''::text)", stored: true
+    t.virtual "jeevika_jankar_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'jeevika_jankar_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'jeevika_jankar_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
+    t.virtual "main_activity_ids", type: :jsonb, as: "COALESCE((data -> 'main_activity_ids'::text), '[]'::jsonb)", stored: true
     t.virtual "main_activity_type", type: :text, as: "NULLIF(btrim((data ->> 'main_activity_type'::text)), ''::text)", stored: true
-    t.virtual "month", type: :text, as: "NULLIF(btrim((data ->> 'month'::text)), ''::text)", stored: true
+    t.virtual "month_id", type: :bigint, as: "\nCASE\n    WHEN ((data ->> 'month_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'month_id'::text))::bigint\n    ELSE NULL::bigint\nEND", stored: true
+    t.text "payload_text"
+    t.string "source_slug", default: "training-form", null: false
     t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
-    t.virtual "sub_activity", type: :text, as: "NULLIF(btrim((data ->> 'sub_activity'::text)), ''::text)", stored: true
+    t.virtual "sub_activity_ids", type: :jsonb, as: "COALESCE((data -> 'sub_activity_ids'::text), '[]'::jsonb)", stored: true
     t.virtual "training_method", type: :text, as: "NULLIF(btrim((data ->> 'training_method'::text)), ''::text)", stored: true
     t.datetime "updated_at", null: false
-    t.index "lower(btrim((data ->> 'month'::text))), created_at DESC", name: "index_module_trainings_on_payload_month_and_created"
     t.index "lower(btrim(cluster_coordinator_name))", name: "index_module_trainings_on_normalized_cluster_coordinator_name"
-    t.index "lower(btrim(jeevika_jankar_id))", name: "index_module_trainings_on_normalized_jeevika_jankar_id"
-    t.index "lower(btrim(main_activity))", name: "index_module_trainings_on_normalized_main_activity"
-    t.index "lower(btrim(main_activity_type))", name: "index_module_trainings_on_normalized_main_activity_type"
-    t.index "lower(btrim(month))", name: "index_module_trainings_on_normalized_month"
-    t.index "lower(btrim(sub_activity))", name: "index_module_trainings_on_normalized_sub_activity"
     t.index "lower(btrim(training_method))", name: "index_module_trainings_on_normalized_training_method"
     t.index ["active"], name: "index_module_trainings_on_active"
     t.index ["created_at"], name: "index_module_trainings_on_created_at"
-    t.index ["jeevika_jankar_id", "month"], name: "index_module_trainings_on_jeevika_jankar_id_and_month"
-    t.index ["main_activity_type"], name: "index_module_trainings_on_main_activity_type"
-    t.index ["month", "training_method"], name: "index_module_trainings_on_month_and_training_method"
+    t.index ["jeevika_jankar_id", "month_id"], name: "index_module_trainings_on_jeevika_jankar_id_and_month_id"
+    t.index ["jeevika_jankar_id"], name: "index_module_trainings_on_jeevika_jankar_id"
+    t.index ["main_activity_ids"], name: "index_module_trainings_on_main_activity_ids", using: :gin
+    t.index ["month_id", "training_method"], name: "index_module_trainings_on_month_id_and_training_method"
+    t.index ["month_id"], name: "index_module_trainings_on_month_id"
+    t.index ["sub_activity_ids"], name: "index_module_trainings_on_sub_activity_ids", using: :gin
   end
 
-  create_table "module_user_hierarchies", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "module_user_hierarchies", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
-    t.virtual "level_1_user", type: :text, as: "NULLIF(btrim((data ->> 'level_1_user'::text)), ''::text)", stored: true
-    t.virtual "level_2_user", type: :text, as: "NULLIF(btrim((data ->> 'level_2_user'::text)), ''::text)", stored: true
-    t.virtual "level_3_user", type: :text, as: "NULLIF(btrim((data ->> 'level_3_user'::text)), ''::text)", stored: true
+    t.virtual "level_1_user_id", type: :bigint, as: "(NULLIF(btrim((data ->> 'level_1_user_id'::text)), ''::text))::bigint", stored: true
+    t.virtual "level_2_user_id", type: :bigint, as: "(NULLIF(btrim((data ->> 'level_2_user_id'::text)), ''::text))::bigint", stored: true
+    t.virtual "level_2_user_ids", type: :jsonb, as: "COALESCE((data -> 'level_2_user_ids'::text), '[]'::jsonb)", stored: true
+    t.virtual "level_3_user_id", type: :bigint, as: "(NULLIF(btrim((data ->> 'level_3_user_id'::text)), ''::text))::bigint", stored: true
+    t.virtual "level_3_user_ids", type: :jsonb, as: "COALESCE((data -> 'level_3_user_ids'::text), '[]'::jsonb)", stored: true
+    t.text "payload_text"
+    t.string "source_slug", default: "user-hierarchy-mapping", null: false
     t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
     t.datetime "updated_at", null: false
-    t.index "lower(btrim(level_1_user))", name: "index_module_user_hierarchies_on_normalized_level_1_user"
-    t.index "lower(btrim(level_2_user))", name: "index_module_user_hierarchies_on_normalized_level_2_user"
-    t.index "lower(btrim(level_3_user))", name: "index_module_user_hierarchies_on_normalized_level_3_user"
     t.index ["active"], name: "index_module_user_hierarchies_on_active"
     t.index ["created_at"], name: "index_module_user_hierarchies_on_created_at"
-    t.index ["level_1_user"], name: "index_module_user_hierarchies_on_level_1_user"
+    t.index ["level_1_user_id"], name: "index_module_user_hierarchies_on_level_1_user_id"
+    t.index ["level_2_user_id"], name: "index_module_user_hierarchies_on_level_2_user_id"
+    t.index ["level_2_user_ids"], name: "index_module_user_hierarchies_on_level_2_user_ids", using: :gin
+    t.index ["level_3_user_id"], name: "index_module_user_hierarchies_on_level_3_user_id"
+    t.index ["level_3_user_ids"], name: "index_module_user_hierarchies_on_level_3_user_ids", using: :gin
   end
 
-  create_table "module_vrp_types", id: :bigint, default: nil, force: :cascade do |t|
+  create_table "module_user_hierarchy_list_a4542a91", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
     t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
     t.datetime "created_at", null: false
     t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "user-hierarchy-list", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_user_hierarchy_list_a4542a91_on_created_at"
+    t.index ["updated_at"], name: "index_module_user_hierarchy_list_a4542a91_on_updated_at"
+  end
+
+  create_table "module_user_management_roles", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "user-management-role", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_user_management_roles_on_created_at"
+    t.index ["updated_at"], name: "index_module_user_management_roles_on_updated_at"
+  end
+
+  create_table "module_vrp_active_status_history_5a746fcf", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "vrp-active-status-history", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_vrp_active_status_history_5a746fcf_on_created_at"
+    t.index ["updated_at"], name: "index_module_vrp_active_status_history_5a746fcf_on_updated_at"
+  end
+
+  create_table "module_vrp_activity_list_7d178b72", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "vrp-activity-list", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_vrp_activity_list_7d178b72_on_created_at"
+    t.index ["updated_at"], name: "index_module_vrp_activity_list_7d178b72_on_updated_at"
+  end
+
+  create_table "module_vrp_approval_histories", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "vrp-approval-history", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "(((payload_text)::jsonb ->> 'vrp_id'::text)), created_at, id", name: "index_entry_vrp_history_on_owner_and_order"
+    t.index ["created_at"], name: "index_module_vrp_approval_histories_on_created_at"
+    t.index ["updated_at"], name: "index_module_vrp_approval_histories_on_updated_at"
+  end
+
+  create_table "module_vrp_bill_add_50a221ea", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "vrp-bill-add", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_vrp_bill_add_50a221ea_on_created_at"
+    t.index ["updated_at"], name: "index_module_vrp_bill_add_50a221ea_on_updated_at"
+  end
+
+  create_table "module_vrp_bill_list_0ef6fdc4", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "vrp-bill-list", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_vrp_bill_list_0ef6fdc4_on_created_at"
+    t.index ["updated_at"], name: "index_module_vrp_bill_list_0ef6fdc4_on_updated_at"
+  end
+
+  create_table "module_vrp_registration_list_6a8aeba6", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "vrp-registration-list", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_vrp_registration_list_6a8aeba6_on_created_at"
+    t.index ["updated_at"], name: "index_module_vrp_registration_list_6a8aeba6_on_updated_at"
+  end
+
+  create_table "module_vrp_types", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "add-vrp-type", null: false
     t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
     t.datetime "updated_at", null: false
     t.virtual "vrp_type_name", type: :text, as: "NULLIF(btrim((data ->> 'vrp_type_name'::text)), ''::text)", stored: true
     t.index "lower(btrim(vrp_type_name))", name: "index_module_vrp_types_on_normalized_vrp_type_name"
     t.index ["active"], name: "index_module_vrp_types_on_active"
     t.index ["created_at"], name: "index_module_vrp_types_on_created_at"
+  end
+
+  create_table "module_weekly_activity_progress_22c35d60", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "weekly-activity-progress", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_weekly_activity_progress_22c35d60_on_created_at"
+    t.index ["updated_at"], name: "index_module_weekly_activity_progress_22c35d60_on_updated_at"
+  end
+
+  create_table "module_weekly_progress_report_1157600e", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "weekly-progress-report", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_weekly_progress_report_1157600e_on_created_at"
+    t.index ["updated_at"], name: "index_module_weekly_progress_report_1157600e_on_updated_at"
+  end
+
+  create_table "module_weekly_target_add_ef9d741d", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "weekly-target-add", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_weekly_target_add_ef9d741d_on_created_at"
+    t.index ["updated_at"], name: "index_module_weekly_target_add_ef9d741d_on_updated_at"
+  end
+
+  create_table "module_weekly_target_list_91c4fe5d", id: :bigint, default: -> { "nextval('module_entry_id_seq'::regclass)" }, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "catalogue_active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.text "payload_text"
+    t.string "source_slug", default: "weekly-target-list", null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_module_weekly_target_list_91c4fe5d_on_created_at"
+    t.index ["updated_at"], name: "index_module_weekly_target_list_91c4fe5d_on_updated_at"
   end
 
   create_table "target_mappings", force: :cascade do |t|
@@ -884,9 +1592,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_150000) do
     t.string "ics_name"
     t.decimal "input_demo_inm_target", precision: 18, scale: 4
     t.decimal "input_demo_pm_target", precision: 18, scale: 4
+    t.bigint "main_activity_id"
     t.string "main_activity_name"
+    t.bigint "month_id"
     t.string "month_name", null: false
     t.decimal "opg_training_target", precision: 18, scale: 4
+    t.bigint "sub_activity_id"
     t.string "target_entry_mode", default: "ics_wise", null: false
     t.decimal "target_quantity", precision: 18, scale: 4, null: false
     t.datetime "updated_at", null: false
@@ -904,6 +1615,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_150000) do
     t.index ["created_by_type", "created_by_id", "updated_at"], name: "index_target_mappings_on_creator_and_updated_at", order: { updated_at: :desc }
     t.index ["created_by_type", "created_by_id"], name: "index_target_mappings_on_creator"
     t.index ["fco_id", "ics_id", "village_id", "main_activity_name", "activity_name"], name: "index_target_mappings_on_activity_scope"
+    t.index ["main_activity_id"], name: "index_target_mappings_on_main_activity_id"
+    t.index ["month_id"], name: "index_target_mappings_on_month_id"
+    t.index ["sub_activity_id"], name: "index_target_mappings_on_sub_activity_id"
     t.index ["target_entry_mode", "month_name"], name: "index_target_mappings_on_entry_mode_and_month"
     t.index ["updated_at"], name: "index_target_mappings_on_updated_at", order: :desc
     t.index ["village_id"], name: "index_target_mappings_on_village_id_for_agreements"

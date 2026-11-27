@@ -126,7 +126,8 @@ class ModuleRecordReadQuery
     return [] if tokens.empty?
 
     # Preserve token order, reject wrong-slug IDs, and fetch the selection once.
-    by_token = ModuleEntry.where(id: tokens.map(&:last), module_slug: tokens.map(&:first).uniq)
+    by_token = ModuleMirror.read_scope(tokens.map(&:first).uniq)
+      .where(id: tokens.map(&:last))
       .index_by { |record| [record.module_slug, record.id.to_s] }
     tokens.filter_map { |slug, id| by_token[[slug, id.to_i.to_s]] }.uniq
   end

@@ -28,7 +28,15 @@ module ModuleMasterRecord
 
     # [label, id] pairs for a dropdown, straight off indexed columns.
     def option_pairs(column = label_column)
-      active.catalogue_order.where.not(column => nil).pluck(column, :id)
+      label_key = respond_to?(:option_label_key) ? option_label_key : column
+      if column_names.include?(label_key.to_s)
+        return active.catalogue_order.where.not(label_key => nil).pluck(label_key, :id)
+      end
+
+      quoted_key = connection.quote(label_key.to_s)
+      active.catalogue_order
+        .where("NULLIF(BTRIM(data ->> ?), '') IS NOT NULL", label_key.to_s)
+        .pluck(Arel.sql("data ->> #{quoted_key}"), :id)
     end
 
     def label_column

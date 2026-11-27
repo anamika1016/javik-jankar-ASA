@@ -1421,15 +1421,27 @@ CREATE TABLE public.module_access_controls (
     data jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    stakeholder text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'stakeholder'::text)), ''::text)) STORED,
-    stakeholder_role text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'stakeholder_role'::text)), ''::text)) STORED,
-    role_name text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'role_name'::text)), ''::text)) STORED,
     can_view text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'can_view'::text)), ''::text)) STORED,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
     source_slug character varying DEFAULT 'access-control'::character varying NOT NULL,
     payload_text text,
-    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED
+    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
+    stakeholder_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'stakeholder_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'stakeholder_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED,
+    stakeholder_role_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'stakeholder_role_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'stakeholder_role_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED,
+    role_name_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'role_name_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'role_name_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED
 );
 
 
@@ -1529,13 +1541,21 @@ CREATE TABLE public.module_approvals (
     updated_at timestamp(6) without time zone NOT NULL,
     module_name text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'module_name'::text)), ''::text)) STORED,
     approval_level text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'approval_level'::text)), ''::text)) STORED,
-    stakeholder_role text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'stakeholder_role'::text)), ''::text)) STORED,
-    role_name text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'role_name'::text)), ''::text)) STORED,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
     source_slug character varying DEFAULT 'approval-master'::character varying NOT NULL,
     payload_text text,
-    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED
+    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
+    stakeholder_role_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'stakeholder_role_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'stakeholder_role_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED,
+    role_name_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'role_name_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'role_name_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED
 );
 
 
@@ -1582,15 +1602,23 @@ CREATE TABLE public.module_bills (
     data jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    bill_month text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'bill_month'::text)), ''::text)) STORED,
-    select_vrp text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'select_vrp'::text)), ''::text)) STORED,
     bill_status text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'status'::text)), ''::text)) STORED,
     grand_total text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'grand_total'::text)), ''::text)) STORED,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text]))))) STORED,
     source_slug character varying DEFAULT 'jeevika-jankar-bill-process'::character varying NOT NULL,
     payload_text text,
-    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED
+    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
+    bill_month_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'bill_month_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'bill_month_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED,
+    select_vrp bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'select_vrp'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'select_vrp'::text))::bigint
+    ELSE NULL::bigint
+END) STORED
 );
 
 
@@ -1674,10 +1702,10 @@ CREATE TABLE public.module_jeevika_jankar_bill_list_083c76c4 (
 
 CREATE TABLE public.module_jeevika_jankar_completed_payment_l_bad7b61b (
     id bigint DEFAULT nextval('public.module_entry_id_seq'::regclass) NOT NULL,
-    source_slug character varying DEFAULT 'jeevika-jankar-completed-payment-list'::character varying CONSTRAINT module_jeevika_jankar_completed_payment_l__source_slug_not_null NOT NULL,
-    data jsonb DEFAULT '{}'::jsonb CONSTRAINT module_jeevika_jankar_completed_payment_l_bad7b61_data_not_null NOT NULL,
-    created_at timestamp(6) without time zone CONSTRAINT module_jeevika_jankar_completed_payment_l_b_created_at_not_null NOT NULL,
-    updated_at timestamp(6) without time zone CONSTRAINT module_jeevika_jankar_completed_payment_l_b_updated_at_not_null NOT NULL,
+    source_slug character varying DEFAULT 'jeevika-jankar-completed-payment-list'::character varying NOT NULL,
+    data jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
     payload_text text,
@@ -1691,10 +1719,10 @@ CREATE TABLE public.module_jeevika_jankar_completed_payment_l_bad7b61b (
 
 CREATE TABLE public.module_jeevika_jankar_observation_list_9bfb7dc5 (
     id bigint DEFAULT nextval('public.module_entry_id_seq'::regclass) NOT NULL,
-    source_slug character varying DEFAULT 'jeevika-jankar-observation-list'::character varying CONSTRAINT module_jeevika_jankar_observation_list_9bf_source_slug_not_null NOT NULL,
+    source_slug character varying DEFAULT 'jeevika-jankar-observation-list'::character varying NOT NULL,
     data jsonb DEFAULT '{}'::jsonb NOT NULL,
-    created_at timestamp(6) without time zone CONSTRAINT module_jeevika_jankar_observation_list_9bfb_created_at_not_null NOT NULL,
-    updated_at timestamp(6) without time zone CONSTRAINT module_jeevika_jankar_observation_list_9bfb_updated_at_not_null NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
     payload_text text,
@@ -1708,7 +1736,7 @@ CREATE TABLE public.module_jeevika_jankar_observation_list_9bfb7dc5 (
 
 CREATE TABLE public.module_jeevika_jankar_payment_list_2e70d942 (
     id bigint DEFAULT nextval('public.module_entry_id_seq'::regclass) NOT NULL,
-    source_slug character varying DEFAULT 'jeevika-jankar-payment-list'::character varying CONSTRAINT module_jeevika_jankar_payment_list_2e70d94_source_slug_not_null NOT NULL,
+    source_slug character varying DEFAULT 'jeevika-jankar-payment-list'::character varying NOT NULL,
     data jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
@@ -1725,10 +1753,10 @@ CREATE TABLE public.module_jeevika_jankar_payment_list_2e70d942 (
 
 CREATE TABLE public.module_jeevika_jankar_payment_list_detail_d8114659 (
     id bigint DEFAULT nextval('public.module_entry_id_seq'::regclass) NOT NULL,
-    source_slug character varying DEFAULT 'jeevika-jankar-payment-list-detail'::character varying CONSTRAINT module_jeevika_jankar_payment_list_detail__source_slug_not_null NOT NULL,
-    data jsonb DEFAULT '{}'::jsonb CONSTRAINT module_jeevika_jankar_payment_list_detail_d811465_data_not_null NOT NULL,
-    created_at timestamp(6) without time zone CONSTRAINT module_jeevika_jankar_payment_list_detail_d_created_at_not_null NOT NULL,
-    updated_at timestamp(6) without time zone CONSTRAINT module_jeevika_jankar_payment_list_detail_d_updated_at_not_null NOT NULL,
+    source_slug character varying DEFAULT 'jeevika-jankar-payment-list-detail'::character varying NOT NULL,
+    data jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
     payload_text text,
@@ -1742,10 +1770,10 @@ CREATE TABLE public.module_jeevika_jankar_payment_list_detail_d8114659 (
 
 CREATE TABLE public.module_jeevika_jankar_transfer_list_73f1674d (
     id bigint DEFAULT nextval('public.module_entry_id_seq'::regclass) NOT NULL,
-    source_slug character varying DEFAULT 'jeevika-jankar-transfer-list'::character varying CONSTRAINT module_jeevika_jankar_transfer_list_73f167_source_slug_not_null NOT NULL,
+    source_slug character varying DEFAULT 'jeevika-jankar-transfer-list'::character varying NOT NULL,
     data jsonb DEFAULT '{}'::jsonb NOT NULL,
-    created_at timestamp(6) without time zone CONSTRAINT module_jeevika_jankar_transfer_list_73f1674_created_at_not_null NOT NULL,
-    updated_at timestamp(6) without time zone CONSTRAINT module_jeevika_jankar_transfer_list_73f1674_updated_at_not_null NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
     payload_text text,
@@ -1762,15 +1790,24 @@ CREATE TABLE public.module_jj_transfers (
     data jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    stakeholder_category text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'stakeholder_category'::text)), ''::text)) STORED,
-    user_name text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'user_name'::text)), ''::text)) STORED,
     fcoc text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'fcoc'::text)), ''::text)) STORED,
     sidebar_menu text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'sidebar_menu'::text)), ''::text)) STORED,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
     source_slug character varying DEFAULT 'jeevika-jankar-transfer'::character varying NOT NULL,
     payload_text text,
-    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED
+    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
+    stakeholder_category_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'stakeholder_category_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'stakeholder_category_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED,
+    user_name_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'user_name_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'user_name_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED,
+    jeevika_jankar_names_ids jsonb GENERATED ALWAYS AS (COALESCE((data -> 'jeevika_jankar_names_ids'::text), '[]'::jsonb)) STORED
 );
 
 
@@ -1871,15 +1908,23 @@ CREATE TABLE public.module_office_categories (
     data jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    stakeholder_category text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'stakeholder_category'::text)), ''::text)) STORED,
-    parent_category text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'parent_category'::text)), ''::text)) STORED,
     office_name text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'office_name'::text)), ''::text)) STORED,
     office_level text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'office_level'::text)), ''::text)) STORED,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
     source_slug character varying DEFAULT 'office-category-add'::character varying NOT NULL,
     payload_text text,
-    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED
+    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
+    stakeholder_category_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'stakeholder_category_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'stakeholder_category_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED,
+    parent_category_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'parent_category_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'parent_category_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED
 );
 
 
@@ -1909,15 +1954,27 @@ CREATE TABLE public.module_other_farmer_targets (
     data jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    month text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'month'::text)), ''::text)) STORED,
-    jeevika_jankar_id text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'jeevika_jankar_id'::text)), ''::text)) STORED,
     fcoc_name text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'fcoc_name'::text)), ''::text)) STORED,
-    target_mapping_id text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'target_mapping_id'::text)), ''::text)) STORED,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
     source_slug character varying DEFAULT 'other-target-with-farmer'::character varying NOT NULL,
     payload_text text,
-    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED
+    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
+    month_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'month_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'month_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED,
+    jeevika_jankar_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'jeevika_jankar_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'jeevika_jankar_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED,
+    target_mapping_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'target_mapping_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'target_mapping_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED
 );
 
 
@@ -1944,10 +2001,10 @@ CREATE TABLE public.module_other_target_list_410d4f4c (
 
 CREATE TABLE public.module_other_target_with_farmer_list_0d98bf9f (
     id bigint DEFAULT nextval('public.module_entry_id_seq'::regclass) NOT NULL,
-    source_slug character varying DEFAULT 'other-target-with-farmer-list'::character varying CONSTRAINT module_other_target_with_farmer_list_0d98b_source_slug_not_null NOT NULL,
+    source_slug character varying DEFAULT 'other-target-with-farmer-list'::character varying NOT NULL,
     data jsonb DEFAULT '{}'::jsonb NOT NULL,
-    created_at timestamp(6) without time zone CONSTRAINT module_other_target_with_farmer_list_0d98bf_created_at_not_null NOT NULL,
-    updated_at timestamp(6) without time zone CONSTRAINT module_other_target_with_farmer_list_0d98bf_updated_at_not_null NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
     payload_text text,
@@ -1964,16 +2021,32 @@ CREATE TABLE public.module_other_targets (
     data jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    month text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'month'::text)), ''::text)) STORED,
-    jeevika_jankar_id text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'jeevika_jankar_id'::text)), ''::text)) STORED,
     fcoc_name text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'fcoc_name'::text)), ''::text)) STORED,
-    ics_name text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'ics_name'::text)), ''::text)) STORED,
-    target_mapping_id text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'target_mapping_id'::text)), ''::text)) STORED,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
     source_slug character varying DEFAULT 'other-target'::character varying NOT NULL,
     payload_text text,
-    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED
+    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
+    month_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'month_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'month_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED,
+    ics_name_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'ics_name_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'ics_name_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED,
+    jeevika_jankar_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'jeevika_jankar_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'jeevika_jankar_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED,
+    target_mapping_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'target_mapping_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'target_mapping_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED
 );
 
 
@@ -2020,16 +2093,24 @@ CREATE TABLE public.module_parent_offices (
     data jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    stakeholder_category text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'stakeholder_category'::text)), ''::text)) STORED,
     parent_office_type text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'parent_office_type'::text)), ''::text)) STORED,
     parent_office_name text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'parent_office_name'::text)), ''::text)) STORED,
-    parent_office text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'parent_office'::text)), ''::text)) STORED,
     office_level text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'office_level'::text)), ''::text)) STORED,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
     source_slug character varying DEFAULT 'parent-office-add'::character varying NOT NULL,
     payload_text text,
-    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED
+    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
+    stakeholder_category_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'stakeholder_category_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'stakeholder_category_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED,
+    parent_office_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'parent_office_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'parent_office_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED
 );
 
 
@@ -2042,14 +2123,22 @@ CREATE TABLE public.module_payment_details (
     data jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    bill_month text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'bill_month'::text)), ''::text)) STORED,
-    select_vrp text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'select_vrp'::text)), ''::text)) STORED,
     bill_status text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'status'::text)), ''::text)) STORED,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text]))))) STORED,
     source_slug character varying DEFAULT 'jeevika-jankar-payment-detail'::character varying NOT NULL,
     payload_text text,
-    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED
+    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
+    bill_month_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'bill_month_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'bill_month_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED,
+    select_vrp bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'select_vrp'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'select_vrp'::text))::bigint
+    ELSE NULL::bigint
+END) STORED
 );
 
 
@@ -2148,14 +2237,22 @@ CREATE TABLE public.module_roles (
     data jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    stakeholder_category text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'stakeholder_category'::text)), ''::text)) STORED,
-    stakeholder_role text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'stakeholder_role'::text)), ''::text)) STORED,
     role_name text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'role_name'::text)), ''::text)) STORED,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
     source_slug character varying DEFAULT 'role-name'::character varying NOT NULL,
     payload_text text,
-    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED
+    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
+    stakeholder_category_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'stakeholder_category_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'stakeholder_category_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED,
+    stakeholder_role_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'stakeholder_role_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'stakeholder_role_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED
 );
 
 
@@ -2165,10 +2262,10 @@ CREATE TABLE public.module_roles (
 
 CREATE TABLE public.module_seed_distribution_target_list_5453661e (
     id bigint DEFAULT nextval('public.module_entry_id_seq'::regclass) NOT NULL,
-    source_slug character varying DEFAULT 'seed-distribution-target-list'::character varying CONSTRAINT module_seed_distribution_target_list_54536_source_slug_not_null NOT NULL,
+    source_slug character varying DEFAULT 'seed-distribution-target-list'::character varying NOT NULL,
     data jsonb DEFAULT '{}'::jsonb NOT NULL,
-    created_at timestamp(6) without time zone CONSTRAINT module_seed_distribution_target_list_545366_created_at_not_null NOT NULL,
-    updated_at timestamp(6) without time zone CONSTRAINT module_seed_distribution_target_list_545366_updated_at_not_null NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
     payload_text text,
@@ -2219,13 +2316,17 @@ CREATE TABLE public.module_stakeholder_roles (
     data jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    stakeholder_category text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'stakeholder_category'::text)), ''::text)) STORED,
     stakeholder_role text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'stakeholder_role'::text)), ''::text)) STORED,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
     source_slug character varying DEFAULT 'stakeholder-role'::character varying NOT NULL,
     payload_text text,
-    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED
+    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
+    stakeholder_category_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'stakeholder_category_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'stakeholder_category_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED
 );
 
 
@@ -2258,14 +2359,18 @@ CREATE TABLE public.module_sub_activities (
     data jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    main_activity text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'main_activity'::text)), ''::text)) STORED,
     sub_activity_name text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'sub_activity_name'::text)), ''::text)) STORED,
     unit text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'unit'::text)), ''::text)) STORED,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
     source_slug character varying DEFAULT 'add-vrp-activity'::character varying NOT NULL,
     payload_text text,
-    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED
+    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
+    main_activity_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'main_activity_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'main_activity_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED
 );
 
 
@@ -2278,16 +2383,28 @@ CREATE TABLE public.module_sub_offices (
     data jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    stakeholder_category text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'stakeholder_category'::text)), ''::text)) STORED,
-    parent_category text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'parent_category'::text)), ''::text)) STORED,
-    office_name text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'office_name'::text)), ''::text)) STORED,
     sub_office_name text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'sub_office_name'::text)), ''::text)) STORED,
     office_level text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'office_level'::text)), ''::text)) STORED,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
     source_slug character varying DEFAULT 'office-mapping-add'::character varying NOT NULL,
     payload_text text,
-    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED
+    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
+    stakeholder_category_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'stakeholder_category_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'stakeholder_category_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED,
+    parent_category_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'parent_category_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'parent_category_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED,
+    office_name_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'office_name_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'office_name_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED
 );
 
 
@@ -2314,10 +2431,10 @@ CREATE TABLE public.module_task_completion_indicator_2dc4f3fb (
 
 CREATE TABLE public.module_task_completion_indicator_list_fc8d2b85 (
     id bigint DEFAULT nextval('public.module_entry_id_seq'::regclass) NOT NULL,
-    source_slug character varying DEFAULT 'task-completion-indicator-list'::character varying CONSTRAINT module_task_completion_indicator_list_fc8d_source_slug_not_null NOT NULL,
+    source_slug character varying DEFAULT 'task-completion-indicator-list'::character varying NOT NULL,
     data jsonb DEFAULT '{}'::jsonb NOT NULL,
-    created_at timestamp(6) without time zone CONSTRAINT module_task_completion_indicator_list_fc8d2_created_at_not_null NOT NULL,
-    updated_at timestamp(6) without time zone CONSTRAINT module_task_completion_indicator_list_fc8d2_updated_at_not_null NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
     payload_text text,
@@ -2402,18 +2519,26 @@ CREATE TABLE public.module_trainings (
     data jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    month text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'month'::text)), ''::text)) STORED,
-    main_activity text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'main_activity'::text)), ''::text)) STORED,
-    sub_activity text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'sub_activity'::text)), ''::text)) STORED,
     training_method text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'training_method'::text)), ''::text)) STORED,
     main_activity_type text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'main_activity_type'::text)), ''::text)) STORED,
-    jeevika_jankar_id text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'jeevika_jankar_id'::text)), ''::text)) STORED,
     cluster_coordinator_name text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'cluster_coordinator_name'::text)), ''::text)) STORED,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
     source_slug character varying DEFAULT 'training-form'::character varying NOT NULL,
     payload_text text,
-    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED
+    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
+    month_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'month_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'month_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED,
+    main_activity_ids jsonb GENERATED ALWAYS AS (COALESCE((data -> 'main_activity_ids'::text), '[]'::jsonb)) STORED,
+    sub_activity_ids jsonb GENERATED ALWAYS AS (COALESCE((data -> 'sub_activity_ids'::text), '[]'::jsonb)) STORED,
+    jeevika_jankar_id bigint GENERATED ALWAYS AS (
+CASE
+    WHEN ((data ->> 'jeevika_jankar_id'::text) ~ '^[0-9]+$'::text) THEN ((data ->> 'jeevika_jankar_id'::text))::bigint
+    ELSE NULL::bigint
+END) STORED
 );
 
 
@@ -2426,14 +2551,16 @@ CREATE TABLE public.module_user_hierarchies (
     data jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    level_1_user text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'level_1_user'::text)), ''::text)) STORED,
-    level_2_user text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'level_2_user'::text)), ''::text)) STORED,
-    level_3_user text GENERATED ALWAYS AS (NULLIF(btrim((data ->> 'level_3_user'::text)), ''::text)) STORED,
     status text GENERATED ALWAYS AS ((data ->> 'status'::text)) STORED,
     active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
     source_slug character varying DEFAULT 'user-hierarchy-mapping'::character varying NOT NULL,
     payload_text text,
-    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED
+    catalogue_active boolean GENERATED ALWAYS AS ((NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))) STORED,
+    level_1_user_id bigint GENERATED ALWAYS AS ((NULLIF(btrim((data ->> 'level_1_user_id'::text)), ''::text))::bigint) STORED,
+    level_2_user_id bigint GENERATED ALWAYS AS ((NULLIF(btrim((data ->> 'level_2_user_id'::text)), ''::text))::bigint) STORED,
+    level_3_user_id bigint GENERATED ALWAYS AS ((NULLIF(btrim((data ->> 'level_3_user_id'::text)), ''::text))::bigint) STORED,
+    level_2_user_ids jsonb GENERATED ALWAYS AS (COALESCE((data -> 'level_2_user_ids'::text), '[]'::jsonb)) STORED,
+    level_3_user_ids jsonb GENERATED ALWAYS AS (COALESCE((data -> 'level_3_user_ids'::text), '[]'::jsonb)) STORED
 );
 
 
@@ -4129,7 +4256,10 @@ CREATE TABLE public.target_mappings (
     week_3_target integer,
     week_4_target integer,
     cc_target numeric(18,4),
-    target_entry_mode character varying DEFAULT 'ics_wise'::character varying NOT NULL
+    target_entry_mode character varying DEFAULT 'ics_wise'::character varying NOT NULL,
+    month_id bigint,
+    main_activity_id bigint,
+    sub_activity_id bigint
 );
 
 
@@ -5503,31 +5633,38 @@ CREATE INDEX idx_on_created_at_ca2b8c330d ON public.module_other_target_with_far
 
 
 --
--- Name: idx_on_main_activity_sub_activity_name_7a91dcb2a3; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_on_main_activity_id_sub_activity_name_2fca51eead; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_on_main_activity_sub_activity_name_7a91dcb2a3 ON public.module_sub_activities USING btree (main_activity, sub_activity_name);
-
-
---
--- Name: idx_on_stakeholder_category_office_level_5bb4cc8ce0; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_on_stakeholder_category_office_level_5bb4cc8ce0 ON public.module_parent_offices USING btree (stakeholder_category, office_level);
+CREATE INDEX idx_on_main_activity_id_sub_activity_name_2fca51eead ON public.module_sub_activities USING btree (main_activity_id, sub_activity_name);
 
 
 --
--- Name: idx_on_stakeholder_category_stakeholder_role_5f7f62ad08; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_on_stakeholder_category_id_office_level_5b9f24165e; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_on_stakeholder_category_stakeholder_role_5f7f62ad08 ON public.module_roles USING btree (stakeholder_category, stakeholder_role);
+CREATE INDEX idx_on_stakeholder_category_id_office_level_5b9f24165e ON public.module_parent_offices USING btree (stakeholder_category_id, office_level);
 
 
 --
--- Name: idx_on_stakeholder_category_stakeholder_role_cd8b188480; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_on_stakeholder_category_id_stakeholder_role_a73ea5f3ad; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_on_stakeholder_category_stakeholder_role_cd8b188480 ON public.module_stakeholder_roles USING btree (stakeholder_category, stakeholder_role);
+CREATE INDEX idx_on_stakeholder_category_id_stakeholder_role_a73ea5f3ad ON public.module_stakeholder_roles USING btree (stakeholder_category_id, stakeholder_role);
+
+
+--
+-- Name: idx_on_stakeholder_category_id_stakeholder_role_id_9be4cbbc21; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_on_stakeholder_category_id_stakeholder_role_id_9be4cbbc21 ON public.module_roles USING btree (stakeholder_category_id, stakeholder_role_id);
+
+
+--
+-- Name: idx_on_stakeholder_role_id_role_name_id_b7dfb38a5a; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_on_stakeholder_role_id_role_name_id_b7dfb38a5a ON public.module_access_controls USING btree (stakeholder_role_id, role_name_id);
 
 
 --
@@ -6217,38 +6354,24 @@ CREATE INDEX index_module_access_controls_on_normalized_can_view ON public.modul
 
 
 --
--- Name: index_module_access_controls_on_normalized_role_name; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_access_controls_on_role_name_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_access_controls_on_normalized_role_name ON public.module_access_controls USING btree (lower(btrim(role_name)));
-
-
---
--- Name: index_module_access_controls_on_normalized_stakeholder; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_access_controls_on_normalized_stakeholder ON public.module_access_controls USING btree (lower(btrim(stakeholder)));
+CREATE INDEX index_module_access_controls_on_role_name_id ON public.module_access_controls USING btree (role_name_id);
 
 
 --
--- Name: index_module_access_controls_on_normalized_stakeholder_role; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_access_controls_on_stakeholder_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_access_controls_on_normalized_stakeholder_role ON public.module_access_controls USING btree (lower(btrim(stakeholder_role)));
-
-
---
--- Name: index_module_access_controls_on_role_name; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_access_controls_on_role_name ON public.module_access_controls USING btree (role_name);
+CREATE INDEX index_module_access_controls_on_stakeholder_id ON public.module_access_controls USING btree (stakeholder_id);
 
 
 --
--- Name: index_module_access_controls_on_stakeholder_role_and_role_name; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_access_controls_on_stakeholder_role_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_access_controls_on_stakeholder_role_and_role_name ON public.module_access_controls USING btree (stakeholder_role, role_name);
+CREATE INDEX index_module_access_controls_on_stakeholder_role_id ON public.module_access_controls USING btree (stakeholder_role_id);
 
 
 --
@@ -6357,17 +6480,17 @@ CREATE INDEX index_module_approvals_on_normalized_module_name ON public.module_a
 
 
 --
--- Name: index_module_approvals_on_normalized_role_name; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_approvals_on_role_name_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_approvals_on_normalized_role_name ON public.module_approvals USING btree (lower(btrim(role_name)));
+CREATE INDEX index_module_approvals_on_role_name_id ON public.module_approvals USING btree (role_name_id);
 
 
 --
--- Name: index_module_approvals_on_normalized_stakeholder_role; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_approvals_on_stakeholder_role_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_approvals_on_normalized_stakeholder_role ON public.module_approvals USING btree (lower(btrim(stakeholder_role)));
+CREATE INDEX index_module_approvals_on_stakeholder_role_id ON public.module_approvals USING btree (stakeholder_role_id);
 
 
 --
@@ -6406,10 +6529,10 @@ CREATE INDEX index_module_bills_on_active ON public.module_bills USING btree (ac
 
 
 --
--- Name: index_module_bills_on_bill_month; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_bills_on_bill_month_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_bills_on_bill_month ON public.module_bills USING btree (bill_month);
+CREATE INDEX index_module_bills_on_bill_month_id ON public.module_bills USING btree (bill_month_id);
 
 
 --
@@ -6417,13 +6540,6 @@ CREATE INDEX index_module_bills_on_bill_month ON public.module_bills USING btree
 --
 
 CREATE INDEX index_module_bills_on_created_at ON public.module_bills USING btree (created_at);
-
-
---
--- Name: index_module_bills_on_normalized_bill_month; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_bills_on_normalized_bill_month ON public.module_bills USING btree (lower(btrim(bill_month)));
 
 
 --
@@ -6441,31 +6557,17 @@ CREATE INDEX index_module_bills_on_normalized_grand_total ON public.module_bills
 
 
 --
--- Name: index_module_bills_on_normalized_select_vrp; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_bills_on_select_vrp; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_bills_on_normalized_select_vrp ON public.module_bills USING btree (lower(btrim(select_vrp)));
-
-
---
--- Name: index_module_bills_on_payload_month; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_bills_on_payload_month ON public.module_bills USING btree (((data ->> 'bill_month'::text)));
+CREATE INDEX index_module_bills_on_select_vrp ON public.module_bills USING btree (select_vrp);
 
 
 --
--- Name: index_module_bills_on_payload_owner_month; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_bills_on_select_vrp_and_bill_month_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_bills_on_payload_owner_month ON public.module_bills USING btree (((data ->> 'select_vrp'::text)), ((data ->> 'bill_month'::text)));
-
-
---
--- Name: index_module_bills_on_select_vrp_and_bill_month; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_bills_on_select_vrp_and_bill_month ON public.module_bills USING btree (select_vrp, bill_month);
+CREATE INDEX index_module_bills_on_select_vrp_and_bill_month_id ON public.module_bills USING btree (select_vrp, bill_month_id);
 
 
 --
@@ -6539,6 +6641,13 @@ CREATE INDEX index_module_jj_transfers_on_fcoc ON public.module_jj_transfers USI
 
 
 --
+-- Name: index_module_jj_transfers_on_jeevika_jankar_names_ids; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_module_jj_transfers_on_jeevika_jankar_names_ids ON public.module_jj_transfers USING gin (jeevika_jankar_names_ids);
+
+
+--
 -- Name: index_module_jj_transfers_on_normalized_fcoc; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6553,24 +6662,17 @@ CREATE INDEX index_module_jj_transfers_on_normalized_sidebar_menu ON public.modu
 
 
 --
--- Name: index_module_jj_transfers_on_normalized_stakeholder_category; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_jj_transfers_on_stakeholder_category_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_jj_transfers_on_normalized_stakeholder_category ON public.module_jj_transfers USING btree (lower(btrim(stakeholder_category)));
-
-
---
--- Name: index_module_jj_transfers_on_normalized_user_name; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_jj_transfers_on_normalized_user_name ON public.module_jj_transfers USING btree (lower(btrim(user_name)));
+CREATE INDEX index_module_jj_transfers_on_stakeholder_category_id ON public.module_jj_transfers USING btree (stakeholder_category_id);
 
 
 --
--- Name: index_module_jj_transfers_on_user_name; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_jj_transfers_on_user_name_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_jj_transfers_on_user_name ON public.module_jj_transfers USING btree (user_name);
+CREATE INDEX index_module_jj_transfers_on_user_name_id ON public.module_jj_transfers USING btree (user_name_id);
 
 
 --
@@ -6707,20 +6809,6 @@ CREATE INDEX index_module_office_categories_on_normalized_office_name ON public.
 
 
 --
--- Name: index_module_office_categories_on_normalized_parent_category; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_office_categories_on_normalized_parent_category ON public.module_office_categories USING btree (lower(btrim(parent_category)));
-
-
---
--- Name: index_module_office_categories_on_normalized_stakeholder_catego; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_office_categories_on_normalized_stakeholder_catego ON public.module_office_categories USING btree (lower(btrim(stakeholder_category)));
-
-
---
 -- Name: index_module_office_categories_on_office_name; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6728,10 +6816,17 @@ CREATE INDEX index_module_office_categories_on_office_name ON public.module_offi
 
 
 --
--- Name: index_module_office_categories_on_parent_category; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_office_categories_on_parent_category_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_office_categories_on_parent_category ON public.module_office_categories USING btree (parent_category);
+CREATE INDEX index_module_office_categories_on_parent_category_id ON public.module_office_categories USING btree (parent_category_id);
+
+
+--
+-- Name: index_module_office_categories_on_stakeholder_category_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_module_office_categories_on_stakeholder_category_id ON public.module_office_categories USING btree (stakeholder_category_id);
 
 
 --
@@ -6763,10 +6858,17 @@ CREATE INDEX index_module_other_farmer_targets_on_created_at ON public.module_ot
 
 
 --
--- Name: index_module_other_farmer_targets_on_month; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_other_farmer_targets_on_jeevika_jankar_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_other_farmer_targets_on_month ON public.module_other_farmer_targets USING btree (month);
+CREATE INDEX index_module_other_farmer_targets_on_jeevika_jankar_id ON public.module_other_farmer_targets USING btree (jeevika_jankar_id);
+
+
+--
+-- Name: index_module_other_farmer_targets_on_month_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_module_other_farmer_targets_on_month_id ON public.module_other_farmer_targets USING btree (month_id);
 
 
 --
@@ -6774,34 +6876,6 @@ CREATE INDEX index_module_other_farmer_targets_on_month ON public.module_other_f
 --
 
 CREATE INDEX index_module_other_farmer_targets_on_normalized_fcoc_name ON public.module_other_farmer_targets USING btree (lower(btrim(fcoc_name)));
-
-
---
--- Name: index_module_other_farmer_targets_on_normalized_jeevika_jankar_; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_other_farmer_targets_on_normalized_jeevika_jankar_ ON public.module_other_farmer_targets USING btree (lower(btrim(jeevika_jankar_id)));
-
-
---
--- Name: index_module_other_farmer_targets_on_normalized_month; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_other_farmer_targets_on_normalized_month ON public.module_other_farmer_targets USING btree (lower(btrim(month)));
-
-
---
--- Name: index_module_other_farmer_targets_on_normalized_target_mapping_; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_other_farmer_targets_on_normalized_target_mapping_ ON public.module_other_farmer_targets USING btree (lower(btrim(target_mapping_id)));
-
-
---
--- Name: index_module_other_farmer_targets_on_payload_month; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_other_farmer_targets_on_payload_month ON public.module_other_farmer_targets USING btree (lower(btrim((data ->> 'month'::text))));
 
 
 --
@@ -6840,10 +6914,24 @@ CREATE INDEX index_module_other_targets_on_created_at ON public.module_other_tar
 
 
 --
--- Name: index_module_other_targets_on_month; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_other_targets_on_ics_name_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_other_targets_on_month ON public.module_other_targets USING btree (month);
+CREATE INDEX index_module_other_targets_on_ics_name_id ON public.module_other_targets USING btree (ics_name_id);
+
+
+--
+-- Name: index_module_other_targets_on_jeevika_jankar_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_module_other_targets_on_jeevika_jankar_id ON public.module_other_targets USING btree (jeevika_jankar_id);
+
+
+--
+-- Name: index_module_other_targets_on_month_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_module_other_targets_on_month_id ON public.module_other_targets USING btree (month_id);
 
 
 --
@@ -6851,41 +6939,6 @@ CREATE INDEX index_module_other_targets_on_month ON public.module_other_targets 
 --
 
 CREATE INDEX index_module_other_targets_on_normalized_fcoc_name ON public.module_other_targets USING btree (lower(btrim(fcoc_name)));
-
-
---
--- Name: index_module_other_targets_on_normalized_ics_name; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_other_targets_on_normalized_ics_name ON public.module_other_targets USING btree (lower(btrim(ics_name)));
-
-
---
--- Name: index_module_other_targets_on_normalized_jeevika_jankar_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_other_targets_on_normalized_jeevika_jankar_id ON public.module_other_targets USING btree (lower(btrim(jeevika_jankar_id)));
-
-
---
--- Name: index_module_other_targets_on_normalized_month; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_other_targets_on_normalized_month ON public.module_other_targets USING btree (lower(btrim(month)));
-
-
---
--- Name: index_module_other_targets_on_normalized_target_mapping_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_other_targets_on_normalized_target_mapping_id ON public.module_other_targets USING btree (lower(btrim(target_mapping_id)));
-
-
---
--- Name: index_module_other_targets_on_payload_month; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_other_targets_on_payload_month ON public.module_other_targets USING btree (lower(btrim((data ->> 'month'::text))));
 
 
 --
@@ -6945,38 +6998,17 @@ CREATE INDEX index_module_parent_offices_on_normalized_office_level ON public.mo
 
 
 --
--- Name: index_module_parent_offices_on_normalized_parent_office; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_parent_offices_on_parent_office_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_parent_offices_on_normalized_parent_office ON public.module_parent_offices USING btree (lower(btrim(parent_office)));
-
-
---
--- Name: index_module_parent_offices_on_normalized_parent_office_name; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_parent_offices_on_normalized_parent_office_name ON public.module_parent_offices USING btree (lower(btrim(parent_office_name)));
+CREATE INDEX index_module_parent_offices_on_parent_office_id ON public.module_parent_offices USING btree (parent_office_id);
 
 
 --
--- Name: index_module_parent_offices_on_normalized_parent_office_type; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_parent_offices_on_stakeholder_category_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_parent_offices_on_normalized_parent_office_type ON public.module_parent_offices USING btree (lower(btrim(parent_office_type)));
-
-
---
--- Name: index_module_parent_offices_on_normalized_stakeholder_category; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_parent_offices_on_normalized_stakeholder_category ON public.module_parent_offices USING btree (lower(btrim(stakeholder_category)));
-
-
---
--- Name: index_module_parent_offices_on_parent_office_name; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_parent_offices_on_parent_office_name ON public.module_parent_offices USING btree (parent_office_name);
+CREATE INDEX index_module_parent_offices_on_stakeholder_category_id ON public.module_parent_offices USING btree (stakeholder_category_id);
 
 
 --
@@ -6987,10 +7019,10 @@ CREATE INDEX index_module_payment_details_on_active ON public.module_payment_det
 
 
 --
--- Name: index_module_payment_details_on_bill_month; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_payment_details_on_bill_month_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_payment_details_on_bill_month ON public.module_payment_details USING btree (bill_month);
+CREATE INDEX index_module_payment_details_on_bill_month_id ON public.module_payment_details USING btree (bill_month_id);
 
 
 --
@@ -7001,13 +7033,6 @@ CREATE INDEX index_module_payment_details_on_created_at ON public.module_payment
 
 
 --
--- Name: index_module_payment_details_on_normalized_bill_month; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_payment_details_on_normalized_bill_month ON public.module_payment_details USING btree (lower(btrim(bill_month)));
-
-
---
 -- Name: index_module_payment_details_on_normalized_bill_status; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -7015,10 +7040,17 @@ CREATE INDEX index_module_payment_details_on_normalized_bill_status ON public.mo
 
 
 --
--- Name: index_module_payment_details_on_normalized_select_vrp; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_payment_details_on_select_vrp; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_payment_details_on_normalized_select_vrp ON public.module_payment_details USING btree (lower(btrim(select_vrp)));
+CREATE INDEX index_module_payment_details_on_select_vrp ON public.module_payment_details USING btree (select_vrp);
+
+
+--
+-- Name: index_module_payment_details_on_select_vrp_and_bill_month_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_module_payment_details_on_select_vrp_and_bill_month_id ON public.module_payment_details USING btree (select_vrp, bill_month_id);
 
 
 --
@@ -7179,14 +7211,14 @@ CREATE INDEX index_module_records_on_updated_at ON public.module_records USING b
 -- Name: index_module_records_village_code_lookup; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_records_village_code_lookup ON public.module_records USING btree ((((data)::jsonb ->> 'village_code'::text))) WHERE ((module_slug)::text = ANY ((ARRAY['village-master'::character varying, 'lg-directory-list'::character varying])::text[]));
+CREATE INDEX index_module_records_village_code_lookup ON public.module_records USING btree ((((data)::jsonb ->> 'village_code'::text))) WHERE ((module_slug)::text = ANY (ARRAY[('village-master'::character varying)::text, ('lg-directory-list'::character varying)::text]));
 
 
 --
 -- Name: index_module_records_village_id_lookup; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_records_village_id_lookup ON public.module_records USING btree ((((data)::jsonb ->> 'village_id'::text))) WHERE ((module_slug)::text = ANY ((ARRAY['village-master'::character varying, 'lg-directory-list'::character varying])::text[]));
+CREATE INDEX index_module_records_village_id_lookup ON public.module_records USING btree ((((data)::jsonb ->> 'village_id'::text))) WHERE ((module_slug)::text = ANY (ARRAY[('village-master'::character varying)::text, ('lg-directory-list'::character varying)::text]));
 
 
 --
@@ -7225,24 +7257,24 @@ CREATE INDEX index_module_roles_on_normalized_role_name ON public.module_roles U
 
 
 --
--- Name: index_module_roles_on_normalized_stakeholder_category; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_roles_on_normalized_stakeholder_category ON public.module_roles USING btree (lower(btrim(stakeholder_category)));
-
-
---
--- Name: index_module_roles_on_normalized_stakeholder_role; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_roles_on_normalized_stakeholder_role ON public.module_roles USING btree (lower(btrim(stakeholder_role)));
-
-
---
 -- Name: index_module_roles_on_role_name; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX index_module_roles_on_role_name ON public.module_roles USING btree (role_name);
+
+
+--
+-- Name: index_module_roles_on_stakeholder_category_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_module_roles_on_stakeholder_category_id ON public.module_roles USING btree (stakeholder_category_id);
+
+
+--
+-- Name: index_module_roles_on_stakeholder_role_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_module_roles_on_stakeholder_role_id ON public.module_roles USING btree (stakeholder_role_id);
 
 
 --
@@ -7288,17 +7320,17 @@ CREATE INDEX index_module_stakeholder_roles_on_created_at ON public.module_stake
 
 
 --
--- Name: index_module_stakeholder_roles_on_normalized_stakeholder_catego; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_stakeholder_roles_on_normalized_stakeholder_catego ON public.module_stakeholder_roles USING btree (lower(btrim(stakeholder_category)));
-
-
---
 -- Name: index_module_stakeholder_roles_on_normalized_stakeholder_role; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX index_module_stakeholder_roles_on_normalized_stakeholder_role ON public.module_stakeholder_roles USING btree (lower(btrim(stakeholder_role)));
+
+
+--
+-- Name: index_module_stakeholder_roles_on_stakeholder_category_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_module_stakeholder_roles_on_stakeholder_category_id ON public.module_stakeholder_roles USING btree (stakeholder_category_id);
 
 
 --
@@ -7358,10 +7390,10 @@ CREATE INDEX index_module_sub_activities_on_created_at ON public.module_sub_acti
 
 
 --
--- Name: index_module_sub_activities_on_normalized_main_activity; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_sub_activities_on_main_activity_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_sub_activities_on_normalized_main_activity ON public.module_sub_activities USING btree (lower(btrim(main_activity)));
+CREATE INDEX index_module_sub_activities_on_main_activity_id ON public.module_sub_activities USING btree (main_activity_id);
 
 
 --
@@ -7400,45 +7432,31 @@ CREATE INDEX index_module_sub_offices_on_normalized_office_level ON public.modul
 
 
 --
--- Name: index_module_sub_offices_on_normalized_office_name; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_sub_offices_on_office_name_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_sub_offices_on_normalized_office_name ON public.module_sub_offices USING btree (lower(btrim(office_name)));
-
-
---
--- Name: index_module_sub_offices_on_normalized_parent_category; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_sub_offices_on_normalized_parent_category ON public.module_sub_offices USING btree (lower(btrim(parent_category)));
+CREATE INDEX index_module_sub_offices_on_office_name_id ON public.module_sub_offices USING btree (office_name_id);
 
 
 --
--- Name: index_module_sub_offices_on_normalized_stakeholder_category; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_sub_offices_on_office_name_id_and_sub_office_name; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_sub_offices_on_normalized_stakeholder_category ON public.module_sub_offices USING btree (lower(btrim(stakeholder_category)));
-
-
---
--- Name: index_module_sub_offices_on_normalized_sub_office_name; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_sub_offices_on_normalized_sub_office_name ON public.module_sub_offices USING btree (lower(btrim(sub_office_name)));
+CREATE INDEX index_module_sub_offices_on_office_name_id_and_sub_office_name ON public.module_sub_offices USING btree (office_name_id, sub_office_name);
 
 
 --
--- Name: index_module_sub_offices_on_office_name_and_sub_office_name; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_sub_offices_on_parent_category_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_sub_offices_on_office_name_and_sub_office_name ON public.module_sub_offices USING btree (office_name, sub_office_name);
+CREATE INDEX index_module_sub_offices_on_parent_category_id ON public.module_sub_offices USING btree (parent_category_id);
 
 
 --
--- Name: index_module_sub_offices_on_parent_category; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_sub_offices_on_stakeholder_category_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_sub_offices_on_parent_category ON public.module_sub_offices USING btree (parent_category);
+CREATE INDEX index_module_sub_offices_on_stakeholder_category_id ON public.module_sub_offices USING btree (stakeholder_category_id);
 
 
 --
@@ -7526,24 +7544,38 @@ CREATE INDEX index_module_trainings_on_created_at ON public.module_trainings USI
 
 
 --
--- Name: index_module_trainings_on_jeevika_jankar_id_and_month; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_trainings_on_jeevika_jankar_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_trainings_on_jeevika_jankar_id_and_month ON public.module_trainings USING btree (jeevika_jankar_id, month);
-
-
---
--- Name: index_module_trainings_on_main_activity_type; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_trainings_on_main_activity_type ON public.module_trainings USING btree (main_activity_type);
+CREATE INDEX index_module_trainings_on_jeevika_jankar_id ON public.module_trainings USING btree (jeevika_jankar_id);
 
 
 --
--- Name: index_module_trainings_on_month_and_training_method; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_trainings_on_jeevika_jankar_id_and_month_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_trainings_on_month_and_training_method ON public.module_trainings USING btree (month, training_method);
+CREATE INDEX index_module_trainings_on_jeevika_jankar_id_and_month_id ON public.module_trainings USING btree (jeevika_jankar_id, month_id);
+
+
+--
+-- Name: index_module_trainings_on_main_activity_ids; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_module_trainings_on_main_activity_ids ON public.module_trainings USING gin (main_activity_ids);
+
+
+--
+-- Name: index_module_trainings_on_month_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_module_trainings_on_month_id ON public.module_trainings USING btree (month_id);
+
+
+--
+-- Name: index_module_trainings_on_month_id_and_training_method; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_module_trainings_on_month_id_and_training_method ON public.module_trainings USING btree (month_id, training_method);
 
 
 --
@@ -7554,41 +7586,6 @@ CREATE INDEX index_module_trainings_on_normalized_cluster_coordinator_name ON pu
 
 
 --
--- Name: index_module_trainings_on_normalized_jeevika_jankar_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_trainings_on_normalized_jeevika_jankar_id ON public.module_trainings USING btree (lower(btrim(jeevika_jankar_id)));
-
-
---
--- Name: index_module_trainings_on_normalized_main_activity; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_trainings_on_normalized_main_activity ON public.module_trainings USING btree (lower(btrim(main_activity)));
-
-
---
--- Name: index_module_trainings_on_normalized_main_activity_type; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_trainings_on_normalized_main_activity_type ON public.module_trainings USING btree (lower(btrim(main_activity_type)));
-
-
---
--- Name: index_module_trainings_on_normalized_month; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_trainings_on_normalized_month ON public.module_trainings USING btree (lower(btrim(month)));
-
-
---
--- Name: index_module_trainings_on_normalized_sub_activity; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_trainings_on_normalized_sub_activity ON public.module_trainings USING btree (lower(btrim(sub_activity)));
-
-
---
 -- Name: index_module_trainings_on_normalized_training_method; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -7596,10 +7593,10 @@ CREATE INDEX index_module_trainings_on_normalized_training_method ON public.modu
 
 
 --
--- Name: index_module_trainings_on_payload_month_and_created; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_trainings_on_sub_activity_ids; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_trainings_on_payload_month_and_created ON public.module_trainings USING btree (lower(btrim((data ->> 'month'::text))), created_at DESC);
+CREATE INDEX index_module_trainings_on_sub_activity_ids ON public.module_trainings USING gin (sub_activity_ids);
 
 
 --
@@ -7617,31 +7614,38 @@ CREATE INDEX index_module_user_hierarchies_on_created_at ON public.module_user_h
 
 
 --
--- Name: index_module_user_hierarchies_on_level_1_user; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_user_hierarchies_on_level_1_user_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_user_hierarchies_on_level_1_user ON public.module_user_hierarchies USING btree (level_1_user);
-
-
---
--- Name: index_module_user_hierarchies_on_normalized_level_1_user; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_module_user_hierarchies_on_normalized_level_1_user ON public.module_user_hierarchies USING btree (lower(btrim(level_1_user)));
+CREATE INDEX index_module_user_hierarchies_on_level_1_user_id ON public.module_user_hierarchies USING btree (level_1_user_id);
 
 
 --
--- Name: index_module_user_hierarchies_on_normalized_level_2_user; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_user_hierarchies_on_level_2_user_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_user_hierarchies_on_normalized_level_2_user ON public.module_user_hierarchies USING btree (lower(btrim(level_2_user)));
+CREATE INDEX index_module_user_hierarchies_on_level_2_user_id ON public.module_user_hierarchies USING btree (level_2_user_id);
 
 
 --
--- Name: index_module_user_hierarchies_on_normalized_level_3_user; Type: INDEX; Schema: public; Owner: -
+-- Name: index_module_user_hierarchies_on_level_2_user_ids; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_module_user_hierarchies_on_normalized_level_3_user ON public.module_user_hierarchies USING btree (lower(btrim(level_3_user)));
+CREATE INDEX index_module_user_hierarchies_on_level_2_user_ids ON public.module_user_hierarchies USING gin (level_2_user_ids);
+
+
+--
+-- Name: index_module_user_hierarchies_on_level_3_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_module_user_hierarchies_on_level_3_user_id ON public.module_user_hierarchies USING btree (level_3_user_id);
+
+
+--
+-- Name: index_module_user_hierarchies_on_level_3_user_ids; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_module_user_hierarchies_on_level_3_user_ids ON public.module_user_hierarchies USING gin (level_3_user_ids);
 
 
 --
@@ -7862,6 +7866,20 @@ CREATE INDEX index_target_mappings_on_entry_mode_and_month ON public.target_mapp
 
 
 --
+-- Name: index_target_mappings_on_main_activity_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_target_mappings_on_main_activity_id ON public.target_mappings USING btree (main_activity_id);
+
+
+--
+-- Name: index_target_mappings_on_month_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_target_mappings_on_month_id ON public.target_mappings USING btree (month_id);
+
+
+--
 -- Name: index_target_mappings_on_normalized_month; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -7880,6 +7898,13 @@ CREATE INDEX index_target_mappings_on_owner_normalized_month ON public.target_ma
 --
 
 CREATE INDEX index_target_mappings_on_scope ON public.target_mappings USING btree (vrp_id, vrp_ics_mapping_id, month_name, activity_name);
+
+
+--
+-- Name: index_target_mappings_on_sub_activity_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_target_mappings_on_sub_activity_id ON public.target_mappings USING btree (sub_activity_id);
 
 
 --
@@ -11466,6 +11491,8 @@ ALTER TABLE ONLY public.jj_quiz_answers
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20261127120000'),
+('20261127100000'),
 ('20261124180000'),
 ('20261124170000'),
 ('20261124160000'),
