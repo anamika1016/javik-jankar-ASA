@@ -19,7 +19,7 @@ class TrainingEditApproval
     version = ModuleRecordReadVersion.read(slugs: [SLUG])
     return legacy_unapproved_record_ids unless version
 
-    key = ["training-unapproved-clock-v1", ModuleRecord.connection_pool.db_config.database, version]
+    key = ["training-unapproved-clock-v1", ModuleEntry.connection_pool.db_config.database, version]
     DashboardCacheFill.synchronize(key) do
       cached = REVISION_READ_CACHE.read(key)
       unless cached
@@ -45,10 +45,10 @@ class TrainingEditApproval
     # Check tuple versions without reading those TOAST payloads on every page.
     # ctid also changes on a second update in the same transaction, where xmin
     # and a manually preserved updated_at alone would miss the change.
-    scope = ModuleRecord.where(module_slug: SLUG)
+    scope = ModuleEntry.where(module_slug: SLUG)
     version_sql = "MD5(COALESCE(STRING_AGG(id::text || ':' || xmin::text || ':' || ctid::text, ',' ORDER BY id), ''))"
     version = scope.pick(Arel.sql(version_sql))
-    prefix = ["training-unapproved-v2", ModuleRecord.connection_pool.db_config.database]
+    prefix = ["training-unapproved-v2", ModuleEntry.connection_pool.db_config.database]
     key = [*prefix, version]
     DashboardCacheFill.synchronize(key) do
       cached = REVISION_READ_CACHE.read(key)
@@ -101,7 +101,7 @@ class TrainingEditApproval
   def self.read_unapproved_revision_rows(version_query)
     # Keep the newest-revision-wins rule in PostgreSQL. Read scalar ID/status
     # pairs instead of instantiating each latest revision as an Active Record.
-    ModuleRecord
+    ModuleEntry
       .where(module_slug: SLUG)
       .order(Arel.sql("(data::jsonb ->> 'record_id'), id DESC"))
       .pluck(
@@ -145,7 +145,7 @@ class TrainingEditApproval
   def self.transfer_owner_username(vrp)
     return if vrp.blank?
 
-    ModuleRecord.where(module_slug: "jeevika-jankar-transfer")
+    (ModuleMirror.relation_for("jeevika-jankar-transfer") || ModuleEntry.where(module_slug: "jeevika-jankar-transfer"))
       .order(updated_at: :desc, id: :desc)
       .find_each do |record|
         data = record.data
@@ -309,7 +309,7 @@ class TrainingEditApproval
 
   def self.submit!(record:, proposed:, actor:)
     record.with_lock do
-      pending = ModuleRecord.where(module_slug: SLUG).where("data::jsonb ->> 'record_id' = ? AND data::jsonb ->> 'status' = 'Pending'", record.id.to_s).first
+      pending = ModuleEntry.where(module_slug: SLUG).where("data::jsonb ->> 'record_id' = ? AND data::jsonb ->> 'status' = 'Pending'", record.id.to_s).first
       if pending && pending.data["requester_identity"] != identity(actor)
         raise InvalidTransition, "Another user's edit is pending approval for this training form."
       end
@@ -331,7 +331,7 @@ class TrainingEditApproval
         end
         return pending
       end
-      ModuleRecord.create!(module_slug: SLUG, data: {
+      ModuleEntry.create!(module_slug: SLUG, data: {
         "record_id" => record.id, "before" => record.data.deep_dup, "proposed" => proposed,
         "requester" => actor.slice("id", "record_type", "username", "user_name", "name", "stakeholder", *TrainingStaffScope::OFFICE_KEYS),
         "requester_identity" => identity(actor), "status" => "Pending", "step" => 0,
@@ -343,7 +343,7 @@ class TrainingEditApproval
   def self.edit_data(record, actor)
     return record.data unless record.module_slug == "training-form"
 
-    revision = ModuleRecord.where(module_slug: SLUG)
+    revision = ModuleEntry.where(module_slug: SLUG)
       .where("data::jsonb ->> 'record_id' = ? AND data::jsonb ->> 'status' = 'Pending'", record.id.to_s).first
     return record.data unless revision && revision.data["requester_identity"] == identity(actor)
 
@@ -366,7 +366,7 @@ class TrainingEditApproval
     # The sidebar checks all pending revisions. Reuse one catalogue for this request
     # instead of loading every User and new-user record once per revision.
     staff_catalogue = TrainingStaffScope.staff_catalogue
-    ModuleRecord.where(module_slug: SLUG).where("data::jsonb ->> 'status' = 'Pending'").order(id: :desc).select do |revision|
+    ModuleEntry.where(module_slug: SLUG).where("data::jsonb ->> 'status' = 'Pending'").order(id: :desc).select do |revision|
       assign_automatic_approver!(revision, staff_catalogue: staff_catalogue)
       visible?(revision, actor)
     end
@@ -374,23 +374,23 @@ class TrainingEditApproval
 
   # Lists and badges need routing metadata, not image evidence or training snapshots.
   # Projected revisions are read-only; routing and decisions use complete records.
-  def self.summary_scope(scope = ModuleRecord.where(module_slug: SLUG))
+  def self.summary_scope(scope = ModuleEntry.where(module_slug: SLUG))
     scope.select(:id, :module_slug, :created_at, :updated_at)
-      .select("(module_records.data::jsonb - ARRAY['before', 'proposed', 'evidence', 'history'])::text AS data")
+      .select("(module_entries.data::jsonb - ARRAY['before', 'proposed', 'evidence', 'history'])::text AS data")
       .readonly
   end
 
   def self.summaries_for(actor, pending_only: false)
     return [] if actor.blank?
 
-    scope = ModuleRecord.where(module_slug: SLUG)
+    scope = ModuleEntry.where(module_slug: SLUG)
     scope = scope.where("data::jsonb ->> 'status' = 'Pending'") if pending_only
     staff_catalogue = nil
     summary_scope(scope).order(id: :desc).filter_map do |summary|
       if summary.data["status"] == "Pending" && summary.data["approval_role"] != "agronomist"
         # Preserve legacy routing, loading staff once only when routing is needed.
         staff_catalogue ||= TrainingStaffScope.staff_catalogue
-        revision = ModuleRecord.find(summary.id)
+        revision = ModuleEntry.find(summary.id)
         assign_automatic_approver!(revision, staff_catalogue: staff_catalogue)
         summary.data = revision.data.except("before", "proposed", "evidence", "history")
       end
@@ -504,7 +504,7 @@ class TrainingEditApproval
         else
           data["step"] = data["step"].to_i + 1
           if data["step"] >= data["approvers"].size
-            record = ModuleRecord.find(data["record_id"])
+            record = ModuleEntry.find(data["record_id"])
             record.with_lock do
               raise InvalidTransition, "The original record is no longer a training form." unless record.module_slug == "training-form"
               merged = merge_approved_data(before: data["before"], proposed: data["proposed"], current: record.data)

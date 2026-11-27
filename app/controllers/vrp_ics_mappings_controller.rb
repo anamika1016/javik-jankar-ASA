@@ -94,13 +94,13 @@ class VrpIcsMappingsController < ApplicationController
   end
 
   def legacy_current_app_user_ids
-    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+    return [] unless defined?(ModuleRecord) && ModuleEntry.table_exists?
 
     username = current_app_user&.dig("username").to_s
     emails = current_app_user_emails
     return [] if username.blank? && emails.blank?
 
-    ModuleRecord.where(module_slug: "new-user").select do |record|
+    ModuleEntry.where(module_slug: "new-user").select do |record|
       record.data["user_name"].to_s == username ||
         emails.include?(record.data["email"].to_s.strip.downcase)
     end.map(&:id)

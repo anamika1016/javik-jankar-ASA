@@ -30,7 +30,7 @@ class DemonstrationMethodReport
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'input demo inm') AS input_demo_inm,
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'input demo pm') AS input_demo_pm,
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'ffs') AS ffs
-          FROM module_records mr
+          FROM (#{ModuleMirror.read_scope("training-form").to_sql}) mr
           WHERE mr.module_slug = 'training-form' AND #{month_filter}
             AND (mr.data::jsonb ->> 'created_by_id') IN (SELECT vrp_id::text FROM target_data)
           GROUP BY (mr.data::jsonb ->> 'created_by_id')
@@ -70,7 +70,7 @@ class DemonstrationMethodReport
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'input demo inm') AS input_demo_inm,
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'input demo pm') AS input_demo_pm,
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'ffs') AS ffs
-          FROM module_records mr
+          FROM (#{ModuleMirror.read_scope("training-form").to_sql}) mr
           INNER JOIN (SELECT DISTINCT fco_id, fco_name, vrp_id FROM vrp_target) vt
             ON vt.vrp_id::text = TRIM(mr.data::jsonb ->> 'created_by_id')
           WHERE mr.module_slug = 'training-form' AND #{month_filter}

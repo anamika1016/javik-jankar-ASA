@@ -21,7 +21,7 @@ class CropCatalogue
   # Records of one master that the web dropdowns treat as active: not
   # deleted, and status blank or Active.
   def self.active_records(slug)
-    ModuleRecord.where(module_slug: slug)
+    ModuleEntry.where(module_slug: slug)
       .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
       .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
       .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])

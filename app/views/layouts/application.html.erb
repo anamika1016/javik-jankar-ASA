@@ -31,6 +31,7 @@
     <%= javascript_importmap_tags(controller_name == "sessions" && action_name == "new" ? "login" : "application") %>
     <% unless controller_name == "sessions" && action_name == "new" %>
       <%= javascript_import_module_tag "navigation_progress" %>
+      <%= javascript_import_module_tag "column_filters" %>
     <% end %>
   </head>
 

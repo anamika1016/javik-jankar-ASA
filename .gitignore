@@ -21,5 +21,11 @@
 # Precompiled assets. The server builds its own on deploy.
 /public/assets
 
+# Runtime uploads belong to storage/production, never to a source commit.
+# Existing tracked reference assets remain tracked; this prevents only new
+# CSV/XLSX/image uploads from appearing in `git status`.
+/public/uploads/module_records/*
+!/public/uploads/module_records/.keep
+
 # Firebase service account key -- never commit this.
 config/fcm-service-account.json

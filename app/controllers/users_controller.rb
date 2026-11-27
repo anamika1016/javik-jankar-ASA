@@ -1,4 +1,6 @@
 class UsersController < ApplicationController
+  # Projected location row: answers to id and data like a ModuleRecord does.
+  LocationRecord = Struct.new(:id, :data)
   LOCATION_ROW_KEYS = %w[state_name state_id state_code district_name district_id district_code
     block_name cd_block_name block_id block_code cd_block_code
     gram_panchayat_name gram_panchayat_id gram_panchayat_code gp_code gram_code
@@ -109,10 +111,10 @@ class UsersController < ApplicationController
   end
 
   def user_form_options_payload
-    return empty_user_form_options_payload unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+    return empty_user_form_options_payload unless defined?(ModuleRecord) && ModuleEntry.table_exists?
 
     version = user_form_catalogue_revision
-    cache_key = ["users/form-options-v4", ModuleRecord.connection_pool.db_config.database, version]
+    cache_key = ["users/form-options-v4", ModuleEntry.connection_pool.db_config.database, version]
     ReadStageTrace.measure("user.form_options") do
       CatalogueReadCache.fetch(user_form_options_cache, cache_key,
         version: version, current_version: -> { user_form_catalogue_revision },
@@ -128,7 +130,7 @@ class UsersController < ApplicationController
 
     # Tuple identity also detects imports preserving timestamps and repeated
     # writes in one transaction. Keep this reader fresh for cold-fill checks.
-    ModuleRecord.where(module_slug: FORM_OPTION_SLUGS)
+    ModuleEntry.where(module_slug: FORM_OPTION_SLUGS)
       .pick(Arel.sql("MD5(COALESCE(STRING_AGG(id::text || ':' || xmin::text || ':' || ctid::text, ',' ORDER BY id), ''))"))
   end
 
@@ -174,16 +176,33 @@ class UsersController < ApplicationController
     }
   end
 
+  # Masters that have a table of their own are read from it: rows come back
+  # already filtered to active and ordered newest first, off indexed columns
+  # instead of a JSON payload parsed per row in Ruby. They answer to `id`,
+  # `data`, `module_slug` and `created_at` exactly like a ModuleRecord, so
+  # every label-derivation rule downstream of here is untouched.
+  #
+  # Safe to read because the sync trigger is in db/structure.sql, so it exists
+  # in every database including ones built with db:schema:load -- an edit made
+  # with update_columns, update_all or raw SQL reaches the mirror before this
+  # form's cache revision moves. Slugs not moved across keep their old query.
   def preload_user_form_module_records!
     @ordered_user_form_records = {}
-    @user_form_module_records = ModuleRecord
-      .where(module_slug: FORM_OPTION_SLUGS)
-      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
-      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
-      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
-      .where("COALESCE(BTRIM(data::jsonb ->> 'status'), '') = '' OR LOWER(BTRIM(data::jsonb ->> 'status')) = 'active'")
-      .order(created_at: :desc)
-      .group_by(&:module_slug)
+    mirrored, remaining = ModuleMirror.partition(FORM_OPTION_SLUGS)
+    records = ModuleMirror.records_for(mirrored)
+
+    if remaining.any?
+      records += ModuleEntry
+        .where(module_slug: remaining)
+        .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
+        .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
+        .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
+        .where("COALESCE(BTRIM(data::jsonb ->> 'status'), '') = '' OR LOWER(BTRIM(data::jsonb ->> 'status')) = 'active'")
+        .order(created_at: :desc)
+        .to_a
+    end
+
+    @user_form_module_records = records.group_by(&:module_slug)
   end
 
   def user_form_module_records(module_slugs)
@@ -197,11 +216,11 @@ class UsersController < ApplicationController
       return rows.dup
     end
 
-    ModuleRecord.where(module_slug: slugs).order(created_at: :desc).to_a
+    ModuleEntry.where(module_slug: slugs).order(created_at: :desc).to_a
   end
 
   def module_record_options(module_slug, field_key)
-    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+    return [] unless defined?(ModuleRecord) && ModuleEntry.table_exists?
 
     field_keys = Array(field_key)
     user_form_module_records(module_slug)
@@ -217,7 +236,7 @@ class UsersController < ApplicationController
   end
 
   def role_management_mappings
-    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+    return [] unless defined?(ModuleRecord) && ModuleEntry.table_exists?
 
     stakeholder_role_mappings = user_form_module_records("stakeholder-role")
       .select { |record| active_module_record?(record) }
@@ -339,10 +358,10 @@ class UsersController < ApplicationController
   end
 
   def registered_module_user_names_for_option(attribute, value)
-    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+    return [] unless defined?(ModuleRecord) && ModuleEntry.table_exists?
 
     key = attribute.to_s
-    ModuleRecord
+    ModuleEntry
       .where(module_slug: "new-user")
       .order(updated_at: :desc)
       .select { |record| active_module_record?(record) && record.data[key].to_s.strip.casecmp(value.to_s.strip).zero? }
@@ -401,7 +420,7 @@ class UsersController < ApplicationController
   end
 
   def office_category_mappings
-    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+    return [] unless defined?(ModuleRecord) && ModuleEntry.table_exists?
 
     user_form_module_records(["office-category-add", "office-mapping-add"])
       .select { |record| active_module_record?(record) }
@@ -429,27 +448,36 @@ class UsersController < ApplicationController
       .uniq
   end
 
-  def location_hierarchy_mappings
-    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+  # Every key this builder and its helpers read off a location payload. Only
+  # these are fetched, so a row's unrelated import columns are never carried
+  # into Ruby just to be ignored.
+  LOCATION_PROJECTION_KEYS = (
+    LOCATION_ROW_KEYS.keys +
+    %w[state district block gram_panchayat village name title
+       deleted is_deleted discarded status]
+  ).uniq.freeze
 
-    states = active_records_for_location("state-master").map do |record|
+  def location_hierarchy_mappings
+    return [] unless defined?(ModuleRecord) && ModuleEntry.table_exists?
+
+    states = location_catalogue_records("state-master").map do |record|
       location_row(record, state: first_present_data(record, "state_name"))
     end
 
-    districts = active_records_for_location("district-master").map do |record|
+    districts = location_catalogue_records("district-master").map do |record|
       location_row(record,
         state: first_present_data(record, "state_name", "state", "state_code"),
         district: first_present_data(record, "district_name"))
     end
 
-    blocks = active_records_for_location("block-master").map do |record|
+    blocks = location_catalogue_records("block-master").map do |record|
       location_row(record,
         state: first_present_data(record, "state_name", "state", "state_code"),
         district: first_present_data(record, "district_name", "district", "district_code"),
         block: first_present_data(record, "block_name"))
     end
 
-    gram_panchayats = active_records_for_location("gram-panchayat-master").map do |record|
+    gram_panchayats = location_catalogue_records("gram-panchayat-master").map do |record|
       location_row(record,
         state: first_present_data(record, "state_name", "state", "state_code"),
         district: first_present_data(record, "district_name", "district", "district_code"),
@@ -457,7 +485,7 @@ class UsersController < ApplicationController
         gram_panchayat: gram_panchayat_name_from_record(record))
     end
 
-    villages = active_records_for_location("village-master").map do |record|
+    villages = location_catalogue_records("village-master").map do |record|
       location_row(record,
         state: first_present_data(record, "state_name", "state", "state_code"),
         district: first_present_data(record, "district_name", "district", "district_code"),
@@ -466,7 +494,7 @@ class UsersController < ApplicationController
         village: first_present_data(record, "village_name", "village", "name"))
     end
 
-    lg_directory_rows = active_records_for_location("lg-directory-list").map do |record|
+    lg_directory_rows = location_catalogue_records("lg-directory-list").map do |record|
       location_row(record,
         state: first_present_data(record, "state", "state_name"),
         district: first_present_data(record, "district", "district_name"),
@@ -488,6 +516,32 @@ class UsersController < ApplicationController
   def active_records_for_location(module_slug)
     user_form_module_records(module_slug)
       .select { |record| active_module_record?(record) }
+  end
+
+  # Same rows, same order, as active_records_for_location -- but carrying only
+  # the keys the hierarchy builder reads, pulled out in the database.
+  #
+  # The builder walks ~4,100 location rows and reads about thirty keys off
+  # each. Handing it whole payloads meant deserializing every row's full JSON,
+  # import columns and all, to use a fraction of it; that single step was 95 ms
+  # of the user form's build. Projecting first leaves the Ruby untouched -- the
+  # struct answers to `id` and `data` exactly like the record did -- while the
+  # rows arrive already narrowed.
+  def location_catalogue_records(module_slug)
+    @location_catalogue_records ||= {}
+    @location_catalogue_records[module_slug] ||= begin
+      model = ModuleMirror.model_for(module_slug)
+      if model
+        projection = LOCATION_PROJECTION_KEYS.map { |key| "#{model.connection.quote(key)}, data -> #{model.connection.quote(key)}" }
+        scope = model.active.catalogue_order
+        scope = scope.for_slug(module_slug) if scope.respond_to?(:for_slug)
+        scope.pluck(:id, Arel.sql("jsonb_strip_nulls(jsonb_build_object(#{projection.join(', ')}))"))
+          .map { |id, data| LocationRecord.new(id, data) }
+      else
+        # Slug not moved onto a table of its own yet.
+        active_records_for_location(module_slug)
+      end
+    end
   end
 
   def location_row(record, values)

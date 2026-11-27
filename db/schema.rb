@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_23_110000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_24_150000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -335,6 +335,362 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_110000) do
     t.index ["status"], name: "index_jj_quizzes_on_status"
   end
 
+  create_table "lg_blocks", id: :bigint, default: nil, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.string "block_code"
+    t.string "block_name"
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.string "district_code"
+    t.string "district_name"
+    t.string "gp_code"
+    t.string "gram_panchayat_name"
+    t.string "source_slug", null: false
+    t.string "state_code"
+    t.string "state_name"
+    t.string "status"
+    t.string "sub_district_code"
+    t.string "sub_district_name"
+    t.datetime "updated_at", null: false
+    t.string "village_code"
+    t.string "village_name"
+    t.index "lower(btrim((block_name)::text))", name: "index_lg_blocks_on_normalized_name"
+    t.index "lower(btrim((district_name)::text))", name: "index_lg_blocks_on_normalized_district"
+    t.index ["active", "source_slug"], name: "index_lg_blocks_on_active_and_source"
+    t.index ["created_at"], name: "index_lg_blocks_on_created_at"
+    t.index ["source_slug"], name: "index_lg_blocks_on_source_slug"
+  end
+
+  create_table "lg_districts", id: :bigint, default: nil, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.string "block_code"
+    t.string "block_name"
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.string "district_code"
+    t.string "district_name"
+    t.string "gp_code"
+    t.string "gram_panchayat_name"
+    t.string "source_slug", null: false
+    t.string "state_code"
+    t.string "state_name"
+    t.string "status"
+    t.string "sub_district_code"
+    t.string "sub_district_name"
+    t.datetime "updated_at", null: false
+    t.string "village_code"
+    t.string "village_name"
+    t.index "lower(btrim((district_name)::text))", name: "index_lg_districts_on_normalized_name"
+    t.index "lower(btrim((state_name)::text))", name: "index_lg_districts_on_normalized_state"
+    t.index ["active", "source_slug"], name: "index_lg_districts_on_active_and_source"
+    t.index ["created_at"], name: "index_lg_districts_on_created_at"
+    t.index ["source_slug"], name: "index_lg_districts_on_source_slug"
+  end
+
+  create_table "lg_gram_panchayats", id: :bigint, default: nil, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.string "block_code"
+    t.string "block_name"
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.string "district_code"
+    t.string "district_name"
+    t.string "gp_code"
+    t.string "gram_panchayat_name"
+    t.string "source_slug", null: false
+    t.string "state_code"
+    t.string "state_name"
+    t.string "status"
+    t.string "sub_district_code"
+    t.string "sub_district_name"
+    t.datetime "updated_at", null: false
+    t.string "village_code"
+    t.string "village_name"
+    t.index "lower(btrim((block_name)::text))", name: "index_lg_gps_on_normalized_block"
+    t.index "lower(btrim((gram_panchayat_name)::text))", name: "index_lg_gps_on_normalized_name"
+    t.index ["active", "source_slug"], name: "index_lg_gram_panchayats_on_active_and_source"
+    t.index ["created_at"], name: "index_lg_gram_panchayats_on_created_at"
+    t.index ["source_slug"], name: "index_lg_gram_panchayats_on_source_slug"
+  end
+
+  create_table "lg_states", id: :bigint, default: nil, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.string "block_code"
+    t.string "block_name"
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.string "district_code"
+    t.string "district_name"
+    t.string "gp_code"
+    t.string "gram_panchayat_name"
+    t.string "source_slug", null: false
+    t.string "state_code"
+    t.string "state_name"
+    t.string "status"
+    t.string "sub_district_code"
+    t.string "sub_district_name"
+    t.datetime "updated_at", null: false
+    t.string "village_code"
+    t.string "village_name"
+    t.index "lower(btrim((state_name)::text))", name: "index_lg_states_on_normalized_name"
+    t.index ["active", "source_slug"], name: "index_lg_states_on_active_and_source"
+    t.index ["created_at"], name: "index_lg_states_on_created_at"
+    t.index ["source_slug"], name: "index_lg_states_on_source_slug"
+  end
+
+  create_table "lg_villages", id: :bigint, default: nil, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.string "block_code"
+    t.string "block_name"
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.string "district_code"
+    t.string "district_name"
+    t.string "gp_code"
+    t.string "gram_panchayat_name"
+    t.string "source_slug", null: false
+    t.string "state_code"
+    t.string "state_name"
+    t.string "status"
+    t.string "sub_district_code"
+    t.string "sub_district_name"
+    t.datetime "updated_at", null: false
+    t.string "village_code"
+    t.string "village_name"
+    t.index "lower(btrim((block_name)::text))", name: "index_lg_villages_on_normalized_block"
+    t.index "lower(btrim((gram_panchayat_name)::text))", name: "index_lg_villages_on_normalized_gp"
+    t.index "lower(btrim((village_name)::text))", name: "index_lg_villages_on_normalized_name"
+    t.index ["active", "source_slug"], name: "index_lg_villages_on_active_and_source"
+    t.index ["created_at"], name: "index_lg_villages_on_created_at"
+    t.index ["source_slug"], name: "index_lg_villages_on_source_slug"
+    t.index ["village_code"], name: "index_lg_villages_on_village_code"
+  end
+
+  create_table "module_access_controls", id: :bigint, default: nil, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "can_view", type: :text, as: "NULLIF(btrim((data ->> 'can_view'::text)), ''::text)", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.virtual "role_name", type: :text, as: "NULLIF(btrim((data ->> 'role_name'::text)), ''::text)", stored: true
+    t.virtual "stakeholder", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder'::text)), ''::text)", stored: true
+    t.virtual "stakeholder_role", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_role'::text)), ''::text)", stored: true
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "lower(btrim(can_view))", name: "index_module_access_controls_on_normalized_can_view"
+    t.index "lower(btrim(role_name))", name: "index_module_access_controls_on_normalized_role_name"
+    t.index "lower(btrim(stakeholder))", name: "index_module_access_controls_on_normalized_stakeholder"
+    t.index "lower(btrim(stakeholder_role))", name: "index_module_access_controls_on_normalized_stakeholder_role"
+    t.index ["active"], name: "index_module_access_controls_on_active"
+    t.index ["created_at"], name: "index_module_access_controls_on_created_at"
+    t.index ["role_name"], name: "index_module_access_controls_on_role_name"
+    t.index ["stakeholder_role", "role_name"], name: "index_module_access_controls_on_stakeholder_role_and_role_name"
+  end
+
+  create_table "module_approvals", id: :bigint, default: nil, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "approval_level", type: :text, as: "NULLIF(btrim((data ->> 'approval_level'::text)), ''::text)", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.virtual "module_name", type: :text, as: "NULLIF(btrim((data ->> 'module_name'::text)), ''::text)", stored: true
+    t.virtual "role_name", type: :text, as: "NULLIF(btrim((data ->> 'role_name'::text)), ''::text)", stored: true
+    t.virtual "stakeholder_role", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_role'::text)), ''::text)", stored: true
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "lower(btrim(approval_level))", name: "index_module_approvals_on_normalized_approval_level"
+    t.index "lower(btrim(module_name))", name: "index_module_approvals_on_normalized_module_name"
+    t.index "lower(btrim(role_name))", name: "index_module_approvals_on_normalized_role_name"
+    t.index "lower(btrim(stakeholder_role))", name: "index_module_approvals_on_normalized_stakeholder_role"
+    t.index ["active"], name: "index_module_approvals_on_active"
+    t.index ["created_at"], name: "index_module_approvals_on_created_at"
+    t.index ["module_name", "approval_level"], name: "index_module_approvals_on_module_name_and_approval_level"
+  end
+
+  create_table "module_bills", id: :bigint, default: nil, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text]))))", stored: true
+    t.virtual "bill_month", type: :text, as: "NULLIF(btrim((data ->> 'bill_month'::text)), ''::text)", stored: true
+    t.virtual "bill_status", type: :text, as: "NULLIF(btrim((data ->> 'status'::text)), ''::text)", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.virtual "grand_total", type: :text, as: "NULLIF(btrim((data ->> 'grand_total'::text)), ''::text)", stored: true
+    t.virtual "select_vrp", type: :text, as: "NULLIF(btrim((data ->> 'select_vrp'::text)), ''::text)", stored: true
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "((data ->> 'bill_month'::text))", name: "index_module_bills_on_payload_month"
+    t.index "((data ->> 'select_vrp'::text)), ((data ->> 'bill_month'::text))", name: "index_module_bills_on_payload_owner_month"
+    t.index "lower(btrim(bill_month))", name: "index_module_bills_on_normalized_bill_month"
+    t.index "lower(btrim(bill_status))", name: "index_module_bills_on_normalized_bill_status"
+    t.index "lower(btrim(grand_total))", name: "index_module_bills_on_normalized_grand_total"
+    t.index "lower(btrim(select_vrp))", name: "index_module_bills_on_normalized_select_vrp"
+    t.index ["active"], name: "index_module_bills_on_active"
+    t.index ["bill_month"], name: "index_module_bills_on_bill_month"
+    t.index ["created_at"], name: "index_module_bills_on_created_at"
+    t.index ["select_vrp", "bill_month"], name: "index_module_bills_on_select_vrp_and_bill_month"
+  end
+
+  create_table "module_jj_transfers", id: :bigint, default: nil, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.virtual "fcoc", type: :text, as: "NULLIF(btrim((data ->> 'fcoc'::text)), ''::text)", stored: true
+    t.virtual "sidebar_menu", type: :text, as: "NULLIF(btrim((data ->> 'sidebar_menu'::text)), ''::text)", stored: true
+    t.virtual "stakeholder_category", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_category'::text)), ''::text)", stored: true
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.virtual "user_name", type: :text, as: "NULLIF(btrim((data ->> 'user_name'::text)), ''::text)", stored: true
+    t.index "lower(btrim(fcoc))", name: "index_module_jj_transfers_on_normalized_fcoc"
+    t.index "lower(btrim(sidebar_menu))", name: "index_module_jj_transfers_on_normalized_sidebar_menu"
+    t.index "lower(btrim(stakeholder_category))", name: "index_module_jj_transfers_on_normalized_stakeholder_category"
+    t.index "lower(btrim(user_name))", name: "index_module_jj_transfers_on_normalized_user_name"
+    t.index ["active"], name: "index_module_jj_transfers_on_active"
+    t.index ["created_at"], name: "index_module_jj_transfers_on_created_at"
+    t.index ["fcoc"], name: "index_module_jj_transfers_on_fcoc"
+    t.index ["user_name"], name: "index_module_jj_transfers_on_user_name"
+  end
+
+  create_table "module_main_activities", id: :bigint, default: nil, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.virtual "main_activity_name", type: :text, as: "NULLIF(btrim((data ->> 'main_activity_name'::text)), ''::text)", stored: true
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "lower(btrim(main_activity_name))", name: "index_module_main_activities_on_normalized_main_activity_name"
+    t.index ["active"], name: "index_module_main_activities_on_active"
+    t.index ["created_at"], name: "index_module_main_activities_on_created_at"
+    t.index ["main_activity_name"], name: "index_module_main_activities_on_main_activity_name"
+  end
+
+  create_table "module_months", id: :bigint, default: nil, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.virtual "financial_year", type: :text, as: "NULLIF(btrim((data ->> 'financial_year'::text)), ''::text)", stored: true
+    t.virtual "month_name", type: :text, as: "NULLIF(btrim((data ->> 'month_name'::text)), ''::text)", stored: true
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "lower(btrim(financial_year))", name: "index_module_months_on_normalized_financial_year"
+    t.index "lower(btrim(month_name))", name: "index_module_months_on_normalized_month_name"
+    t.index ["active"], name: "index_module_months_on_active"
+    t.index ["created_at"], name: "index_module_months_on_created_at"
+    t.index ["financial_year", "month_name"], name: "index_module_months_on_financial_year_and_month_name"
+  end
+
+  create_table "module_office_categories", id: :bigint, default: nil, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.virtual "office_level", type: :text, as: "NULLIF(btrim((data ->> 'office_level'::text)), ''::text)", stored: true
+    t.virtual "office_name", type: :text, as: "NULLIF(btrim((data ->> 'office_name'::text)), ''::text)", stored: true
+    t.virtual "parent_category", type: :text, as: "NULLIF(btrim((data ->> 'parent_category'::text)), ''::text)", stored: true
+    t.virtual "stakeholder_category", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_category'::text)), ''::text)", stored: true
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "lower(btrim(office_level))", name: "index_module_office_categories_on_normalized_office_level"
+    t.index "lower(btrim(office_name))", name: "index_module_office_categories_on_normalized_office_name"
+    t.index "lower(btrim(parent_category))", name: "index_module_office_categories_on_normalized_parent_category"
+    t.index "lower(btrim(stakeholder_category))", name: "index_module_office_categories_on_normalized_stakeholder_catego"
+    t.index ["active"], name: "index_module_office_categories_on_active"
+    t.index ["created_at"], name: "index_module_office_categories_on_created_at"
+    t.index ["office_name"], name: "index_module_office_categories_on_office_name"
+    t.index ["parent_category"], name: "index_module_office_categories_on_parent_category"
+  end
+
+  create_table "module_other_farmer_targets", id: :bigint, default: nil, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.virtual "fcoc_name", type: :text, as: "NULLIF(btrim((data ->> 'fcoc_name'::text)), ''::text)", stored: true
+    t.virtual "jeevika_jankar_id", type: :text, as: "NULLIF(btrim((data ->> 'jeevika_jankar_id'::text)), ''::text)", stored: true
+    t.virtual "month", type: :text, as: "NULLIF(btrim((data ->> 'month'::text)), ''::text)", stored: true
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.virtual "target_mapping_id", type: :text, as: "NULLIF(btrim((data ->> 'target_mapping_id'::text)), ''::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "lower(btrim((data ->> 'month'::text)))", name: "index_module_other_farmer_targets_on_payload_month"
+    t.index "lower(btrim(fcoc_name))", name: "index_module_other_farmer_targets_on_normalized_fcoc_name"
+    t.index "lower(btrim(jeevika_jankar_id))", name: "index_module_other_farmer_targets_on_normalized_jeevika_jankar_"
+    t.index "lower(btrim(month))", name: "index_module_other_farmer_targets_on_normalized_month"
+    t.index "lower(btrim(target_mapping_id))", name: "index_module_other_farmer_targets_on_normalized_target_mapping_"
+    t.index ["active"], name: "index_module_other_farmer_targets_on_active"
+    t.index ["created_at"], name: "index_module_other_farmer_targets_on_created_at"
+    t.index ["month"], name: "index_module_other_farmer_targets_on_month"
+    t.index ["target_mapping_id"], name: "index_module_other_farmer_targets_on_target_mapping_id"
+  end
+
+  create_table "module_other_targets", id: :bigint, default: nil, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.virtual "fcoc_name", type: :text, as: "NULLIF(btrim((data ->> 'fcoc_name'::text)), ''::text)", stored: true
+    t.virtual "ics_name", type: :text, as: "NULLIF(btrim((data ->> 'ics_name'::text)), ''::text)", stored: true
+    t.virtual "jeevika_jankar_id", type: :text, as: "NULLIF(btrim((data ->> 'jeevika_jankar_id'::text)), ''::text)", stored: true
+    t.virtual "month", type: :text, as: "NULLIF(btrim((data ->> 'month'::text)), ''::text)", stored: true
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.virtual "target_mapping_id", type: :text, as: "NULLIF(btrim((data ->> 'target_mapping_id'::text)), ''::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "lower(btrim((data ->> 'month'::text)))", name: "index_module_other_targets_on_payload_month"
+    t.index "lower(btrim(fcoc_name))", name: "index_module_other_targets_on_normalized_fcoc_name"
+    t.index "lower(btrim(ics_name))", name: "index_module_other_targets_on_normalized_ics_name"
+    t.index "lower(btrim(jeevika_jankar_id))", name: "index_module_other_targets_on_normalized_jeevika_jankar_id"
+    t.index "lower(btrim(month))", name: "index_module_other_targets_on_normalized_month"
+    t.index "lower(btrim(target_mapping_id))", name: "index_module_other_targets_on_normalized_target_mapping_id"
+    t.index ["active"], name: "index_module_other_targets_on_active"
+    t.index ["created_at"], name: "index_module_other_targets_on_created_at"
+    t.index ["month"], name: "index_module_other_targets_on_month"
+    t.index ["target_mapping_id"], name: "index_module_other_targets_on_target_mapping_id"
+  end
+
+  create_table "module_parent_offices", id: :bigint, default: nil, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.virtual "office_level", type: :text, as: "NULLIF(btrim((data ->> 'office_level'::text)), ''::text)", stored: true
+    t.virtual "parent_office", type: :text, as: "NULLIF(btrim((data ->> 'parent_office'::text)), ''::text)", stored: true
+    t.virtual "parent_office_name", type: :text, as: "NULLIF(btrim((data ->> 'parent_office_name'::text)), ''::text)", stored: true
+    t.virtual "parent_office_type", type: :text, as: "NULLIF(btrim((data ->> 'parent_office_type'::text)), ''::text)", stored: true
+    t.virtual "stakeholder_category", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_category'::text)), ''::text)", stored: true
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "lower(btrim(office_level))", name: "index_module_parent_offices_on_normalized_office_level"
+    t.index "lower(btrim(parent_office))", name: "index_module_parent_offices_on_normalized_parent_office"
+    t.index "lower(btrim(parent_office_name))", name: "index_module_parent_offices_on_normalized_parent_office_name"
+    t.index "lower(btrim(parent_office_type))", name: "index_module_parent_offices_on_normalized_parent_office_type"
+    t.index "lower(btrim(stakeholder_category))", name: "index_module_parent_offices_on_normalized_stakeholder_category"
+    t.index ["active"], name: "index_module_parent_offices_on_active"
+    t.index ["created_at"], name: "index_module_parent_offices_on_created_at"
+    t.index ["parent_office_name"], name: "index_module_parent_offices_on_parent_office_name"
+    t.index ["stakeholder_category", "office_level"], name: "idx_on_stakeholder_category_office_level_5bb4cc8ce0"
+  end
+
+  create_table "module_payment_details", id: :bigint, default: nil, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text]))))", stored: true
+    t.virtual "bill_month", type: :text, as: "NULLIF(btrim((data ->> 'bill_month'::text)), ''::text)", stored: true
+    t.virtual "bill_status", type: :text, as: "NULLIF(btrim((data ->> 'status'::text)), ''::text)", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.virtual "select_vrp", type: :text, as: "NULLIF(btrim((data ->> 'select_vrp'::text)), ''::text)", stored: true
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "lower(btrim(bill_month))", name: "index_module_payment_details_on_normalized_bill_month"
+    t.index "lower(btrim(bill_status))", name: "index_module_payment_details_on_normalized_bill_status"
+    t.index "lower(btrim(select_vrp))", name: "index_module_payment_details_on_normalized_select_vrp"
+    t.index ["active"], name: "index_module_payment_details_on_active"
+    t.index ["bill_month"], name: "index_module_payment_details_on_bill_month"
+    t.index ["created_at"], name: "index_module_payment_details_on_created_at"
+  end
+
+  create_table "module_projects", id: :bigint, default: nil, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.virtual "project_name", type: :text, as: "NULLIF(btrim((data ->> 'project_name'::text)), ''::text)", stored: true
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "lower(btrim(project_name))", name: "index_module_projects_on_normalized_project_name"
+    t.index ["active"], name: "index_module_projects_on_active"
+    t.index ["created_at"], name: "index_module_projects_on_created_at"
+    t.index ["project_name"], name: "index_module_projects_on_project_name"
+  end
+
   create_table "module_record_read_versions", primary_key: "source_key", id: :string, force: :cascade do |t|
     t.bigint "revision", null: false
   end
@@ -351,8 +707,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_110000) do
     t.index "(((data)::jsonb ->> 'status'::text))", name: "index_training_edits_on_status", where: "((module_slug)::text = 'training-form-edit-request'::text)"
     t.index "(((data)::jsonb ->> 'status'::text)), id DESC", name: "index_training_edits_on_status_and_latest_id", where: "((module_slug)::text = 'training-form-edit-request'::text)"
     t.index "(((data)::jsonb ->> 'user_name'::text)), updated_at DESC", name: "index_module_records_new_users_on_user_name_and_updated_at", where: "((module_slug)::text = 'new-user'::text)"
-    t.index "(((data)::jsonb ->> 'village_code'::text))", name: "index_module_records_village_code_lookup", where: "((module_slug)::text = ANY ((ARRAY['village-master'::character varying, 'lg-directory-list'::character varying])::text[]))"
-    t.index "(((data)::jsonb ->> 'village_id'::text))", name: "index_module_records_village_id_lookup", where: "((module_slug)::text = ANY ((ARRAY['village-master'::character varying, 'lg-directory-list'::character varying])::text[]))"
+    t.index "(((data)::jsonb ->> 'village_code'::text))", name: "index_module_records_village_code_lookup", where: "((module_slug)::text = ANY (ARRAY[('village-master'::character varying)::text, ('lg-directory-list'::character varying)::text]))"
+    t.index "(((data)::jsonb ->> 'village_id'::text))", name: "index_module_records_village_id_lookup", where: "((module_slug)::text = ANY (ARRAY[('village-master'::character varying)::text, ('lg-directory-list'::character varying)::text]))"
     t.index "((data)::jsonb)", name: "index_module_records_on_json_data", using: :gin
     t.index "lower(((data)::jsonb ->> 'email'::text))", name: "index_module_records_new_users_on_lower_email", where: "((module_slug)::text = 'new-user'::text)"
     t.index "lower(((data)::jsonb ->> 'user_name'::text))", name: "index_module_records_new_users_on_lower_user_name", where: "((module_slug)::text = 'new-user'::text)"
@@ -364,6 +720,152 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_110000) do
     t.index ["module_slug", "updated_at"], name: "index_module_records_on_slug_and_updated_at", order: { updated_at: :desc }
     t.index ["module_slug"], name: "index_module_records_on_module_slug"
     t.index ["updated_at"], name: "index_module_records_on_updated_at", order: :desc
+  end
+
+  create_table "module_roles", id: :bigint, default: nil, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.virtual "role_name", type: :text, as: "NULLIF(btrim((data ->> 'role_name'::text)), ''::text)", stored: true
+    t.virtual "stakeholder_category", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_category'::text)), ''::text)", stored: true
+    t.virtual "stakeholder_role", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_role'::text)), ''::text)", stored: true
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "lower(btrim(role_name))", name: "index_module_roles_on_normalized_role_name"
+    t.index "lower(btrim(stakeholder_category))", name: "index_module_roles_on_normalized_stakeholder_category"
+    t.index "lower(btrim(stakeholder_role))", name: "index_module_roles_on_normalized_stakeholder_role"
+    t.index ["active"], name: "index_module_roles_on_active"
+    t.index ["created_at"], name: "index_module_roles_on_created_at"
+    t.index ["role_name"], name: "index_module_roles_on_role_name"
+    t.index ["stakeholder_category", "stakeholder_role"], name: "idx_on_stakeholder_category_stakeholder_role_5f7f62ad08"
+  end
+
+  create_table "module_stakeholder_roles", id: :bigint, default: nil, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.virtual "stakeholder_category", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_category'::text)), ''::text)", stored: true
+    t.virtual "stakeholder_role", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_role'::text)), ''::text)", stored: true
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "lower(btrim(stakeholder_category))", name: "index_module_stakeholder_roles_on_normalized_stakeholder_catego"
+    t.index "lower(btrim(stakeholder_role))", name: "index_module_stakeholder_roles_on_normalized_stakeholder_role"
+    t.index ["active"], name: "index_module_stakeholder_roles_on_active"
+    t.index ["created_at"], name: "index_module_stakeholder_roles_on_created_at"
+    t.index ["stakeholder_category", "stakeholder_role"], name: "idx_on_stakeholder_category_stakeholder_role_cd8b188480"
+  end
+
+  create_table "module_stakeholders", id: :bigint, default: nil, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.virtual "logo_upload", type: :text, as: "NULLIF(btrim((data ->> 'logo_upload'::text)), ''::text)", stored: true
+    t.virtual "stakeholder_name", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_name_in_english'::text)), ''::text)", stored: true
+    t.virtual "stakeholder_name_hindi", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_name_in_hindi'::text)), ''::text)", stored: true
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "lower(btrim(logo_upload))", name: "index_module_stakeholders_on_normalized_logo_upload"
+    t.index "lower(btrim(stakeholder_name))", name: "index_module_stakeholders_on_normalized_stakeholder_name"
+    t.index "lower(btrim(stakeholder_name_hindi))", name: "index_module_stakeholders_on_normalized_stakeholder_name_hindi"
+    t.index ["active"], name: "index_module_stakeholders_on_active"
+    t.index ["created_at"], name: "index_module_stakeholders_on_created_at"
+    t.index ["stakeholder_name"], name: "index_module_stakeholders_on_stakeholder_name"
+  end
+
+  create_table "module_sub_activities", id: :bigint, default: nil, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.virtual "main_activity", type: :text, as: "NULLIF(btrim((data ->> 'main_activity'::text)), ''::text)", stored: true
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.virtual "sub_activity_name", type: :text, as: "NULLIF(btrim((data ->> 'sub_activity_name'::text)), ''::text)", stored: true
+    t.virtual "unit", type: :text, as: "NULLIF(btrim((data ->> 'unit'::text)), ''::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "lower(btrim(main_activity))", name: "index_module_sub_activities_on_normalized_main_activity"
+    t.index "lower(btrim(sub_activity_name))", name: "index_module_sub_activities_on_normalized_sub_activity_name"
+    t.index "lower(btrim(unit))", name: "index_module_sub_activities_on_normalized_unit"
+    t.index ["active"], name: "index_module_sub_activities_on_active"
+    t.index ["created_at"], name: "index_module_sub_activities_on_created_at"
+    t.index ["main_activity", "sub_activity_name"], name: "idx_on_main_activity_sub_activity_name_7a91dcb2a3"
+  end
+
+  create_table "module_sub_offices", id: :bigint, default: nil, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.virtual "office_level", type: :text, as: "NULLIF(btrim((data ->> 'office_level'::text)), ''::text)", stored: true
+    t.virtual "office_name", type: :text, as: "NULLIF(btrim((data ->> 'office_name'::text)), ''::text)", stored: true
+    t.virtual "parent_category", type: :text, as: "NULLIF(btrim((data ->> 'parent_category'::text)), ''::text)", stored: true
+    t.virtual "stakeholder_category", type: :text, as: "NULLIF(btrim((data ->> 'stakeholder_category'::text)), ''::text)", stored: true
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.virtual "sub_office_name", type: :text, as: "NULLIF(btrim((data ->> 'sub_office_name'::text)), ''::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "lower(btrim(office_level))", name: "index_module_sub_offices_on_normalized_office_level"
+    t.index "lower(btrim(office_name))", name: "index_module_sub_offices_on_normalized_office_name"
+    t.index "lower(btrim(parent_category))", name: "index_module_sub_offices_on_normalized_parent_category"
+    t.index "lower(btrim(stakeholder_category))", name: "index_module_sub_offices_on_normalized_stakeholder_category"
+    t.index "lower(btrim(sub_office_name))", name: "index_module_sub_offices_on_normalized_sub_office_name"
+    t.index ["active"], name: "index_module_sub_offices_on_active"
+    t.index ["created_at"], name: "index_module_sub_offices_on_created_at"
+    t.index ["office_name", "sub_office_name"], name: "index_module_sub_offices_on_office_name_and_sub_office_name"
+    t.index ["parent_category"], name: "index_module_sub_offices_on_parent_category"
+  end
+
+  create_table "module_trainings", id: :bigint, default: nil, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.virtual "cluster_coordinator_name", type: :text, as: "NULLIF(btrim((data ->> 'cluster_coordinator_name'::text)), ''::text)", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.virtual "jeevika_jankar_id", type: :text, as: "NULLIF(btrim((data ->> 'jeevika_jankar_id'::text)), ''::text)", stored: true
+    t.virtual "main_activity", type: :text, as: "NULLIF(btrim((data ->> 'main_activity'::text)), ''::text)", stored: true
+    t.virtual "main_activity_type", type: :text, as: "NULLIF(btrim((data ->> 'main_activity_type'::text)), ''::text)", stored: true
+    t.virtual "month", type: :text, as: "NULLIF(btrim((data ->> 'month'::text)), ''::text)", stored: true
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.virtual "sub_activity", type: :text, as: "NULLIF(btrim((data ->> 'sub_activity'::text)), ''::text)", stored: true
+    t.virtual "training_method", type: :text, as: "NULLIF(btrim((data ->> 'training_method'::text)), ''::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "lower(btrim((data ->> 'month'::text))), created_at DESC", name: "index_module_trainings_on_payload_month_and_created"
+    t.index "lower(btrim(cluster_coordinator_name))", name: "index_module_trainings_on_normalized_cluster_coordinator_name"
+    t.index "lower(btrim(jeevika_jankar_id))", name: "index_module_trainings_on_normalized_jeevika_jankar_id"
+    t.index "lower(btrim(main_activity))", name: "index_module_trainings_on_normalized_main_activity"
+    t.index "lower(btrim(main_activity_type))", name: "index_module_trainings_on_normalized_main_activity_type"
+    t.index "lower(btrim(month))", name: "index_module_trainings_on_normalized_month"
+    t.index "lower(btrim(sub_activity))", name: "index_module_trainings_on_normalized_sub_activity"
+    t.index "lower(btrim(training_method))", name: "index_module_trainings_on_normalized_training_method"
+    t.index ["active"], name: "index_module_trainings_on_active"
+    t.index ["created_at"], name: "index_module_trainings_on_created_at"
+    t.index ["jeevika_jankar_id", "month"], name: "index_module_trainings_on_jeevika_jankar_id_and_month"
+    t.index ["main_activity_type"], name: "index_module_trainings_on_main_activity_type"
+    t.index ["month", "training_method"], name: "index_module_trainings_on_month_and_training_method"
+  end
+
+  create_table "module_user_hierarchies", id: :bigint, default: nil, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.virtual "level_1_user", type: :text, as: "NULLIF(btrim((data ->> 'level_1_user'::text)), ''::text)", stored: true
+    t.virtual "level_2_user", type: :text, as: "NULLIF(btrim((data ->> 'level_2_user'::text)), ''::text)", stored: true
+    t.virtual "level_3_user", type: :text, as: "NULLIF(btrim((data ->> 'level_3_user'::text)), ''::text)", stored: true
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.index "lower(btrim(level_1_user))", name: "index_module_user_hierarchies_on_normalized_level_1_user"
+    t.index "lower(btrim(level_2_user))", name: "index_module_user_hierarchies_on_normalized_level_2_user"
+    t.index "lower(btrim(level_3_user))", name: "index_module_user_hierarchies_on_normalized_level_3_user"
+    t.index ["active"], name: "index_module_user_hierarchies_on_active"
+    t.index ["created_at"], name: "index_module_user_hierarchies_on_created_at"
+    t.index ["level_1_user"], name: "index_module_user_hierarchies_on_level_1_user"
+  end
+
+  create_table "module_vrp_types", id: :bigint, default: nil, force: :cascade do |t|
+    t.virtual "active", type: :boolean, as: "(NOT ((COALESCE(lower(btrim((data ->> 'deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'is_deleted'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR (COALESCE(lower(btrim((data ->> 'discarded'::text))), ''::text) = ANY (ARRAY['1'::text, 'true'::text, 'yes'::text, 'deleted'::text])) OR ((COALESCE(btrim((data ->> 'status'::text)), ''::text) <> ''::text) AND (lower(btrim((data ->> 'status'::text))) <> 'active'::text))))", stored: true
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.virtual "status", type: :text, as: "(data ->> 'status'::text)", stored: true
+    t.datetime "updated_at", null: false
+    t.virtual "vrp_type_name", type: :text, as: "NULLIF(btrim((data ->> 'vrp_type_name'::text)), ''::text)", stored: true
+    t.index "lower(btrim(vrp_type_name))", name: "index_module_vrp_types_on_normalized_vrp_type_name"
+    t.index ["active"], name: "index_module_vrp_types_on_active"
+    t.index ["created_at"], name: "index_module_vrp_types_on_created_at"
   end
 
   create_table "target_mappings", force: :cascade do |t|

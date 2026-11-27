@@ -84,12 +84,12 @@ class DashboardOfficeCascadeTest < ActionDispatch::IntegrationTest
   end
 
   def with_directory
-    original = OfficeTerritoryDirectory.method(:items)
-    OfficeTerritoryDirectory.define_singleton_method(:items) { @test_items }
+    original = OfficeTerritoryDirectory.method(:cached_items)
+    OfficeTerritoryDirectory.define_singleton_method(:cached_items) { @test_items }
     OfficeTerritoryDirectory.instance_variable_set(:@test_items, @items)
     yield
   ensure
-    OfficeTerritoryDirectory.define_singleton_method(:items, original)
+    OfficeTerritoryDirectory.define_singleton_method(:cached_items, original)
     OfficeTerritoryDirectory.remove_instance_variable(:@test_items)
   end
 end

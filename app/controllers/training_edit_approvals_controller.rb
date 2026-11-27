@@ -7,13 +7,13 @@ class TrainingEditApprovalsController < ApplicationController
   end
 
   def show
-    @revision = ModuleRecord.where(module_slug: TrainingEditApproval::SLUG).find(params[:id])
+    @revision = ModuleEntry.where(module_slug: TrainingEditApproval::SLUG).find(params[:id])
     TrainingEditApproval.assign_automatic_approver!(@revision)
     head :forbidden unless TrainingEditApproval.visible?(@revision, current_app_user)
   end
 
   def update
-    revision = ModuleRecord.where(module_slug: TrainingEditApproval::SLUG).find(params[:id])
+    revision = ModuleEntry.where(module_slug: TrainingEditApproval::SLUG).find(params[:id])
     remarks = params[:remarks].presence || "Updated from Training Form List."
     TrainingEditApproval.decide!(revision: revision, actor: current_app_user, decision: params[:decision], remarks: remarks)
     redirect_to approval_return_path(revision), notice: "Training edit request updated."

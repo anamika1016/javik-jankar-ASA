@@ -204,6 +204,7 @@
               <th>Completion Date</th>
               <th>FCO</th>
               <th>Village</th>
+              <th>Target Type</th>
               <th>Farmers</th>
               <th>Main Activity</th>
               <th>Sub Activity</th>
@@ -230,6 +231,7 @@
                   <td><%= row[:completion_date].presence || "-" %></td>
                   <td><%= row[:fco] %></td>
                   <td><%= row[:village] %></td>
+                  <td><%= row[:target_type] %></td>
                   <td><%= row[:farmers] %></td>
                   <% main_activity_list = Array(row[:main_activities]).presence || row[:main_activity].to_s.split("\n").map(&:strip).reject(&:blank?) %>
                   <% sub_activity_list = Array(row[:sub_activities]).presence || row[:activity].to_s.split("\n").map(&:strip).reject(&:blank?) %>
@@ -264,7 +266,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="20">No target has been assigned to this Jeevika Jankar yet.</td>
+                <td colspan="21">No target has been assigned to this Jeevika Jankar yet.</td>
               </tr>
             <% end %>
           </tbody>

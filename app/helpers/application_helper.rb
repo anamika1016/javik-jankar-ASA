@@ -110,7 +110,7 @@ module ApplicationHelper
     if defined?(@revision) && @revision.respond_to?(:data)
       record_id = @revision.data["record_id"]
       if record_id.present?
-        record = ModuleRecord.find_by(id: record_id)
+        record = ModuleEntry.find_by(id: record_id)
         target_id = record&.data&.[]("target_mapping_id")
         target = TargetMapping.find_by(id: target_id) if target_id.present?
         if target
@@ -543,7 +543,7 @@ module ApplicationHelper
     return @allowed_sidebar_keys if defined?(@allowed_sidebar_keys)
     return nil unless current_app_user.present?
     return nil if admin_access_user?
-    return @allowed_sidebar_keys = [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+    return @allowed_sidebar_keys = [] unless defined?(ModuleRecord) && ModuleEntry.table_exists?
 
     # Computing these reads the access-control records once - a single small
     # query. The cache that used to wrap it costs more than that on this
@@ -592,8 +592,7 @@ module ApplicationHelper
   end
 
   def active_sidebar_access_records
-    @active_sidebar_access_records ||= ModuleRecord
-      .where(module_slug: "access-control")
+    @active_sidebar_access_records ||= (ModuleMirror.relation_for("access-control") || ModuleEntry.where(module_slug: "access-control"))
       .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
       .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
       .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
@@ -790,7 +789,7 @@ module ApplicationHelper
   # The Stakeholder Name logo, or nil when none is configured. Used for the browser
   # favicon so it can cleanly fall back to the static icons when absent.
   def active_stakeholder_records(module_slug)
-    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+    return [] unless defined?(ModuleRecord) && ModuleEntry.table_exists?
 
     @active_stakeholder_records ||= {}
     return @active_stakeholder_records[module_slug] if @active_stakeholder_records.key?(module_slug)
@@ -798,13 +797,12 @@ module ApplicationHelper
     # A changed logo must appear on the next page, including imports that keep
     # updated_at unchanged. The small master revision keeps the existing local
     # cache without holding a previous favicon for its two-minute TTL.
-    revision = ModuleRecord.where(module_slug: module_slug)
+    revision = ModuleEntry.where(module_slug: module_slug)
       .pick(Arel.sql("MD5(COALESCE(STRING_AGG(id::text || ':' || xmin::text || ':' || ctid::text, ',' ORDER BY id), ''))"))
     @active_stakeholder_records[module_slug] ||= branding_cache.fetch(
-      ["active-stakeholder-records-v2", ModuleRecord.connection_pool.db_config.database, module_slug, revision], expires_in: 2.minutes
+      ["active-stakeholder-records-v2", ModuleEntry.connection_pool.db_config.database, module_slug, revision], expires_in: 2.minutes
     ) do
-      ModuleRecord
-        .where(module_slug: module_slug)
+      ModuleMirror.read_scope(module_slug)
         # This is called by every application layout. Keep the exact previous
         # definition of active, but have PostgreSQL discard inactive records
         # before Ruby materializes JSON payloads.
@@ -863,8 +861,8 @@ module ApplicationHelper
       names << user&.stakeholder
     end
 
-    if defined?(ModuleRecord) && ModuleRecord.table_exists? && username.present?
-      legacy_user = ModuleRecord
+    if defined?(ModuleRecord) && ModuleEntry.table_exists? && username.present?
+      legacy_user = ModuleEntry
         .where(module_slug: "new-user")
         .where("data::jsonb ->> 'user_name' = ?", username)
         .order(updated_at: :desc)
@@ -874,7 +872,7 @@ module ApplicationHelper
 
     names.compact_blank.map { |name| name.to_s.strip }.uniq
   rescue ActiveRecord::StatementInvalid
-    legacy_user = ModuleRecord
+    legacy_user = ModuleEntry
       .where(module_slug: "new-user")
       .order(updated_at: :desc)
       .detect { |record| record_data(record)["user_name"].to_s == username }

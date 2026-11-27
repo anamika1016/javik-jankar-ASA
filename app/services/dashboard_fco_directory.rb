@@ -25,8 +25,13 @@ class DashboardFcoDirectory
     end
   end
 
+  # Values that mean "nothing recorded" rather than an identity of their own.
+  # Exposed because the summary counts apply the same rule in SQL, and the box
+  # and its View List have to agree on what counts as an identity.
+  PLACEHOLDER_VALUES = %w[null nil none n/a -].freeze
+
   def self.invalid?(value)
-    value.blank? || %w[null nil none n/a -].include?(value.to_s.downcase)
+    value.blank? || PLACEHOLDER_VALUES.include?(value.to_s.downcase)
   end
 
   def self.names

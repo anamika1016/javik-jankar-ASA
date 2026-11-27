@@ -3,30 +3,25 @@ require "test_helper"
 class TargetMappingOfficeFallbackTest < ActiveSupport::TestCase
   test "unavailable office services return empty options instead of URL strings" do
     controller = TargetMappingsController.new
-    controller.define_singleton_method(:office_list_api_urls) { ["https://example.test/offices"] }
-    controller.define_singleton_method(:fetch_office_list_items) { |_url| [] }
-    Rails.cache.clear
+    original = OfficeTerritoryDirectory.method(:items)
+    OfficeTerritoryDirectory.define_singleton_method(:items) { [] }
     assert_equal [], controller.send(:office_list_items)
     assert_equal [], controller.send(:office_list_fco_options)
+  ensure
+    OfficeTerritoryDirectory.define_singleton_method(:items, original) if original
   end
 
-  test "an unavailable office response does not prevent a later request from recovering" do
-    Rails.cache.clear
-    attempts = 0
+  test "each target mapping request uses the shared office snapshot" do
+    calls = 0
     offices = [{ "id" => 18, "name" => "Ranapur - FCO" }]
-    build_controller = lambda do
-      controller = TargetMappingsController.new
-      controller.define_singleton_method(:office_list_api_urls) { ["https://example.test/offices"] }
-      controller.define_singleton_method(:fetch_office_list_items) do |_url|
-        attempts += 1
-        attempts == 1 ? [] : offices
-      end
-      controller
-    end
-    assert_empty build_controller.call.send(:office_list_items)
-    assert_equal offices, build_controller.call.send(:office_list_items)
-    assert_equal offices, build_controller.call.send(:office_list_items)
-    assert_operator attempts, :>=, 2
+    original = OfficeTerritoryDirectory.method(:items)
+    OfficeTerritoryDirectory.define_singleton_method(:items) { calls += 1; offices }
+    controller = TargetMappingsController.new
+    assert_equal offices, controller.send(:office_list_items)
+    assert_equal offices, controller.send(:office_list_items)
+    assert_equal 1, calls
+  ensure
+    OfficeTerritoryDirectory.define_singleton_method(:items, original) if original
   end
 
   test "block options contain only the selected FCO territory without repeated block IDs" do

@@ -83,7 +83,7 @@ month_training_done AS (
             ', '
         ) AS agronomist_name
 
-    FROM public.module_records mr
+    FROM public.module_entries mr
 
     CROSS JOIN LATERAL jsonb_array_elements_text(
         CASE WHEN jsonb_typeof(mr.data::jsonb -> 'selected_farmer_ids') = 'array'

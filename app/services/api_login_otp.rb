@@ -74,7 +74,7 @@ class ApiLoginOtp
     when "User"
       User.find_by(id: data["id"]) if "User".safe_constantize&.table_exists?
     when "ModuleRecord"
-      ModuleRecord.where(module_slug: "new-user").find_by(id: data["id"]) if defined?(ModuleRecord) && ModuleRecord.table_exists?
+      ModuleEntry.where(module_slug: "new-user").find_by(id: data["id"]) if defined?(ModuleRecord) && ModuleEntry.table_exists?
     end
   end
 
@@ -83,6 +83,7 @@ class ApiLoginOtp
   end
 
   def self.record_type_for(user)
+    return "ModuleRecord" if user.is_a?(ModuleEntry) || user.is_a?(ModuleRecord)
     return user.class.name if user.is_a?(ApplicationRecord)
 
     "ModuleRecord"

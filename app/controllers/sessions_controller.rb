@@ -204,7 +204,7 @@ class SessionsController < ApplicationController
 
     return unless module_record_auth_ready?
 
-    ModuleRecord
+    ModuleEntry
       .where(module_slug: "new-user")
       .where("LOWER(data::jsonb ->> 'user_name') = ?", username_key)
       .where("COALESCE(LOWER(data::jsonb ->> 'status'), 'active') <> 'inactive'")
@@ -215,7 +215,7 @@ class SessionsController < ApplicationController
   end
 
   def find_legacy_password_reset_account(username_key)
-    ModuleRecord.where(module_slug: "new-user").find_each do |record|
+    ModuleEntry.where(module_slug: "new-user").find_each do |record|
       next unless module_record_active_for_login?(record)
 
       return record if module_record_value(record, "user_name").to_s.downcase == username_key
@@ -228,7 +228,7 @@ class SessionsController < ApplicationController
   end
 
   def module_record_auth_ready?
-    defined?(ModuleRecord) && ModuleRecord.respond_to?(:table_exists?) && ModuleRecord.table_exists?
+    defined?(ModuleRecord) && ModuleEntry.respond_to?(:table_exists?) && ModuleEntry.table_exists?
   rescue StandardError
     false
   end
@@ -248,7 +248,7 @@ class SessionsController < ApplicationController
   end
 
   def reset_account_type(account)
-    account.is_a?(ModuleRecord) ? "ModuleRecord" : account.class.name
+    (account.is_a?(ModuleEntry) || account.is_a?(ModuleRecord)) ? "ModuleRecord" : account.class.name
   end
 
   def reset_account_mobile(account)
@@ -265,7 +265,7 @@ class SessionsController < ApplicationController
     when "Vrp"
       Vrp.find_by(id: reset_data["record_id"]) if "Vrp".safe_constantize&.table_exists?
     when "ModuleRecord"
-      ModuleRecord.where(module_slug: "new-user").find_by(id: reset_data["record_id"]) if defined?(ModuleRecord) && ModuleRecord.table_exists?
+      ModuleEntry.where(module_slug: "new-user").find_by(id: reset_data["record_id"]) if defined?(ModuleRecord) && ModuleEntry.table_exists?
     end
   end
 
@@ -281,7 +281,7 @@ class SessionsController < ApplicationController
   end
 
   def update_reset_account_password!(account, password)
-    if account.is_a?(ModuleRecord)
+    if account.is_a?(ModuleEntry) || account.is_a?(ModuleRecord)
       account.update!(data: account.data.merge("password" => password, "confirmed_password" => password))
     else
       account.update_column(:password, password)

@@ -109,7 +109,7 @@ class ApplicationController < ActionController::Base
     when "Vrp"
       return Vrp.find_by(id: stored_user["id"]) if "Vrp".safe_constantize&.table_exists?
     when "ModuleRecord"
-      return ModuleRecord.where(module_slug: "new-user").find_by(id: stored_user["id"]) if defined?(ModuleRecord) && ModuleRecord.table_exists?
+      return ModuleEntry.where(module_slug: "new-user").find_by(id: stored_user["id"]) if defined?(ModuleRecord) && ModuleEntry.table_exists?
     end
 
     if "User".safe_constantize&.table_exists?
@@ -128,9 +128,9 @@ class ApplicationController < ActionController::Base
       return vrp if vrp
     end
 
-    return unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+    return unless defined?(ModuleRecord) && ModuleEntry.table_exists?
 
-    record = ModuleRecord.where(module_slug: "new-user").find_by(id: stored_user["id"])
+    record = ModuleEntry.where(module_slug: "new-user").find_by(id: stored_user["id"])
     return record if record
 
     legacy_user_record_by_username(stored_user["username"].to_s)
@@ -142,7 +142,7 @@ class ApplicationController < ActionController::Base
     @legacy_user_records_by_username ||= {}
     return @legacy_user_records_by_username[username] if @legacy_user_records_by_username.key?(username)
 
-    @legacy_user_records_by_username[username] = ModuleRecord
+    @legacy_user_records_by_username[username] = ModuleEntry
       .where(module_slug: "new-user")
       .where("LOWER(data::jsonb ->> 'user_name') = ?", username.to_s.downcase)
       .order(created_at: :desc)

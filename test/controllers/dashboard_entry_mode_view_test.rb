@@ -80,15 +80,15 @@ class DashboardEntryModeViewTest < ActionDispatch::IntegrationTest
     rows = c.send(:dashboard_report_data, "ics").last
     assert_equal %w[42 43], rows.map { |row| row["Block ID"] }
     login(@admin)
-    original_items = OfficeTerritoryDirectory.method(:items)
-    OfficeTerritoryDirectory.define_singleton_method(:items) { offices }
+    original_items = OfficeTerritoryDirectory.method(:cached_items)
+    OfficeTerritoryDirectory.define_singleton_method(:cached_items) { offices }
     begin
       get dashboard_path, params: { entry_mode: "block_wise", fcoc: "Bhawanipatna", month: "" }
       assert_response :success
       assert_select "#dashboard_summary_boxes .dashboard-summary-box:first-child strong", text: "2"
       assert_select "#dash_ics option", text: "Kesinga"
     ensure
-      OfficeTerritoryDirectory.define_singleton_method(:items, original_items)
+      OfficeTerritoryDirectory.define_singleton_method(:cached_items, original_items)
     end
   end
 

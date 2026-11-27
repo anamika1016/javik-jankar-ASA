@@ -62,7 +62,7 @@ training_records AS MATERIALIZED (
         NULLIF(TRIM(mr.data::jsonb ->> 'main_activity_type'), '') AS main_activity_type,
         CASE WHEN jsonb_typeof(mr.data::jsonb -> 'selected_farmer_ids') = 'array'
             THEN mr.data::jsonb -> 'selected_farmer_ids' ELSE '[]'::jsonb END AS farmer_ids
-    FROM public.module_records mr
+    FROM public.module_entries mr
     WHERE mr.module_slug = 'training-form'
       AND %{entry_month_filter}
       AND LOWER(TRIM(COALESCE(mr.data::jsonb ->> 'main_activity', ''))) LIKE '%farmers'' training%'

@@ -5,10 +5,7 @@ class AgreementVillageName
     @labels = {}
     return self if ids.empty?
 
-    records = ModuleRecord.where(module_slug: ["village-master", "lg-directory-list"])
-    rows = records.where(id: ids).or(records.where(
-      "data::jsonb ->> 'village_id' IN (:ids) OR data::jsonb ->> 'village_code' IN (:ids)", ids: ids
-    )).order(:id).to_a
+    rows = self.class.village_rows_for(ids)
     primary = rows.index_by { |record| record.id.to_s }
     aliases = {}
     rows.each do |record|
@@ -54,13 +51,10 @@ class AgreementVillageName
     return name.strip if name.present?
     return value unless id.match?(/\A\d+\z/)
 
-    records = ModuleRecord.where(module_slug: ["village-master", "lg-directory-list"])
-    record = records.find_by(id: id)
-    name = village_label(record)
+    name = village_label(village_rows_for([id]).find { |row| row.id.to_s == id })
     return name if name.present?
 
-    record = records.where("data::jsonb ->> 'village_id' = :id OR data::jsonb ->> 'village_code' = :id", id: id).first
-    name = village_label(record)
+    name = village_label(village_rows_for([id]).first)
     return name if name.present?
 
     [TargetMapping, VrpIcsMapping, Afl].each do |model|
@@ -73,5 +67,31 @@ class AgreementVillageName
   def self.village_label(record)
     data = record&.data || {}
     [data["village_name"], data["village"], data["name"], data["title"]].find(&:present?)
+  end
+
+  # Village rows matching these ids, by primary key or by the village id / code
+  # carried in the payload.
+  #
+  # Served off lg_villages: the id is its primary key and village_code is an
+  # indexed column, where the module_records version scanned every row's JSON
+  # for both.
+  #
+  # Deliberately not scoped to active rows: an agreement still has to show the
+  # name of a village since retired.
+  def self.village_rows_for(ids)
+    values = Array(ids).map(&:to_s)
+    return [] if values.empty?
+
+    if defined?(ModuleMirror) && ModuleMirror.covers?("village-master")
+      return LgVillage
+        .where(id: values)
+        .or(LgVillage.where("data ->> 'village_id' IN (:ids) OR village_code IN (:ids)", ids: values))
+        .order(:id).to_a
+    end
+
+    records = ModuleEntry.where(module_slug: ["village-master", "lg-directory-list"])
+    records.where(id: values).or(records.where(
+      "data::jsonb ->> 'village_id' IN (:ids) OR data::jsonb ->> 'village_code' IN (:ids)", ids: values
+    )).order(:id).to_a
   end
 end

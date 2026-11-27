@@ -67,6 +67,7 @@ module AppUserPayload
   end
 
   def app_user_record_type(user)
+    return "ModuleRecord" if user.is_a?(ModuleEntry) || user.is_a?(ModuleRecord)
     return user.class.name if user.is_a?(ApplicationRecord)
 
     "ModuleRecord"
@@ -87,8 +88,8 @@ module AppUserPayload
 
     labels = []
     labels += VrpType.where(id: ids).pluck(:type_name) if "VrpType".safe_constantize&.table_exists?
-    if defined?(ModuleRecord) && ModuleRecord.table_exists?
-      labels += ModuleRecord.where(module_slug: "add-vrp-type", id: ids)
+    if defined?(ModuleRecord) && ModuleEntry.table_exists?
+      labels += ModuleMirror.read_scope("add-vrp-type").where(id: ids)
         .pluck(Arel.sql("data::jsonb ->> 'jeevika_jankar_type_name'"), Arel.sql("data::jsonb ->> 'vrp_type_name'"))
         .filter_map { |preferred, fallback| preferred.presence || fallback.presence }
     end

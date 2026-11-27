@@ -22,7 +22,7 @@ module VrpAccess
   end
 
   def legacy_current_app_user_ids
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     username = current_app_user&.dig("username").to_s
     emails = current_app_user_emails
@@ -36,7 +36,7 @@ module VrpAccess
   end
 
   def legacy_user_ids_for_username_or_emails(username, emails)
-    scope = ModuleRecord.where(module_slug: "new-user")
+    scope = ModuleEntry.where(module_slug: "new-user")
     predicates = []
     binds = []
     if username.present?
@@ -109,7 +109,7 @@ module VrpAccess
       when "ModuleRecord" then @preloaded_creator_records_by_id&.[](vrp.created_by_id)
       end
       if creator.blank?
-        creator_class = { "User" => User, "ModuleRecord" => ModuleRecord }[vrp.created_by_type]
+        creator_class = { "User" => User, "ModuleRecord" => ModuleEntry }[vrp.created_by_type]
         creator = creator_class == User ? cached_vrp_creator_user(vrp.created_by_id) : cached_vrp_creator_record(vrp.created_by_id) if creator_class&.respond_to?(:find_by)
       end
       return @registered_by_user_cache[cache_key] = creator if creator
@@ -119,7 +119,7 @@ module VrpAccess
       user = @preloaded_creator_users_by_id&.[](vrp.created_by_id)
       user ||= cached_vrp_creator_user(vrp.created_by_id) if model_ready?(:User)
       record = @preloaded_creator_records_by_id&.[](vrp.created_by_id)
-      record ||= cached_vrp_creator_record(vrp.created_by_id) if model_ready?(:ModuleRecord)
+      record ||= cached_vrp_creator_record(vrp.created_by_id) if model_ready?(:ModuleEntry)
       creator = legacy_registered_by_candidate(vrp, user, record)
       return @registered_by_user_cache[cache_key] = creator if creator
     end
@@ -137,7 +137,7 @@ module VrpAccess
       return @registered_by_user_cache[cache_key] = user if user
     end
 
-    return unless model_ready?(:ModuleRecord)
+    return unless model_ready?(:ModuleEntry)
 
     email_key = vrp.email.to_s.strip.downcase
     preloaded = @preloaded_creator_records_by_email&.[](email_key)
@@ -146,7 +146,7 @@ module VrpAccess
     end
 
     @registered_by_user_cache[cache_key] = preloaded ||
-      ModuleRecord.where(module_slug: "new-user")
+      ModuleEntry.where(module_slug: "new-user")
         # data is a text column, so it has to be cast before ->> can read it.
         # Without the cast this raises, which is why the preload above casts too.
         .where("LOWER(COALESCE(data::jsonb->>'email', '')) = ?", email_key)
@@ -233,8 +233,8 @@ module VrpAccess
     return if ids.blank?
 
     relational = model_ready?(:VrpType) ? VrpType.where(id: ids).pluck(:id, :type_name).to_h.transform_keys(&:to_s) : {}
-    legacy = if model_ready?(:ModuleRecord)
-      ModuleRecord.where(module_slug: "add-vrp-type", id: ids).to_a.to_h do |record|
+    legacy = if model_ready?(:ModuleEntry)
+      ModuleMirror.read_scope("add-vrp-type").where(id: ids).to_a.to_h do |record|
         [record.id.to_s, first_present_data(record, "jeevika_jankar_type_name", "vrp_type_name")]
       end
     else
@@ -263,8 +263,8 @@ module VrpAccess
     emails = vrps.filter_map { |vrp| vrp.email.to_s.strip.downcase.presence }.uniq
 
     users = model_ready?(:User) ? User.where(id: creator_ids).or(User.where("LOWER(email) IN (?)", emails.presence || [""])).to_a : []
-    records = if model_ready?(:ModuleRecord)
-      ModuleRecord
+    records = if model_ready?(:ModuleEntry)
+      ModuleEntry
         .where(module_slug: "new-user")
         .where("id IN (:ids) OR LOWER(COALESCE(data::jsonb->>'email', '')) IN (:emails)", ids: creator_ids.presence || [0], emails: emails.presence || [""])
         .order(created_at: :desc)
@@ -290,9 +290,9 @@ module VrpAccess
   def preload_vrp_approval_history_lookup_data!(vrps)
     ids = vrps.map { |vrp| vrp.id.to_s }.uniq
     @approval_history_for_cache ||= {}
-    return if ids.blank? || !model_ready?(:ModuleRecord)
+    return if ids.blank? || !model_ready?(:ModuleEntry)
 
-    ModuleRecord
+    ModuleEntry
       .where(module_slug: "vrp-approval-history")
       .order(created_at: :asc)
       .to_a
@@ -404,12 +404,12 @@ module VrpAccess
   end
 
   def legacy_user_cluster_labels
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     username = current_app_user&.dig("username").to_s
     return [] if username.blank?
 
-    record = ModuleRecord
+    record = ModuleEntry
       .where(module_slug: "new-user")
       .order(created_at: :desc)
       .detect { |row| row.data["user_name"].to_s == username }
@@ -589,7 +589,7 @@ module VrpAccess
   end
 
   def approval_steps_for(vrp)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     @approval_steps_for_cache ||= {}
     cache_key = vrp.id
@@ -621,7 +621,7 @@ module VrpAccess
   end
 
   def cached_vrp_approval_master_records
-    @cached_vrp_approval_master_records ||= ModuleRecord
+    @cached_vrp_approval_master_records ||= ModuleEntry
       .where(module_slug: "approval-master")
       .order(created_at: :asc)
       .to_a
@@ -711,12 +711,12 @@ module VrpAccess
   end
 
   def legacy_user_approver_labels
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     username = current_app_user&.dig("username").to_s
     return [] if username.blank?
 
-    record = ModuleRecord
+    record = ModuleEntry
       .where(module_slug: "new-user")
       .order(created_at: :desc)
       .detect { |row| row.data["user_name"].to_s == username }
@@ -884,7 +884,7 @@ module VrpAccess
       return role if role.present?
     end
 
-    return current_app_user&.dig("role") unless model_ready?(:ModuleRecord)
+    return current_app_user&.dig("role") unless model_ready?(:ModuleEntry)
 
     cached_vrp_creator_record(vrp.created_by_id)&.data&.[]("role").presence ||
       current_app_user&.dig("role")
@@ -898,7 +898,7 @@ module VrpAccess
       return stakeholder if stakeholder.present?
     end
 
-    return current_app_user&.dig("stakeholder") unless model_ready?(:ModuleRecord)
+    return current_app_user&.dig("stakeholder") unless model_ready?(:ModuleEntry)
 
     cached_vrp_creator_record(vrp.created_by_id)&.data&.[]("stakeholder").presence || current_app_user&.dig("stakeholder")
   end
@@ -920,12 +920,12 @@ module VrpAccess
       end
     end
 
-    if vrp.created_by_id.present? && model_ready?(:ModuleRecord)
+    if vrp.created_by_id.present? && model_ready?(:ModuleEntry)
       record = cached_vrp_creator_record(vrp.created_by_id)
       identities << record_approval_identity(record) if record
     end
 
-    if model_ready?(:ModuleRecord)
+    if model_ready?(:ModuleEntry)
       matched_records = cached_vrp_creator_records.select do |record|
         (vrp.email.present? && record.data["email"].to_s.casecmp(vrp.email.to_s).zero?) ||
           (vrp.mobile_no.present? && record.data["mobile_no"].to_s == vrp.mobile_no.to_s)
@@ -935,8 +935,20 @@ module VrpAccess
       end
     end
 
-    identities << current_approval_identity if current_app_user.present?
+    owned = usable_approval_identities(identities)
+    return owned if owned.any?
 
+    # Which approval channel a Jeevika Jankar belongs to is a property of that
+    # record, not of whoever opens the list. Mixing the viewer's own identity in
+    # here made one record read "Pending at" two different names depending on
+    # who was looking. It stays only as the fallback it was meant to be: a
+    # record whose creator cannot be resolved still needs something to match on.
+    return [] if current_app_user.blank?
+
+    usable_approval_identities([current_approval_identity])
+  end
+
+  def usable_approval_identities(identities)
     identities
       .select { |identity| identity[:stakeholder].present? && (identity[:role].present? || identity_user_name_values(identity).present?) }
       .uniq
@@ -963,11 +975,11 @@ module VrpAccess
     key = id.to_s
     return @cached_vrp_creator_records_by_id[key] if @cached_vrp_creator_records_by_id.key?(key)
 
-    @cached_vrp_creator_records_by_id[key] = ModuleRecord.find_by(id: id)
+    @cached_vrp_creator_records_by_id[key] = ModuleEntry.find_by(id: id)
   end
 
   def cached_vrp_creator_records
-    @cached_vrp_creator_records ||= ModuleRecord.where(module_slug: "new-user").to_a
+    @cached_vrp_creator_records ||= ModuleEntry.where(module_slug: "new-user").to_a
   end
 
   def current_approval_identity
@@ -1040,13 +1052,13 @@ module VrpAccess
   end
 
   def approval_history_for(vrp)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     @approval_history_for_cache ||= {}
     cache_key = vrp.id
     return @approval_history_for_cache[cache_key] if @approval_history_for_cache.key?(cache_key)
 
-    @approval_history_for_cache[cache_key] = ModuleRecord
+    @approval_history_for_cache[cache_key] = ModuleEntry
       .where(module_slug: "vrp-approval-history")
       .order(created_at: :asc)
       .select { |record| record.data["vrp_id"].to_i == vrp.id }
@@ -1109,9 +1121,9 @@ module VrpAccess
   end
 
   def log_approval_history(vrp, step, action, remarks)
-    return unless model_ready?(:ModuleRecord)
+    return unless model_ready?(:ModuleEntry)
 
-    ModuleRecord.create!(
+    ModuleEntry.create!(
       module_slug: "vrp-approval-history",
       data: {
         "vrp_id" => vrp.id,
@@ -1259,9 +1271,9 @@ module VrpAccess
   end
 
   def module_record_user_office_mappings
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
-    ModuleRecord
+    ModuleEntry
       .where(module_slug: "new-user")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
@@ -1282,11 +1294,12 @@ module VrpAccess
   end
 
   def office_category_master_mappings
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
-    ModuleRecord
-      .where(module_slug: ["office-category-add", "office-mapping-add"])
-      .order(created_at: :desc)
+    (ModuleMirror.rows_for(["office-category-add", "office-mapping-add"]) ||
+      ModuleEntry
+        .where(module_slug: ["office-category-add", "office-mapping-add"])
+        .order(created_at: :desc))
       .select { |record| active_module_record?(record) }
       .map do |record|
         office_category = first_present_data(record, "office_category", "category_name", "office_name", "office").to_s.strip
@@ -1384,10 +1397,9 @@ module VrpAccess
   end
 
   def hierarchy_cluster_incharge_labels
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
-    labels = ModuleRecord
-      .where(module_slug: "user-hierarchy-mapping")
+    labels = (ModuleMirror.relation_for("user-hierarchy-mapping") || ModuleEntry.where(module_slug: "user-hierarchy-mapping"))
       .order(updated_at: :desc)
       .select { |record| active_module_record?(record) }
       .select do |record|
@@ -1403,13 +1415,12 @@ module VrpAccess
   end
 
   def dashboard_visible_hierarchy_cluster_labels
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     current_labels = current_hierarchy_user_labels
     return [] if current_labels.blank?
 
-    ModuleRecord
-      .where(module_slug: "user-hierarchy-mapping")
+    (ModuleMirror.relation_for("user-hierarchy-mapping") || ModuleEntry.where(module_slug: "user-hierarchy-mapping"))
       .order(updated_at: :desc)
       .select { |record| active_module_record?(record) }
       .flat_map do |record|
@@ -1548,7 +1559,7 @@ module VrpAccess
   end
 
   def module_record_options(module_slug, field_key)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     field_keys = Array(field_key)
     active_records_for_location(module_slug)
@@ -1561,7 +1572,7 @@ module VrpAccess
   end
 
   def text_module_record_options(module_slug, field_key)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     field_keys = Array(field_key)
     active_records_for_location(module_slug)
@@ -1570,10 +1581,9 @@ module VrpAccess
   end
 
   def role_management_mappings
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
-    stakeholder_role_mappings = ModuleRecord
-      .where(module_slug: "stakeholder-role")
+    stakeholder_role_mappings = (ModuleMirror.relation_for("stakeholder-role") || ModuleEntry.where(module_slug: "stakeholder-role"))
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .flat_map do |record|
@@ -1595,7 +1605,7 @@ module VrpAccess
         end
       end
 
-    role_mappings = ModuleRecord
+    role_mappings = ModuleEntry
       .where(module_slug: "role-management")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
@@ -1616,7 +1626,7 @@ module VrpAccess
         end
       end
 
-    user_management_role_mappings = ModuleRecord
+    user_management_role_mappings = ModuleEntry
       .where(module_slug: "user-management-role")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
@@ -1636,7 +1646,7 @@ module VrpAccess
         end
       end
 
-    person_type_mappings = ModuleRecord
+    person_type_mappings = ModuleEntry
       .where(module_slug: "person-type")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
@@ -1696,10 +1706,10 @@ module VrpAccess
   end
 
   def registered_module_user_names_for_option(attribute, value)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     key = attribute.to_s
-    ModuleRecord
+    ModuleEntry
       .where(module_slug: "new-user")
       .order(updated_at: :desc)
       .select { |record| active_module_record?(record) && record.data[key].to_s.strip.casecmp(value.to_s.strip).zero? }
@@ -1707,7 +1717,7 @@ module VrpAccess
   end
 
   def location_hierarchy_mappings
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     states = active_records_for_location("state-master").map do |record|
       location_row(record, state: first_present_data(record, "state_name"))
@@ -1758,7 +1768,7 @@ module VrpAccess
   def active_records_for_location(module_slug)
     @vrp_access_active_records ||= {}
     key = Array(module_slug).map(&:to_s).sort.freeze
-    @vrp_access_active_records[key] ||= ModuleRecord
+    @vrp_access_active_records[key] ||= ModuleEntry
       .where(module_slug: module_slug)
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
@@ -1771,7 +1781,7 @@ module VrpAccess
   end
 
   def location_gram_panchayat_options
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     active_records_for_location(["gram-panchayat-master", "lg-directory-list", "village-master"])
       .filter_map do |record|
@@ -1846,12 +1856,12 @@ module VrpAccess
   end
 
   def module_record_label(module_slug, id, field_key)
-    return "" if id.blank? || !model_ready?(:ModuleRecord)
+    return "" if id.blank? || !model_ready?(:ModuleEntry)
 
     @vrp_access_module_labels ||= {}
     key = [module_slug, id]
     unless @vrp_access_module_labels.key?(key)
-      @vrp_access_module_labels[key] = ModuleRecord.find_by(module_slug: module_slug, id: id)
+      @vrp_access_module_labels[key] = ModuleEntry.find_by(module_slug: module_slug, id: id)
     end
     record = @vrp_access_module_labels[key]
     label = module_record_display_label(module_slug, record, field_key)
@@ -1898,9 +1908,9 @@ module VrpAccess
   end
 
   def sync_existing_vrp_master_records
-    return unless model_ready?(:ModuleRecord)
+    return unless model_ready?(:ModuleEntry)
 
-    scope = ModuleRecord.where(module_slug: ["bank-master", "position-type", "add-vrp-type"])
+    scope = ModuleEntry.where(module_slug: ["bank-master", "position-type", "add-vrp-type"])
     unless Rails.env.test? || !Rails.application.config.action_controller.perform_caching
       version = scope.pick(Arel.sql("COUNT(*)"), Arel.sql("MAX(updated_at)"), Arel.sql("MAX(id)"))
       cache_key = "api/v1/vrp-master-sync-v2"

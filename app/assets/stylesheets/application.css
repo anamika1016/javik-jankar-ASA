@@ -13805,9 +13805,8 @@ body {
   color: #8a5a10;
 }
 
-/* A completed page must not show a late/orphaned Turbo indicator. The flag is
-   removed for each new visit or submission, keeping real loading visible. */
-html[data-navigation-complete] .turbo-progress-bar {
+/* Top navigation progress is disabled on every page, including dashboards. */
+.turbo-progress-bar {
   display: none !important;
 }
 
@@ -14598,3 +14597,69 @@ html[data-dashboard-switching] .turbo-progress-bar { display: none !important; }
 .module-form-actions .status-switch input:checked + .status-switch__track::after { transform: translateX(20px); }
 .module-form-actions .status-switch input:focus-visible + .status-switch__track { outline: 2px solid var(--vrp-primary); outline-offset: 2px; }
 .module-form-actions .status-switch input:not(:checked) ~ .status-switch__label { color: #8a969c; }
+/* Column filters in a list heading: a toggle on the heading, and the panel it
+   opens holding the comparison and the value. Kept off the heading row itself
+   so twenty-one boxes do not crowd out the data. */
+.column-filter-th {
+  position: relative;
+  white-space: nowrap;
+}
+
+.column-filter-label { margin-right: 4px; }
+
+.column-filter-toggle {
+  border: 0;
+  background: transparent;
+  color: var(--vrp-muted);
+  cursor: pointer;
+  padding: 0 3px;
+  font-size: 0.85rem;
+  line-height: 1;
+  border-radius: 4px;
+}
+
+.column-filter-toggle:hover { color: var(--vrp-text); background: #0000000f; }
+
+/* A column that is filtering says so, so a narrowed list is never a mystery. */
+.column-filter-toggle.active { color: var(--vrp-primary-dark); font-weight: 900; }
+
+.column-filter-popover {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 210px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 9px;
+  background: var(--vrp-panel);
+  box-shadow: 0 10px 26px #17212622;
+  white-space: normal;
+}
+
+/* display:flex above outranks the browser's own [hidden] rule, which would
+   otherwise leave every panel open at once. */
+.column-filter-popover[hidden] { display: none; }
+
+.column-filter-operator,
+.column-filter-value {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 6px;
+  background: var(--vrp-panel);
+  color: var(--vrp-text);
+  font-size: 0.78rem;
+}
+
+.column-filter-value:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.column-filter-actions { display: flex; gap: 6px; }
+.column-filter-actions > * { flex: 1 1 0; cursor: pointer; }
+
+/* The last columns' panels would otherwise open past the table's right edge. */
+.column-filter-th:nth-last-child(-n + 4) .column-filter-popover { left: auto; right: 0; }

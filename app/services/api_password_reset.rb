@@ -24,9 +24,9 @@ class ApiPasswordReset
       return vrp if vrp
     end
 
-    return unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+    return unless defined?(ModuleRecord) && ModuleEntry.table_exists?
 
-    ModuleRecord.where(module_slug: "new-user").find_each do |record|
+    ModuleEntry.where(module_slug: "new-user").find_each do |record|
       data = record.respond_to?(:data) ? record.data : {}
       next if data["status"].to_s.downcase == "inactive"
       return record if data["user_name"].to_s.downcase == username_key
@@ -71,7 +71,7 @@ class ApiPasswordReset
   end
 
   def self.update_password!(account, password)
-    if account.is_a?(ModuleRecord)
+    if account.is_a?(ModuleEntry) || account.is_a?(ModuleRecord)
       account.update!(data: account.data.merge("password" => password, "confirmed_password" => password))
     else
       account.update_column(:password, password)
@@ -101,7 +101,7 @@ class ApiPasswordReset
     when "Vrp"
       Vrp.find_by(id: data["id"]) if "Vrp".safe_constantize&.table_exists?
     when "ModuleRecord"
-      ModuleRecord.where(module_slug: "new-user").find_by(id: data["id"]) if defined?(ModuleRecord) && ModuleRecord.table_exists?
+      ModuleEntry.where(module_slug: "new-user").find_by(id: data["id"]) if defined?(ModuleRecord) && ModuleEntry.table_exists?
     end
   end
 
@@ -110,6 +110,7 @@ class ApiPasswordReset
   end
 
   def self.record_type_for(account)
+    return "ModuleRecord" if account.is_a?(ModuleEntry) || account.is_a?(ModuleRecord)
     return account.class.name if account.is_a?(ApplicationRecord)
 
     "ModuleRecord"

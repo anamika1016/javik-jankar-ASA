@@ -3,6 +3,7 @@
 pin "application", preload: false
 pin "layout", preload: false
 pin "navigation_progress", preload: false
+pin "column_filters", preload: false
 pin "dashboard_reports", preload: false
 pin "dashboard_switcher", preload: false
 pin "login", preload: false

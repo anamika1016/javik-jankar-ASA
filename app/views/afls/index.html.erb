@@ -16,9 +16,12 @@
           <%= form.file_field :file, accept: ".xlsx,.csv", class: "form-control", required: true %>
           <%= form.submit "Upload", class: "list-btn upload", data: { afl_upload_button: true } %>
         <% end %>
+        <p>Upload file must include ID and Farmer_Name. Existing IDs are skipped and shown in the report.</p>
 
         <div class="list-control-actions">
-          <%= form_with url: afls_path, method: :get, local: true, class: "list-search compact" do |form| %>
+          <%# id lets the per-column boxes in the table head submit this same
+              form, so the single box and the header boxes apply together. %>
+          <%= form_with url: afls_path, method: :get, local: true, id: "afl-list-search", class: "list-search compact" do |form| %>
             <% Array(@dashboard_afl_filter_params["fco_id"]).each do |fco_id| %>
               <%= hidden_field_tag "fco_id[]", fco_id %>
             <% end %>
@@ -30,10 +33,10 @@
                 data-afl-search is also what the bulk delete reads the query from. %>
             <%= form.search_field :q, value: @query, placeholder: "Search any field", data: { afl_search: true } %>
             <%= form.submit "Search", name: nil, class: "list-btn" %>
-            <%= link_to "Clear", afls_path, class: "list-btn" if @query.present? %>
+            <%= link_to "Clear", afls_path, class: "list-btn" if @query.present? || @column_filters.any? %>
           <% end %>
           <%# Built on the server so the file holds every filtered row, not just this page. %>
-          <%= link_to "Export", afls_path(@dashboard_afl_filter_params.merge(q: @query.presence, format: :xlsx)), class: "list-btn export" %>
+          <%= link_to "Export", afls_path(@dashboard_afl_filter_params.merge(q: @query.presence, col: @column_filters.presence, format: :xlsx)), class: "list-btn export" %>
         </div>
       </div>
 
@@ -49,28 +52,40 @@
             a second one only re-paged the 15 rows on screen. %>
         <table class="module-table vrp-list-table" id="afl_list">
           <thead>
+            <%# Headings and their search boxes both come from Afl::LIST_HEADERS,
+                so the two rows cannot drift out of alignment. %>
             <tr>
-              <th>ID</th>
-              <th>FCO ID</th>
-              <th>FCO</th>
-              <th>FPO ID</th>
-              <th>FPO Name</th>
-              <th>ICS ID</th>
-              <th>ICS Name/Block Name</th>
-              <th>Village ID</th>
-              <th>Village Name</th>
-              <th>Farm ID</th>
-              <th>Farmer Name</th>
-              <th>Father Name</th>
-              <th>Tracenet No</th>
-              <th>Total Farm Area</th>
-              <th>Purchase Quantity Amount</th>
-              <th>Estimate Quantity</th>
-              <th>Purchase Quantity</th>
-              <th>Purchase Date</th>
-              <th>Mobile No</th>
-              <th>Purchase Product</th>
-              <th>Status</th>
+              <% Afl::LIST_HEADERS.each do |column, heading| %>
+                <% active = @column_filters.key?(column.to_s) || @column_operators.key?(column.to_s) %>
+                <th class="column-filter-th">
+                  <span class="column-filter-label"><%= heading %></span>
+                  <%# The filter opens from the heading rather than sitting under
+                      it, so twenty-one boxes do not crowd out the data. %>
+                  <button type="button" class="column-filter-toggle<%= " active" if active %>"
+                          data-column-filter-toggle
+                          aria-expanded="false"
+                          aria-label="Filter <%= heading %>"
+                          title="Filter <%= heading %>">&#9776;</button>
+                  <div class="column-filter-popover" data-column-filter-popover hidden>
+                    <%# Both controls post the one search form below, so several
+                        columns filtered together narrow each other. %>
+                    <%= select_tag "colop[#{column}]",
+                          options_for_select(Afl::COLUMN_OPERATORS.map(&:reverse),
+                            @column_operators[column.to_s] || Afl::DEFAULT_COLUMN_OPERATOR),
+                          form: "afl-list-search", class: "column-filter-operator",
+                          data: { column_filter_operator: true },
+                          aria: { label: "#{heading} comparison" } %>
+                    <%= search_field_tag "col[#{column}]", @column_filters[column.to_s],
+                          form: "afl-list-search", placeholder: "Value",
+                          aria: { label: "#{heading} value" },
+                          class: "column-filter-value" %>
+                    <div class="column-filter-actions">
+                      <%= submit_tag "Apply", name: nil, form: "afl-list-search", class: "list-btn" %>
+                      <button type="button" class="table-action" data-column-filter-clear>Clear</button>
+                    </div>
+                  </div>
+                </th>
+              <% end %>
               <th>Action</th>
             </tr>
           </thead>
@@ -101,7 +116,7 @@
                   <td><%= afl.status %></td>
                   <td>
                     <%= button_to "Delete",
-                          afl_path(afl, @dashboard_afl_filter_params.merge(q: @query.presence, page: @page)),
+                          afl_path(afl, @dashboard_afl_filter_params.merge(q: @query.presence, col: @column_filters.presence, page: @page)),
                           method: :delete,
                           class: "table-action danger",
                           form: { data: { turbo_confirm: "Delete #{afl.farmer_name.presence || "this record"}?" } } %>
@@ -110,7 +125,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="22"><%= @query.present? ? "No records matched \"#{@query}\"." : "No target mapping records uploaded yet." %></td>
+                <td colspan="<%= Afl::LIST_HEADERS.size + 1 %>"><%= @query.present? || @column_filters.any? ? "No records matched the current search." : "No target mapping records uploaded yet." %></td>
               </tr>
             <% end %>
           </tbody>
@@ -121,13 +136,13 @@
         <% end_count = [@page * @page_size, @total_afls].min %>
         <span><%= start_count %> to <%= end_count %> of <%= @total_afls %></span>
         <% if @page > 1 %>
-          <%= link_to "‹", afls_path(@dashboard_afl_filter_params.merge(q: @query.presence, page: @page - 1)), class: "page-link" %>
+          <%= link_to "‹", afls_path(@dashboard_afl_filter_params.merge(q: @query.presence, col: @column_filters.presence, page: @page - 1)), class: "page-link" %>
         <% else %>
           <span class="page-link disabled">‹</span>
         <% end %>
         <strong>Page <%= @page %> of <%= @total_pages %></strong>
         <% if @page < @total_pages %>
-          <%= link_to "›", afls_path(@dashboard_afl_filter_params.merge(q: @query.presence, page: @page + 1)), class: "page-link" %>
+          <%= link_to "›", afls_path(@dashboard_afl_filter_params.merge(q: @query.presence, col: @column_filters.presence, page: @page + 1)), class: "page-link" %>
         <% else %>
           <span class="page-link disabled">›</span>
         <% end %>

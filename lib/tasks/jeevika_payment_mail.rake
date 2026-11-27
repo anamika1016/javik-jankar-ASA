@@ -10,7 +10,7 @@ namespace :jeevika_payment_mail do
       abort "Na JJ_PAYMENT_MAIL_RELAY_URL (krai) set hai, na SMTP_PASSWORD - koi ek environment me set karein."
     end
 
-    payment = ModuleRecord.where(module_slug: ModulesController::JEEVIKA_JANKAR_PAYMENT_DETAIL_SLUG)
+    payment = ModuleEntry.where(module_slug: ModulesController::JEEVIKA_JANKAR_PAYMENT_DETAIL_SLUG)
       .order(created_at: :desc, id: :desc).first
     item = Array(payment&.data&.[]("payment_items")).find { |entry| entry.respond_to?(:[]) }
     abort "Koi saved payment nahi mili jisse sample mail bane." unless item

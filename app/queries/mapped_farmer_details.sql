@@ -74,7 +74,7 @@ training_records AS MATERIALIZED (
             THEN mr.data::jsonb -> 'selected_farmer_ids' ELSE '[]'::jsonb END AS farmer_ids,
         NULLIF(BTRIM(mr.data::jsonb ->> 'training_register_upload'), '') AS training_register_urls,
         NULLIF(BTRIM(mr.data::jsonb ->> 'training_photo_upload_with_geo_tag'), '') AS training_photo_urls
-    FROM public.module_records mr
+    FROM public.module_entries mr
     WHERE mr.module_slug = 'training-form'
       AND %{entry_month_filter}
 

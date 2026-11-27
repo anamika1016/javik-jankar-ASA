@@ -1,5 +1,6 @@
 require "net/http"
 require "uri"
+require "timeout"
 
 class TargetMappingsController < ApplicationController
   before_action :block_vrp_target_write, only: [:create, :destroy]
@@ -13,6 +14,10 @@ class TargetMappingsController < ApplicationController
     "input_demo_pm" => "Input Demo PM",
     "ffs" => "FFS"
   }.freeze
+
+  EXTERNAL_VRP_USERS_CACHE_KEY = "asa-external-vrp-users-list".freeze
+  EXTERNAL_VRP_USERS_STALE_CACHE_KEY = "asa-external-vrp-users-list-stale".freeze
+  EXTERNAL_VRP_USERS_UNAVAILABLE_CACHE_KEY = "asa-external-vrp-users-list-unavailable".freeze
 
   def index
     @list_only_view = params[:list_only].to_s == "true"
@@ -878,7 +883,7 @@ class TargetMappingsController < ApplicationController
   # Ids transferred to the signed-in user for the Target Mapping screen.
   def transferred_vrp_ids
     return @transferred_vrp_ids if defined?(@transferred_vrp_ids)
-    return @transferred_vrp_ids = [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+    return @transferred_vrp_ids = [] unless defined?(ModuleRecord) && ModuleEntry.table_exists?
 
     labels = [
       current_app_user&.dig("name"),
@@ -895,9 +900,9 @@ class TargetMappingsController < ApplicationController
   # The latest active handover owns access; original registration stays intact.
   def target_mapping_transfer_recipients
     return @target_mapping_transfer_recipients if defined?(@target_mapping_transfer_recipients)
-    return @target_mapping_transfer_recipients = {} unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+    return @target_mapping_transfer_recipients = {} unless defined?(ModuleRecord) && ModuleEntry.table_exists?
 
-    @target_mapping_transfer_recipients = ModuleRecord.where(module_slug: "jeevika-jankar-transfer")
+    @target_mapping_transfer_recipients = (ModuleMirror.relation_for("jeevika-jankar-transfer") || ModuleEntry.where(module_slug: "jeevika-jankar-transfer"))
       .order(updated_at: :desc, id: :desc).each_with_object({}) do |record, recipients|
         next unless transfer_record_active?(record)
         next unless ["target mapping", "target mapping master"].include?(record.data["sidebar_menu"].to_s.strip.downcase)
@@ -1264,6 +1269,10 @@ def office_block_options(fco_value)
   return [] if fco_id.blank? && fco_name.blank?
 
   blocks = OfficeTerritoryDirectory.blocks_for(office_list_items, fco_id, fco_name)
+  # Office Setup already maps an FCO to its TOs. When the remote Office List is
+  # temporarily unavailable, use that same saved mapping and the dedicated LG
+  # Block master instead of showing a blank Block Wise form.
+  blocks = saved_office_mapping_blocks(fco_id, fco_name) if blocks.blank?
 
   blocks
     .filter_map do |block|
@@ -1275,6 +1284,39 @@ def office_block_options(fco_value)
     end
     .then { |options| options.uniq { |option| parse_location_value(option[:value]).first.downcase }.sort_by { |option| option[:label].to_s.downcase } }
 end
+
+  def saved_office_mapping_blocks(fco_id, fco_name)
+    fco_keys = [fco_id, fco_name].compact_blank.map { |value| office_mapping_key(value) }.reject(&:blank?).uniq
+    return [] if fco_keys.blank? || !defined?(LgBlock) || !LgBlock.table_exists?
+
+    to_names = office_mapping_records.filter_map do |record|
+      office = first_present_data(record, "office_name", "office_category", "category_name").to_s
+      next unless fco_keys.include?(office_mapping_key(office))
+
+      first_present_data(record, "sub_office_name", "office_mapping", "office").to_s
+        .sub(/\A\s*(?:to|fpc)\s*[-:]?\s*/i, "").strip.presence
+    end.uniq
+    return [] if to_names.blank?
+
+    # Exact saved labels are preferred. The vowel-free comparison handles the
+    # existing "Bongomunda" Office Setup spelling versus the LG master's
+    # "Bangomunda", without inventing any new location data.
+    normalized_names = to_names.index_by { |name| office_mapping_key(name) }
+    compact_names = to_names.index_by { |name| office_mapping_key(name).delete("aeiou") }
+    LgBlock.active.option_pairs.filter_map do |name, id|
+      key = office_mapping_key(name)
+      next unless normalized_names.key?(key) || compact_names.key?(key.delete("aeiou"))
+
+      { "id" => id, "name" => { "en" => name } }
+    end
+  end
+
+  def office_mapping_key(value)
+    value.to_s.downcase
+      .sub(/\A\s*fco(?:\s*[-:]?\s*c)?\s*[-:]?\s*/i, "")
+      .sub(/\s*[-:]?\s*(?:fco|to|fpc)\s*\z/i, "")
+      .gsub(/[^a-z0-9]/, "")
+  end
 
   def office_village_options(_fco_value, block_value)
     fetch_external_villages(block_value)
@@ -1333,26 +1375,9 @@ end
   def office_list_items
     return @office_list_items if defined?(@office_list_items)
 
-    # Rails.cache can be database backed in production. Coalesce a cold fill in
-    # this Puma worker so simultaneous target pages do not each wait on the
-    # external Office List request. The cache key, TTL, successful-response
-    # semantics and empty-response retry behavior remain unchanged.
-    @office_list_items = DashboardCacheFill.synchronize("office-list-api-items-v4") do
-      Rails.cache.fetch("office-list-api-items-v4", expires_in: 10.minutes, skip_nil: true) do
-        office_list_api_urls.lazy.map { |url| fetch_office_list_items(url) }
-          .find(&:present?)
-      end
-    end || []
-  end
-
-  def fetch_office_list_items(url)
-    OfficeTerritoryDirectory.fetch(url)
-  end
-
-  def office_list_api_urls
-    [
-      "https://asa.ploughmanagro.com/api/get_office_detail_list"
-    ]
+    # Use the one shared snapshot. This prevents Target Mapping and Office
+    # List from independently waiting on the same remote Office API.
+    @office_list_items = OfficeTerritoryDirectory.items
   end
 
   def office_location_name(value)
@@ -1362,21 +1387,32 @@ end
   # Keep locally maintained Office Setup records as a fallback when the Office
   # List service is temporarily unavailable.
   def office_mapping_fco_options
-    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+    return [] unless defined?(ModuleRecord) && ModuleEntry.table_exists?
 
-    ModuleRecord.where(module_slug: "office-mapping-add")
-      .order(created_at: :desc)
-      .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("active").zero? }
+    office_mapping_records
       .filter_map do |record|
-        category = first_present_data(record, "office_name", "office_category", "category_name").to_s.strip
-        next unless category.casecmp("fco").zero?
+        office_name = first_present_data(record, "office_name", "office_category", "category_name").to_s.strip
+        # Older Office Setup rows save the FCO name itself in office_name
+        # (for example "FCO-C Turekela") rather than a separate category.
+        next unless office_name.casecmp("fco").zero? || office_name.match?(/\Afco(?:\s*[-:]?\s*c)?\b/i)
 
-        office_name = first_present_data(record, "sub_office_name", "office_mapping", "office").to_s.strip
+        office_name = first_present_data(record, "sub_office_name", "office_mapping", "office").to_s.strip if office_name.casecmp("fco").zero?
         next if office_name.blank?
 
         option_hash(office_name, office_name)
       end
       .then { |options| unique_fco_options(options).sort_by { |option| option[:label].to_s.downcase } }
+  end
+
+  # Active Sub Office rows, newest first. Served from module_sub_offices when
+  # it exists: the active filter and ordering happen in the database there,
+  # where this previously loaded every row and filtered on status in Ruby.
+  def office_mapping_records
+    return ModuleMirror.records_for("office-mapping-add") if ModuleMirror.covers?("office-mapping-add")
+
+    ModuleEntry.where(module_slug: "office-mapping-add")
+      .order(created_at: :desc)
+      .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("active").zero? }
   end
 
   def target_entry_mode_block_wise?
@@ -1753,7 +1789,7 @@ end
   end
 
   def module_options(module_slug, *field_keys)
-    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+    return [] unless defined?(ModuleRecord) && ModuleEntry.table_exists?
 
     # These options only read the requested labels and status. Loading each
     # complete legacy JSON record also decodes unrelated uploads/metadata, then
@@ -1766,7 +1802,7 @@ end
       key.is_a?(String) ? "data::jsonb -> #{ActiveRecord::Base.connection.quote(key)}" : "NULL"
     end.join(", ")
 
-    ModuleRecord.where(module_slug: module_slug)
+    ModuleEntry.where(module_slug: module_slug)
       .where("COALESCE(data::jsonb ->> 'status', '') IN ('', 'Active')")
       .order(created_at: :desc)
       .pluck(Arel.sql("jsonb_build_array(#{projection})"))
@@ -1781,10 +1817,10 @@ end
   end
 
   def main_activity_type_map
-    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+    return [] unless defined?(ModuleRecord) && ModuleEntry.table_exists?
     return @main_activity_type_map if defined?(@main_activity_type_map)
 
-    @main_activity_type_map = ModuleRecord.where(module_slug: "add-activity-group")
+    @main_activity_type_map = (ModuleMirror.relation_for("add-activity-group") || ModuleEntry.where(module_slug: "add-activity-group"))
       .order(created_at: :desc)
       .select { |record| record.data["status"].blank? || record.data["status"] == "Active" }
       .filter_map do |record|
@@ -1800,10 +1836,10 @@ end
   end
 
   def target_sub_activity_map
-    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+    return [] unless defined?(ModuleRecord) && ModuleEntry.table_exists?
     return @target_sub_activity_map if defined?(@target_sub_activity_map)
 
-    @target_sub_activity_map = ModuleRecord.where(module_slug: "add-vrp-activity")
+    @target_sub_activity_map = (ModuleMirror.relation_for("add-vrp-activity") || ModuleEntry.where(module_slug: "add-vrp-activity"))
       .order(created_at: :desc)
       .select { |record| record.data["status"].blank? || record.data["status"] == "Active" }
       .filter_map do |record|
@@ -1981,13 +2017,13 @@ end
   end
 
   def legacy_current_app_user_ids
-    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+    return [] unless defined?(ModuleRecord) && ModuleEntry.table_exists?
 
     username = current_app_user&.dig("username").to_s
     emails = current_app_user_emails
     return [] if username.blank? && emails.blank?
 
-    ModuleRecord.where(module_slug: "new-user").select do |record|
+    ModuleEntry.where(module_slug: "new-user").select do |record|
       record.data["user_name"].to_s == username ||
         emails.include?(record.data["email"].to_s.strip.downcase)
     end.map(&:id)
@@ -2108,8 +2144,8 @@ end
   def target_type_label_for(target)
     case main_activity_type_for(target&.main_activity_name).to_s.strip.downcase
     when "other with farmer" then "Other with Farmer"
-    when "other" then "Villages"
-    else "Farmer"
+    when "other" then "Other Target"
+    else "Training"
     end
   end
 
@@ -2159,30 +2195,50 @@ end
 
 
   def fetch_external_vrp_users
-    DashboardCacheFill.synchronize("asa-external-vrp-users-list") do
-      Rails.cache.fetch("asa-external-vrp-users-list", expires_in: 10.minutes, skip_nil: true) do
-        uri = URI("https://asa.ploughmanagro.com/api/get_user_list")
-        response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 5, read_timeout: 12) do |http|
-          http.get(uri.request_uri)
-        end
-        return [] unless response.is_a?(Net::HTTPSuccess)
+    return Rails.cache.read(EXTERNAL_VRP_USERS_CACHE_KEY) if Rails.cache.read(EXTERNAL_VRP_USERS_CACHE_KEY).present?
+    return Rails.cache.read(EXTERNAL_VRP_USERS_STALE_CACHE_KEY).presence || [] if Rails.cache.read(EXTERNAL_VRP_USERS_UNAVAILABLE_CACHE_KEY)
 
-        payload = JSON.parse(response.body)
-        return [] unless (payload["status"] == true || payload["status_code"] == 200) && payload["result"].is_a?(Array)
+    DashboardCacheFill.synchronize(EXTERNAL_VRP_USERS_CACHE_KEY) do
+      fresh = Rails.cache.read(EXTERNAL_VRP_USERS_CACHE_KEY)
+      next fresh if fresh.present?
+      next Rails.cache.read(EXTERNAL_VRP_USERS_STALE_CACHE_KEY).presence || [] if Rails.cache.read(EXTERNAL_VRP_USERS_UNAVAILABLE_CACHE_KEY)
 
+      uri = URI("https://asa.ploughmanagro.com/api/get_user_list")
+      # This upstream catalogue is large.  It currently returns successfully
+      # in several seconds, so a 1-2 second timeout turned healthy responses
+      # into an empty JJ selector.  It is requested from its own Turbo frame,
+      # therefore a bounded 15-second wait cannot hold the page navigation.
+      response = Timeout.timeout(15) do
+        Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 5, read_timeout: 12) { |http| http.get(uri.request_uri) }
+      end
+      payload = response.is_a?(Net::HTTPSuccess) ? JSON.parse(response.body) : {}
+      users = if (payload["status"] == true || payload["status_code"] == 200) && payload["result"].is_a?(Array)
         payload["result"].filter_map do |u|
           name = u.dig("user_profile", "name").to_s.strip
           mobile = u["mobile_no"].to_s.strip.presence || u["username"].to_s.strip
           next if mobile.blank?
 
-          display_name = name.present? ? "#{name} (#{mobile})" : mobile
-          { id: u["id"].to_s, name: name.presence || mobile, mobile_no: mobile, label: display_name }
+          { id: u["id"].to_s, name: name.presence || mobile, mobile_no: mobile,
+            label: name.present? ? "#{name} (#{mobile})" : mobile }
         end.uniq { |u| u[:mobile_no] }.sort_by { |u| u[:name].downcase }
+      else
+        []
+      end
+
+      if users.present?
+        Rails.cache.write(EXTERNAL_VRP_USERS_CACHE_KEY, users, expires_in: 10.minutes)
+        Rails.cache.write(EXTERNAL_VRP_USERS_STALE_CACHE_KEY, users, expires_in: 24.hours)
+        Rails.cache.delete(EXTERNAL_VRP_USERS_UNAVAILABLE_CACHE_KEY)
+        users
+      else
+        Rails.cache.write(EXTERNAL_VRP_USERS_UNAVAILABLE_CACHE_KEY, true, expires_in: 30.seconds)
+        Rails.cache.read(EXTERNAL_VRP_USERS_STALE_CACHE_KEY).presence || []
       end
     end
   rescue StandardError => error
     Rails.logger.warn("Unable to fetch external VRP users: #{error.class} - #{error.message}")
-    []
+    Rails.cache.write(EXTERNAL_VRP_USERS_UNAVAILABLE_CACHE_KEY, true, expires_in: 30.seconds)
+    Rails.cache.read(EXTERNAL_VRP_USERS_STALE_CACHE_KEY).presence || []
   end
 
   def fetch_external_mapped_farmers(mobile_no:, month:, year:)

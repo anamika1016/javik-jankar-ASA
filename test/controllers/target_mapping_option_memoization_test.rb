@@ -52,9 +52,13 @@ class TargetMappingOptionMemoizationTest < ActiveSupport::TestCase
     training = TargetMapping.new(main_activity_name: "Training Activity")
     village = TargetMapping.new(main_activity_name: "Village Activity")
     queries = []
+    # add-activity-group has a table of its own now, so watch whichever one
+    # backs it. What is pinned is that the lookup happens once for the whole
+    # list, not which table answers it.
+    source = ModuleMirror.relation_for("add-activity-group")&.table_name || "module_records"
     callback = ->(*args) do
       sql = args.last[:sql].to_s
-      queries << sql if sql.match?(/SELECT.*FROM "module_records"/m)
+      queries << sql if sql.match?(/SELECT.*FROM "#{source}"/m)
     end
 
     labels = nil
@@ -66,7 +70,7 @@ class TargetMappingOptionMemoizationTest < ActiveSupport::TestCase
       ]
     end
 
-    assert_equal ["Farmer", "Villages", "Farmer"], labels
+    assert_equal ["Training", "Other Target", "Training"], labels
     assert_equal 1, queries.size,
       "each target row must reuse the same activity-type map rather than requerying it"
   end

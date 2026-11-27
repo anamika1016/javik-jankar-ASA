@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-# Farmer Target module APIs for React Native.
-# Stores ModuleRecord rows with the same slugs as the web UI (ModulesController untouched).
+# Farmer Target module APIs for React Native. Reads and writes use the active
+# dedicated module-entry view, matching the web application's storage path.
 class FarmerTargetApi
   MAX_TRAINING_PHOTO_SIZE = 5.megabytes
   TRAINING_PHOTO_CONTENT_TYPES = %w[image/jpeg image/png image/webp image/heic image/heif].freeze
@@ -22,7 +22,7 @@ class FarmerTargetApi
   end
 
   def list
-    records = ModuleRecord
+    records = ModuleEntry
       .where(module_slug: @module_slug)
       .order(created_at: :desc)
       .to_a
@@ -35,7 +35,7 @@ class FarmerTargetApi
   end
 
   def find(id)
-    record = ModuleRecord.find_by(id: id, module_slug: @module_slug)
+    record = ModuleEntry.find_by(id: id, module_slug: @module_slug)
     return nil unless record && visible?(record)
 
     record
@@ -50,7 +50,7 @@ class FarmerTargetApi
     errors = validation_errors(data)
     return { success: false, errors: errors } if errors.any?
 
-    record = ModuleRecord.new(module_slug: @module_slug, data: data)
+    record = ModuleEntry.new(module_slug: @module_slug, data: data)
     if record.save
       { success: true, record: record }
     else
@@ -745,7 +745,10 @@ class FarmerTargetApi
     errors << "Achievement valid number hona chahiye." if achievement.nil?
     errors << "Target zero se kam nahi ho sakta." if target && target.negative?
     errors << "Achievement zero se kam nahi ho sakta." if achievement && achievement.negative?
-    errors << "Achievement Target se jyada nahi ho sakta." if target && achievement && achievement > target
+    # Matches the web form: Other with Farmer may record more than it planned,
+    # so only the other target modules keep the cap.
+    allow_over_target = @module_slug == "other-target-with-farmer"
+    errors << "Achievement Target se jyada nahi ho sakta." if !allow_over_target && target && achievement && achievement > target
 
     target_mapping = seed_distribution_target_match(data)
     new_farmer_target = target_mapping&.dig(:new_farmer_target)
@@ -756,7 +759,7 @@ class FarmerTargetApi
       errors << "Mapped Farmers select karein." if selected_farmer_ids.blank?
       errors << "Farmer Count valid whole number hona chahiye." if farmer_count.nil?
       errors << "Farmer Count selected farmers ke count ke equal hona chahiye." if farmer_count && selected_farmer_ids.any? && farmer_count != selected_farmer_ids.size
-      errors << "Farmer Count Target se jyada nahi ho sakta." if target && farmer_count && farmer_count > target
+      errors << "Farmer Count Target se jyada nahi ho sakta." if !allow_over_target && target && farmer_count && farmer_count > target
     end
 
     errors << ["Mapped Other activity target select karein.", target_mapping_mismatch(data)]
@@ -973,9 +976,9 @@ class FarmerTargetApi
   end
 
   def active_month_master_months
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
-    ModuleRecord
+    ModuleEntry
       .where(module_slug: "month-master")
       .select { |record| active_module_record?(record) }
       .filter_map { |record| first_present_data(record, "month_name", "month", "name", "select_bill_month") }
@@ -1294,9 +1297,9 @@ class FarmerTargetApi
 
   def staff_module_users
     return @staff_module_users if defined?(@staff_module_users)
-    return @staff_module_users = [] unless model_ready?(:ModuleRecord)
+    return @staff_module_users = [] unless model_ready?(:ModuleEntry)
 
-    @staff_module_users = ModuleRecord.where(module_slug: "new-user")
+    @staff_module_users = ModuleEntry.where(module_slug: "new-user")
       .select(:id, :data).order(updated_at: :desc).select { |record| active_module_record?(record) }
   end
 
@@ -1437,11 +1440,11 @@ class FarmerTargetApi
 
     if vrp.respond_to?(:created_by_type) && vrp.created_by_type.present?
       return User.find_by(id: vrp.created_by_id) if vrp.created_by_type == "User" && model_ready?(:User)
-      return ModuleRecord.find_by(id: vrp.created_by_id) if vrp.created_by_type == "ModuleRecord" && model_ready?(:ModuleRecord)
+      return ModuleEntry.find_by(id: vrp.created_by_id) if vrp.created_by_type == "ModuleRecord" && model_ready?(:ModuleEntry)
     end
 
     (model_ready?(:User) && User.find_by(id: vrp.created_by_id)) ||
-      (model_ready?(:ModuleRecord) && ModuleRecord.find_by(id: vrp.created_by_id))
+      (model_ready?(:ModuleEntry) && ModuleEntry.find_by(id: vrp.created_by_id))
   end
 
   def training_creator_name(creator)
@@ -1638,12 +1641,12 @@ class FarmerTargetApi
   end
 
   def other_target_completed_farmer_ids_for(target_mapping_id)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     target = model_ready?(:TargetMapping) ? TargetMapping.find_by(id: target_mapping_id) : nil
     mapped_farmer_ids = target ? target_farmer_ids(target) : nil
 
-    ModuleRecord
+    ModuleEntry
       .where(module_slug: @module_slug)
       .order(created_at: :asc)
       .reject { |record| @exclude_record_id.present? && record.id.to_s == @exclude_record_id.to_s }
@@ -1680,9 +1683,9 @@ class FarmerTargetApi
     return @training_completion_index if defined?(@training_completion_index)
 
     @training_completion_index = Hash.new { |hash, key| hash[key] = Set.new }
-    return @training_completion_index unless model_ready?(:ModuleRecord)
+    return @training_completion_index unless model_ready?(:ModuleEntry)
 
-    completion_scope = ModuleRecord.where(module_slug: "training-form")
+    completion_scope = ModuleEntry.where(module_slug: "training-form")
     if defined?(@training_completion_months)
       completion_scope = completion_scope.where("LOWER(TRIM(COALESCE(data::jsonb ->> 'month', ''))) IN (?)", @training_completion_months)
     end
@@ -1791,9 +1794,9 @@ class FarmerTargetApi
   end
 
   def main_activity_settings
-    return {} unless model_ready?(:ModuleRecord)
+    return {} unless model_ready?(:ModuleEntry)
 
-    ModuleRecord.where(module_slug: "add-activity-group").order(created_at: :desc)
+    ModuleEntry.where(module_slug: "add-activity-group").order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .each_with_object({}) do |record, settings|
         name = normalize_text(record.data["main_activity_name"].presence || record.data["activity_group_name"])
@@ -1807,9 +1810,9 @@ class FarmerTargetApi
   end
 
   def sub_activity_settings_for(activity_settings)
-    return {} unless model_ready?(:ModuleRecord)
+    return {} unless model_ready?(:ModuleEntry)
 
-    ModuleRecord.where(module_slug: "add-vrp-activity").order(created_at: :desc)
+    ModuleEntry.where(module_slug: "add-vrp-activity").order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .each_with_object({}) do |record, settings|
         main_key = normalize_text(record.data["main_activity"].presence || record.data["activity_group"])

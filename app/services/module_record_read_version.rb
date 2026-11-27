@@ -4,37 +4,43 @@ require "digest"
 # scans on warm requests. Missing migration/triggers retain the old read path.
 class ModuleRecordReadVersion
   TABLE = "module_record_read_versions".freeze
-  TRIGGERS = %w[insert update delete truncate].map { |event| "jj_module_record_versions_#{event}" }.freeze
+  # These are installed on every dedicated source table by
+  # ActivateDedicatedModuleStorage.  They are deliberately table-level
+  # triggers: module_records is archive-only and is not part of the read
+  # readiness contract.
+  TRIGGERS = %w[insert update delete truncate].map { |event| "jj_module_entries_versions_#{event}" }.freeze
 
   def self.fetch(slugs: nil)
     read(slugs: slugs) || yield
   end
 
-  def self.read(slugs: nil)
-    pool = ModuleRecord.connection_pool
+  def self.read(slugs: nil, dependencies: [])
+    pool = ModuleEntry.connection_pool
     return unless pool.schema_cache.data_source_exists?(TABLE)
+
+    return unless storage_triggers_installed?
+    return unless dependency_triggers_installed?(dependencies)
 
     # Global readers inspect the small set of module stamps, avoiding one
     # globally locked counter row that would serialize unrelated module writes.
     keys = slugs.nil? ? nil : Array(slugs).map { |slug| "module:#{slug}" }.uniq.sort
-    ModuleRecord.uncached(dirties: false) do
-      pool.with_connection do |connection|
-        # Verify enabled triggers in the same read. A schema-only restore, or
-        # explicitly disabled triggers, must never make stale stamps trusted.
-        trigger_names = TRIGGERS.map { |name| connection.quote(name) }.join(",")
-        selection = if keys
-          "source_key IN (#{(['epoch'] + keys).map { |key| connection.quote(key) }.join(',')})"
+    ModuleEntry.uncached(dirties: false) do
+      pool.with_connection do
+        dependency_keys = dependencies.map { |table| "table:#{table}" }
+        version_scope = ModuleRecordReadVersionRecord.all
+        version_scope = if keys
+          version_scope.where(source_key: ["epoch", *keys, *dependency_keys])
         else
-          "(source_key = 'epoch' OR source_key LIKE 'module:%')"
+          table = ModuleRecordReadVersionRecord.arel_table
+          version_scope.where(source_key: "epoch").or(version_scope.where(table[:source_key].matches("module:%")))
+            .or(version_scope.where(source_key: dependency_keys))
         end
-        rows = connection.select_rows(<<~SQL.squish)
-          SELECT source_key, revision FROM #{TABLE}
-          WHERE #{selection} AND
-            (SELECT COUNT(*) FROM pg_trigger WHERE tgrelid = 'module_records'::regclass
-             AND tgname IN (#{trigger_names}) AND tgenabled IN ('O', 'A') AND NOT tgisinternal) = 4
-          ORDER BY source_key
-        SQL
-        values = rows.to_h
+        # This is an ordinary application read, so keep it entirely in Active
+        # Record/Arel rather than building a SELECT statement by hand.
+        values = version_scope
+          .order(:source_key)
+          .pluck(:source_key, :revision)
+          .to_h
         return unless values.key?("epoch")
 
         selected = (keys || values.keys.reject { |key| key == 'epoch' }.sort)
@@ -42,5 +48,31 @@ class ModuleRecordReadVersion
         "clock-v1:#{values.fetch('epoch')}:#{Digest::SHA256.hexdigest(selected.to_json)}"
       end
     end
+  end
+  def self.storage_triggers_installed?
+    connection = ModuleEntry.connection
+    return false unless ModuleEntry.connection_pool.schema_cache.data_source_exists?("module_entry_sources")
+    connection.select_value(<<~SQL.squish)
+      SELECT COUNT(*) = 4 * (SELECT COUNT(DISTINCT table_name) FROM module_entry_sources)
+      FROM pg_trigger WHERE tgrelid IN (SELECT to_regclass(table_name) FROM module_entry_sources)
+        AND tgname IN (#{TRIGGERS.map { |name| connection.quote(name) }.join(', ')})
+        AND tgenabled IN ('O','A') AND NOT tgisinternal
+    SQL
+  rescue StandardError
+    false
+  end
+
+  def self.dependency_triggers_installed?(tables)
+    return true if tables.empty?
+
+    connection = ModuleEntry.connection
+    names = tables.map { |table| connection.quote(table) }.join(',')
+    connection.select_value(<<~SQL.squish).to_i == tables.uniq.size
+      SELECT COUNT(*) FROM pg_trigger
+      WHERE tgrelid IN (SELECT to_regclass(name) FROM unnest(ARRAY[#{names}]::text[]) AS name)
+        AND tgname = 'jj_module_entry_dependency_changed' AND tgenabled IN ('O','A') AND NOT tgisinternal
+    SQL
+  rescue StandardError
+    false
   end
 end

@@ -32,7 +32,7 @@ module Api
           }, status: :unprocessable_entity
         end
 
-        duplicate = ModuleRecord.where(module_slug: "add-vrp-type").find do |record|
+        duplicate = ModuleEntry.where(module_slug: "add-vrp-type").find do |record|
           existing_name = record.data["jeevika_jankar_type_name"].presence ||
             record.data["vrp_type_name"].presence ||
             record.data["position_type_name"].presence
@@ -46,7 +46,7 @@ module Api
           }, status: :unprocessable_entity
         end
 
-        record = ModuleRecord.new(
+        record = ModuleEntry.new(
           module_slug: "add-vrp-type",
           data: {
             "jeevika_jankar_type_name" => name.to_s.strip,
@@ -156,14 +156,14 @@ module Api
       end
 
       def fallback_master_rows(slug, fields)
-        records = ModuleRecord.where(module_slug: slug).order(created_at: :desc).to_a
+        records = ModuleEntry.where(module_slug: slug).order(created_at: :desc).to_a
         records.select! { |record| active_record?(record) } unless include_inactive?
         records.select! { |record| matches_filters?(record) }
         records.map { |record| record_payload(record, fields) }
       end
 
       def filtered_master_scope(slug)
-        scope = ModuleRecord.where(module_slug: slug)
+        scope = ModuleEntry.where(module_slug: slug)
         unless include_inactive?
           scope = scope.where("COALESCE(LOWER(BTRIM(data::jsonb ->> 'status')), '') IN ('', 'active')")
         end

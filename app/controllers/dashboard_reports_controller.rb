@@ -19,7 +19,7 @@ class DashboardReportsController < ModulesController
     identity = [session_id, current_app_user, request.query_parameters.sort,
       request.base_url, I18n.locale, Date.current, session[:language]]
     key = ["dashboard-page-v1", Digest::SHA256.hexdigest(identity.to_json),
-      dashboard_sql_cache.source_revision, extra_revision, OfficeTerritoryDirectory.revision]
+      dashboard_sql_cache.source_revision, extra_revision, OfficeTerritoryDirectory.cached_revision]
     DashboardCacheFill.synchronize(key) do
       if (html = DASHBOARD_PAGE_CACHE.read(key))
         response.set_header("X-Dashboard-Cache", "hit")
@@ -130,7 +130,7 @@ class DashboardReportsController < ModulesController
     # 2. FCO Filter (depends on selected Activity)
     vrp_fcos = unfiltered_vrps.map(&:fcoc)
     target_fcos = unfiltered_targets.map(&:fco_name)
-    afl_fcos = ModuleRecord.where(module_slug: "add-farmer-form").pluck(Arel.sql("data::jsonb ->> 'fco_name'"))
+    afl_fcos = ModuleEntry.where(module_slug: "add-farmer-form").pluck(Arel.sql("data::jsonb ->> 'fco_name'"))
     all_fcos = (DashboardFcoDirectory.names + dashboard_master_fco_names + vrp_fcos + target_fcos + afl_fcos).compact_blank.map { |f| f.to_s.strip }.reject(&:blank?)
     @filter_fcoc_options = all_fcos.group_by { |f| AgreementVrpScope.office_key(f) }.filter_map { |key, names| DashboardFcoDirectory.name_for(names.first) if key.present? }.uniq.sort
     # A posted user only works in their own FCO, so the picker offers just that
@@ -330,12 +330,12 @@ class DashboardReportsController < ModulesController
       selected_cluster_incharge, selected_ics_filter, @dashboard_month_filter_value, selected_post_filter, selected_vrp_filter
     ].any?(&:present?)
 
-    bill_scope = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process")
+    bill_scope = ModuleMirror.read_scope("jeevika-jankar-bill-process")
     if dashboard_filters_active || module_cluster_incharge_login?
-      bill_scope = filtered_vrp_ids.any? ? bill_scope.where("data::jsonb ->> 'select_vrp' IN (?)", filtered_vrp_ids) : ModuleRecord.none
+      bill_scope = filtered_vrp_ids.any? ? bill_scope.where("data::jsonb ->> 'select_vrp' IN (?)", filtered_vrp_ids) : ModuleEntry.none
     end
     bill_records = dashboard_sql_cache.select_all(bill_summary_scope(bill_scope).to_sql)
-      .map { |row| ModuleRecord.instantiate(row) }
+      .map { |row| ModuleEntry.instantiate(row) }
     unless admin_dashboard_user?
       bill_records = bill_records.select { |r| jeevika_jankar_bill_record_visible?(r) }
     end
@@ -1116,7 +1116,7 @@ class DashboardReportsController < ModulesController
   end
 
   def dashboard_opg_achievement_count
-    return 0 unless model_ready?(:ModuleRecord)
+    return 0 unless model_ready?(:ModuleEntry)
 
     month_value = @participation_selected_month.presence || @dashboard_month_filter_value.presence
     fcoc_value = @participation_fcoc_filter_value.presence || @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
@@ -1155,7 +1155,7 @@ class DashboardReportsController < ModulesController
 
     sql = <<~SQL.squish
       SELECT COUNT(DISTINCT sf.farmer_id)
-      FROM module_records mr
+      FROM (#{ModuleMirror.read_scope("training-form").to_sql}) mr
       CROSS JOIN LATERAL jsonb_array_elements_text(
         COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb)
       ) AS sf(farmer_id)
@@ -1171,7 +1171,7 @@ class DashboardReportsController < ModulesController
   end
 
   def dashboard_training_method_counts
-    return training_method_count_defaults unless model_ready?(:TargetMapping) && model_ready?(:ModuleRecord)
+    return training_method_count_defaults unless model_ready?(:TargetMapping) && model_ready?(:ModuleEntry)
 
     month_value = @participation_selected_month.presence || @dashboard_month_filter_value.presence
     fcoc_value = @participation_fcoc_filter_value.presence || @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
@@ -1249,7 +1249,7 @@ class DashboardReportsController < ModulesController
         SELECT DISTINCT
           sf.farmer_id,
           BTRIM(mr.data::jsonb ->> 'training_method') AS training_method
-        FROM module_records mr
+        FROM (#{ModuleMirror.read_scope("training-form").to_sql}) mr
         CROSS JOIN LATERAL jsonb_array_elements_text(
           COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb)
         ) AS sf(farmer_id)
@@ -1367,7 +1367,7 @@ class DashboardReportsController < ModulesController
   end
 
   def dashboard_training_participation_records(month_name: nil, main_activity_name: nil, sub_activity_name: nil, fcoc_name: nil)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     @dashboard_training_participation_records_cache ||= {}
     cache_key = [normalize_dashboard_text(month_name), normalize_dashboard_text(main_activity_name), normalize_dashboard_text(sub_activity_name), normalize_dashboard_text(fcoc_name)]
@@ -1443,7 +1443,7 @@ class DashboardReportsController < ModulesController
   end
 
   def training_participation_dashboard_counts_cache_key(month_name:, fcoc_name:, week_number: nil)
-    return unless model_ready?(:TargetMapping) && model_ready?(:ModuleRecord)
+    return unless model_ready?(:TargetMapping) && model_ready?(:ModuleEntry)
 
     scope_signature = [
       current_app_user&.dig("record_type"),
@@ -1466,7 +1466,7 @@ class DashboardReportsController < ModulesController
       Digest::SHA256.hexdigest([
         dashboard_current_user_office_keys.sort,
         dashboard_visible_vrp_ids.sort,
-        params.permit(:office_id, :to_name, :cluster_incharge, :post, :vrp_id, :main_activity, :sub_activity, :activity, :search).to_h
+        params.permit(:office_id, :to_name, :cluster_incharge, :post, :vrp_id, :main_activity, :sub_activity, :activity, :search, :month, :training_month, :fcoc, :fco, :ics, :ics_name, :entry_mode).to_h
       ].to_json),
       normalize_dashboard_text(dashboard_filter_param(:ics, :ics_name)),
       normalize_dashboard_text(month_name),
@@ -1488,7 +1488,7 @@ class DashboardReportsController < ModulesController
   end
 
   def training_participation_dashboard_counts_from_sql(month_name:, fcoc_name:, targets:)
-    return nil unless model_ready?(:TargetMapping) && model_ready?(:ModuleRecord)
+    return nil unless model_ready?(:TargetMapping) && model_ready?(:ModuleEntry)
 
     target_conditions = ["j.value <> ''"]
     unless dashboard_global_view_user?
@@ -1551,7 +1551,7 @@ class DashboardReportsController < ModulesController
       ),
       training_records AS (
         SELECT mr.id, mr.data::jsonb AS data
-        FROM module_records mr
+        FROM (#{ModuleMirror.read_scope("training-form").to_sql}) mr
         WHERE #{training_conditions.join(' AND ')}
       ),
       completed_raw AS (
@@ -1611,9 +1611,8 @@ class DashboardReportsController < ModulesController
       FROM farmer_status
     SQL
 
-    row = ActiveRecord::Base.connection.exec_query(
-      ActiveRecord::Base.send(:sanitize_sql_array, [sql, target_binds.merge(completed_binds)])
-    ).first || {}
+    statement = ActiveRecord::Base.send(:sanitize_sql_array, [sql, target_binds.merge(completed_binds)])
+    row = dashboard_sql_cache.select_all(statement).first || {}
 
     {
       green: row["green_count"].to_i,
@@ -1794,7 +1793,7 @@ class DashboardReportsController < ModulesController
     sql = <<~SQL
       WITH attendance AS MATERIALIZED (
         SELECT sf.farmer_id, COUNT(DISTINCT mr.id) AS training_count
-        FROM public.module_records mr
+        FROM (#{ModuleMirror.read_scope("training-form").to_sql}) mr
         CROSS JOIN LATERAL jsonb_array_elements_text(
           CASE WHEN jsonb_typeof(mr.data::jsonb -> 'selected_farmer_ids') = 'array'
             THEN mr.data::jsonb -> 'selected_farmer_ids' ELSE '[]'::jsonb END
@@ -1918,7 +1917,7 @@ class DashboardReportsController < ModulesController
                 mr.data::jsonb ->> 'training_register_upload' AS training_register_upload,
                 mr.data::jsonb ->> 'training_photo_upload_with_geo_tag' AS training_photo_upload,
                 COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb) AS farmer_ids
-            FROM public.module_records mr
+            FROM (#{ModuleMirror.read_scope("training-form").to_sql}) mr
             WHERE mr.module_slug = 'training-form'
               #{entry_month_filter}
               AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
@@ -2024,7 +2023,7 @@ class DashboardReportsController < ModulesController
                 mr.data::jsonb ->> 'training_register_upload' AS training_register_upload,
                 mr.data::jsonb ->> 'training_photo_upload_with_geo_tag' AS training_photo_upload,
                 COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb) AS farmer_ids
-            FROM public.module_records mr
+            FROM (#{ModuleMirror.read_scope("training-form").to_sql}) mr
             WHERE mr.module_slug = 'training-form'
               #{entry_month_filter}
               AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
@@ -2194,7 +2193,7 @@ class DashboardReportsController < ModulesController
         ),
         august_training_done AS (
             SELECT DISTINCT sf.farmer_id
-            FROM public.module_records mr
+            FROM (#{ModuleMirror.read_scope("training-form").to_sql}) mr
             CROSS JOIN LATERAL jsonb_array_elements_text(
                 COALESCE(
                     mr.data::jsonb -> 'selected_farmer_ids',
@@ -2500,7 +2499,7 @@ class DashboardReportsController < ModulesController
   end
 
   def dashboard_office_list_items
-    @dashboard_office_list_items ||= OfficeTerritoryDirectory.items
+    @dashboard_office_list_items ||= OfficeTerritoryDirectory.cached_items
   end
 
   def dashboard_master_fco_names
@@ -2750,8 +2749,14 @@ class DashboardReportsController < ModulesController
     else
       dashboard_current_user_office_keys
     end
-    ModuleRecord.where(module_slug: "office-mapping-add").filter_map do |record|
-      next unless active_module_record?(record)
+    # Served from module_sub_offices when it exists, where the active filter
+    # runs in the database instead of over every row in Ruby.
+    sub_offices = if ModuleMirror.covers?("office-mapping-add")
+      ModuleMirror.records_for("office-mapping-add")
+    else
+      ModuleMirror.read_scope("office-mapping-add").select { |record| active_module_record?(record) }
+    end
+    sub_offices.filter_map do |record|
       office = first_present_data(record, "office_category", "category_name", "office_name", "office").to_s.strip
       next if visible_keys && !visible_keys.include?(AgreementVrpScope.office_key(office))
       first_present_data(record, "sub_office_name", "office_mapping", "office").to_s.strip.presence
@@ -2859,7 +2864,7 @@ class DashboardReportsController < ModulesController
 
   def dashboard_participation_training_scope
     return @dashboard_participation_training_scope if defined?(@dashboard_participation_training_scope)
-    scope = ModuleRecord.where(module_slug: "training-form")
+    scope = ModuleMirror.read_scope("training-form")
       .where("jsonb_typeof(data::jsonb -> 'selected_farmer_ids') = 'array'")
       .where("COALESCE(LOWER(BTRIM(data::jsonb ->> 'main_activity_type')), '') IN ('', 'training')")
     %w[deleted is_deleted discarded].each do |key|
@@ -2877,7 +2882,7 @@ class DashboardReportsController < ModulesController
     sql = sql.gsub("public.target_mappings", "(#{dashboard_visible_target_scope.to_sql})")
       .gsub("public.afls", "(#{dashboard_visible_farmer_scope.to_sql})")
     return sql unless participation
-    sql.gsub("public.module_records", "(#{dashboard_participation_training_scope.to_sql})")
+    sql.gsub("public.module_entries", "(#{dashboard_participation_training_scope.to_sql})")
       .gsub(/LOWER\((?:TRIM\()?COALESCE\(mr\.data::jsonb ->> 'main_activity', ''\)\)?\)\s+LIKE '%farmers'' training%'/, "TRUE")
       .gsub(/LOWER\(COALESCE\(t\.main_activity_name, ''\)\)\s+LIKE '%farmers'' training%'/,
         "REGEXP_REPLACE(LOWER(COALESCE(t.main_activity_name, '')), '[^a-z0-9]+', ' ', 'g') ~ '(farmers? training|farmer activity)'")
@@ -3279,11 +3284,14 @@ class DashboardReportsController < ModulesController
       headers = columns.keys
       headers += ["Entry Mode"] if dashboard_entry_mode == BOTH_ENTRY_MODE
       rows = values.map { |row| columns.keys.zip(Array(row)).to_h }
+      # One row per identity, farmers included. The same farmer is imported more
+      # than once -- a second row under a different FPO, or with the TraceNet
+      # spelled with different spacing or case -- and leaving farmers out of
+      # this meant the list counted rows while its summary box counted
+      # identities, so the two disagreed by every duplicate import.
       identity_header = { "ics" => "ICS ID", "villages" => "Village ID", "farmers" => "TraceNet No" }.fetch(type)
-      unless type == "farmers"
-        rows = rows.reject { |row| DashboardFcoDirectory.invalid?(row[identity_header]) }
-          .uniq { |row| normalize_dashboard_text(row[identity_header]) }
-      end
+      rows = rows.reject { |row| DashboardFcoDirectory.invalid?(row[identity_header]) }
+        .uniq { |row| normalize_dashboard_text(row[identity_header]) }
 
       # The farmer master only covers ICS Wise work, so the Block Wise side of
       # the card's total has to come off the target rows to make the list add up.
@@ -3365,12 +3373,49 @@ class DashboardReportsController < ModulesController
       if office.present?
         ids = dashboard_vrps.select { |vrp| training_fcoc_text_matches?(vrp.fcoc, office) }.map { |vrp| vrp.id.to_s }
       end
-      active_module_records_scope("jeevika-jankar-bill-process").select do |record|
-        jeevika_jankar_bill_blocks_duplicate?(record) &&
-          ((dashboard_global_view_user? && office.blank?) || ids.include?(record.data["select_vrp"].to_s))
-      end
+      dashboard_billing_records_from_columns(ids, office) ||
+        active_module_records_scope("jeevika-jankar-bill-process").select do |record|
+          jeevika_jankar_bill_blocks_duplicate?(record) &&
+            ((dashboard_global_view_user? && office.blank?) || ids.include?(record.data["select_vrp"].to_s))
+        end
     end
   end
+
+  # Bills the duplicate check keeps, filtered in the database.
+  #
+  # A bill payload averages 75 kB -- bill_items carries every farmer's details --
+  # so the Ruby version above read roughly 8 MB to test a handful of flags, and
+  # was the slowest query on the dashboard. module_bills already stores those
+  # flags as indexed generated columns, so the same decision is made without
+  # touching the payload at all. Only the keys the callers read come back.
+  #
+  # nil when the dedicated table is not there, so the Ruby path above still runs.
+  def dashboard_billing_records_from_columns(ids, office)
+    return nil unless ModuleMirror.ready? && defined?(ModuleBill) && ModuleBill.table_exists?
+
+    scope = ModuleBill.where(active: true)
+    # jeevika_jankar_bill_blocks_duplicate?, column for column:
+    #   active                      -> deleted / is_deleted / discarded
+    #   record_state                -> not "Inactive"
+    #   bill_status                 -> not rejected or returned
+    #   id                          -> never the record being edited
+    scope = scope.where("COALESCE(LOWER(BTRIM(data ->> 'record_state')), '') <> 'inactive'")
+    scope = scope.where("COALESCE(LOWER(bill_status), '') !~ '(reject|return)'")
+    scope = scope.where.not(id: params[:id]) if params[:id].present?
+    scope = scope.where(select_vrp: ids) unless dashboard_global_view_user? && office.blank?
+
+    keys = DASHBOARD_BILL_FLAG_KEYS.map { |key| ModuleBill.connection.quote(key) }.join(", ")
+    scope.select(<<~SQL.squish).map { |row| ModuleEntry.instantiate(row.attributes) }
+      module_bills.id, 'jeevika-jankar-bill-process'::text AS module_slug,
+      module_bills.created_at, module_bills.updated_at,
+      (SELECT COALESCE(jsonb_object_agg(field.key, field.value), '{}'::jsonb)
+       FROM jsonb_each(module_bills.data) AS field(key, value)
+       WHERE field.key IN (#{keys}))::text AS data
+    SQL
+  end
+
+  DASHBOARD_BILL_FLAG_KEYS = %w[select_vrp select_vrp_name bill_month deleted is_deleted
+    discarded record_state status grand_total].freeze
 
   # Fresh, request-local source revisions avoid both repeated version queries
   # and the old minute-long delay after a target or training entry changes.
@@ -3400,14 +3445,30 @@ class DashboardReportsController < ModulesController
     scope
   end
 
+  # One row per identity, not per farmer-master row. The same farmer is
+  # imported more than once -- a second row for a different FPO, or with the
+  # ICS and TraceNet spelled with different spacing or case -- and counting
+  # rows reported 33,576 farmers where there are 31,272 distinct TraceNet
+  # numbers. ICS and village already de-duplicated this way; the farmer count
+  # was the one still counting rows, so it disagreed with them.
   def dashboard_total_afl_distinct_count(kind)
-    return dashboard_total_afl_farmer_scope.distinct.count(:id) if kind == :farmer
+    identity = dashboard_afl_identity_sql(kind)
+    scope = dashboard_total_afl_farmer_scope
+      .where("#{identity} IS NOT NULL")
+    statement = scope.reselect("COUNT(DISTINCT #{identity}) AS count").to_sql
+    (dashboard_sql_cache.select_all(statement).first || {}).fetch("count", 0).to_i
+  end
 
-    column = { ics: :ics_id, village: :village_id }.fetch(kind)
-    identity = "LOWER(BTRIM(#{column}))"
-    dashboard_total_afl_farmer_scope
-      .where("#{identity} NOT IN ('', 'null', 'nil', 'none', 'n/a', '-')")
-      .distinct.count(Arel.sql(identity))
+  # NULL for a blank or placeholder value, so those never become an identity of
+  # their own -- several farmers with no TraceNet are not several farmers.
+  def dashboard_afl_identity_sql(kind)
+    column = { ics: :ics_id, village: :village_id, farmer: :tracenet_no }.fetch(kind)
+    # The same list DashboardFcoDirectory.invalid? applies in Ruby, so the box
+    # and the View List behind it agree on what counts as an identity.
+    placeholders = DashboardFcoDirectory::PLACEHOLDER_VALUES
+      .map { |value| ActiveRecord::Base.connection.quote(value) }.join(", ")
+    "CASE WHEN COALESCE(LOWER(BTRIM(#{column})), '') IN ('', #{placeholders}) " \
+      "THEN NULL ELSE LOWER(BTRIM(#{column})) END"
   end
 
   def dashboard_total_afl_farmer_scope

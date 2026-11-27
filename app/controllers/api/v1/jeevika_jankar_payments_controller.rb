@@ -162,7 +162,7 @@ module Api
       end
 
       def visible_bill
-        record = ModuleRecord.find_by(id: params[:id], module_slug: BILL_SLUG)
+        record = ModuleEntry.find_by(id: params[:id], module_slug: BILL_SLUG)
         return unless record && calculator.send(:jeevika_jankar_bill_record_visible?, record)
 
         record
@@ -203,7 +203,7 @@ module Api
       end
 
       def save_bill_action!(record, action, step)
-        ModuleRecord.transaction do
+        ModuleEntry.transaction do
           create_bill_history!(record, action, step)
           yield
         end
@@ -211,7 +211,7 @@ module Api
       end
 
       def create_bill_history!(record, action, step)
-        ModuleRecord.create!(
+        ModuleEntry.create!(
           module_slug: "jeevika-jankar-bill-approval-history",
           data: {
             "bill_id" => record.id.to_s,
@@ -385,7 +385,7 @@ module Api
       end
 
       def bill_records
-        @bill_records ||= ModuleRecord.where(module_slug: BILL_SLUG).order(created_at: :desc, id: :desc).to_a
+        @bill_records ||= ModuleEntry.where(module_slug: BILL_SLUG).order(created_at: :desc, id: :desc).to_a
       end
 
       # Keep the API list on the same preloaded path as the web bill list. Without

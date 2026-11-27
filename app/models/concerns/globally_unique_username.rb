@@ -24,7 +24,7 @@ module GloballyUniqueUsername
   end
 
   def username_uniqueness_source?
-    !is_a?(ModuleRecord) || module_slug.to_s == "new-user"
+    !(is_a?(ModuleEntry) || is_a?(ModuleRecord)) || module_slug.to_s == "new-user"
   end
 
   def username_for_global_uniqueness
@@ -50,11 +50,11 @@ module GloballyUniqueUsername
   end
 
   def username_taken_in_module_records?(username)
-    return false unless ModuleRecord.table_exists?
+    return false unless ModuleEntry.table_exists?
 
-    scope = ModuleRecord.where(module_slug: "new-user")
+    scope = ModuleEntry.where(module_slug: "new-user")
       .where("LOWER(TRIM(COALESCE(data::jsonb->>'user_name', ''))) = ?", username.downcase)
-    scope = scope.where.not(id: id) if is_a?(ModuleRecord) && persisted?
+    scope = scope.where.not(id: id) if (is_a?(ModuleEntry) || is_a?(ModuleRecord)) && persisted?
     scope.exists?
   end
 end

@@ -6,7 +6,7 @@ class DashboardSqlCache
   # source rows change. A local store therefore preserves the same result while
   # avoiding a Solid Cache database round trip for every dashboard cache hit.
   STORE = ActiveSupport::Cache::MemoryStore.new(size: 64.megabytes)
-  TABLES = %w[afls target_mappings vrps module_records].freeze
+  TABLES = %w[afls target_mappings vrps module_entries].freeze
 
   def source_revision
     revision

@@ -886,7 +886,7 @@ class ModulesController < ApplicationController
     # 2. FCO Filter (depends on selected Activity)
     vrp_fcos = unfiltered_vrps.map(&:fcoc)
     target_fcos = unfiltered_targets.map(&:fco_name)
-    afl_fcos = ModuleRecord.where(module_slug: "add-farmer-form").pluck(Arel.sql("data::jsonb ->> 'fco_name'"))
+    afl_fcos = ModuleEntry.where(module_slug: "add-farmer-form").pluck(Arel.sql("data::jsonb ->> 'fco_name'"))
     all_fcos = (vrp_fcos + target_fcos + afl_fcos).compact_blank.map { |f| f.to_s.strip }.reject(&:blank?)
     @filter_fcoc_options = all_fcos.group_by { |f| normalize_dashboard_text(f.sub(/\Afco\s*-\s*c\s+/i, "")) }.map { |_key, names| names.max_by(&:length) }.sort
     # A posted user only works in their own FCO, so the picker offers just that
@@ -1053,9 +1053,9 @@ class ModulesController < ApplicationController
       selected_cluster_incharge, selected_ics_filter, @dashboard_month_filter_value, selected_post_filter, selected_vrp_filter
     ].any?(&:present?)
 
-    bill_scope = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process")
+    bill_scope = ModuleMirror.read_scope("jeevika-jankar-bill-process")
     if dashboard_filters_active || module_cluster_incharge_login?
-      bill_scope = filtered_vrp_ids.any? ? bill_scope.where("data::jsonb ->> 'select_vrp' IN (?)", filtered_vrp_ids) : ModuleRecord.none
+      bill_scope = filtered_vrp_ids.any? ? bill_scope.where("data::jsonb ->> 'select_vrp' IN (?)", filtered_vrp_ids) : ModuleEntry.none
     end
     bill_records = bill_scope.to_a
     unless admin_dashboard_user?
@@ -1494,7 +1494,7 @@ class ModulesController < ApplicationController
 
   def edit
     load_module!
-    @record = ModuleRecord.find(params[:id])
+    @record = ModuleEntry.find(params[:id])
     unless module_record_visible_for_current_context?(@record)
       redirect_to module_path(module_redirect_slug), alert: "You are not allowed to view this record."
       return
@@ -1523,7 +1523,7 @@ class ModulesController < ApplicationController
       return
     end
 
-    record = ModuleRecord.new(
+    record = ModuleEntry.new(
       module_slug: record_source_slug,
       data: normalized_module_data
     )
@@ -1572,7 +1572,7 @@ class ModulesController < ApplicationController
 
     raw_data = module_record_params.to_h
     selected_bill_ids = Array(raw_data["selected_bill_ids"]).map(&:to_s).map(&:strip).reject(&:blank?).uniq
-    selected_records = ModuleRecord
+    selected_records = ModuleEntry
       .where(module_slug: "jeevika-jankar-bill-process", id: selected_bill_ids)
       .index_by { |record| record.id.to_s }
       .values_at(*selected_bill_ids)
@@ -1594,7 +1594,7 @@ class ModulesController < ApplicationController
     selected_month = raw_data["payment_month"].presence
     apply_jeevika_payment_month_data!(raw_data, selected_records)
 
-    ModuleRecord.create!(
+    ModuleEntry.create!(
       module_slug: JEEVIKA_JANKAR_PAYMENT_DETAIL_SLUG,
       data: normalized_jeevika_payment_detail_data(raw_data, selected_records)
     )
@@ -1633,7 +1633,7 @@ class ModulesController < ApplicationController
     errors = upload.errors.dup
     errors << "Excel me koi row payment details ke saath nahi mili." if errors.empty? && rows.empty?
 
-    bills = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process", id: rows.map(&:bill_id).select { |id| id.match?(/\A\d+\z/) })
+    bills = ModuleMirror.read_scope("jeevika-jankar-bill-process").where(id: rows.map(&:bill_id).select { |id| id.match?(/\A\d+\z/) })
       .index_by { |record| record.id.to_s }
     preload_jeevika_payment_bill_histories!(bills.values)
     paid_ids = jeevika_paid_bill_ids
@@ -1662,7 +1662,7 @@ class ModulesController < ApplicationController
     excel_path = store_uploaded_module_file(file)
     groups = rows.group_by { |row| [row.transaction_id, row.transaction_type, row.transaction_date] }
     saved = []
-    ModuleRecord.transaction do
+    ModuleEntry.transaction do
       groups.each do |(transaction_id, transaction_type, transaction_date), group_rows|
         selected_records = group_rows.map { |row| bills[row.bill_id] }
         raw_data = {
@@ -1674,7 +1674,7 @@ class ModulesController < ApplicationController
         apply_jeevika_payment_month_data!(raw_data, selected_records)
         data = normalized_jeevika_payment_detail_data(raw_data, selected_records)
         data["excel_file"] = excel_path if excel_path.present?
-        ModuleRecord.create!(module_slug: JEEVIKA_JANKAR_PAYMENT_DETAIL_SLUG, data: data)
+        ModuleEntry.create!(module_slug: JEEVIKA_JANKAR_PAYMENT_DETAIL_SLUG, data: data)
         saved << [raw_data, selected_records]
       end
     end
@@ -1724,7 +1724,7 @@ class ModulesController < ApplicationController
 
   def update
     load_module!
-    record = ModuleRecord.find(params[:id])
+    record = ModuleEntry.find(params[:id])
     unless module_record_visible_for_current_context?(record)
       redirect_to module_path(module_redirect_slug), alert: "You are not allowed to update this record."
       return
@@ -1792,7 +1792,7 @@ class ModulesController < ApplicationController
   # reported "Delete failed" and left the row on screen.
   def destroy
     load_module!
-    record = ModuleRecord.find(params[:id])
+    record = ModuleEntry.find(params[:id])
     unless module_record_visible_for_current_context?(record)
       message = "You are not allowed to delete this record."
       respond_to do |format|
@@ -1812,7 +1812,7 @@ class ModulesController < ApplicationController
 
   def selected_farmers
     load_module!
-    @record = ModuleRecord.find(params[:id])
+    @record = ModuleEntry.find(params[:id])
     unless module_record_visible_for_current_context?(@record)
       redirect_to module_path(module_redirect_slug), alert: "You are not allowed to view this record."
       return
@@ -1822,7 +1822,7 @@ class ModulesController < ApplicationController
 
   def export_selected_farmers
     load_module!
-    record = ModuleRecord.find(params[:id])
+    record = ModuleEntry.find(params[:id])
     unless module_record_visible_for_current_context?(record)
       redirect_to module_path(module_redirect_slug), alert: "You are not allowed to export this record."
       return
@@ -1848,7 +1848,7 @@ class ModulesController < ApplicationController
 
   def selected_farmer
     load_module!
-    record = ModuleRecord.find(params[:id])
+    record = ModuleEntry.find(params[:id])
     unless module_record_visible_for_current_context?(record)
       redirect_to module_path(module_redirect_slug), alert: "You are not allowed to update this record."
       return
@@ -1871,7 +1871,7 @@ class ModulesController < ApplicationController
 
   def toggle_status
     load_module!
-    record = ModuleRecord.find(params[:id])
+    record = ModuleEntry.find(params[:id])
     current_status = record.data["status"].presence || "Active"
     next_status = current_status == "Active" ? "Inactive" : "Active"
 
@@ -1953,7 +1953,7 @@ class ModulesController < ApplicationController
 
     load_module!
     if params[:record_id].present?
-      @record = ModuleRecord.where(module_slug: "training-form").find(params[:record_id])
+      @record = ModuleMirror.read_scope("training-form").find(params[:record_id])
       return head :forbidden unless module_record_visible_for_current_context?(@record)
     end
     saved_ids = @record ? Array(@record.data["target_mapping_ids"].presence || @record.data["target_mapping_id"]) : []
@@ -2079,7 +2079,7 @@ class ModulesController < ApplicationController
 
   def set_status
     load_module!
-    record = ModuleRecord.find(params[:id])
+    record = ModuleEntry.find(params[:id])
     next_status = params[:status].presence_in(["Active", "Inactive"]) || "Active"
 
     if record.update(data: record.data.merge("status" => next_status))
@@ -2092,7 +2092,7 @@ class ModulesController < ApplicationController
 
   def send_bill_for_approval
     load_module!
-    record = ModuleRecord.find(params[:id])
+    record = ModuleEntry.find(params[:id])
     unless ["jeevika-jankar-bill-process", "jeevika-jankar-bill-list"].include?(record.module_slug) || record_source_slug == "jeevika-jankar-bill-process"
       redirect_to module_path(@slug), status: :see_other, alert: "Send for approval is available only for Jeevika Jankar bills." and return
     end
@@ -2108,7 +2108,7 @@ class ModulesController < ApplicationController
 
   def set_bill_state
     load_module!
-    record = ModuleRecord.find(params[:id])
+    record = ModuleEntry.find(params[:id])
     redirect_to module_path("jeevika-jankar-bill-list"), status: :see_other, alert: "You are not allowed to update this bill." and return unless jeevika_jankar_bill_record_visible?(record)
     state = params[:state].presence_in(["Active", "Inactive"]) || "Active"
     record.update!(data: record.data.merge("record_state" => state))
@@ -2129,7 +2129,7 @@ class ModulesController < ApplicationController
 
   def download_bill
     load_module!
-    @record = ModuleRecord.find(params[:id])
+    @record = ModuleEntry.find(params[:id])
     @jeevika_bill_history_record_ids = [@record.id.to_s]
     redirect_to module_path("jeevika-jankar-bill-list"), alert: "You are not allowed to view this bill." and return unless jeevika_jankar_bill_downloadable?(@record)
     @bill_print_mode = true
@@ -2141,7 +2141,7 @@ class ModulesController < ApplicationController
   # out of it so they keep opening straight from their own links.
   def download_bill_attachments
     load_module!
-    record = ModuleRecord.find(params[:id])
+    record = ModuleEntry.find(params[:id])
     @jeevika_bill_history_record_ids = [record.id.to_s]
     list_path = module_path("jeevika-jankar-bill-list")
     unless jeevika_jankar_bill_downloadable?(record)
@@ -2310,13 +2310,13 @@ class ModulesController < ApplicationController
   end
 
   def module_record_label_for_dashboard(module_slug, id, field_key)
-    return "" if id.blank? || !model_ready?(:ModuleRecord)
+    return "" if id.blank? || !model_ready?(:ModuleEntry)
 
     @module_record_label_cache ||= {}
     cache_key = [module_slug.to_s, id.to_s, field_key.to_s]
     return @module_record_label_cache[cache_key] if @module_record_label_cache.key?(cache_key)
 
-    record = ModuleRecord.find_by(module_slug: module_slug, id: id)
+    record = ModuleMirror.read_scope(module_slug).find_by(id: id)
     label = module_record_display_label_for_dashboard(module_slug, record, field_key)
     label = id.to_s.match?(/\A\d+\z/) ? "" : id.to_s if label.blank?
 
@@ -2343,9 +2343,15 @@ class ModulesController < ApplicationController
   end
 
   def gram_panchayat_label_for_village(village_id)
-    return "" if village_id.blank? || !model_ready?(:ModuleRecord)
+    return "" if village_id.blank? || !model_ready?(:ModuleEntry)
 
-    village_record = ModuleRecord.find_by(module_slug: "village-master", id: village_id)
+    # village-master kept its module_records ids as the primary key of
+    # lg_villages, so a stored village_id resolves against either.
+    village_record = if ModuleMirror.covers?("village-master")
+      LgVillage.for_slug("village-master").find_by(id: village_id)
+    else
+      ModuleEntry.find_by(module_slug: "village-master", id: village_id)
+    end
     return "" unless village_record
 
     gram_panchayat = first_non_code_data(village_record, "gram_panchayat_name", "gram_panchayat", "gp_name", "gram_name", "gp_code", "gram_code")
@@ -2390,10 +2396,10 @@ class ModulesController < ApplicationController
   end
 
   def vrp_dashboard_bills(vrp)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     labels = vrp_bill_match_labels(vrp)
-    ModuleRecord.where(module_slug: "vrp-bill-add").order(created_at: :desc).select do |record|
+    ModuleEntry.where(module_slug: "vrp-bill-add").order(created_at: :desc).select do |record|
       labels.include?(normalize_dashboard_text(record.data["select_vrp"]))
     end
   end
@@ -2543,6 +2549,7 @@ class ModulesController < ApplicationController
         next {
           month: target.month_name, completion_date_sort: target.completion_date,
           fco: target.fco_name.presence || target.fco_id, village: target.village_name.presence || target.village_id,
+          target_type: vrp_dashboard_target_type_label(activity_setting[:main_activity_type]),
           target_mapping_id: target.id.to_s, target_record: target,
           assigned_farmer_ids: assigned_farmer_ids, completed_farmer_ids: completed_farmer_ids,
           training_completion: training_completion, completion_uses_farmer_ids: completion_uses_farmer_ids,
@@ -2560,6 +2567,7 @@ class ModulesController < ApplicationController
         fco: target.fco_name.presence || target.fco_id,
         ics: target.ics_name.presence || target.ics_id,
         village: target.village_name.presence || target.village_id,
+        target_type: vrp_dashboard_target_type_label(activity_setting[:main_activity_type]),
         farmers: assigned_farmer_ids.any? ? assigned_farmer_ids.size : target.farmer_count,
         main_activity: target.main_activity_name == "__common__" ? "All Activities" : target.main_activity_name,
         activity: target.activity_name == "__common__" ? "All Activities" : target.activity_name,
@@ -2689,6 +2697,14 @@ class ModulesController < ApplicationController
         row[:fco].to_s,
         row[:village].to_s
       ]
+    end
+  end
+
+  def vrp_dashboard_target_type_label(value)
+    case value.to_s.strip.downcase
+    when "other with farmer" then "Other with Farmer"
+    when "other" then "Other Target"
+    else "Training"
     end
   end
 
@@ -3280,18 +3296,18 @@ class ModulesController < ApplicationController
   end
 
   def approved_other_target_completed_farmer_ids_for(target_mapping_id)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     approved_other_target_completed_farmer_ids_by_target[target_mapping_id.to_s] || []
   end
 
   def other_target_progress_records_scope
-    keys = OTHER_TARGET_PROGRESS_DATA_KEYS.map { |key| ModuleRecord.connection.quote(key) }.join(", ")
-    ModuleRecord.where(module_slug: OTHER_TARGET_MODULE_SLUGS)
+    keys = OTHER_TARGET_PROGRESS_DATA_KEYS.map { |key| ModuleEntry.connection.quote(key) }.join(", ")
+    ModuleMirror.read_scope(OTHER_TARGET_MODULE_SLUGS)
       .select(:id, :module_slug, :created_at, :updated_at)
       .select(<<~SQL.squish).readonly
         (SELECT COALESCE(jsonb_object_agg(field.key, field.value), '{}'::jsonb)
-         FROM jsonb_each(#{jsonb_object_or_empty("module_records.data")}) AS field(key, value)
+         FROM jsonb_each(#{jsonb_object_or_empty("module_entries.data")}) AS field(key, value)
          WHERE field.key IN (#{keys}))::text AS data
       SQL
   end
@@ -3300,7 +3316,7 @@ class ModulesController < ApplicationController
     return @approved_other_target_completed_farmer_ids_by_target if defined?(@approved_other_target_completed_farmer_ids_by_target)
 
     @approved_other_target_completed_farmer_ids_by_target = Hash.new { |hash, key| hash[key] = [] }
-    return @approved_other_target_completed_farmer_ids_by_target unless model_ready?(:ModuleRecord)
+    return @approved_other_target_completed_farmer_ids_by_target unless model_ready?(:ModuleEntry)
 
     records = other_target_calculation_candidates(other_target_records_for_calculation(created_at: :asc))
       .select { |record| approved_other_target_record?(record) }
@@ -3627,7 +3643,7 @@ class ModulesController < ApplicationController
     approved_vrps = dashboard_approved_vrps(active_vrps).size
     pending_approvals = dashboard_pending_approval_vrps(active_vrps).size
 
-    bill_records = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process")
+    bill_records = ModuleMirror.read_scope("jeevika-jankar-bill-process")
     bill_records = bill_records.to_a
     bill_records = bill_records.select { |record| jeevika_jankar_bill_record_visible?(record) } unless admin_dashboard_user?
     bill_records = bill_records.select { |record| jeevika_jankar_bill_blocks_duplicate?(record) }
@@ -3881,7 +3897,7 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_opg_achievement_count
-    return 0 unless model_ready?(:ModuleRecord)
+    return 0 unless model_ready?(:ModuleEntry)
 
     month_value = @participation_selected_month.presence || @dashboard_month_filter_value.presence
     fcoc_value = @participation_fcoc_filter_value.presence || @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
@@ -3917,7 +3933,7 @@ class ModulesController < ApplicationController
 
     sql = <<~SQL.squish
       SELECT COUNT(DISTINCT sf.farmer_id)
-      FROM module_records mr
+      FROM (#{ModuleMirror.read_scope("training-form").to_sql}) mr
       CROSS JOIN LATERAL jsonb_array_elements_text(
         COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb)
       ) AS sf(farmer_id)
@@ -3933,7 +3949,7 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_training_method_counts
-    return training_method_count_defaults unless model_ready?(:TargetMapping) && model_ready?(:ModuleRecord)
+    return training_method_count_defaults unless model_ready?(:TargetMapping) && model_ready?(:ModuleEntry)
 
     month_value = @participation_selected_month.presence || @dashboard_month_filter_value.presence
     fcoc_value = @participation_fcoc_filter_value.presence || @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
@@ -4005,7 +4021,7 @@ class ModulesController < ApplicationController
         SELECT DISTINCT
           sf.farmer_id,
           BTRIM(mr.data::jsonb ->> 'training_method') AS training_method
-        FROM module_records mr
+        FROM (#{ModuleMirror.read_scope("training-form").to_sql}) mr
         CROSS JOIN LATERAL jsonb_array_elements_text(
           COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb)
         ) AS sf(farmer_id)
@@ -4089,7 +4105,7 @@ class ModulesController < ApplicationController
   # Target entries it totals, for the same month and FCO. No FCO is hard-coded
   # here; the scope is simply the offices the signed-in user can already see.
   def dashboard_other_target_entry_rows
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     conditions = ["module_slug = 'other-target'"]
     binds = {}
@@ -4126,7 +4142,7 @@ class ModulesController < ApplicationController
              COALESCE(NULLIF(BTRIM(data::jsonb->>'approval_status'), ''),
                       NULLIF(BTRIM(data::jsonb->>'status'), ''), '-') AS status,
              data::jsonb->>'target_mapping_id' AS target_mapping_id
-      FROM module_records
+      FROM (#{ModuleMirror.read_scope("other-target").to_sql}) module_entries
       WHERE #{conditions.join(' AND ')}
       ORDER BY 2, 1, 4, 5
     SQL
@@ -4626,7 +4642,7 @@ class ModulesController < ApplicationController
     end
 
     target_ids = other_targets.filter_map(&:id).uniq
-    return [] if target_ids.empty? || !model_ready?(:TargetMapping) || !model_ready?(:ModuleRecord)
+    return [] if target_ids.empty? || !model_ready?(:TargetMapping) || !model_ready?(:ModuleEntry)
 
     sql = <<~SQL
       WITH mapping_detail AS (
@@ -4654,7 +4670,7 @@ class ModulesController < ApplicationController
       ), achievement_detail AS (
         SELECT DISTINCT LOWER(TRIM((m.data::jsonb)->>'fco_name')) AS fco_key,
           TRIM((m.data::jsonb)->>'main_activity') AS main_activity_name, f.farmer_id
-        FROM module_records m
+        FROM (#{ModuleMirror.projection_scope.to_sql}) m
         CROSS JOIN LATERAL (
           SELECT TRIM(value) AS farmer_id
           FROM jsonb_array_elements_text(COALESCE((m.data::jsonb)->'selected_farmer_ids', '[]'::jsonb))
@@ -5201,7 +5217,7 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_training_participation_records(month_name: nil, main_activity_name: nil, sub_activity_name: nil, fcoc_name: nil)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     @dashboard_training_participation_records_cache ||= {}
     cache_key = [normalize_dashboard_text(month_name), normalize_dashboard_text(main_activity_name), normalize_dashboard_text(sub_activity_name), normalize_dashboard_text(fcoc_name)]
@@ -5423,7 +5439,7 @@ class ModulesController < ApplicationController
   end
 
   def training_participation_dashboard_counts_cache_key(month_name:, fcoc_name:, week_number: nil)
-    return unless model_ready?(:TargetMapping) && model_ready?(:ModuleRecord)
+    return unless model_ready?(:TargetMapping) && model_ready?(:ModuleEntry)
 
     scope_signature = [
       current_app_user&.dig("record_type"),
@@ -5464,16 +5480,23 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_module_record_version(module_slug)
-    return unless model_ready?(:ModuleRecord)
+    return unless model_ready?(:ModuleEntry)
 
     dashboard_read_cache.fetch(["dashboard/module-record-version", module_slug], expires_in: 1.minute) do
-      version = ModuleRecord.where(module_slug: module_slug).pick(Arel.sql("COUNT(*)"), Arel.sql("COALESCE(MAX(id), 0)"), Arel.sql("COALESCE(EXTRACT(EPOCH FROM MAX(updated_at))::bigint, 0)"))
+      version = ModuleEntry.where(module_slug: module_slug).pick(Arel.sql("COUNT(*)"), Arel.sql("COALESCE(MAX(id), 0)"), Arel.sql("COALESCE(EXTRACT(EPOCH FROM MAX(updated_at))::bigint, 0)"))
       version.join(":")
     end
   end
 
   def dashboard_read_cache
     Rails.env.test? ? Rails.cache : DASHBOARD_READ_MEMORY_CACHE
+  end
+
+  # Kept here because the same participation counts are shown on both the
+  # dashboard and the Farmer 360/report routes. DashboardReportsController
+  # overrides this with the identical request-local instance.
+  def dashboard_sql_cache
+    @dashboard_sql_cache ||= DashboardSqlCache.new
   end
 
   def training_participation_dashboard_counts(month_name:, fcoc_name:, records:, targets: nil, week_number: nil)
@@ -5581,7 +5604,7 @@ class ModulesController < ApplicationController
   end
 
   def training_participation_dashboard_counts_from_sql(month_name:, fcoc_name:, targets:)
-    return nil unless model_ready?(:TargetMapping) && model_ready?(:ModuleRecord)
+    return nil unless model_ready?(:TargetMapping) && model_ready?(:ModuleEntry)
 
     target_conditions = ["j.value <> ''"]
     target_binds = {}
@@ -5640,7 +5663,7 @@ class ModulesController < ApplicationController
       ),
       training_records AS (
         SELECT mr.id, mr.data::jsonb AS data
-        FROM module_records mr
+        FROM (#{ModuleMirror.read_scope("training-form").to_sql}) mr
         WHERE #{training_conditions.join(' AND ')}
       ),
       completed_raw AS (
@@ -5700,9 +5723,20 @@ class ModulesController < ApplicationController
       FROM farmer_status
     SQL
 
-    row = ActiveRecord::Base.connection.exec_query(
-      ActiveRecord::Base.send(:sanitize_sql_array, [sql, target_binds.merge(completed_binds)])
-    ).first || {}
+    # This is the dashboard's heaviest aggregation.  Run it through the same
+    # revision-aware cache used by the other dashboard reports: it is invalidated
+    # immediately when afl/target/vrp/dedicated module data changes, while a
+    # repeated dashboard visit never expands the JSON arrays again.
+    #
+    # The lateral JSON expansion cannot be represented faithfully by the normal
+    # relation builder, but `select_all` is still Active Record's database API
+    # (not a separate MySQL/raw client).  The scope inside the query is the
+    # dedicated `module_entry_payloads` projection, never module_records.
+    statement = ActiveRecord::Base.send(
+      :sanitize_sql_array,
+      [sql, target_binds.merge(completed_binds)]
+    )
+    row = dashboard_sql_cache.select_all(statement).first || {}
 
     {
       green: row["green_count"].to_i,
@@ -5937,7 +5971,7 @@ class ModulesController < ApplicationController
       ),
       august_training_done AS (
           SELECT DISTINCT sf.farmer_id
-          FROM public.module_records mr
+          FROM (#{ModuleMirror.read_scope("training-form").to_sql}) mr
           CROSS JOIN LATERAL jsonb_array_elements_text(
               COALESCE(
                   mr.data::jsonb -> 'selected_farmer_ids',
@@ -6040,7 +6074,7 @@ class ModulesController < ApplicationController
           SELECT
               sf.farmer_id,
               mr.id AS training_id
-          FROM public.module_records mr
+          FROM (#{ModuleMirror.read_scope("training-form").to_sql}) mr
           CROSS JOIN LATERAL jsonb_array_elements_text(
               COALESCE(
                   mr.data::jsonb -> 'selected_farmer_ids',
@@ -6091,7 +6125,7 @@ class ModulesController < ApplicationController
           SELECT
               sf.farmer_id,
               mr.id AS training_id
-          FROM public.module_records mr
+          FROM (#{ModuleMirror.read_scope("training-form").to_sql}) mr
           CROSS JOIN LATERAL jsonb_array_elements_text(
               COALESCE(
                   mr.data::jsonb -> 'selected_farmer_ids',
@@ -6165,7 +6199,7 @@ class ModulesController < ApplicationController
                 mr.data::jsonb -> 'sub_activity' AS sub_activity,
                 mr.data::jsonb ->> 'training_method' AS training_method,
                 mr.data::jsonb ->> 'trainer_name' AS trainer_name
-            FROM public.module_records mr
+            FROM (#{ModuleMirror.read_scope("training-form").to_sql}) mr
             CROSS JOIN LATERAL jsonb_array_elements_text(
                 COALESCE(
                     mr.data::jsonb -> 'selected_farmer_ids',
@@ -6263,7 +6297,7 @@ class ModulesController < ApplicationController
                 mr.data::jsonb ->> 'training_date' AS training_date,
                 mr.data::jsonb ->> 'training_method' AS training_method,
                 mr.data::jsonb ->> 'trainer_name' AS trainer_name
-            FROM public.module_records mr
+            FROM (#{ModuleMirror.read_scope("training-form").to_sql}) mr
             CROSS JOIN LATERAL jsonb_array_elements_text(
                 COALESCE(
                     mr.data::jsonb -> 'selected_farmer_ids',
@@ -6445,7 +6479,7 @@ class ModulesController < ApplicationController
         ),
         august_training_done AS (
             SELECT DISTINCT sf.farmer_id
-            FROM public.module_records mr
+            FROM (#{ModuleMirror.read_scope("training-form").to_sql}) mr
             CROSS JOIN LATERAL jsonb_array_elements_text(
                 COALESCE(
                     mr.data::jsonb -> 'selected_farmer_ids',
@@ -6467,7 +6501,7 @@ class ModulesController < ApplicationController
       <<~SQL.squish
         WITH august_training_done AS (
             SELECT DISTINCT sf.farmer_id
-            FROM public.module_records mr
+            FROM (#{ModuleMirror.read_scope("training-form").to_sql}) mr
             CROSS JOIN LATERAL jsonb_array_elements_text(
                 COALESCE(
                     mr.data::jsonb -> 'selected_farmer_ids',
@@ -6616,7 +6650,7 @@ class ModulesController < ApplicationController
   end
 
   def farmer_participation_entries
-    return [] unless model_ready?(:ModuleRecord) && model_ready?(:Afl)
+    return [] unless model_ready?(:ModuleEntry) && model_ready?(:Afl)
 
     visible_vrps = farmer_participation_visible_vrps
     visible_vrp_ids = visible_vrps.map { |vrp| vrp.id.to_s }
@@ -7101,7 +7135,7 @@ class ModulesController < ApplicationController
         "User ##{target.created_by_id}"
     end
 
-    record = if creator_type == "ModuleRecord" && model_ready?(:ModuleRecord)
+    record = if creator_type == "ModuleRecord" && model_ready?(:ModuleEntry)
       cached_module_record_find_by_id(target.created_by_id)
     end
     if record
@@ -7117,7 +7151,7 @@ class ModulesController < ApplicationController
   end
 
   def training_attendance_details_for_targets(targets, month_name: nil, week_number: nil)
-    return {} unless model_ready?(:ModuleRecord)
+    return {} unless model_ready?(:ModuleEntry)
 
     target_sets = Array(targets).filter_map do |target|
       farmer_ids = training_participation_target_farmer_ids(target)
@@ -7132,8 +7166,7 @@ class ModulesController < ApplicationController
     end
     target_farmer_ids = target_sets_by_farmer_id.keys
 
-    records = ModuleRecord
-      .where(module_slug: "training-form")
+    records = ModuleMirror.read_scope("training-form")
       .order(created_at: :desc)
     if month_name.present?
       records = records.where("LOWER(BTRIM(data::jsonb ->> 'month')) = ?", month_name.to_s.strip.downcase)
@@ -7778,7 +7811,7 @@ class ModulesController < ApplicationController
   end
 
   def training_attendance_counts_for_targets(targets, month_name: nil)
-    return {} unless model_ready?(:ModuleRecord)
+    return {} unless model_ready?(:ModuleEntry)
 
     target_sets = Array(targets).filter_map do |target|
       farmer_ids = target_farmer_ids(target)
@@ -7786,8 +7819,7 @@ class ModulesController < ApplicationController
     end
     return {} if target_sets.blank?
 
-    ModuleRecord
-      .where(module_slug: "training-form")
+    ModuleMirror.read_scope("training-form")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .select { |record| month_name.blank? || normalize_dashboard_text(training_record_month_name(record)) == normalize_dashboard_text(month_name) }
@@ -7821,10 +7853,9 @@ class ModulesController < ApplicationController
 
   def farmer_training_dashboard_rows(targets, month_name: nil)
     targets = Array(targets)
-    return [] if targets.blank? || !model_ready?(:ModuleRecord)
+    return [] if targets.blank? || !model_ready?(:ModuleEntry)
 
-    training_records = ModuleRecord
-      .where(module_slug: "training-form")
+    training_records = ModuleMirror.read_scope("training-form")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .select { |record| month_name.blank? || normalize_dashboard_text(training_record_month_name(record)) == normalize_dashboard_text(month_name) }
@@ -7943,7 +7974,7 @@ class ModulesController < ApplicationController
 
   def training_weekly_achievement_farmer_ids(target, farmer_ids)
     farmer_ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
-    return Array.new(4) { [] } if farmer_ids.blank? || !model_ready?(:ModuleRecord)
+    return Array.new(4) { [] } if farmer_ids.blank? || !model_ready?(:ModuleEntry)
 
     weekly_farmer_ids = Array.new(4) { [] }
     matching_training_records_for_target(target, farmer_ids).each do |record|
@@ -8392,15 +8423,38 @@ class ModulesController < ApplicationController
       .strip
   end
 
+  TRAINING_RECORD_OWNER_KEYS = %w[
+    jeevika_jankar_id vrp_id select_vrp vrp_name jeevika_jankar_name trainer_contact trainer_name
+  ].map(&:freeze).freeze
+
   def training_record_owner_values(record)
-    %w[jeevika_jankar_id vrp_id select_vrp vrp_name jeevika_jankar_name trainer_contact trainer_name]
-      .map { |key| normalize_dashboard_text(record.data[key]) }.reject(&:blank?)
+    @training_record_owner_values_cache ||= {}.compare_by_identity
+    inputs = TRAINING_RECORD_OWNER_KEYS.map { |key| record.data[key].to_s }
+    cached_training_owner_values(@training_record_owner_values_cache, record, inputs) do
+      inputs.map { |value| normalize_dashboard_text(value) }.reject(&:blank?)
+    end
   end
 
   def training_vrp_owner_values(vrp)
-    [vrp.id, vrp.name, vrp.user_name, vrp.mobile_no,
-      [vrp.name, vrp.mobile_no.presence].compact_blank.join(" - ")]
-      .map { |value| normalize_dashboard_text(value) }.reject(&:blank?)
+    @training_vrp_owner_values_cache ||= {}.compare_by_identity
+    inputs = [vrp.id, vrp.name, vrp.user_name, vrp.mobile_no].map(&:to_s)
+    cached_training_owner_values(@training_vrp_owner_values_cache, vrp, inputs) do
+      [*inputs, [vrp.name, vrp.mobile_no.presence].compact_blank.join(" - ")]
+        .map { |value| normalize_dashboard_text(value) }.reject(&:blank?)
+    end
+  end
+
+  # Bill progress compares the same training/JJ identities across many target
+  # rows. Cache only the normalization, never the ownership decision. Snapshot
+  # the inputs so edits (including String#replace) invalidate immediately, and
+  # return independent strings/arrays just as the uncached helpers did.
+  def cached_training_owner_values(cache, object, inputs)
+    cached = cache[object]
+    return cached.last.map(&:dup) if cached && cached.first == inputs
+
+    values = yield
+    cache[object] = [inputs.map(&:dup), values.map(&:dup)]
+    values
   end
 
   def training_record_vrp_scope_matches?(record, vrp)
@@ -8558,14 +8612,13 @@ class ModulesController < ApplicationController
   end
 
   def user_hierarchy_dashboard_rows
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     current_labels = current_dashboard_user_labels
     return [] if current_labels.blank? && !admin_dashboard_user?
 
     rows = []
-    ModuleRecord
-      .where(module_slug: "user-hierarchy-mapping")
+    (ModuleMirror.relation_for("user-hierarchy-mapping") || ModuleEntry.where(module_slug: "user-hierarchy-mapping"))
       .order(updated_at: :desc)
       .select { |record| active_module_record?(record) }
       .each do |record|
@@ -9013,7 +9066,7 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_legacy_user_ids_for_labels(labels)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     normalized_labels = Array(labels).map { |label| normalize_dashboard_user_label(label) }.reject(&:blank?).uniq
     return [] if normalized_labels.blank?
@@ -9030,7 +9083,7 @@ class ModulesController < ApplicationController
       emails.concat(dashboard_user_email_label_index.values_at(*normalized_labels).compact.flatten)
     end
 
-    if model_ready?(:ModuleRecord)
+    if model_ready?(:ModuleEntry)
       emails.concat(dashboard_legacy_user_email_label_index.values_at(*normalized_labels).compact.flatten)
     end
 
@@ -9099,7 +9152,7 @@ class ModulesController < ApplicationController
     return [] unless model_ready?(:Vrp)
 
     @dashboard_approval_related_vrps ||= begin
-      history_by_vrp_id = ModuleRecord.where(module_slug: "vrp-approval-history")
+      history_by_vrp_id = ModuleEntry.where(module_slug: "vrp-approval-history")
         .order(created_at: :asc)
         .to_a
         .group_by { |record| record.data["vrp_id"].to_s }
@@ -9137,7 +9190,7 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_approval_steps_for_visibility(vrp)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     @dashboard_approval_steps_for_visibility_cache ||= {}
     cache_key = vrp.id
@@ -9146,7 +9199,7 @@ class ModulesController < ApplicationController
     identities = vrp_creator_identities_for_dashboard(vrp)
     return @dashboard_approval_steps_for_visibility_cache[cache_key] = [] if identities.blank?
 
-    @dashboard_approval_visibility_steps ||= ModuleRecord.where(module_slug: "approval-master").order(created_at: :asc).to_a
+    @dashboard_approval_visibility_steps ||= ModuleMirror.read_scope("approval-master").order(created_at: :asc).to_a
     @dashboard_approval_steps_for_visibility_cache[cache_key] = @dashboard_approval_visibility_steps
       .select do |record|
         record.data["status"].to_s != "Inactive" &&
@@ -9174,7 +9227,7 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_legacy_current_app_user_ids
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     @dashboard_legacy_current_app_user_ids ||= begin
       username = current_app_user&.dig("username").to_s
@@ -9205,10 +9258,10 @@ class ModulesController < ApplicationController
   end
 
   def module_records_for_dashboard(slug)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     @module_records_for_dashboard_cache ||= {}
-    @module_records_for_dashboard_cache[slug.to_s] ||= ModuleRecord.where(module_slug: slug).order(created_at: :desc).to_a
+    @module_records_for_dashboard_cache[slug.to_s] ||= ModuleMirror.read_scope(slug).order(created_at: :desc).to_a
   end
 
   def grouped_rows(records, group_key, amount_key, default_key: "Not Set")
@@ -9280,9 +9333,9 @@ class ModulesController < ApplicationController
   end
 
   def vrp_approval_history_for(vrp)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
-    @dashboard_approval_history_by_vrp_id ||= ModuleRecord
+    @dashboard_approval_history_by_vrp_id ||= ModuleEntry
       .where(module_slug: "vrp-approval-history")
       .order(created_at: :asc)
       .to_a
@@ -9291,7 +9344,7 @@ class ModulesController < ApplicationController
   end
 
   def vrp_approval_steps_for(vrp)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     @vrp_approval_steps_for_cache ||= {}
     cache_key = vrp.id
@@ -9300,7 +9353,7 @@ class ModulesController < ApplicationController
     identities = vrp_creator_identities_for_dashboard(vrp)
     return @vrp_approval_steps_for_cache[cache_key] = [] if identities.blank?
 
-    @dashboard_approval_steps ||= ModuleRecord.where(module_slug: "approval-master").order(created_at: :asc).to_a
+    @dashboard_approval_steps ||= ModuleMirror.read_scope("approval-master").order(created_at: :asc).to_a
     @vrp_approval_steps_for_cache[cache_key] = @dashboard_approval_steps
       .select do |record|
         record.data["status"].to_s != "Inactive" &&
@@ -9347,12 +9400,12 @@ class ModulesController < ApplicationController
       end
     end
 
-    if vrp.created_by_id.present? && model_ready?(:ModuleRecord)
+    if vrp.created_by_id.present? && model_ready?(:ModuleEntry)
       record = cached_module_record_find_by_id(vrp.created_by_id)
       identities << record_dashboard_identity(record) if record
     end
 
-    if model_ready?(:ModuleRecord)
+    if model_ready?(:ModuleEntry)
       matched_records = []
       matched_records.concat(Array(new_user_module_records_by_email[vrp.email.to_s.strip.downcase])) if vrp.email.present?
       matched_records.concat(Array(new_user_module_records_by_mobile[vrp.mobile_no.to_s.strip])) if vrp.mobile_no.present?
@@ -9381,9 +9434,9 @@ class ModulesController < ApplicationController
   end
 
   def new_user_module_records
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
-    @new_user_module_records ||= ModuleRecord.where(module_slug: "new-user").to_a
+    @new_user_module_records ||= ModuleEntry.where(module_slug: "new-user").to_a
   end
 
   def new_user_module_records_by_email
@@ -9399,13 +9452,13 @@ class ModulesController < ApplicationController
   end
 
   def cached_module_record_find_by_id(id)
-    return if id.blank? || !model_ready?(:ModuleRecord)
+    return if id.blank? || !model_ready?(:ModuleEntry)
 
     @cached_module_record_find_by_id ||= {}
     key = id.to_s
     return @cached_module_record_find_by_id[key] if @cached_module_record_find_by_id.key?(key)
 
-    @cached_module_record_find_by_id[key] = ModuleRecord.find_by(id: id)
+    @cached_module_record_find_by_id[key] = ModuleEntry.find_by(id: id)
   end
 
   def preload_dashboard_vrp_identity_records!(vrps)
@@ -9462,11 +9515,11 @@ class ModulesController < ApplicationController
       end
     end
 
-    return unless creator_ids.any? && model_ready?(:ModuleRecord)
+    return unless creator_ids.any? && model_ready?(:ModuleEntry)
 
     @cached_module_record_find_by_id ||= {}
     creator_ids.each { |id| @cached_module_record_find_by_id[id] = nil }
-    ModuleRecord.where(id: creator_ids).find_each do |record|
+    ModuleEntry.where(id: creator_ids).find_each do |record|
       @cached_module_record_find_by_id[record.id.to_s] = record
     end
   end
@@ -9688,7 +9741,7 @@ class ModulesController < ApplicationController
     if !skip_auto_assign && revision && revision.data["status"] == "Pending" && revision.data["approval_role"] != "agronomist" &&
         !@training_edit_auto_assigned_ids.include?(revision.id)
       @training_edit_staff_catalogue ||= TrainingStaffScope.staff_catalogue
-      full_revision = ModuleRecord.find(revision.id)
+      full_revision = ModuleEntry.find(revision.id)
       TrainingEditApproval.assign_automatic_approver!(full_revision, staff_catalogue: @training_edit_staff_catalogue)
       revision.data = full_revision.data.except("before", "proposed", "evidence", "history")
       @training_edit_auto_assigned_ids << revision.id
@@ -9782,9 +9835,9 @@ class ModulesController < ApplicationController
   end
 
   def module_records
-    return [] unless ModuleRecord.table_exists?
+    return [] unless ModuleEntry.table_exists?
 
-    records_scope = ModuleRecord.where(module_slug: record_source_slug)
+    records_scope = ModuleMirror.read_scope(record_source_slug)
     cached_bill_summary = bill_summary_list_cacheable?
     if @slug == "jeevika-jankar-bill-list" && @record.blank? && request&.format&.html? && params[:view_id].blank? && !cached_bill_summary
       records_scope = bill_summary_scope(records_scope)
@@ -9805,10 +9858,10 @@ class ModulesController < ApplicationController
       selected_rows = ModuleRecordReadQuery.admin_training_list_rows(records_scope)
       ids = selected_rows.map(&:first)
       @training_edit_revisions_by_record = selected_rows.each_with_object({}) do |(id, attributes), revisions|
-        revisions[id.to_s] = ModuleRecord.instantiate(attributes).tap(&:readonly!) if attributes
+        revisions[id.to_s] = ModuleEntry.instantiate(attributes).tap(&:readonly!) if attributes
       end
       @training_edit_revision_record_ids = ids.map(&:to_s)
-      by_id = ModuleRecord.where(id: ids).index_by(&:id)
+      by_id = records_scope.where(id: ids).index_by(&:id)
       visible_records = ids.filter_map { |id| by_id[id] }
       preload_training_record_trainer_identities!(visible_records)
       return visible_records
@@ -9821,13 +9874,13 @@ class ModulesController < ApplicationController
     if location_master_list_cacheable?(records_scope) && server_paginated_master_list? && params[:q].to_s.strip.blank?
       return cached_location_master_page_records(record_source_slug)
     end
-    records = ReadStageTrace.measure("module_records.load") do
+    records = ReadStageTrace.measure("module_entries.load") do
       if cached_bill_summary
         cached_jeevika_bill_summary_records
       elsif location_master_list_cacheable?(records_scope)
         cached_location_master_records(record_source_slug)
       else
-        records_scope.to_a
+        ordered_module_list_scope(records_scope).to_a
       end
     end
     if record_source_slug == "jeevika-jankar-bill-process"
@@ -9848,7 +9901,7 @@ class ModulesController < ApplicationController
       @jeevika_bill_visible_record_ids = records.map { |record| record.id.to_s }
     end
     if target_record_source? && !admin_dashboard_user?
-      records = ReadStageTrace.measure("module_records.visibility") do
+      records = ReadStageTrace.measure("module_entries.visibility") do
         preload_target_visibility_vrps!(records)
         records.select { |record| target_record_visible?(record) }
       end
@@ -9883,6 +9936,10 @@ class ModulesController < ApplicationController
   def server_paginated_master_list?
     %w[state-master district-master block-master gram-panchayat-master village-master].include?(@slug) &&
       request&.format&.html?
+  end
+
+  def ordered_module_list_scope(scope)
+    scope.order_values.empty? ? scope.order(storage_order: :asc) : scope
   end
 
   def master_saved_records_frame_request?
@@ -9939,11 +9996,11 @@ class ModulesController < ApplicationController
     attribute_rows = CatalogueReadCache.fetch(dashboard_read_cache, key,
       version: jeevika_jankar_bill_process_revision, current_version: -> { read_jeevika_jankar_bill_process_revision },
       shared: shared_form_catalogue_cache) do
-      bill_summary_scope(ModuleRecord.where(module_slug: "jeevika-jankar-bill-process"))
+      bill_summary_scope(ModuleMirror.read_scope("jeevika-jankar-bill-process"))
         .order(created_at: :desc)
         .map { |record| record.attributes.merge("data" => record.data.to_json) }
     end
-    attribute_rows.map { |attributes| ModuleRecord.instantiate(attributes) }
+    attribute_rows.map { |attributes| ModuleEntry.instantiate(attributes) }
   end
 
   def screen_limited_module_records?
@@ -9968,7 +10025,7 @@ class ModulesController < ApplicationController
     key = ["jj-location-master-records-v1", module_slug, location_catalogue_revision]
     attribute_rows = DashboardCacheFill.synchronize(key) do
       location_catalogue_cache.fetch(key, expires_in: 1.hour) do
-        ModuleRecord.where(module_slug: module_slug).order(created_at: :desc).map do |record|
+        ModuleMirror.read_scope(module_slug).order(created_at: :desc).map do |record|
           # instantiate receives database-form attributes. `attributes` exposes
           # the already-deserialized Hash for this serialized column, which
           # would otherwise be parsed a second time on a cache hit.
@@ -9976,7 +10033,7 @@ class ModulesController < ApplicationController
         end
       end
     end
-    attribute_rows.map { |attributes| ModuleRecord.instantiate(attributes) }
+    attribute_rows.map { |attributes| ModuleEntry.instantiate(attributes) }
   end
 
   def cached_location_master_page_records(module_slug)
@@ -9984,7 +10041,7 @@ class ModulesController < ApplicationController
     # JSON Hash for every master row. Retain the original Ruby sort (including
     # legacy aliases and equal-key order) in the revision-keyed attribute cache.
     attribute_rows = cached_location_master_page_attributes(module_slug)
-    paginated_master_records(attribute_rows).map { |attributes| ModuleRecord.instantiate(attributes) }
+    paginated_master_records(attribute_rows).map { |attributes| ModuleEntry.instantiate(attributes) }
   end
 
   def cached_location_master_page_attributes(module_slug)
@@ -10000,7 +10057,7 @@ class ModulesController < ApplicationController
   # jsonb_each refuses anything that is not a JSON object - it raises
   # "cannot call jsonb_each on a non-object" - and the filters that run before
   # it use ->>, which tolerates a scalar and so lets such a row through. One
-  # malformed module_records.data value therefore took down every screen that
+  # malformed module_entries.data value therefore took down every screen that
   # projects JSON keys this way, the location masters included. The set
   # returning JSON calls elsewhere in the app are already guarded with
   # jsonb_typeof; this is the same guard, and a well formed object is untouched.
@@ -10012,8 +10069,8 @@ class ModulesController < ApplicationController
   # complete bill, while list calculations never use nested farmer metadata.
   def bill_summary_scope(base)
     base.select(<<~SQL.squish)
-      module_records.id, module_records.module_slug,
-      module_records.created_at, module_records.updated_at,
+      module_entries.id, module_entries.module_slug,
+      module_entries.created_at, module_entries.updated_at,
       (SELECT COALESCE(jsonb_object_agg(field.key,
         CASE WHEN field.key = 'bill_items' AND jsonb_typeof(field.value) = 'array'
           THEN COALESCE((
@@ -10023,7 +10080,7 @@ class ModulesController < ApplicationController
           ), '[]'::jsonb)
           ELSE field.value
         END), '{}'::jsonb)
-       FROM jsonb_each(#{jsonb_object_or_empty("module_records.data")}) AS field(key, value))::text AS data
+       FROM jsonb_each(#{jsonb_object_or_empty("module_entries.data")}) AS field(key, value))::text AS data
     SQL
   end
 
@@ -10049,6 +10106,9 @@ class ModulesController < ApplicationController
     return true if %w[state-master district-master block-master gram-panchayat-master village-master month-master project-master].include?(@slug)
     return true if %w[stakeholder-master stakeholder-role role-name parent-office-add office-category-add office-mapping-add].include?(@slug)
     return true if %w[add-activity-group add-vrp-activity task-completion-indicator].include?(@slug)
+    # These entries render their own Saved Records tables, so include their
+    # slugs here even though they do not end in "-list".
+    return true if %w[add-vrp-type training-topic-mapping].include?(@slug)
     return true if %w[crop-season-master crop-type-master crop-master seed-crop-master seed-variety-master seed-product-master unit-master].include?(@slug)
     # This entry screen renders its own Saved Records table, so it needs the
     # records even though its slug does not end in "-list".
@@ -10061,13 +10121,12 @@ class ModulesController < ApplicationController
   end
 
   def active_module_records_scope(module_slug)
-    ModuleRecord
-      .where(module_slug: module_slug)
+    ModuleMirror.read_scope(module_slug)
       .merge(active_module_records_scope_for_all_modules)
   end
 
   def active_module_records_scope_for_all_modules
-    ModuleRecord
+    ModuleEntry
       .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
       .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
       .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
@@ -10290,7 +10349,7 @@ class ModulesController < ApplicationController
     labels = current_dashboard_user_labels
     return @training_supervised_vrp_ids = Set.new if labels.blank?
 
-    supervised_cc_names = ModuleRecord.where(module_slug: "approval-master").filter_map { |step|
+    supervised_cc_names = ModuleMirror.read_scope("approval-master").filter_map { |step|
       next unless step.data["status"] == "Active"
       approver = step.data["approver_approved_by"].to_s
       next unless dashboard_user_label_matches?(approver, labels)
@@ -10435,23 +10494,12 @@ class ModulesController < ApplicationController
     @office_list_rows = []
   end
 
-  # asa.ploughmanagro.com is the live Office Setup. The 144.76.19.201 host still
-  # answers but serves an older snapshot -- it was tried first, so every request
-  # took the stale copy and offices showed blank blocks. Keep it only as a
-  # fallback for when the live host is unreachable.
+  # Office List must use the shared cached directory snapshot.  Calling the
+  # remote API directly from the Turbo frame made every navigation wait for a
+  # network round trip (and sometimes both source timeouts), even when another
+  # page had already fetched the exact same office data.
   def office_list_api_items
-    [
-      "https://asa.ploughmanagro.com/api/get_office_detail_list",
-      "http://144.76.19.201:3003/api/get_office_detail_list"
-    ].each do |url|
-      uri = URI(url)
-      response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https", open_timeout: 3, read_timeout: 8) { |http| http.get(uri.request_uri) }
-      items = response.is_a?(Net::HTTPSuccess) ? Array(JSON.parse(response.body)["result"]) : []
-      return items if items.any?
-    rescue StandardError => error
-      Rails.logger.warn("Unable to load Office List from #{url}: #{error.message}")
-    end
-    []
+    OfficeTerritoryDirectory.items
   end
 
   def office_list_csv(rows)
@@ -10533,7 +10581,7 @@ class ModulesController < ApplicationController
   end
 
   def lg_directory_rows
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     key = ["jj-lg-directory-v1", location_catalogue_revision]
     # The directory can contain thousands of hashes.  A deep_dup on every warm
@@ -10658,7 +10706,7 @@ class ModulesController < ApplicationController
       lg_directory_row_key(lg_directory_row_from_record(record, lg_directory_aliases_for_slug(record.module_slug)))
     end.to_set
 
-    ModuleRecord
+    ModuleEntry
       .where(module_slug: lg_directory_allowed_slugs)
       .select do |record|
         row_keys.include?(lg_directory_row_key(lg_directory_row_from_record(record, lg_directory_aliases_for_slug(record.module_slug))))
@@ -10908,7 +10956,7 @@ class ModulesController < ApplicationController
       next if data.blank?
 
       data["status"] = "Active" if @module[:fields].include?("Status") && data["status"].blank?
-      ModuleRecord.create!(module_slug: @slug, data: data)
+      ModuleEntry.create!(module_slug: @slug, data: data)
       imported += 1
     end
 
@@ -10978,7 +11026,7 @@ class ModulesController < ApplicationController
   def prepare_jeevika_jankar_bill_list
     return if params[:view_id].blank?
 
-    record = ModuleRecord.find_by(id: params[:view_id])
+    record = ModuleEntry.find_by(id: params[:view_id])
     # Both visibility/approval helpers and the detail template ask about this
     # one bill. Scope their history before either can initialize the index.
     @jeevika_bill_history_record_ids = record ? [record.id.to_s] : []
@@ -11010,7 +11058,7 @@ class ModulesController < ApplicationController
     # Bills carry a workflow status ("Submitted...", "Final Approved"), never
     # "Active", so active_module_record? would reject every real bill. Match the
     # Bill List instead: visibility only, minus explicitly deleted rows.
-    records_scope = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process")
+    records_scope = ModuleMirror.read_scope("jeevika-jankar-bill-process")
     # The displayed rows are month-scoped below. Apply the same exact stored
     # value predicate in SQL first so old bills from other months do not need
     # JSON projection or identity preloading for this page.
@@ -11286,14 +11334,14 @@ class ModulesController < ApplicationController
     @jeevika_payment_history_by_bill_id ||= {}
     ids = Array(records).map { |record| record.id.to_s }.uniq
       .reject { |id| @jeevika_payment_history_by_bill_id.key?(id) }
-    return if ids.empty? || !model_ready?(:ModuleRecord)
+    return if ids.empty? || !model_ready?(:ModuleEntry)
 
     ids.each { |id| @jeevika_payment_history_by_bill_id[id] = [] }
     if defined?(@jeevika_bill_visible_record_ids)
       ids &= Array(@jeevika_bill_visible_record_ids).map(&:to_s).reject(&:blank?)
       return if ids.empty?
     end
-    ModuleRecord.where(module_slug: "jeevika-jankar-bill-approval-history")
+    ModuleEntry.where(module_slug: "jeevika-jankar-bill-approval-history")
       .where("data::jsonb ->> 'bill_id' IN (?)", ids).order(created_at: :asc, id: :asc).each do |history|
         @jeevika_payment_history_by_bill_id[history.data["bill_id"].to_s] << history
       end
@@ -11432,8 +11480,7 @@ class ModulesController < ApplicationController
           Array(record.data["payment_items"]).filter_map { |item| item["bill_id"] if item.respond_to?(:[]) }
       end.map(&:to_s).reject(&:blank?).uniq
 
-      ModuleRecord
-        .where(module_slug: "jeevika-jankar-bill-process", id: bill_ids)
+      ModuleMirror.read_scope("jeevika-jankar-bill-process").where(id: bill_ids)
         .index_by { |record| record.id.to_s }
     end
   end
@@ -11456,12 +11503,12 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_payment_detail_records
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     @jeevika_payment_detail_records ||= if @slug == "jeevika-jankar-completed-payment-list" && @record.blank? && @records
       Array(@records).sort_by { |record| [record.created_at, record.id] }.reverse
     else
-      ModuleRecord.where(module_slug: JEEVIKA_JANKAR_PAYMENT_DETAIL_SLUG)
+      ModuleMirror.read_scope(JEEVIKA_JANKAR_PAYMENT_DETAIL_SLUG)
         .order(created_at: :desc, id: :desc).to_a
     end
   end
@@ -11623,7 +11670,7 @@ class ModulesController < ApplicationController
     return [] if ids.empty?
 
     targets = TargetMapping.includes(:vrp).where(id: ids)
-    @bill_other_activity_records ||= ModuleRecord.where(module_slug: OTHER_TARGET_MODULE_SLUGS).to_a
+    @bill_other_activity_records ||= ModuleMirror.read_scope(OTHER_TARGET_MODULE_SLUGS).to_a
     @bill_other_activity_records.select do |record|
       next false if module_record_soft_deleted?(record) || record.data["record_state"].to_s.casecmp("Inactive").zero?
 
@@ -11745,7 +11792,7 @@ class ModulesController < ApplicationController
 
   # Training forms the billed JJ submitted inside the invoice month.
   def jeevika_bill_month_training_records(record)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     vrp = jeevika_bill_vrp(record)
     return [] unless vrp
@@ -11756,8 +11803,7 @@ class ModulesController < ApplicationController
         record.data["select_bill_month"]
     )
 
-    ModuleRecord
-      .where(module_slug: "training-form")
+    ModuleMirror.read_scope("training-form")
       .select { |training| active_module_record?(training) && training_record_vrp_scope_matches?(training, vrp) }
       .filter_map do |training|
         summary = training_summary(training)
@@ -11995,7 +12041,7 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_bill_approval_steps(record)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     @jeevika_bill_approval_steps_cache ||= {}
     cache_key = record.id
@@ -12030,8 +12076,7 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_bill_approval_master_steps
-    @jeevika_bill_approval_master_steps ||= ModuleRecord
-      .where(module_slug: "approval-master")
+    @jeevika_bill_approval_master_steps ||= ModuleMirror.read_scope("approval-master")
       .order(created_at: :asc)
       .select { |step| active_module_record?(step) }
       .select { |step| ["Jeevika Jankar Bill", "VRP Bill"].any? { |name| dashboard_value_matches?(step.data["module_name"], name) } }
@@ -12153,7 +12198,7 @@ class ModulesController < ApplicationController
   end
 
   def bill_creator_module_record(data)
-    return unless model_ready?(:ModuleRecord)
+    return unless model_ready?(:ModuleEntry)
 
     (data["created_by_id"].present? && new_user_module_records.find { |record| record.id.to_s == data["created_by_id"].to_s }) ||
       new_user_module_records.detect do |record|
@@ -12163,7 +12208,7 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_bill_approval_history(record)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     if @jeevika_payment_history_by_bill_id&.key?(record.id.to_s)
       return @jeevika_payment_history_by_bill_id[record.id.to_s]
@@ -12173,7 +12218,7 @@ class ModulesController < ApplicationController
 
   def jeevika_bill_approval_history_by_bill_id
     @jeevika_bill_approval_history_by_bill_id ||= begin
-      scope = ModuleRecord
+      scope = ModuleEntry
       .where(module_slug: "jeevika-jankar-bill-approval-history")
       .order(created_at: :asc, id: :asc)
       if defined?(@jeevika_bill_visible_record_ids)
@@ -12239,7 +12284,7 @@ class ModulesController < ApplicationController
       record.data["status"].to_s.match?(/\Apending at\b/i)
     return next_data unless approval_started
 
-    ModuleRecord.create!(
+    ModuleEntry.create!(
       module_slug: "jeevika-jankar-bill-approval-history",
       data: {
         "bill_id" => record.id.to_s,
@@ -12302,7 +12347,7 @@ class ModulesController < ApplicationController
 
   def update_bill_approval(action)
     load_module!
-    record = ModuleRecord.find(params[:id])
+    record = ModuleEntry.find(params[:id])
     # Everything below reads approval history for this one bill and nothing
     # else, so the history load is told that up front. Without it the lookup
     # falls back to reading every approval-history row ever written.
@@ -12351,7 +12396,7 @@ class ModulesController < ApplicationController
   end
 
   def create_bill_approval_history(record, action, step)
-    ModuleRecord.create!(
+    ModuleEntry.create!(
       module_slug: "jeevika-jankar-bill-approval-history",
       data: {
         "bill_id" => record.id.to_s,
@@ -12404,7 +12449,7 @@ class ModulesController < ApplicationController
     # waiting for a TTL to lapse.
     stamp = [
       TargetMapping.maximum(:updated_at),
-      (ModuleRecord.where(module_slug: TARGET_RECORD_MODULE_SLUGS).maximum(:updated_at) if model_ready?(:ModuleRecord))
+      (ModuleEntry.where(module_slug: TARGET_RECORD_MODULE_SLUGS).maximum(:updated_at) if model_ready?(:ModuleEntry))
     ].compact.max
 
     cache_key = ["jj-achievement-keys", current_app_user&.dig("record_type"), current_app_user&.dig("id"), stamp.to_i]
@@ -12509,15 +12554,14 @@ class ModulesController < ApplicationController
   # the screen they are currently on.
   def jeevika_jankar_transferred_vrps
     return @jeevika_jankar_transferred_vrps if defined?(@jeevika_jankar_transferred_vrps)
-    return @jeevika_jankar_transferred_vrps = [] unless model_ready?(:ModuleRecord) && model_ready?(:Vrp)
+    return @jeevika_jankar_transferred_vrps = [] unless model_ready?(:ModuleEntry) && model_ready?(:Vrp)
     return @jeevika_jankar_transferred_vrps = [] if vrp_login_user?
 
     labels = current_cluster_incharge_labels.map { |label| normalize_approver_label(label) }.compact_blank
     return @jeevika_jankar_transferred_vrps = [] if labels.blank?
 
     menu = current_sidebar_menu_title
-    ids = ModuleRecord
-      .where(module_slug: "jeevika-jankar-transfer")
+    ids = (ModuleMirror.relation_for("jeevika-jankar-transfer") || ModuleEntry.where(module_slug: "jeevika-jankar-transfer"))
       .select { |record| active_module_record?(record) }
       .select { |record| labels.include?(normalize_approver_label(record.data["user_name"])) }
       .select { |record| menu.blank? || record.data["sidebar_menu"].to_s.strip.casecmp(menu).zero? }
@@ -12565,7 +12609,7 @@ class ModulesController < ApplicationController
   end
 
   def legacy_user_cluster_labels
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     username = current_app_user&.dig("username").to_s
     return [] if username.blank?
@@ -12723,7 +12767,7 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_jankar_existing_bill_keys
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     # This is requested by every new/edit bill form only to disable an already
     # billable JJ/month combination.  It must never deserialize `bill_items`
@@ -12751,7 +12795,7 @@ class ModulesController < ApplicationController
       return version
     end
 
-    version = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process").pick(
+    version = ModuleEntry.where(module_slug: "jeevika-jankar-bill-process").pick(
       Arel.sql("COUNT(*)"),
       Arel.sql("COALESCE(SUM((xmin::text)::bigint), 0)"),
       Arel.sql("COALESCE(MAX((xmin::text)::bigint), 0)")
@@ -12760,8 +12804,7 @@ class ModulesController < ApplicationController
   end
 
   def build_jeevika_jankar_existing_bill_keys
-    ModuleRecord
-      .where(module_slug: "jeevika-jankar-bill-process")
+    ModuleMirror.read_scope("jeevika-jankar-bill-process")
       .select("id", <<~SQL.squish)
         (SELECT COALESCE(jsonb_object_agg(field.key, field.value), '{}'::jsonb)
          FROM jsonb_each(#{jsonb_object_or_empty("data")}) AS field(key, value)
@@ -12807,7 +12850,7 @@ class ModulesController < ApplicationController
   end
 
   def approved_other_target_achievement_index
-    return {} unless model_ready?(:ModuleRecord)
+    return {} unless model_ready?(:ModuleEntry)
 
     # The candidate set changes when a bill list moves to the next JJ/month.
     # Reuse the index only for that exact set, including an empty result.
@@ -13353,7 +13396,7 @@ class ModulesController < ApplicationController
 
   def jeevika_jankar_main_activity_settings
     return @jeevika_jankar_main_activity_settings if defined?(@jeevika_jankar_main_activity_settings)
-    return @jeevika_jankar_main_activity_settings = {} unless model_ready?(:ModuleRecord)
+    return @jeevika_jankar_main_activity_settings = {} unless model_ready?(:ModuleEntry)
 
     @jeevika_jankar_main_activity_settings = active_module_records_scope("add-activity-group")
       .order(created_at: :desc)
@@ -13371,7 +13414,7 @@ class ModulesController < ApplicationController
 
   def training_setup_sub_activities_by_main
     return @training_setup_sub_activities_by_main if defined?(@training_setup_sub_activities_by_main)
-    return @training_setup_sub_activities_by_main = {} unless model_ready?(:ModuleRecord)
+    return @training_setup_sub_activities_by_main = {} unless model_ready?(:ModuleEntry)
 
     @training_setup_sub_activities_by_main = training_vrp_activity_setup_records
       .each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |record, result|
@@ -13385,7 +13428,7 @@ class ModulesController < ApplicationController
 
   def jeevika_jankar_sub_activity_settings(activity_settings)
     return @jeevika_jankar_sub_activity_settings if defined?(@jeevika_jankar_sub_activity_settings)
-    return @jeevika_jankar_sub_activity_settings = {} unless model_ready?(:ModuleRecord)
+    return @jeevika_jankar_sub_activity_settings = {} unless model_ready?(:ModuleEntry)
 
     @jeevika_jankar_sub_activity_settings = training_vrp_activity_setup_records
       .each_with_object({}) do |record, settings|
@@ -13424,7 +13467,7 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_jankar_training_index(targets)
-    return {} unless model_ready?(:ModuleRecord)
+    return {} unless model_ready?(:ModuleEntry)
     return Hash.new { |hash, key| hash[key] = [] } if targets.empty?
 
     vrps = targets.map(&:vrp).compact.uniq(&:id)
@@ -13572,10 +13615,9 @@ class ModulesController < ApplicationController
 
   def active_month_master_rows
     return @active_month_master_rows if defined?(@active_month_master_rows)
-    return @active_month_master_rows = [] unless model_ready?(:ModuleRecord)
+    return @active_month_master_rows = [] unless model_ready?(:ModuleEntry)
 
-    @active_month_master_rows = ModuleRecord
-      .where(module_slug: "month-master")
+    @active_month_master_rows = (ModuleMirror.relation_for("month-master") || ModuleEntry.where(module_slug: "month-master"))
       .merge(active_module_records_scope_for_all_modules)
       .order(created_at: :desc)
       .to_a
@@ -13602,10 +13644,9 @@ class ModulesController < ApplicationController
   end
 
   def bill_activity_map
-    return {} unless model_ready?(:ModuleRecord)
+    return {} unless model_ready?(:ModuleEntry)
 
-    ModuleRecord
-      .where(module_slug: "add-vrp-activity")
+    (ModuleMirror.relation_for("add-vrp-activity") || ModuleEntry.where(module_slug: "add-vrp-activity"))
       .select { |record| active_module_record?(record) }
       .group_by { |record| first_present_data(record, "main_activity", "activity_group", "activity_group_name", "group_name").to_s }
       .transform_values do |records|
@@ -13619,9 +13660,9 @@ class ModulesController < ApplicationController
   end
 
   def bill_tci_map
-    return {} unless model_ready?(:ModuleRecord)
+    return {} unless model_ready?(:ModuleEntry)
 
-    grouped = ModuleRecord
+    grouped = ModuleEntry
       .where(module_slug: "task-completion-indicator")
       .select { |record| active_module_record?(record) }
       .group_by { |record| first_present_data(record, "select_activity", "activity", "activity_name").to_s }
@@ -13638,7 +13679,7 @@ class ModulesController < ApplicationController
   end
 
   def module_record_values(module_slug, *keys)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     @module_record_values_cache ||= {}
     cache_key = [module_slug.to_s, keys.map(&:to_s)]
@@ -13787,7 +13828,7 @@ class ModulesController < ApplicationController
 
   def gram_panchayat_name_lookup
     @gram_panchayat_name_lookup ||= ModuleRecordReadQuery.projected_data_rows(
-      ModuleRecord.where(module_slug: ["gram-panchayat-master", "lg-directory-list", "village-master"]), LOCATION_DATA_KEYS)
+      ModuleMirror.read_scope(["gram-panchayat-master", "lg-directory-list", "village-master"]), LOCATION_DATA_KEYS)
       .map { |id, data| LocationRecord.new(id, data) }
       .select { |record| active_module_record?(record) }
       .each_with_object({}) do |record, lookup|
@@ -15037,7 +15078,7 @@ class ModulesController < ApplicationController
 
   def duplicate_access_control_record?(data, except_id: nil)
     return false unless record_source_slug == "access-control"
-    return false unless model_ready?(:ModuleRecord)
+    return false unless model_ready?(:ModuleEntry)
 
     stakeholder = normalized_access_value(data["stakeholder_name"].presence || data["stakeholder"])
     stakeholder_role = normalized_access_value(data["stakeholder_role"].presence || data["stakeholder_person_type"])
@@ -15048,8 +15089,7 @@ class ModulesController < ApplicationController
     vrp_type = normalized_access_value(data["jeevika_jankar_type"].presence || data["vrp_type"].presence || data["select_vrp_type"])
     return false if stakeholder.blank?
 
-    ModuleRecord
-      .where(module_slug: "access-control")
+    (ModuleMirror.relation_for("access-control") || ModuleEntry.where(module_slug: "access-control"))
       .where.not(id: except_id)
       .any? do |record|
         normalized_access_value(record.data["stakeholder_name"].presence || record.data["stakeholder"]) == stakeholder &&
@@ -15065,7 +15105,7 @@ class ModulesController < ApplicationController
 
   def gram_panchayat_location_records
     @gram_panchayat_location_records ||= ModuleRecordReadQuery.projected_data_rows(
-      ModuleRecord.where(module_slug: ["gram-panchayat-master", "lg-directory-list"]), LOCATION_DATA_KEYS)
+      ModuleMirror.read_scope(["gram-panchayat-master", "lg-directory-list"]), LOCATION_DATA_KEYS)
       .map { |id, data| LocationRecord.new(id, data) }
       .select { |candidate| active_module_record?(candidate) }
   end
@@ -15098,9 +15138,9 @@ class ModulesController < ApplicationController
   end
 
   def sync_legacy_user_stakeholder_name(previous_name, next_name)
-    return unless model_ready?(:ModuleRecord)
+    return unless model_ready?(:ModuleEntry)
 
-    ModuleRecord.where(module_slug: "new-user").find_each do |user_record|
+    ModuleEntry.where(module_slug: "new-user").find_each do |user_record|
       next unless user_record.data["stakeholder"].to_s.strip == previous_name
 
       user_record.update(data: user_record.data.merge("stakeholder" => next_name))
@@ -15121,7 +15161,7 @@ class ModulesController < ApplicationController
       approver = step["approver_approved_by"]
       next if approver.blank?
 
-      ModuleRecord.create!(
+      ModuleEntry.create!(
         module_slug: "approval-master",
         data: data.merge(
           "approval_level" => level,
@@ -15157,7 +15197,7 @@ class ModulesController < ApplicationController
       sequence = approval_sequence_from_level(level)
       approval_record = records_by_id[step["record_id"].to_i] if step["record_id"].present?
       records_by_sequence.each_value { |records| records.delete(approval_record) } if approval_record
-      approval_record ||= records_by_sequence[sequence]&.shift || ModuleRecord.new(module_slug: "approval-master")
+      approval_record ||= records_by_sequence[sequence]&.shift || ModuleEntry.new(module_slug: "approval-master")
       approval_record.data = data.merge(
         "approval_level" => level,
         "approver_approved_by" => approver,
@@ -15217,7 +15257,7 @@ class ModulesController < ApplicationController
     return [] unless record
 
     data = record.data
-    @approval_channel_records ||= ModuleRecord
+    @approval_channel_records ||= ModuleEntry
       .where(module_slug: "approval-master")
       .order(created_at: :asc)
       .to_a
@@ -15308,7 +15348,7 @@ class ModulesController < ApplicationController
 
   def hierarchy_cluster_incharge_labels
     return @hierarchy_cluster_incharge_labels if defined?(@hierarchy_cluster_incharge_labels)
-    return @hierarchy_cluster_incharge_labels = [] unless model_ready?(:ModuleRecord)
+    return @hierarchy_cluster_incharge_labels = [] unless model_ready?(:ModuleEntry)
 
     @hierarchy_cluster_incharge_labels = active_module_records_scope("user-hierarchy-mapping")
       .order(created_at: :desc)
@@ -15578,7 +15618,7 @@ class ModulesController < ApplicationController
       errors << "Observation Parameter #{missing_observations.join(", ")} ke liye rating select karein."
     end
 
-    duplicate = ModuleRecord
+    duplicate = ModuleEntry
       .where(module_slug: "jeevika-jankar-bill-process")
       .detect do |record|
         jeevika_jankar_bill_blocks_duplicate?(record) &&
@@ -15621,7 +15661,11 @@ class ModulesController < ApplicationController
     errors << "Achievement valid number hona chahiye." if achievement.nil?
     errors << "Target zero se kam nahi ho sakta." if target && target.negative?
     errors << "Achievement zero se kam nahi ho sakta." if achievement && achievement.negative?
-    errors << "Achievement Target se jyada nahi ho sakta." if target && achievement && achievement > target
+    # Other with Farmer is the one screen where more work than planned is a
+    # real outcome, not a mistake, so its achievement is allowed past the
+    # target. The other target forms keep the cap.
+    allow_over_target = record_source_slug == "other-target-with-farmer"
+    errors << "Achievement Target se jyada nahi ho sakta." if !allow_over_target && target && achievement && achievement > target
 
     target_mapping = seed_distribution_target_match(data)
     new_farmer_target = target_mapping&.dig(:new_farmer_target)
@@ -15632,7 +15676,7 @@ class ModulesController < ApplicationController
       errors << "Mapped Farmers select karein." if selected_farmer_ids.blank?
       errors << "Farmer Count valid whole number hona chahiye." if farmer_count.nil?
       errors << "Farmer Count selected farmers ke count ke equal hona chahiye." if farmer_count && selected_farmer_ids.any? && farmer_count != selected_farmer_ids.size
-      errors << "Farmer Count Target se jyada nahi ho sakta." if target && farmer_count && farmer_count > target
+      errors << "Farmer Count Target se jyada nahi ho sakta." if !allow_over_target && target && farmer_count && farmer_count > target
     end
 
     errors << "Mapped Other activity target select karein." if target_mapping.blank?
@@ -15773,8 +15817,8 @@ class ModulesController < ApplicationController
   end
 
   def transfer_legacy_user_data
-    @transfer_legacy_user_data ||= if model_ready?(:ModuleRecord)
-      ModuleRecord.where(module_slug: "new-user").order(updated_at: :desc).each_with_object({}) do |record, result|
+    @transfer_legacy_user_data ||= if model_ready?(:ModuleEntry)
+      ModuleEntry.where(module_slug: "new-user").order(updated_at: :desc).each_with_object({}) do |record, result|
         result[record.data["user_name"].to_s] ||= record.data if active_module_record?(record)
       end
     else
@@ -15826,7 +15870,7 @@ class ModulesController < ApplicationController
     return seed_product_fpo_options if seed_product_fpo_field?(field)
 
     source = field_sources[field]
-    return [] unless ModuleRecord.table_exists?
+    return [] unless ModuleEntry.table_exists?
 
     if source
       return [] if source[:module] == (@slug || current_slug)
@@ -15912,7 +15956,7 @@ class ModulesController < ApplicationController
 
     norm_cc = normalize_cc_name_for_lookup(cc_name)
     return nil if norm_cc.blank?
-    return nil unless model_ready?(:ModuleRecord)
+    return nil unless model_ready?(:ModuleEntry)
 
     index = training_user_hierarchy_by_member
     visited = Set.new
@@ -15934,7 +15978,7 @@ class ModulesController < ApplicationController
   end
 
   def user_hierarchy_cc_to_head_map
-    return {} unless model_ready?(:ModuleRecord)
+    return {} unless model_ready?(:ModuleEntry)
 
     @user_hierarchy_cc_to_head_map ||= training_user_hierarchy_by_member.keys.each_with_object({}) do |key, mapping|
       next if key.blank?
@@ -15980,7 +16024,7 @@ class ModulesController < ApplicationController
       return label if label.present?
     end
 
-    if model_ready?(:ModuleRecord)
+    if model_ready?(:ModuleEntry)
       record = cached_module_record_find_by_id(vrp.created_by_id)
       label = [
         [record&.data&.[]("first_name"), record&.data&.[]("last_name")].compact_blank.join(" "),
@@ -16047,9 +16091,9 @@ class ModulesController < ApplicationController
   end
 
   def training_activity_mappings
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
-    ModuleRecord
+    ModuleEntry
       .where(module_slug: "training-topic-mapping")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
@@ -16366,7 +16410,7 @@ class ModulesController < ApplicationController
   end
 
   def other_target_completed_farmer_ids_for(target_mapping_id)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     if defined?(@other_target_completed_farmer_ids_by_target) && @other_target_completed_farmer_ids_by_target.key?(target_mapping_id.to_s)
       return Array(@other_target_completed_farmer_ids_by_target[target_mapping_id.to_s])
@@ -16385,8 +16429,7 @@ class ModulesController < ApplicationController
     missing_targets_by_id = targets_by_id.reject { |id, _target| @other_target_completed_farmer_ids_by_target.key?(id) }
     return @other_target_completed_farmer_ids_by_target if missing_targets_by_id.blank?
 
-    records = ModuleRecord
-      .where(module_slug: record_source_slug)
+    records = ModuleMirror.read_scope(record_source_slug)
       .order(created_at: :asc)
       .reject { |record| record.id.to_s == params[:id].to_s }
       .select { |record| blocking_other_target_record?(record) }
@@ -16492,7 +16535,7 @@ class ModulesController < ApplicationController
 
   def completed_training_farmer_ids_for(target, farmer_ids)
     farmer_ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     # Target progress is calculated repeatedly while rendering a dashboard.
     # Restrict the candidate records to this target's month and VRP instead of
@@ -16513,8 +16556,7 @@ class ModulesController < ApplicationController
   def dashboard_training_completion_records
     return @dashboard_training_completion_records if defined?(@dashboard_training_completion_records)
 
-    @dashboard_training_completion_records = ModuleRecord
-      .where(module_slug: "training-form")
+    @dashboard_training_completion_records = ModuleMirror.read_scope("training-form")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .select { |record| training_record_countable?(record) }
@@ -16543,7 +16585,7 @@ class ModulesController < ApplicationController
     farmer_ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
     return [] if farmer_ids.blank?
     return completed_training_farmer_ids_for(target, farmer_ids) if target.completion_date.blank?
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     matching_training_records_for_target(target, farmer_ids)
       .flat_map { |record| training_record_selected_farmer_ids(record) & farmer_ids }
@@ -16590,7 +16632,7 @@ class ModulesController < ApplicationController
     return @training_completion_index if defined?(@training_completion_index)
 
     @training_completion_index = Hash.new { |hash, key| hash[key] = [] }
-    return @training_completion_index unless model_ready?(:ModuleRecord)
+    return @training_completion_index unless model_ready?(:ModuleEntry)
 
     records = dashboard_training_completion_records
 
@@ -16712,10 +16754,9 @@ class ModulesController < ApplicationController
   end
 
   def role_management_mappings
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
-    stakeholder_role_mappings = ModuleRecord
-      .where(module_slug: "stakeholder-role")
+    stakeholder_role_mappings = (ModuleMirror.relation_for("stakeholder-role") || ModuleEntry.where(module_slug: "stakeholder-role"))
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .flat_map do |record|
@@ -16743,8 +16784,7 @@ class ModulesController < ApplicationController
         end
       end
 
-    role_mappings = ModuleRecord
-      .where(module_slug: "role-name")
+    role_mappings = (ModuleMirror.relation_for("role-name") || ModuleEntry.where(module_slug: "role-name"))
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .flat_map do |record|
@@ -16764,7 +16804,7 @@ class ModulesController < ApplicationController
         end
       end
 
-    user_management_role_mappings = ModuleRecord
+    user_management_role_mappings = ModuleEntry
       .where(module_slug: "user-management-role")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
@@ -16784,7 +16824,7 @@ class ModulesController < ApplicationController
         end
       end
 
-    person_type_mappings = ModuleRecord
+    person_type_mappings = ModuleEntry
       .where(module_slug: "person-type")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
@@ -16881,7 +16921,7 @@ class ModulesController < ApplicationController
   end
 
   def registered_access_module_rows
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     active_module_records_scope("new-user")
       .order(updated_at: :desc)
@@ -16951,7 +16991,7 @@ class ModulesController < ApplicationController
   end
 
   def registered_module_user_rows_matching(pattern)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     training_staff_option_module_users.filter_map do |record|
       values = [
@@ -16992,7 +17032,7 @@ class ModulesController < ApplicationController
   end
 
   def registered_module_user_names
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     active_module_records_scope("new-user")
       .order(updated_at: :desc)
@@ -17019,7 +17059,7 @@ class ModulesController < ApplicationController
   end
 
   def registered_module_user_names_for_option(attribute, value)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     key = attribute.to_s
     return [] unless key.match?(/\A[a-zA-Z0-9_]+\z/)
@@ -17032,7 +17072,7 @@ class ModulesController < ApplicationController
 
   def location_hierarchy_mappings
     return @location_hierarchy_mappings if defined?(@location_hierarchy_mappings)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     # Location masters are shared by every viewer. Check their revision on each
     # request, but do not rebuild the entire directory for every form/tab.
@@ -17095,7 +17135,7 @@ class ModulesController < ApplicationController
     version = ModuleRecordReadVersion.read(slugs: LOCATION_MODULE_SLUGS)
     return version if version
 
-    version_rows = ModuleRecord.where(module_slug: LOCATION_MODULE_SLUGS)
+    version_rows = ModuleEntry.where(module_slug: LOCATION_MODULE_SLUGS)
       .group(:module_slug).order(:module_slug)
       .pluck(
         :module_slug,
@@ -17130,7 +17170,7 @@ class ModulesController < ApplicationController
           "FROM jsonb_each(#{jsonb_object_or_empty('data')}) WHERE key IN (#{quoted_keys}))"
         )
 
-        ModuleRecord.where(module_slug: normalized_slugs)
+        ModuleMirror.read_scope(normalized_slugs)
           .merge(active_module_records_scope_for_all_modules)
           .order(created_at: :desc)
           .pluck(:module_slug, :id, data_projection)
@@ -17155,7 +17195,7 @@ class ModulesController < ApplicationController
           "FROM jsonb_each(#{jsonb_object_or_empty('data')}) WHERE key IN (#{quoted_keys}))"
         )
 
-        ModuleRecord.where(module_slug: normalized_slugs)
+        ModuleMirror.read_scope(normalized_slugs)
           .order(created_at: :desc)
           .pluck(:module_slug, :id, data_projection)
           .map { |slug, id, data| [slug, id, data].freeze }
@@ -17228,7 +17268,7 @@ class ModulesController < ApplicationController
 
   def active_records_for_location(module_slug)
     @active_records_for_location ||= {}
-    @active_records_for_location[module_slug] ||= ModuleRecord
+    @active_records_for_location[module_slug] ||= ModuleEntry
       .where(module_slug: module_slug)
       .order(created_at: :desc)
       .pluck(:id, :data)
@@ -17369,7 +17409,7 @@ class ModulesController < ApplicationController
   end
 
   def build_office_category_mappings
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     active_module_records_scope_for_all_modules
       .where(module_slug: ["office-category-add", "office-mapping-add"])
@@ -17404,7 +17444,7 @@ class ModulesController < ApplicationController
   end
 
   def build_parent_office_mappings
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     active_module_records_scope("parent-office-add")
       .order(created_at: :desc)
@@ -17462,7 +17502,7 @@ class ModulesController < ApplicationController
     @approval_user_mappings ||= begin
       mappings = []
 
-      if model_ready?(:ModuleRecord)
+      if model_ready?(:ModuleEntry)
         mappings.concat(
           active_module_records_scope("new-user")
             .order(created_at: :desc)
@@ -17572,7 +17612,8 @@ class ModulesController < ApplicationController
       "#{key.delete_prefix('select_')}_name"
     ].uniq
 
-    scope = active_module_records_scope_for_all_modules.where.not(module_slug: @slug || current_slug)
+    scope = ModuleMirror.projection_scope(active_only: true).merge(active_module_records_scope_for_all_modules)
+      .where.not(module_slug: @slug || current_slug)
     @generic_field_options_cache[cache_key] = projected_module_field_values(scope, candidate_keys)
   end
 
@@ -17586,9 +17627,9 @@ class ModulesController < ApplicationController
     if module_slug == "gram-panchayat-master" && field_key == "gram_panchayat_name"
       scope = active_module_records_scope(module_slug)
       return @values_from_module_cache[cache_key] = ModuleFieldOptionsCache.fetch(scope, ["gram-label-v1", *GRAM_PANCHAYAT_NAME_KEYS], version: module_field_options_revision(scope)) do
-        keys = GRAM_PANCHAYAT_NAME_KEYS.map { |key| ModuleRecord.connection.quote(key) }
+        keys = GRAM_PANCHAYAT_NAME_KEYS.map { |key| ModuleEntry.connection.quote(key) }
         scope.order(created_at: :desc)
-          .pluck(Arel.sql("json_build_array(#{keys.map { |key| "data::json -> #{key}" }.join(', ')})"))
+          .pluck(Arel.sql("json_build_array(#{keys.map { |key| "data::jsonb -> #{key}" }.join(', ')})"))
           .filter_map do |values|
             gram_panchayat_name_from_record(LocationRecord.new(nil, GRAM_PANCHAYAT_NAME_KEYS.zip(values).to_h))
           end.uniq
@@ -17608,7 +17649,7 @@ class ModulesController < ApplicationController
   end
 
   def projected_module_field_values(scope, field_keys)
-    connection = ModuleRecord.connection
+    connection = ModuleEntry.connection
     quoted_keys = field_keys.map { |key| connection.quote(key.to_s) }
     # Keep JSON types, record order, key order and Ruby presence/uniq semantics.
     # Do not instantiate records (including their unrelated uploads/large arrays)
@@ -17616,7 +17657,7 @@ class ModulesController < ApplicationController
     ModuleFieldOptionsCache.fetch(scope, field_keys, version: module_field_options_revision(scope)) do
       scope.where("data::jsonb ?| ARRAY[#{quoted_keys.join(', ')}]::text[]")
         .order(created_at: :desc)
-        .pluck(Arel.sql("json_build_array(#{quoted_keys.map { |key| "data::json -> #{key}" }.join(', ')})"))
+        .pluck(Arel.sql("json_build_array(#{quoted_keys.map { |key| "data::jsonb -> #{key}" }.join(', ')})"))
         .flat_map { |values| values.filter_map(&:presence) }
         .uniq
     end
@@ -17647,7 +17688,7 @@ class ModulesController < ApplicationController
     end
 
     return user_options.uniq if user_options.any?
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     active_module_records_scope("new-user")
       .order(created_at: :desc)
@@ -17795,7 +17836,37 @@ class ModulesController < ApplicationController
     end
   end
 
+  BILL_LIST_TOTALS_CACHE = ActiveSupport::Cache::MemoryStore.new(size: 32.megabytes)
+  BILL_TOTAL_DEPENDENCIES = %w[afls target_mappings vrps users].freeze
+
   def preload_jeevika_bill_process_totals(records)
+    # Preserve the existing per-viewer calculator. Only a real, unrestricted
+    # admin list can reuse a prior snapshot; scoped logins retain their path.
+    unless records.present? && request && admin_dashboard_user? && !vrp_login_user? && !module_mapped_vrp_scope_active?
+      return populate_jeevika_bill_process_totals(records)
+    end
+    version = ModuleRecordReadVersion.read(dependencies: BILL_TOTAL_DEPENDENCIES)
+    return populate_jeevika_bill_process_totals(records) unless version
+
+    pairs = Array(records).filter_map do |record|
+      owner = record.data["select_vrp"].to_s
+      month = record.data["bill_month"]
+      [owner, normalize_dashboard_text(month)] if owner.match?(/\A\d+\z/) && month.present?
+    end.uniq.sort
+    context = [current_app_user, params.to_unsafe_h, Date.current.to_s, pairs]
+    key = ["dedicated-bill-totals-v1", ModuleEntry.connection_pool.db_config.database,
+      Digest::SHA256.hexdigest(context.to_json), version]
+    totals = CatalogueReadCache.fetch(BILL_LIST_TOTALS_CACHE, key, version: version,
+      expires_in: 2.minutes,
+      current_version: -> { ModuleRecordReadVersion.read(dependencies: BILL_TOTAL_DEPENDENCIES) }) do
+      populate_jeevika_bill_process_totals(records)
+      pairs.to_h { |pair| [pair, @jeevika_bill_process_totals&.[](pair)] }.deep_dup
+    end
+    @jeevika_bill_process_totals ||= {}
+    @jeevika_bill_process_totals.merge!(totals.deep_dup)
+  end
+
+  def populate_jeevika_bill_process_totals(records)
     return if records.blank?
     # Retain each scoped viewer's original per-owner calculation and fallbacks,
     # while reading the required target rows/owners once for this batch.

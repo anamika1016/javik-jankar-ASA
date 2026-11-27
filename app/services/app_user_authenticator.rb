@@ -66,9 +66,9 @@ class AppUserAuthenticator
   end
 
   def find_module_record_user_by_login(login_key, raw_login)
-    return unless authentication_model_ready?(ModuleRecord)
+    return unless authentication_model_ready?(ModuleEntry)
 
-    ModuleRecord
+    ModuleEntry
       .where(module_slug: "new-user")
       .where(<<~SQL.squish, login: login_key, raw_login: raw_login)
         LOWER(data::jsonb ->> 'user_name') = :login OR
@@ -86,7 +86,7 @@ class AppUserAuthenticator
   # indexed query above is the normal fast path; this only runs for malformed
   # legacy data or a database adapter without PostgreSQL JSON operators.
   def find_module_record_user_with_legacy_scan(login_key, raw_login)
-    ModuleRecord.where(module_slug: "new-user").find_each do |record|
+    ModuleEntry.where(module_slug: "new-user").find_each do |record|
       next unless module_record_active_for_login?(record)
       next unless module_record_login_matches?(record, login_key, raw_login)
 

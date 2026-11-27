@@ -129,6 +129,7 @@ module Api
         farmer_ids = batch.flat_map { |row| normalized_afl_ids(row.afl_ids) }.uniq
         sub_activities = batch.flat_map { |row| activity_values(row.activity_name) }.uniq
         weekly_targets = mapping.weekly_target_values
+        main_activity_type = target_main_activity_type(mapping)
 
         {
           id: mapping.id,
@@ -146,7 +147,8 @@ module Api
           main_activity: mapping.main_activity_name,
           sub_activity: sub_activities.join(", "),
           sub_activities: sub_activities,
-          main_activity_type: target_main_activity_type(mapping),
+          main_activity_type: main_activity_type,
+          target_type: target_type_label(main_activity_type),
           training_targets: {
             opg_training: mapping.opg_training_target,
             general_training_meeting: mapping.week_wise_opg_target,
@@ -186,16 +188,24 @@ module Api
         settings[:main][main_key].presence || settings[:main][sub_key].presence || settings[:sub][sub_key].presence || "Training"
       end
 
+      def target_type_label(main_activity_type)
+        case main_activity_type.to_s.strip.downcase
+        when "other with farmer" then "Other with Farmer"
+        when "other" then "Other Target"
+        else "Training"
+        end
+      end
+
       def target_activity_type_settings
         return @target_activity_type_settings if defined?(@target_activity_type_settings)
 
-        main = ModuleRecord.where(module_slug: "add-activity-group").order(created_at: :desc).each_with_object({}) do |record, values|
+        main = (ModuleMirror.relation_for("add-activity-group") || ModuleEntry.where(module_slug: "add-activity-group")).order(created_at: :desc).each_with_object({}) do |record, values|
           next if record.data["status"].to_s.casecmp("Inactive").zero?
 
           name = (record.data["main_activity_name"].presence || record.data["activity_group_name"]).to_s.strip.downcase
           values[name] ||= record.data["main_activity_type"].presence || "Training" if name.present?
         end
-        sub = ModuleRecord.where(module_slug: "add-vrp-activity").order(created_at: :desc).each_with_object({}) do |record, values|
+        sub = (ModuleMirror.relation_for("add-vrp-activity") || ModuleEntry.where(module_slug: "add-vrp-activity")).order(created_at: :desc).each_with_object({}) do |record, values|
           next if record.data["status"].to_s.casecmp("Inactive").zero?
 
           main_name = (record.data["main_activity"].presence || record.data["activity_group"]).to_s.strip.downcase

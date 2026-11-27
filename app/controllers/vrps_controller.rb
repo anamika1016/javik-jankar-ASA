@@ -31,7 +31,7 @@ class VrpsController < ApplicationController
   before_action :set_edit_dependencies, only: [:edit, :update]
 
   def vrp_transfer_by_names
-    @vrp_transfer_by_names ||= ModuleRecord.where(module_slug: "jeevika-jankar-transfer")
+    @vrp_transfer_by_names ||= (ModuleMirror.relation_for("jeevika-jankar-transfer") || ModuleEntry.where(module_slug: "jeevika-jankar-transfer"))
       .order(updated_at: :desc, id: :desc).each_with_object({}) do |record, names|
         data = record.data
         next if %w[deleted is_deleted discarded].any? { |key| %w[1 true yes deleted].include?(data[key].to_s.downcase) }
@@ -438,13 +438,13 @@ class VrpsController < ApplicationController
   end
 
   def legacy_current_app_user_ids
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     username = current_app_user&.dig("username").to_s
     emails = current_app_user_emails
     return [] if username.blank? && emails.blank?
 
-    ModuleRecord.where(module_slug: "new-user").select do |record|
+    ModuleEntry.where(module_slug: "new-user").select do |record|
       record.data["user_name"].to_s == username ||
         emails.include?(record.data["email"].to_s.strip.downcase)
     end.map(&:id)
@@ -531,8 +531,8 @@ class VrpsController < ApplicationController
     emails = vrps.filter_map { |vrp| vrp.email.to_s.strip.downcase.presence }.uniq
 
     users = model_ready?(:User) ? User.where(id: creator_ids).or(User.where("LOWER(email) IN (?)", emails)).to_a : []
-    records = if model_ready?(:ModuleRecord)
-      ModuleRecord
+    records = if model_ready?(:ModuleEntry)
+      ModuleEntry
         .where(module_slug: "new-user")
         .where("id IN (:ids) OR LOWER(COALESCE(data::jsonb->>'email', '')) IN (:emails)", ids: creator_ids.presence || [0], emails: emails.presence || [""])
         .order(created_at: :desc)
@@ -673,7 +673,7 @@ class VrpsController < ApplicationController
   end
 
   def legacy_user_cluster_labels
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     username = current_app_user&.dig("username").to_s
     return [] if username.blank?
@@ -681,7 +681,7 @@ class VrpsController < ApplicationController
     # The old ordered Ruby detect decoded every legacy user row.  The predicate
     # is an exact JSON username comparison, so PostgreSQL can return the same
     # newest matching record without materializing unrelated profiles/uploads.
-    record = ModuleRecord
+    record = ModuleEntry
       .where(module_slug: "new-user")
       .where("data::jsonb ->> 'user_name' = ?", username)
       .order(created_at: :desc)
@@ -787,7 +787,7 @@ class VrpsController < ApplicationController
   end
 
   def approval_steps_for(vrp)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     @approval_steps_for_cache ||= {}
     cache_key = vrp.id
@@ -907,12 +907,12 @@ class VrpsController < ApplicationController
   end
 
   def legacy_user_approver_labels
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     username = current_app_user&.dig("username").to_s
     return [] if username.blank?
 
-    record = ModuleRecord
+    record = ModuleEntry
       .where(module_slug: "new-user")
       .order(created_at: :desc)
       .detect { |row| row.data["user_name"].to_s == username }
@@ -1125,9 +1125,9 @@ class VrpsController < ApplicationController
       return role if role.present?
     end
 
-    return current_app_user&.dig("role") unless model_ready?(:ModuleRecord)
+    return current_app_user&.dig("role") unless model_ready?(:ModuleEntry)
 
-    ModuleRecord.find_by(id: vrp.created_by_id)&.data&.[]("role").presence ||
+    ModuleEntry.find_by(id: vrp.created_by_id)&.data&.[]("role").presence ||
       current_app_user&.dig("role")
   end
 
@@ -1139,9 +1139,9 @@ class VrpsController < ApplicationController
       return stakeholder if stakeholder.present?
     end
 
-    return current_app_user&.dig("stakeholder") unless model_ready?(:ModuleRecord)
+    return current_app_user&.dig("stakeholder") unless model_ready?(:ModuleEntry)
 
-    ModuleRecord.find_by(id: vrp.created_by_id)&.data&.[]("stakeholder").presence || current_app_user&.dig("stakeholder")
+    ModuleEntry.find_by(id: vrp.created_by_id)&.data&.[]("stakeholder").presence || current_app_user&.dig("stakeholder")
   end
 
   def vrp_creator_identities(vrp)
@@ -1161,12 +1161,12 @@ class VrpsController < ApplicationController
       end
     end
 
-    if vrp.created_by_id.present? && model_ready?(:ModuleRecord)
+    if vrp.created_by_id.present? && model_ready?(:ModuleEntry)
       record = approval_new_users_by_id[vrp.created_by_id.to_s]
       identities << record_approval_identity(record) if record
     end
 
-    if model_ready?(:ModuleRecord)
+    if model_ready?(:ModuleEntry)
       matched_records = approval_new_user_records.select do |record|
         (vrp.email.present? && record.data["email"].to_s.casecmp(vrp.email.to_s).zero?) ||
           (vrp.mobile_no.present? && record.data["mobile_no"].to_s == vrp.mobile_no.to_s)
@@ -1176,8 +1176,20 @@ class VrpsController < ApplicationController
       end
     end
 
-    identities << current_approval_identity if current_app_user.present?
+    owned = usable_approval_identities(identities)
+    return owned if owned.any?
 
+    # Which approval channel a Jeevika Jankar belongs to is a property of that
+    # record, not of whoever opens the list. Mixing the viewer's own identity in
+    # here made one record read "Pending at" two different names depending on
+    # who was looking. It stays only as the fallback it was meant to be: a
+    # record whose creator cannot be resolved still needs something to match on.
+    return [] if current_app_user.blank?
+
+    usable_approval_identities([current_approval_identity])
+  end
+
+  def usable_approval_identities(identities)
     identities
       .select { |identity| identity[:stakeholder].present? && (identity[:role].present? || identity_user_name_values(identity).present?) }
       .uniq
@@ -1253,7 +1265,7 @@ class VrpsController < ApplicationController
   end
 
   def approval_history_for(vrp)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     @approval_history_for_cache ||= {}
     cache_key = vrp.id
@@ -1282,14 +1294,14 @@ class VrpsController < ApplicationController
   end
 
   def approval_master_records
-    @approval_master_records ||= ModuleRecord
+    @approval_master_records ||= ModuleEntry
       .where(module_slug: "approval-master")
       .order(created_at: :asc)
       .to_a
   end
 
   def approval_history_records_by_vrp_id
-    @approval_history_records_by_vrp_id ||= ModuleRecord
+    @approval_history_records_by_vrp_id ||= ModuleEntry
       .where(module_slug: "vrp-approval-history")
       .order(created_at: :asc)
       .to_a
@@ -1301,7 +1313,7 @@ class VrpsController < ApplicationController
       creator_ids = approval_candidate_vrps.filter_map(&:created_by_id).uniq
       emails = approval_candidate_vrps.filter_map { |vrp| vrp.email.to_s.downcase.presence }.uniq
       mobiles = approval_candidate_vrps.filter_map { |vrp| vrp.mobile_no.to_s.presence }.uniq
-      scope = ModuleRecord.where(module_slug: "new-user")
+      scope = ModuleEntry.where(module_slug: "new-user")
       matches = scope.none
       matches = matches.or(scope.where(id: creator_ids)) if creator_ids.any?
       matches = matches.or(scope.where("LOWER(data::jsonb ->> 'email') IN (?)", emails)) if emails.any?
@@ -1389,9 +1401,9 @@ class VrpsController < ApplicationController
   end
 
   def log_approval_history(vrp, step, action, remarks)
-    return unless model_ready?(:ModuleRecord)
+    return unless model_ready?(:ModuleEntry)
 
-    ModuleRecord.create!(
+    ModuleEntry.create!(
       module_slug: "vrp-approval-history",
       data: {
         "vrp_id" => vrp.id,
@@ -1558,9 +1570,9 @@ class VrpsController < ApplicationController
   end
 
   def module_record_user_office_mappings
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
-    ModuleRecord
+    ModuleEntry
       .where(module_slug: "new-user")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
@@ -1581,11 +1593,12 @@ class VrpsController < ApplicationController
   end
 
   def office_category_master_mappings
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
-    ModuleRecord
-      .where(module_slug: ["office-category-add", "office-mapping-add"])
-      .order(created_at: :desc)
+    (ModuleMirror.rows_for(["office-category-add", "office-mapping-add"]) ||
+      ModuleEntry
+        .where(module_slug: ["office-category-add", "office-mapping-add"])
+        .order(created_at: :desc))
       .select { |record| active_module_record?(record) }
       .map do |record|
         office_category = first_present_data(record, "office_category", "category_name", "office_name", "office").to_s.strip
@@ -1685,10 +1698,9 @@ class VrpsController < ApplicationController
   end
 
   def hierarchy_cluster_incharge_labels
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
-    labels = ModuleRecord
-      .where(module_slug: "user-hierarchy-mapping")
+    labels = (ModuleMirror.relation_for("user-hierarchy-mapping") || ModuleEntry.where(module_slug: "user-hierarchy-mapping"))
       .order(updated_at: :desc)
       .select { |record| active_module_record?(record) }
       .select do |record|
@@ -1704,13 +1716,12 @@ class VrpsController < ApplicationController
   end
 
   def dashboard_visible_hierarchy_cluster_labels
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     current_labels = current_hierarchy_user_labels
     return [] if current_labels.blank?
 
-    ModuleRecord
-      .where(module_slug: "user-hierarchy-mapping")
+    (ModuleMirror.relation_for("user-hierarchy-mapping") || ModuleEntry.where(module_slug: "user-hierarchy-mapping"))
       .order(updated_at: :desc)
       .select { |record| active_module_record?(record) }
       .flat_map do |record|
@@ -1851,7 +1862,7 @@ class VrpsController < ApplicationController
   end
 
   def module_record_options(module_slug, field_key)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     field_keys = Array(field_key)
     vrp_form_records_for(module_slug)
@@ -1865,7 +1876,7 @@ class VrpsController < ApplicationController
   end
 
   def text_module_record_options(module_slug, field_key)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     field_keys = Array(field_key)
     vrp_form_records_for(module_slug)
@@ -1875,7 +1886,7 @@ class VrpsController < ApplicationController
   end
 
   def role_management_mappings
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     stakeholder_role_mappings = vrp_form_records_for("stakeholder-role")
       .select { |record| active_module_record?(record) }
@@ -1993,10 +2004,10 @@ class VrpsController < ApplicationController
   end
 
   def registered_module_user_names_for_option(attribute, value)
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     key = attribute.to_s
-    ModuleRecord
+    ModuleEntry
       .where(module_slug: "new-user")
       .order(updated_at: :desc)
       .select { |record| active_module_record?(record) && record.data[key].to_s.strip.casecmp(value.to_s.strip).zero? }
@@ -2004,7 +2015,7 @@ class VrpsController < ApplicationController
   end
 
   def location_hierarchy_mappings
-    return [] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleEntry)
 
     return @location_hierarchy_mappings if defined?(@location_hierarchy_mappings)
 
@@ -2124,7 +2135,7 @@ class VrpsController < ApplicationController
     cache_key = ["vrp/location-catalogue-v2", slugs, vrp_location_catalogue_revision]
     CatalogueReadCache.fetch(vrp_location_catalogue_cache, cache_key,
       version: vrp_location_catalogue_revision, current_version: -> { read_vrp_location_catalogue_revision }) do
-      ModuleRecord.where(module_slug: slugs)
+      ModuleEntry.where(module_slug: slugs)
         .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
         .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
         .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
@@ -2135,7 +2146,7 @@ class VrpsController < ApplicationController
   end
 
   def vrp_location_browser_attribute
-    return "[]".html_safe unless model_ready?(:ModuleRecord)
+    return "[]".html_safe unless model_ready?(:ModuleEntry)
 
     key = ["vrp/location-browser-attribute-v2", vrp_location_catalogue_revision]
     escaped = ReadStageTrace.measure("vrp.location_attribute") do
@@ -2158,7 +2169,7 @@ class VrpsController < ApplicationController
     version = ModuleRecordReadVersion.read(slugs: LOCATION_HIERARCHY_MODULE_SLUGS)
     return version if version
 
-    ModuleRecord.where(module_slug: LOCATION_HIERARCHY_MODULE_SLUGS)
+    ModuleEntry.where(module_slug: LOCATION_HIERARCHY_MODULE_SLUGS)
       .pick(Arel.sql("MD5(COALESCE(STRING_AGG(id::text || ':' || xmin::text || ':' || ctid::text, ',' ORDER BY id), ''))"))
   end
 
@@ -2172,11 +2183,20 @@ class VrpsController < ApplicationController
     # before records (and their JSON payloads) are materialized. This powers
     # the VRP form's location and role dropdowns and previously loaded inactive
     # master records only to discard them in Ruby.
+    #
+    # Deliberately still module_records, unlike the user form's equivalent.
+    # Callers here compare whole records between two code paths and read
+    # ActiveRecord's own `attributes`, and vrp_detail_village_index reads its
+    # catalogue as `json` rather than `jsonb` to keep the key order of legacy
+    # label Hashes that its matcher compares by string form. Serving these from
+    # the mirror changes the row's type and that key order, which
+    # VrpDetailVillageIndexTest catches. The user form has no such coupling,
+    # which is why it reads the mirror and this does not.
     @vrp_form_records_by_slug[module_slug] ||= vrp_form_records_scope(module_slug).to_a
   end
 
   def vrp_form_records_scope(module_slug)
-    ModuleRecord.where(module_slug: module_slug)
+    ModuleEntry.where(module_slug: module_slug)
       .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
       .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
       .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
@@ -2243,7 +2263,7 @@ class VrpsController < ApplicationController
     when "gram_panchayat_name" then "gram-panchayat-master"
     when "village_name" then "village-master"
     end
-    scope = ModuleRecord.where(module_slug: ["lg-directory-list", "village-master", master_slug].compact.uniq)
+    scope = ModuleEntry.where(module_slug: ["lg-directory-list", "village-master", master_slug].compact.uniq)
     scope = scope.where("LOWER(TRIM(COALESCE(data::jsonb ->> 'status', ''))) IN ('', 'active')")
     %w[deleted is_deleted discarded].each do |flag|
       scope = scope.where("LOWER(TRIM(COALESCE(data::jsonb ->> '#{flag}', ''))) NOT IN ('1', 'true', 'yes', 'deleted')")
@@ -2353,16 +2373,18 @@ class VrpsController < ApplicationController
     # Keep caller order, duplicate removal and the original missing-ID fallback
     # in the name readers. Do not cache records across invocations: a later
     # call in the same request can still observe a saved master edit.
-    ModuleRecord.where(id: numeric_ids).index_by(&:id)
+    ModuleEntry.where(id: numeric_ids).index_by(&:id)
   end
 
   def vrp_saved_location_names(vrp)
     return {} unless vrp
 
     profile = vrp.vrp_profile
-    state_rec = profile&.state_id.to_s.match?(/\A\d+\z/) ? ModuleRecord.find_by(module_slug: "state-master", id: profile.state_id) : nil
-    district_rec = profile&.district_id.to_s.match?(/\A\d+\z/) ? ModuleRecord.find_by(module_slug: "district-master", id: profile.district_id) : nil
-    block_rec = profile&.block_id.to_s.match?(/\A\d+\z/) ? ModuleRecord.find_by(module_slug: "block-master", id: profile.block_id) : nil
+    # The profile stores module_records ids, and the master tables kept those
+    # ids as their own primary key, so these resolve against either.
+    state_rec = lg_master_record(LgState, "state-master", profile&.state_id)
+    district_rec = lg_master_record(LgDistrict, "district-master", profile&.district_id)
+    block_rec = lg_master_record(LgBlock, "block-master", profile&.block_id)
 
     state_name = state_rec ? (state_rec.data["state_name"].presence || state_rec.data["state"]) : (profile&.state_id.to_s.match?(/\A\d+\z/) ? nil : profile&.state_id)
     district_name = district_rec ? (district_rec.data["district_name"].presence || district_rec.data["district"]) : (profile&.district_id.to_s.match?(/\A\d+\z/) ? nil : profile&.district_id)
@@ -2373,7 +2395,7 @@ class VrpsController < ApplicationController
 
     id_candidates = (gp_ids + village_ids).select { |v| v.to_s.match?(/\A\d+\z/) }
     if id_candidates.any?
-      recs = ModuleRecord.where(id: id_candidates).to_a
+      recs = ModuleEntry.where(id: id_candidates).to_a
       state_name ||= recs.filter_map { |r| r.data["state_name"].presence || r.data["state"] }.first
       district_name ||= recs.filter_map { |r| r.data["district_name"].presence || r.data["district"] }.first
       block_name ||= recs.filter_map { |r| r.data["cd_block_name"].presence || r.data["block_name"].presence || r.data["block"] }.first
@@ -2384,7 +2406,7 @@ class VrpsController < ApplicationController
       normalized = name_candidates.map { |n| n.to_s.strip.downcase }
       conn = ActiveRecord::Base.connection
       clauses = %w[gram_panchayat_name gp_name gram_name village_name village].map { |key| "LOWER(TRIM(data::jsonb ->> #{conn.quote(key)})) IN (?)" }
-      record = ModuleRecord
+      record = ModuleEntry
         .where(module_slug: %w[lg-directory-list gram-panchayat-master village-master])
         .where("LOWER(TRIM(COALESCE(data::jsonb ->> 'status', ''))) IN ('', 'active')")
         .where("(#{clauses.join(' OR ')})", *Array.new(clauses.length, normalized))
@@ -2485,14 +2507,14 @@ class VrpsController < ApplicationController
   end
 
   def module_record_label(module_slug, id, field_key)
-    return "" if id.blank? || !model_ready?(:ModuleRecord)
+    return "" if id.blank? || !model_ready?(:ModuleEntry)
 
     @module_record_labels_cache ||= {}
     cache_key = [module_slug, id, field_key]
     return @module_record_labels_cache[cache_key] if @module_record_labels_cache.key?(cache_key)
 
     preload_module_record_labels(module_slug, [id])
-    record = @module_record_label_records[[module_slug, ModuleRecord.type_for_attribute("id").cast(id)]]
+    record = @module_record_label_records[[module_slug, ModuleEntry.type_for_attribute("id").cast(id)]]
     label = module_record_display_label(module_slug, record, field_key)
     @module_record_labels_cache[cache_key] = label.present? ? label : (id.to_s.match?(/\A\d+\z/) ? "" : id.to_s)
   end
@@ -2516,10 +2538,10 @@ class VrpsController < ApplicationController
   end
 
   def preload_module_record_labels(module_slug, ids)
-    return unless model_ready?(:ModuleRecord)
+    return unless model_ready?(:ModuleEntry)
 
     @module_record_label_records ||= {}
-    id_type = ModuleRecord.type_for_attribute("id")
+    id_type = ModuleEntry.type_for_attribute("id")
     missing_ids = Array(ids).reject(&:blank?).map { |id| id_type.cast(id) }.uniq
       .reject { |id| @module_record_label_records.key?([module_slug, id]) }
     return if missing_ids.empty?
@@ -2527,7 +2549,7 @@ class VrpsController < ApplicationController
     # Nil misses are cached too. Keep the original slug constraint and full
     # selected record data so legacy label fallbacks remain available.
     missing_ids.each { |id| @module_record_label_records[[module_slug, id]] = nil }
-    ModuleRecord.where(module_slug: module_slug, id: missing_ids).each do |record|
+    ModuleEntry.where(module_slug: module_slug, id: missing_ids).each do |record|
       @module_record_label_records[[module_slug, record.id]] = record
     end
   end
@@ -2549,7 +2571,7 @@ class VrpsController < ApplicationController
   end
 
   def vrp_detail_location_records(vrp)
-    return [] if vrp.blank? || !model_ready?(:ModuleRecord)
+    return [] if vrp.blank? || !model_ready?(:ModuleEntry)
 
     village_ids = Array(vrp.village_ids).reject(&:blank?)
     gram_panchayat_ids = Array(vrp.gram_panchayat_ids).reject(&:blank?)
@@ -2577,12 +2599,14 @@ class VrpsController < ApplicationController
       index = {}
       # Keep the original single-source ordering rather than interleaving
       # villages with other master modules before resolving duplicate labels.
-      # JSON (not JSONB) also preserves nested legacy label Hash order when
-      # Ruby converts those values to strings for its original matcher.
-      keys = %w[village_name village name deleted is_deleted discarded status].map { |key| ModuleRecord.connection.quote(key) }.join(", ")
-      object = "CASE WHEN json_typeof(data::json) = 'object' THEN data::json ELSE '{}'::json END"
-      projection = Arel.sql("(SELECT COALESCE(json_object_agg(key, value), '{}'::json) FROM json_each(#{object}) WHERE key IN (#{keys}))")
-      vrp_form_records_scope("village-master").pluck(:id, projection).each_with_index do |(id, data), position|
+      #
+      # Only the keys the matcher reads are projected, so a 1 kB import blob on
+      # every row is never carried into Ruby just to be discarded.
+      keys = %w[village_name village name deleted is_deleted discarded status]
+        .map { |key| ModuleEntry.connection.quote(key) }.join(", ")
+      scope = vrp_detail_village_scope
+      projection = Arel.sql(vrp_detail_village_label_projection(scope, keys))
+      scope.pluck(:id, projection).each_with_index do |(id, data), position|
         data = JSON.parse(data) if data.is_a?(String)
         record = VrpLocationRecord.new(id, data)
         next unless active_module_record?(record)
@@ -2592,6 +2616,40 @@ class VrpsController < ApplicationController
         values.each { |value| (index[value] ||= []) << entry }
       end
       index
+    end
+  end
+
+  # One master row by id. Reads the master's own table when it exists -- the id
+  # is its primary key there, where module_records needed the id plus a slug
+  # filter. Returns nil for a non-numeric id, as the callers expect.
+  def lg_master_record(model, slug, id)
+    return nil unless id.to_s.match?(/\A\d+\z/)
+    return model.find_by(id: id) if ModuleMirror.covers?(slug)
+
+    ModuleEntry.find_by(module_slug: slug, id: id)
+  end
+
+  # The single source behind both the village label index and the hydration
+  # that follows it, so the two can never describe different rows.
+  def vrp_detail_village_scope
+    vrp_form_records_scope("village-master")
+  end
+
+  # lg_villages stores `data` as jsonb, where module_records holds it as text.
+  # Read the keys the matcher needs out of whichever one this is.
+  #
+  # The module_records branch casts to `json`, not `jsonb`, on purpose: it
+  # preserves the key order of a legacy label Hash, which the matcher compares
+  # by its string form. jsonb sorts keys, so a row carrying such a label reads
+  # back in a different order -- no row in the farmer master has one, and both
+  # the index and the hydration above read the same source either way, but that
+  # is the difference between the two branches.
+  def vrp_detail_village_label_projection(scope, quoted_keys)
+    if scope.klass == LgVillage
+      "(SELECT COALESCE(jsonb_object_agg(key, value), '{}'::jsonb) FROM jsonb_each(data) WHERE key IN (#{quoted_keys}))"
+    else
+      object = "CASE WHEN json_typeof(data::json) = 'object' THEN data::json ELSE '{}'::json END"
+      "(SELECT COALESCE(json_object_agg(key, value), '{}'::json) FROM json_each(#{object}) WHERE key IN (#{quoted_keys}))"
     end
   end
 
@@ -2605,7 +2663,9 @@ class VrpsController < ApplicationController
       # Hydrate only matches, in the exact original catalogue order. Recheck
       # the original Ruby matcher after hydration, retaining aliases/types and
       # excluding a row whose label changed between the two reads.
-      records = vrp_form_records_scope("village-master").where(id: ids).index_by(&:id)
+      # Hydrated from the same source the index was built from, so the two
+      # always describe the same rows.
+      records = vrp_detail_village_scope.where(id: ids).index_by(&:id)
       ids.filter_map { |id| records[id] }.select do |record|
         active_module_record?(record) && vrp_detail_location_record_matches?(record, selected_values, "village-master", "village_name")
       end
@@ -2659,7 +2719,7 @@ class VrpsController < ApplicationController
 
     Vrp.transaction do
       vrp.update_columns(is_active: active, updated_at: changed_at)
-      ModuleRecord.create!(module_slug: "vrp-active-status-history", data: {
+      ModuleEntry.create!(module_slug: "vrp-active-status-history", data: {
         "vrp_id" => vrp.id.to_s,
         "status" => active ? "Active" : "Inactive",
         "action_by" => actor_name,
@@ -2672,7 +2732,7 @@ class VrpsController < ApplicationController
   end
 
   def vrp_active_status_history
-    @vrp_active_status_history ||= ModuleRecord
+    @vrp_active_status_history ||= ModuleEntry
       .where(module_slug: "vrp-active-status-history")
       .order(created_at: :desc, id: :desc)
       .each_with_object({}) { |record, rows| rows[record.data["vrp_id"].to_s] ||= record }
@@ -2688,9 +2748,9 @@ class VrpsController < ApplicationController
   end
 
   def sync_existing_vrp_master_records
-    return unless model_ready?(:ModuleRecord)
+    return unless model_ready?(:ModuleEntry)
 
-    records = ModuleRecord.where(module_slug: ["bank-master", "position-type", "add-vrp-type"]).order(:id).to_a
+    records = ModuleEntry.where(module_slug: ["bank-master", "position-type", "add-vrp-type"]).order(:id).to_a
     sync_existing_vrp_bank_masters(records)
     sync_existing_vrp_types(records)
   end

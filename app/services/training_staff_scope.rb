@@ -39,7 +39,7 @@ class TrainingStaffScope
     user_columns = (['id', 'first_name', 'last_name', 'user_name', 'status'] + ROLE_KEYS + OFFICE_KEYS)
       .uniq & User.column_names
     User.select(*user_columns).map { |user| user.attributes.merge("record_type" => "User") } +
-      ModuleRecord.where(module_slug: "new-user").select(:id, :data).map do |record|
+      ModuleEntry.where(module_slug: "new-user").select(:id, :data).map do |record|
         record.data.merge("id" => record.id, "record_type" => "ModuleRecord")
       end
   end

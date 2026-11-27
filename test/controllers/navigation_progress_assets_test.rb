@@ -18,6 +18,8 @@ class NavigationProgressAssetsTest < ActionDispatch::IntegrationTest
     assert_includes response.body, "turbo:submit-end"
     get stylesheet_path
     assert_response :success
-    assert_includes response.body, "html[data-navigation-complete] .turbo-progress-bar"
+    # The progress element may still be created by Turbo, but it must never be
+    # visible on any page (including the dashboard).
+    assert_includes response.body, ".turbo-progress-bar {\n  display: none !important;\n}"
   end
 end

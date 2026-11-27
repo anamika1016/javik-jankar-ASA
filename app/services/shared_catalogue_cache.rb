@@ -12,7 +12,7 @@ class SharedCatalogueCache
     %w[
       Gemfile.lock app/controllers/application_controller.rb
       app/controllers/modules_controller.rb app/controllers/users_controller.rb
-      app/controllers/vrps_controller.rb app/models/module_record.rb
+      app/controllers/vrps_controller.rb app/models/module_record.rb app/models/module_entry.rb
       app/services/catalogue_read_cache.rb app/services/shared_catalogue_cache.rb
       app/services/module_record_read_query.rb
       app/services/module_record_read_version.rb
@@ -72,7 +72,7 @@ class SharedCatalogueCache
   end
 
   def slot(key)
-    database = ModuleRecord.connection_pool.db_config.configuration_hash.slice(:host, :port, :database)
+    database = ModuleEntry.connection_pool.db_config.configuration_hash.slice(:host, :port, :database)
     Digest::SHA256.hexdigest(Marshal.dump([Rails.env.to_s, database, Array(key)[0...-1]]))
   end
 end

@@ -58,7 +58,7 @@ module Api
         progress = filtered_targets.map { |target| progress_payload(target) }
         assigned = progress.sum { |row| row[:assigned].to_f }
         achieved = progress.sum { |row| row[:achieved].to_f }
-        bills = ModuleRecord.where(module_slug: "vrp-bill-add").select { |record| active_record?(record) }
+        bills = ModuleEntry.where(module_slug: "vrp-bill-add").select { |record| active_record?(record) }
 
         render json: {
           success: true,
@@ -143,7 +143,7 @@ module Api
       def training_participation_status(targets)
         farmer_ids = targets.flat_map { |target| mapped_farmer_ids(target) }.uniq
         attendance = Hash.new(0)
-        ModuleRecord.where(module_slug: "training-form").select { |record| active_record?(record) }.each do |record|
+        ModuleMirror.read_scope("training-form").select { |record| active_record?(record) }.each do |record|
           Array(record.data["selected_farmer_ids"]).map(&:to_s).uniq.each { |farmer_id| attendance[farmer_id] += 1 }
         end
         green = farmer_ids.count { |id| attendance[id] >= 3 }
@@ -221,6 +221,7 @@ module Api
           fco: target.fco_name.presence || target.fco_id,
           ics: target.ics_name.presence || target.ics_id,
           village: target.village_name.presence || target.village_id,
+          target_type: target_type_label_for(target),
           main_activity: target.main_activity_name,
           sub_activity: target.activity_name,
           completion_date: target.completion_date&.iso8601,
@@ -229,6 +230,26 @@ module Api
           pending: number([assigned - achieved, 0].max),
           progress_percent: assigned.positive? ? ((achieved / assigned) * 100).round(2) : 0
         }
+      end
+
+      def target_type_label_for(target)
+        type = dashboard_activity_type_settings[target.main_activity_name.to_s.strip.downcase] || "Training"
+        case type.to_s.strip.downcase
+        when "other with farmer" then "Other with Farmer"
+        when "other" then "Other Target"
+        else "Training"
+        end
+      end
+
+      def dashboard_activity_type_settings
+        return @dashboard_activity_type_settings if defined?(@dashboard_activity_type_settings)
+
+        @dashboard_activity_type_settings = ModuleMirror.relation_for("add-activity-group")
+          .order(created_at: :desc).each_with_object({}) do |record, values|
+            next if record.data["status"].to_s.casecmp("Inactive").zero?
+            name = (record.data["main_activity_name"].presence || record.data["activity_group_name"]).to_s.strip.downcase
+            values[name] ||= record.data["main_activity_type"].presence || "Training" if name.present?
+          end
       end
 
       # Keep the mobile dashboard totals identical to the existing VRP web dashboard.
@@ -250,6 +271,7 @@ module Api
             fco: row[:fco],
             ics: row[:ics],
             village: row[:village],
+            target_type: row[:target_type],
             main_activity: row[:main_activity],
             sub_activity: row[:activity],
             completion_date: parse_dashboard_date(row[:completion_date]),
@@ -270,7 +292,7 @@ module Api
       end
 
       def target_achievement(target)
-        @achievement_records_by_target ||= ModuleRecord
+        @achievement_records_by_target ||= ModuleEntry
           .where(module_slug: %w[training-form seed-distribution-target papl360-target add-farmer-form])
           .select { |record| active_record?(record) }
           .group_by { |record| record.data["target_mapping_id"].to_s }

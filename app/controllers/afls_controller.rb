@@ -10,11 +10,13 @@ class AflsController < ApplicationController
 
   def index
     @query = params[:q].to_s.strip
-    @dashboard_afl_filter_params = params.permit(:fcoc, :ics, fco_id: []).to_h
+    @column_filters = afl_column_filters
+    @column_operators = afl_column_operators
+    @dashboard_afl_filter_params = afl_dashboard_filter_params
     @page = [params[:page].to_i, 1].max
     @page_size = PAGE_SIZE
 
-    scoped_afls = dashboard_filtered_afls(Afl.search(@query))
+    scoped_afls = dashboard_filtered_afls(Afl.search(@query).column_search(@column_filters, @column_operators))
     @total_afls = scoped_afls.count
     @total_pages = [(@total_afls.to_f / @page_size).ceil, 1].max
     @page = [@page, @total_pages].min
@@ -36,7 +38,7 @@ class AflsController < ApplicationController
   def import
     result = Afl.import(params[:file])
     total_rows = result[:imported] + result[:skipped].size
-    notice = "#{result[:imported]} target mapping records uploaded successfully out of #{total_rows} Excel rows."
+    notice = "#{result[:imported]} AFL records uploaded successfully out of #{total_rows} Excel rows."
     notice += " #{result[:skipped].size} rows skipped." if result[:skipped].any?
 
     if result[:skipped].any?
@@ -62,22 +64,76 @@ class AflsController < ApplicationController
   def destroy
     @afl.destroy
     # Come back to the same search, page and filters the row was deleted from.
-    return_params = params.permit(:fcoc, :ics, fco_id: []).to_h
+    return_params = afl_dashboard_filter_params
       .merge(q: params[:q].presence, page: params[:page].presence)
+    return_params[:col] = afl_column_filters if afl_column_filters.any?
+    return_params[:colop] = afl_column_operators if afl_column_operators.any?
     redirect_to afls_path(return_params), status: :see_other, notice: "Target mapping record deleted successfully."
   end
 
   def bulk_destroy
     query = params[:q].to_s.strip
-    scoped_afls = Afl.search(query)
+    filters = afl_column_filters
+    operators = afl_column_operators
+    # The column filters have to narrow this exactly as they narrow the list.
+    # Without them "delete all" would ignore the header boxes the rows on
+    # screen were filtered by and delete far more than was being looked at.
+    scoped_afls = Afl.search(query).column_search(filters, operators)
     destroyed_count = scoped_afls.count
 
     scoped_afls.find_each(&:destroy)
 
-    redirect_to afls_path(q: query.presence), status: :see_other, notice: "#{destroyed_count} target mapping record(s) deleted successfully."
+    redirect_to afls_path({ q: query.presence, col: filters.presence, colop: operators.presence }.compact),
+      status: :see_other, notice: "#{destroyed_count} target mapping record(s) deleted successfully."
   end
 
   private
+
+  # Everything this screen legitimately takes.
+  #
+  # Declaring the whole set in one place is what keeps the log quiet: a permit
+  # call reports every parameter it was not told about, so the narrow
+  # fcoc/ics/fco_id permit used to build link params was flagging q, page, col,
+  # colop and the post-import report_id -- all expected here -- as unpermitted
+  # on every request.
+  def afl_permitted_params
+    @afl_permitted_params ||= params.permit(
+      :q, :page, :report_id, :fcoc, :ics, :format,
+      fco_id: [], col: Afl::LIST_HEADERS.keys, colop: Afl::LIST_HEADERS.keys
+    )
+  end
+
+  # Only the dashboard's own filters travel on this screen's links; the search,
+  # page and report id are added by whoever needs them.
+  def afl_dashboard_filter_params
+    afl_permitted_params.slice(:fcoc, :ics, :fco_id).to_h.compact
+  end
+
+  # One search box per column heading. Only the columns the list shows are
+  # accepted; anything else in the query string is ignored rather than reaching
+  # the model.
+  def afl_column_filters
+    @afl_column_filters ||= permitted_column_params(:col)
+      .transform_values { |value| value.to_s.strip }
+      .reject { |_column, value| value.blank? }
+  end
+
+  # The comparison chosen in each header's dropdown. "Is empty" and "Is not
+  # empty" are kept even though their box is blank -- those two ask about the
+  # column's presence, so they are the filter.
+  def afl_column_operators
+    @afl_column_operators ||= permitted_column_params(:colop)
+      .transform_values { |value| value.to_s.strip }
+      .select { |column, operator| Afl::COLUMN_OPERATORS.key?(operator) && keep_operator?(column, operator) }
+  end
+
+  def keep_operator?(column, operator)
+    Afl::VALUELESS_COLUMN_OPERATORS.include?(operator) || afl_column_filters.key?(column)
+  end
+
+  def permitted_column_params(key)
+    afl_permitted_params[key].to_h
+  end
 
   AFL_EXPORT_COLUMNS = {
     "ID" => :id,
@@ -156,12 +212,13 @@ class AflsController < ApplicationController
     report_path = REPORT_DIR.join("#{report_id}.csv")
 
     CSV.open(report_path, "w") do |csv|
-      csv << ["Row", "Reason", "Tracenet_No", "Longitude", "Lattitude", "Khasara_NO", "Farmer_Name", "Father_Name", "Village_ID", "Village_Name", "Farm_ID"]
+      csv << ["Row", "Reason", "ID", "Tracenet_No", "Longitude", "Lattitude", "Khasara_NO", "Farmer_Name", "Father_Name", "Village_ID", "Village_Name", "Farm_ID"]
       skipped_rows.each do |skipped_row|
         row = normalize_skipped_row(skipped_row)
         csv << [
           row[:row],
           row[:reason],
+          row[:id],
           row[:tracenet_no],
           row[:longitude],
           row[:lattitude],

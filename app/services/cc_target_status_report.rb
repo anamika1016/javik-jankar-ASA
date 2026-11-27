@@ -144,7 +144,7 @@ class CcTargetStatusReport
   def fetch_cc_achievements(target_keys = nil)
     target_keys ||= fetch_cc_targets.keys
     achievements = {}
-    return achievements unless ActiveRecord::Base.connection.table_exists?("module_records")
+    return achievements unless ActiveRecord::Base.connection.data_source_exists?("module_entries")
 
     cc_to_target_fco = {}
     target_keys.each do |fco_id, cc_name|

@@ -23,11 +23,28 @@ module VrpApp
     #
     config.time_zone = "Asia/Kolkata"
 
-    # The app downloads long option lists - the location hierarchy alone runs to
-    # hundreds of kilobytes - and JSON of that shape compresses by roughly ten
-    # times. Limited to /api so the website is served exactly as it is today.
+    # Writable views, shared ID sequences and transactional version triggers
+    # are part of the storage contract and must survive fresh DB/test restores.
+    config.active_record.schema_format = :sql
+
+    # The app ships long option lists - the User Registration form alone sends a
+    # 529 kB location map plus a 1,761-option village select, 1.1 MB of HTML -
+    # and markup of that shape gzips about eighteen times, down to 63 kB. This
+    # used to be limited to /api, so every page of the website was served
+    # uncompressed and paid the full size on each load.
+    #
+    # Selected by response content type rather than by path: text, JSON,
+    # JavaScript and SVG compress well, while the spreadsheet and file downloads
+    # elsewhere in the app are already compressed containers and are left alone.
+    # Nothing in the app streams a response, so there is nothing for the
+    # middleware's buffering to hold open.
+    compressible_response = %r{\A(?:text/|application/(?:json|javascript|xml|xhtml\+xml)|image/svg\+xml)}
     config.middleware.use Rack::Deflater,
-      if: ->(env, _status, _headers, _body) { env["PATH_INFO"].to_s.start_with?("/api/") }
+      if: ->(_env, _status, headers, _body) {
+        # Rack 3 downcases header names; be tolerant of either spelling.
+        content_type = headers["content-type"] || headers["Content-Type"]
+        content_type.to_s.match?(compressible_response)
+      }
     # config.eager_load_paths << Rails.root.join("extras")
   end
 end

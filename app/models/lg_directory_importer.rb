@@ -176,7 +176,7 @@ class LgDirectoryImporter
     known_fingerprints = existing_fingerprints
     pending_records = Hash.new { |hash, slug| hash[slug] = [] }
 
-    ModuleRecord.transaction do
+    ModuleEntry.transaction do
       rows.each_with_index do |row, index|
         attrs = attributes_from_row(row, attributes_by_index)
         next if attrs.values.all?(&:blank?)
@@ -190,6 +190,9 @@ class LgDirectoryImporter
 
       flush_pending_records(pending_records, force: true)
     end
+
+    # Dedicated-table triggers derive hierarchy columns for bulk inserts too;
+    # no replay from the retained archive is necessary after importing.
 
     {
       imported: created_counts.values.sum,
@@ -226,7 +229,7 @@ class LgDirectoryImporter
   def self.flush_pending_records(pending_records, force: false)
     pending_records.each_value do |records|
       while records.size >= INSERT_BATCH_SIZE || (force && records.any?)
-        ModuleRecord.insert_all!(records.shift(INSERT_BATCH_SIZE))
+        ModuleEntry.insert_all!(records.shift(INSERT_BATCH_SIZE))
       end
     end
   end
@@ -313,7 +316,7 @@ class LgDirectoryImporter
   end
 
   def self.existing_fingerprints
-    ModuleRecord.where(module_slug: MODULE_DEFINITIONS.pluck(:slug)).pluck(:module_slug, :data).each_with_object(Set.new) do |(slug, data), fingerprints|
+    ModuleEntry.where(module_slug: MODULE_DEFINITIONS.pluck(:slug)).pluck(:module_slug, :data).each_with_object(Set.new) do |(slug, data), fingerprints|
       fingerprints.add(record_fingerprint(slug, data))
     end
   end

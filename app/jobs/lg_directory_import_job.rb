@@ -3,7 +3,7 @@ class LgDirectoryImportJob < ApplicationJob
 
   def perform(blob_id, status_id)
     blob = ActiveStorage::Blob.find(blob_id)
-    status_record = ModuleRecord.find(status_id)
+    status_record = ModuleEntry.find(status_id)
 
     blob.open do |tempfile|
       upload = Struct.new(:path, :original_filename).new(tempfile.path, blob.filename.to_s)

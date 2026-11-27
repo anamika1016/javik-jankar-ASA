@@ -100,7 +100,7 @@ class DashboardDemonstrationMethodReport
                   AND COALESCE(TRIM(mr.data::jsonb ->> 'cluster_coordinator_name'), '') ~* '^(|n\\.?/?a\\.?|none|nil|null|-+)$'
                 )
             ) AS cc_done
-          FROM module_records mr
+          FROM (#{ModuleMirror.read_scope("training-form").to_sql}) mr
           WHERE mr.module_slug = 'training-form' AND #{month_filter}
             -- Only in-scope JJ records; the final LEFT JOIN discards the rest anyway,
             -- so results are identical but the scan/group is far smaller.
@@ -232,7 +232,7 @@ class DashboardDemonstrationMethodReport
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'input demo inm') AS input_demo_inm,
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'input demo pm') AS input_demo_pm,
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'ffs') AS ffs
-          FROM module_records mr
+          FROM (#{ModuleMirror.read_scope("training-form").to_sql}) mr
           INNER JOIN vrp_fco vf ON vf.vrp_id::text = #{record_vrp_id_sql}
           WHERE mr.module_slug = 'training-form' AND #{month_filter}
           GROUP BY vf.fco_id, vf.fco_name
