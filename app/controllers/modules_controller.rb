@@ -16330,6 +16330,20 @@ class ModulesController < ApplicationController
   end
 
   def training_target_browser_payload
+    # The initial/edit form loads farmer details only after a target is chosen.
+    # Keep just the fields used to filter target rows in the initial HTML; the
+    # farmer IDs and trainer/contact metadata are fetched by the existing
+    # target-farmers endpoint. This shrinks the escaped JSON embedded in the
+    # form without changing the selected-target response or save payload.
+    if training_form_initial_render? || training_edit_deferred_farmer_render?
+      return {
+        mappings: training_target_mappings.map do |mapping|
+          mapping.slice(:target_mapping_id, :main_activity_type, :month, :ics, :village, :main_activity, :sub_activity)
+        end,
+        farmers: []
+      }
+    end
+
     farmers = []
     farmer_indexes = {}
     mappings = training_target_mappings.map do |mapping|
@@ -16435,6 +16449,18 @@ class ModulesController < ApplicationController
   # one copy of each farmer in the HTML payload and let the browser rebuild the
   # unchanged per-target arrays.
   def seed_distribution_target_browser_payload
+    if %w[other-target other-target-with-farmer].include?(record_source_slug)
+      fields = %i[
+        target_mapping_id vrp_id jeevika_jankar_name contact_number department month ics village
+        training_topic training_subject target new_farmer_target
+      ]
+      fields << :mapped_farmer_ids if record_source_slug == "other-target-with-farmer"
+      return {
+        mappings: seed_distribution_target_mappings.map { |mapping| mapping.slice(*fields) },
+        farmers: []
+      }
+    end
+
     # The Other with Farmer form can have thousands of live village farmers.
     # Its existing JavaScript fetches a selected target's farmers on demand, so
     # omit those repeated rows from the initial page while preserving the
