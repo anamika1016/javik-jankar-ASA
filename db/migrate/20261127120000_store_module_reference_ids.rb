@@ -37,9 +37,7 @@ class StoreModuleReferenceIds < ActiveRecord::Migration[8.1]
       "parent_category" => ["module_parent_offices", %w[parent_office_name]],
       "office_name" => ["module_office_categories", %w[office_name category_name]]
     },
-    "module_sub_activities" => {
-      "main_activity_id" => ["module_main_activities", %w[main_activity_name activity_group_name]]
-    },
+    "module_sub_activities" => {},
     "module_trainings" => {
       "month" => ["module_months", %w[month_name]]
     },
@@ -59,6 +57,7 @@ class StoreModuleReferenceIds < ActiveRecord::Migration[8.1]
   }.freeze
 
   DIRECT_ID_FIELDS = {
+    "module_sub_activities" => %w[main_activity_id],
     "module_trainings" => %w[jeevika_jankar_id],
     "module_other_targets" => %w[jeevika_jankar_id target_mapping_id],
     "module_other_farmer_targets" => %w[jeevika_jankar_id target_mapping_id],
@@ -149,7 +148,7 @@ class StoreModuleReferenceIds < ActiveRecord::Migration[8.1]
 
   def backfill_reference_ids!
     @lookups = {}
-    backfill_field("module_sub_activities", "main_activity_id", lookup_for("module_main_activities", %w[main_activity_name activity_group_name]))
+    backfill_sub_activity_main_ids!
     SINGLE_REFERENCES.each do |table, references|
       references.each do |field, (source_table, source_keys)|
         lookup = lookup_for(source_table, source_keys)
@@ -162,23 +161,27 @@ class StoreModuleReferenceIds < ActiveRecord::Migration[8.1]
         backfill_field(table, field, lookup, multiple: true)
       end
     end
-    if data_source_exists?(:module_sub_activities)
-      lookup = lookup_for("module_main_activities", %w[main_activity_name activity_group_name])
-      select_all("SELECT id, data FROM module_sub_activities").each do |row|
-        data = parse_json(row["data"])
-        next unless data.is_a?(Hash)
-
-        label = data["main_activity"].to_s.sub(/\A\s*\d+\.\s*/, "").squish
-        next if label.blank?
-
-        main_activity_id = lookup[normalize_label(label)]
-        next unless main_activity_id.is_a?(Integer)
-
-        data["main_activity_id"] = main_activity_id
-        update_data("module_sub_activities", row["id"], data)
-      end
-    end
     # Direct ID payload keys already contain their identifiers.
+  end
+
+  def backfill_sub_activity_main_ids!
+    return unless data_source_exists?(:module_sub_activities)
+
+    lookup = lookup_for("module_main_activities", %w[main_activity_name activity_group_name])
+    select_all("SELECT id, data FROM module_sub_activities").each do |row|
+      data = parse_json(row["data"])
+      next unless data.is_a?(Hash)
+
+      label = data["main_activity"].to_s.sub(/\A\s*\d+\.\s*/, "").squish
+      next if label.blank?
+
+      main_activity_id = lookup[normalize_label(label)]
+      next unless main_activity_id.is_a?(Integer)
+      next if data["main_activity_id"].to_s == main_activity_id.to_s
+
+      data["main_activity_id"] = main_activity_id
+      update_data("module_sub_activities", row["id"], data)
+    end
   end
 
   def lookup_for(table, keys)
