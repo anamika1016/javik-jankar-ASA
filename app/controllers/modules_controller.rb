@@ -766,6 +766,12 @@ class ModulesController < ApplicationController
       purpose: "",
       fields: ["Seed Crop", "Seed Variety", "Seed Brand Name", "FPO", "Supplier/Company Name", "Description",
                "Product Photo Upload", "Amount", "Amount Status", "Subsidy", "Subsidy Status", "Status"]
+    },
+    "unit-master" => {
+      title: "Unit Master",
+      group: "Unit",
+      purpose: "",
+      fields: ["Unit Name", "Status"]
     }
   }.freeze
 
@@ -10043,7 +10049,7 @@ class ModulesController < ApplicationController
     return true if %w[state-master district-master block-master gram-panchayat-master village-master month-master project-master].include?(@slug)
     return true if %w[stakeholder-master stakeholder-role role-name parent-office-add office-category-add office-mapping-add].include?(@slug)
     return true if %w[add-activity-group add-vrp-activity task-completion-indicator].include?(@slug)
-    return true if %w[crop-season-master crop-type-master crop-master seed-crop-master seed-variety-master seed-product-master].include?(@slug)
+    return true if %w[crop-season-master crop-type-master crop-master seed-crop-master seed-variety-master seed-product-master unit-master].include?(@slug)
     # This entry screen renders its own Saved Records table, so it needs the
     # records even though its slug does not end in "-list".
     return true if @slug == "user-hierarchy-mapping"
@@ -15376,7 +15382,8 @@ class ModulesController < ApplicationController
     # A crop is saved once per grade (Wheat A and Wheat B are two rows).
     "crop-master" => { "crop_season" => "Crop Season", "crop_type" => "Crop Type", "crop_name" => "Crop Name", "grade" => "Grade" },
     "seed-crop-master" => { "seed_crop_name" => "Seed Crop Name" },
-    "seed-variety-master" => { "seed_crop" => "Seed Crop", "seed_variety_name" => "Seed Variety Name" }
+    "seed-variety-master" => { "seed_crop" => "Seed Crop", "seed_variety_name" => "Seed Variety Name" },
+    "unit-master" => { "unit_name" => "Unit Name" }
   }.freeze
 
   def crop_master_error_messages(data)

@@ -296,6 +296,13 @@ module ApplicationHelper
       ]
     },
     {
+      title: "Unit",
+      icon: "▥",
+      links: [
+        ["Unit Master", :module, "unit-master"]
+      ]
+    },
+    {
       title: "User Register",
       icon: "▩",
       links: [

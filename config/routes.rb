@@ -46,6 +46,8 @@ Rails.application.routes.draw do
       get "seed-products", to: "seeds#products"
       get "seed-products/:id", to: "seeds#product"
       get "seed-masters", to: "seeds#masters"
+      # Unit Master for the app.
+      get "units", to: "units#index"
       post "login/otp/send", to: "otp_logins#send_otp"
       post "login/otp/verify", to: "otp_logins#verify_otp"
 

@@ -8085,7 +8085,7 @@ function initDeferredLayoutPage() {
 // click puts the Hindi word in. The field still accepts any text.
 const HINDI_TYPING_INPUTS = [
   "crop_season_name", "crop_type_name", "crop_name", "seed_crop_name", "seed_variety_name",
-  "seed_brand_name", "supplier_company_name"
+  "seed_brand_name", "supplier_company_name", "unit_name"
 ].map((key) => `input[name="module_record[${key}]"]`).join(", ");
 const HINDI_TYPING_STORE_KEY = "hindiTyping";
 const hindiSuggestionCache = new Map();
