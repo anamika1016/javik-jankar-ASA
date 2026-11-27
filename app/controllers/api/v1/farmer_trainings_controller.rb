@@ -50,9 +50,32 @@ module Api
       end
 
       def form_data
-        options = farmer_target_api.form_options
+        api = farmer_target_api
+        options = api.form_options
         mappings = filter_form_mappings(Array(options[:target_mappings]))
-        farmers, available_farmers, completed_farmer_ids = farmer_lists_for(mappings)
+        if params[:target_mapping_id].present?
+          selected_mapping_id = params[:target_mapping_id].to_s
+          mappings = mappings.select { |mapping| mapping[:target_mapping_id].to_s == selected_mapping_id }
+          live_result = api.live_training_farmers(params.permit(:target_mapping_id, :month, :ics,
+            :village, :main_activity, :sub_activity, :fco_id, :fco_name))
+          farmers = Array(live_result[:farmers]).map do |farmer|
+            farmer.merge(in_target: !!farmer[:is_target])
+          end
+          completed_farmer_ids = Array(live_result[:completed_farmer_ids]).map(&:to_s).uniq
+          completed_ids = completed_farmer_ids.to_set
+          available_farmers = farmers.reject { |farmer| completed_ids.include?(farmer[:id].to_s) }
+          target_farmers = farmers.select { |farmer| farmer[:in_target] }
+          other_village_farmers = farmers.reject { |farmer| farmer[:in_target] }
+          mappings = mappings.map do |mapping|
+            mapping.merge(farmers: farmers, available_farmers: available_farmers,
+              target_farmers: target_farmers, other_village_farmers: other_village_farmers,
+              completed_farmer_ids: completed_farmer_ids)
+          end
+        else
+          farmers, available_farmers, completed_farmer_ids = farmer_lists_for(mappings)
+          target_farmers = []
+          other_village_farmers = []
+        end
 
         render json: {
           success: true,
@@ -75,6 +98,8 @@ module Api
           target_mappings: mappings,
           farmers: farmers,
           available_farmers: available_farmers,
+          target_farmers: target_farmers,
+          other_village_farmers: other_village_farmers,
           farmer_count: farmers.size,
           available_farmer_count: available_farmers.size
         }, status: :ok

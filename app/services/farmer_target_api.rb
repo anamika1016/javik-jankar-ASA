@@ -598,6 +598,8 @@ class FarmerTargetApi
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
     if training_form_activity_scope_present?(data)
       pending_farmer_ids = pending_training_farmer_ids_for(data)
+      @completed_farmer_selection_ids = Array(@completed_farmer_selection_ids) |
+        (selected_farmer_ids & Array(@pending_training_completed_farmer_ids))
       selected_farmer_ids &= (pending_farmer_ids + retained_farmer_ids) unless pending_farmer_ids.nil?
     end
     data["selected_farmer_ids"] = selected_farmer_ids
@@ -702,6 +704,9 @@ class FarmerTargetApi
     }
 
     errors = missing_required_data_errors(data, required_fields)
+    if Array(@completed_farmer_selection_ids).any?
+      errors << "Selected farmer(s) already completed this training for the month. Select pending target farmers."
+    end
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
     farmer_count = whole_number_value(data["farmer_count"].presence || "0")
     male_count = whole_number_value(data["male_count"])
@@ -874,7 +879,7 @@ class FarmerTargetApi
     { "month" => %w[month_name], "ics" => %w[ics_name ics_id],
       "village" => %w[village_name village_id], "main_activity" => %w[main_activity_name],
       "sub_activity" => %w[activity_name], "fco_id" => %w[fco_id],
-      "fco_name" => %w[fco_name] }.each do |key, columns|
+      "fco_name" => %w[fco_name], "target_mapping_id" => %w[id] }.each do |key, columns|
       value = filters[key].presence
       value ||= filters["fpo_id"] if key == "fco_id"
       value ||= filters["fpo_name"] if key == "fco_name"
@@ -1605,6 +1610,7 @@ class FarmerTargetApi
     selected_sub_activities = normalized_text_values(data["sub_activity"])
     activity_settings = main_activity_settings
 
+    @pending_training_completed_farmer_ids = []
     training_target_scope.each_with_object([]) do |target, ids|
       activity_setting = activity_settings[normalize_text(target.main_activity_name)] || {}
 
@@ -1616,7 +1622,9 @@ class FarmerTargetApi
       next unless selected_sub_activities.include?(normalize_text(target.activity_name))
 
       farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
-      ids.concat(farmer_ids - completed_training_farmer_ids_for(target, farmer_ids))
+      completed_ids = completed_training_farmer_ids_for(target, farmer_ids)
+      @pending_training_completed_farmer_ids.concat(completed_ids)
+      ids.concat(farmer_ids - completed_ids)
     end.uniq
   end
 
