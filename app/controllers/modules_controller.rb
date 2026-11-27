@@ -16366,16 +16366,17 @@ class ModulesController < ApplicationController
     include_completed_state = @record.present?
 
     saved_farmer_ids = @record&.module_slug == "training-form" ? training_record_selected_farmer_ids(@record) : []
-    all_farmer_ids = (targets.flat_map { |target| Array(target.afl_ids).map(&:to_s) } + saved_farmer_ids).reject(&:blank?).uniq
     # New forms load farmers from the existing target-farmers endpoint when a
     # target is selected. Looking up every mapped farmer while building the
     # initial form payload duplicates that request and can make large forms slow.
     # HTML edit forms use that same endpoint (with record_id) and separately
     # render saved selections. Do not resolve every unrelated target's remote
     # farmer names before the edit page can be sent to the browser.
-    farmers_lookup = if training_form_initial_render? || training_edit_deferred_farmer_render?
+    deferred_farmer_lookup = training_form_initial_render? || training_edit_deferred_farmer_render?
+    farmers_lookup = if deferred_farmer_lookup
       {}
     else
+      all_farmer_ids = (targets.flat_map { |target| Array(target.afl_ids).map(&:to_s) } + saved_farmer_ids).reject(&:blank?).uniq
       training_farmers_for_ids(all_farmer_ids).index_by { |farmer| farmer[:id].to_s }
     end
 
@@ -16398,8 +16399,13 @@ class ModulesController < ApplicationController
 
     targets
       .map do |target|
-        farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
-        farmer_ids |= saved_farmer_ids if saved_target_ids.include?(target.id.to_s)
+        farmer_ids = if deferred_farmer_lookup
+          []
+        else
+          ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
+          ids |= saved_farmer_ids if saved_target_ids.include?(target.id.to_s)
+          ids
+        end
         {
           target_mapping_id: target.id.to_s,
           vrp_id: target.vrp_id.to_s,

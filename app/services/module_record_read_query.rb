@@ -21,26 +21,44 @@ class ModuleRecordReadQuery
   end
 
   def self.admin_training_list_rows(scope, limit: 100)
-    slug = ModuleEntry.connection.quote(TrainingEditApproval::SLUG)
+    connection = ModuleEntry.connection
+    # The compatibility `module_entries` view unions every dedicated module
+    # table. Using it in each correlated revision lookup makes PostgreSQL
+    # repeatedly plan/scan that large UNION for every training row. Query the
+    # dedicated edit-request table directly so its record_id/latest index can
+    # serve the same lookups; retain the legacy view as the fallback.
+    revision_table = ModuleMirror.dedicated_table_for(TrainingEditApproval::SLUG)
+    if revision_table.present?
+      revision_source = connection.quote_table_name(revision_table)
+      revision_predicate = "revisions.payload_text::jsonb ->> 'record_id' = module_entries.id::text"
+      revision_status = "revisions.payload_text::jsonb ->> 'status'"
+      revision_data = "(revisions.payload_text::jsonb - ARRAY['before', 'proposed', 'evidence', 'history'])::text"
+      revision_module_slug = connection.quote(TrainingEditApproval::SLUG)
+    else
+      revision_source = "module_entries"
+      slug = connection.quote(TrainingEditApproval::SLUG)
+      revision_predicate = "revisions.module_slug = #{slug} AND revisions.data::jsonb ->> 'record_id' = module_entries.id::text"
+      revision_status = "revisions.data::jsonb ->> 'status'"
+      revision_data = "(revisions.data::jsonb - ARRAY['before', 'proposed', 'evidence', 'history'])::text"
+      revision_module_slug = "revisions.module_slug"
+    end
     # Match the Ruby list key exactly: latest revision by ID, Pending first,
     # created_at floored to whole seconds (nil means epoch), then ID descending.
     # Training photo/participant JSON is never selected while ranking rows.
     pending = <<~SQL.squish
       CASE WHEN (
-        SELECT revisions.data::jsonb ->> 'status' FROM module_entries revisions
-        WHERE revisions.module_slug = #{slug}
-          AND revisions.data::jsonb ->> 'record_id' = module_entries.id::text
+        SELECT #{revision_status} FROM #{revision_source} revisions
+        WHERE #{revision_predicate}
         ORDER BY revisions.id DESC LIMIT 1
       ) = 'Pending' THEN 0 ELSE 1 END
     SQL
     summary = <<~SQL.squish
       (SELECT json_build_object(
-        'id', revisions.id, 'module_slug', revisions.module_slug,
+        'id', revisions.id, 'module_slug', #{revision_module_slug},
         'created_at', revisions.created_at, 'updated_at', revisions.updated_at,
-        'data', (revisions.data::jsonb - ARRAY['before', 'proposed', 'evidence', 'history'])::text
-      ) FROM module_entries revisions
-       WHERE revisions.module_slug = #{slug}
-         AND revisions.data::jsonb ->> 'record_id' = module_entries.id::text
+        'data', #{revision_data}
+      ) FROM #{revision_source} revisions
+       WHERE #{revision_predicate}
        ORDER BY revisions.id DESC LIMIT 1)
     SQL
     # Read the selected summaries in the ranking statement's snapshot, so a
