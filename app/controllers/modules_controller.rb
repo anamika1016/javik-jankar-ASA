@@ -78,7 +78,7 @@ class ModulesController < ApplicationController
                 :jeevika_bill_observation_row, :jeevika_bill_fcoc_name, :training_target_browser_payload,
                 :jeevika_bill_image_upload?,
                 :jeevika_jankar_transfer_office_keys, :crop_type_season_mappings, :seed_variety_crop_mappings,
-                :normalize_dashboard_text
+                :normalize_dashboard_text, :user_hierarchy_user_options
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
   OTHER_TARGET_MODULE_SLUGS = ["seed-distribution-target", "papl360-target", "other-target", "other-target-with-farmer"].freeze

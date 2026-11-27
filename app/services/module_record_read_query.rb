@@ -29,19 +29,50 @@ class ModuleRecordReadQuery
     # serve the same lookups; retain the legacy view as the fallback.
     revision_table = ModuleMirror.dedicated_table_for(TrainingEditApproval::SLUG)
     if revision_table.present?
-      revision_source = connection.quote_table_name(revision_table)
-      revision_predicate = "revisions.payload_text::jsonb ->> 'record_id' = module_entries.id::text"
-      revision_status = "revisions.payload_text::jsonb ->> 'status'"
-      revision_data = "(revisions.payload_text::jsonb - ARRAY['before', 'proposed', 'evidence', 'history'])::text"
-      revision_module_slug = connection.quote(TrainingEditApproval::SLUG)
-    else
-      revision_source = "module_entries"
-      slug = connection.quote(TrainingEditApproval::SLUG)
-      revision_predicate = "revisions.module_slug = #{slug} AND revisions.data::jsonb ->> 'record_id' = module_entries.id::text"
-      revision_status = "revisions.data::jsonb ->> 'status'"
-      revision_data = "(revisions.data::jsonb - ARRAY['before', 'proposed', 'evidence', 'history'])::text"
-      revision_module_slug = "revisions.module_slug"
+      training_rows = scope.pluck(:id, :created_at)
+      return [] if training_rows.empty?
+
+      requested_ids = training_rows.map { |id, _created_at| connection.quote(id.to_s) }.join(", ")
+      revisions_table = connection.quote_table_name(revision_table)
+      revision_rows = connection.select_all(<<~SQL.squish)
+        SELECT DISTINCT ON (payload_text::jsonb ->> 'record_id')
+          id, created_at, updated_at,
+          (payload_text::jsonb - ARRAY['before', 'proposed', 'evidence', 'history'])::text AS summary_data,
+          payload_text::jsonb ->> 'record_id' AS record_id,
+          payload_text::jsonb ->> 'status' AS revision_status
+        FROM #{revisions_table}
+        WHERE payload_text::jsonb ->> 'record_id' IN (#{requested_ids})
+        ORDER BY payload_text::jsonb ->> 'record_id', id DESC
+      SQL
+      revision_by_record_id = revision_rows.index_by { |row| row["record_id"].to_s }
+      revision_attributes = revision_by_record_id.transform_values do |row|
+        {
+          "id" => row["id"],
+          "module_slug" => TrainingEditApproval::SLUG,
+          "created_at" => row["created_at"],
+          "updated_at" => row["updated_at"],
+          "data" => row["summary_data"]
+        }
+      end
+
+      # Keep the previous sort semantics exactly: latest Pending revision first,
+      # then created_at floored to seconds, then training ID descending.
+      training_rows.sort_by! do |id, created_at|
+        revision = revision_by_record_id[id.to_s]
+        pending = revision && revision["revision_status"] == "Pending" ? 0 : 1
+        [pending, -(created_at || Time.at(0)).to_i, -id.to_i]
+      end
+      return training_rows.first(limit).map do |id, _created_at|
+        [id, revision_attributes[id.to_s]]
+      end
     end
+
+    slug = connection.quote(TrainingEditApproval::SLUG)
+    revision_source = "module_entries"
+    revision_predicate = "revisions.module_slug = #{slug} AND revisions.data::jsonb ->> 'record_id' = module_entries.id::text"
+    revision_status = "revisions.data::jsonb ->> 'status'"
+    revision_data = "(revisions.data::jsonb - ARRAY['before', 'proposed', 'evidence', 'history'])::text"
+    revision_module_slug = "revisions.module_slug"
     # Match the Ruby list key exactly: latest revision by ID, Pending first,
     # created_at floored to whole seconds (nil means epoch), then ID descending.
     # Training photo/participant JSON is never selected while ranking rows.
